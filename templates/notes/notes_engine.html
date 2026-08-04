@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Notes Engine{% endblock %}
+
+{% block header %}Notes Engine{% endblock %}
+
+{% block content %}
+<div class="flex h-[calc(100vh-160px)] bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+
+    <!-- Left Column: File Browser -->
+    <div class="w-72 border-r border-border bg-card flex flex-col">
+        <!-- Search Bar -->
+        <div class="p-4 border-b border-border">
+            <div class="relative">
+                <input type="text" placeholder="Search files..." class="w-full bg-base border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all pl-9">
+                <svg class="w-4 h-4 text-main/30 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+            </div>
+        </div>
+
+        <!-- Upload Button -->
+        <div class="p-4 border-b border-border">
+            <button class="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accentHover text-main font-medium py-2 rounded-lg text-sm transition-colors border border-border">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                </svg>
+                Upload Notes
+            </button>
+        </div>
+
+        <!-- Folder/File List -->
+        <div class="flex-1 overflow-y-auto p-2 space-y-1">
+            <p class="text-xs font-medium text-main/40 uppercase tracking-wider px-3 mb-2 mt-2">Folders</p>
+            
+            <div class="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer">
+                <svg class="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path>
+                </svg>
+                <span class="text-sm text-main truncate">Computer Science</span>
+            </div>
+
+            <div class="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer">
+                <svg class="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path>
+                </svg>
+                <span class="text-sm text-main truncate">Mathematics</span>
+            </div>
+
+            <p class="text-xs font-medium text-main/40 uppercase tracking-wider px-3 mb-2 mt-4">Recent PDFs</p>
+            
+            <div class="group flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/30 transition-colors cursor-pointer border-l-2 border-main">
+                <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                </svg>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm text-main font-medium truncate">Lecture_05_Notes.pdf</p>
+                    <p class="text-[10px] text-main/50">2.4 MB • Dec 18</p>
+                </div>
+            </div>
+
+            <div class="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer">
+                <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                </svg>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm text-main truncate">Assignment_03_Guide.pdf</p>
+                    <p class="text-[10px] text-main/50">1.1 MB • Dec 15</p>
+                </div>
+            </div>
+            
+            <div class="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer">
+                <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                </svg>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm text-main truncate">Research_Paper_Final.pdf</p>
+                    <p class="text-[10px] text-main/50">4.2 MB • Dec 12</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Pane: Editor & Preview -->
+    <div class="flex-1 flex flex-col min-w-0 bg-base">
+        <!-- Editor Area -->
+        <div class="flex-1 flex flex-col border-b border-border overflow-hidden">
+            <!-- Title & Actions -->
+            <div class="p-6 pb-4">
+                <input type="text" value="Advanced Algorithms - Lecture 5 Summary" class="w-full text-2xl font-bold text-main bg-transparent border-none focus:outline-none placeholder-main/30 mb-4" placeholder="Untitled Note">
+                
+                <div class="flex items-center gap-3">
+                    <button type="button" class="flex items-center gap-2 bg-main hover:bg-main/90 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors shadow-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        Generate AI Summary
+                    </button>
+                    
+                    <button type="button" class="flex items-center gap-2 bg-card hover:bg-white text-main font-medium px-4 py-2 rounded-lg text-sm transition-colors border border-border shadow-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                        </svg>
+                        Extract Keywords
+                    </button>
+
+                    <div class="flex-1"></div>
+
+                    <button type="button" class="flex items-center gap-2 bg-card hover:bg-white text-main font-medium px-4 py-2 rounded-lg text-sm transition-colors border border-border shadow-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        Export as PDF
+                    </button>
+                </div>
+            </div>
+
+            <!-- Textarea -->
+            <div class="flex-1 px-6 pb-6">
+                <textarea class="w-full h-full bg-transparent text-main/80 font-mono text-sm leading-relaxed resize-none focus:outline-none placeholder-main/30" placeholder="Start typing your notes here... (Markdown supported)">## Key Concepts from Lecture 5
+
+- **Divide and Conquer Strategy**: Breaking problems into subproblems.
+- **Recurrence Relations**: Using Big-O notation to analyze recursive algorithms.
+- **Master Theorem**: A tool for solving divide and conquer recurrences.
+
+### Important Formulas
+1. `T(n) = 2T(n/2) + O(n)` - Merge Sort
+2. `T(n) = T(n/1) + O(1)` - Binary Search</textarea>
+            </div>
+        </div>
+
+        <!-- Bottom Preview Box -->
+        <div class="h-64 bg-card border-t border-border flex flex-col">
+            <div class="px-6 py-3 border-b border-border flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                    <span class="text-sm font-medium text-main">AI Summary Preview</span>
+                </div>
+                <span class="text-xs text-main/50">Generated from: Lecture_05_Notes.pdf</span>
+            </div>
+            <div class="flex-1 p-6 overflow-y-auto prose prose-sm prose-slate max-w-none">
+                <p class="text-main/80 mb-2"><strong>Summary:</strong> This lecture covers advanced algorithm design techniques, focusing on divide and conquer strategies. Key takeaways include the analysis of recursive algorithms using the Master Theorem.</p>
+                <ul class="list-disc pl-5 text-main/80 space-y-1 mb-4">
+                    <li>Explored time complexity of Merge Sort and Quick Sort.</li>
+                    <li>Discussed the importance of balanced partitioning.</li>
+                    <li>Practical applications in database indexing and search operations.</li>
+                </ul>
+                <p class="text-main/80 text-xs bg-base p-3 rounded-lg border border-border inline-block">
+                    <strong>Keywords:</strong> Algorithms, Divide and Conquer, Recurrence, Big-O, Master Theorem
+                </p>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

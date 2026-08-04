@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Medical Booking{% endblock %}
+
+{% block header %}Medical Booking{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+    <!-- Main Appointment Form -->
+    <div class="lg:col-span-2 space-y-6">
+        <div class="bg-card rounded-xl border border-border p-6 shadow-sm">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 rounded-lg bg-[#F0EBE1] flex items-center justify-center">
+                    <svg class="w-5 h-5 text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+                    </svg>
+                </div>
+                <h3 class="font-semibold text-lg text-main">Book an Appointment</h3>
+            </div>
+
+            <form method="post" action="{% url 'book_appointment' %}" class="space-y-6">
+                {% csrf_token %}
+
+                <!-- Doctor Selection -->
+                <div>
+                    <label class="block text-sm font-medium text-main mb-2">Select Doctor</label>
+                    <select name="doctor" class="w-full bg-base border border-border rounded-xl px-4 py-3 text-main focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all appearance-none cursor-pointer">
+                        <option value="">-- Choose a Doctor --</option>
+                        <option value="1">Dr. Ahmed Khan - General Physician</option>
+                        <option value="2">Dr. Sarah Smith - Pediatrician</option>
+                        <option value="3">Dr. Michael Chen - Cardiologist</option>
+                        <option value="4">Dr. Emily Johnson - Dermatologist</option>
+                    </select>
+                </div>
+
+                <!-- Date Picker -->
+                <div>
+                    <label class="block text-sm font-medium text-main mb-2">Preferred Date</label>
+                    <input type="date" name="appointment_date" class="w-full bg-base border border-border rounded-xl px-4 py-3 text-main focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all">
+                </div>
+
+                <!-- Time Slot Grid -->
+                <div>
+                    <label class="block text-sm font-medium text-main mb-3">Select Time Slot</label>
+                    <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                        <label class="relative cursor-pointer">
+                            <input type="radio" name="time_slot" value="09:00" class="peer sr-only">
+                            <div class="p-3 bg-base border-2 border-border rounded-xl text-center transition-all peer-checked:border-main peer-checked:bg-main/5 hover:border-main/30">
+                                <div class="font-medium text-main text-sm">09:00 AM</div>
+                            </div>
+                        </label>
+                        <label class="relative cursor-pointer">
+                            <input type="radio" name="time_slot" value="10:00" class="peer sr-only" checked>
+                            <div class="p-3 bg-base border-2 border-border rounded-xl text-center transition-all peer-checked:border-main peer-checked:bg-main/5 hover:border-main/30">
+                                <div class="font-medium text-main text-sm">10:00 AM</div>
+                            </div>
+                        </label>
+                        <label class="relative cursor-pointer">
+                            <input type="radio" name="time_slot" value="11:30" class="peer sr-only">
+                            <div class="p-3 bg-base border-2 border-border rounded-xl text-center transition-all peer-checked:border-main peer-checked:bg-main/5 hover:border-main/30">
+                                <div class="font-medium text-main text-sm">11:30 AM</div>
+                            </div>
+                        </label>
+                        <label class="relative cursor-pointer">
+                            <input type="radio" name="time_slot" value="14:00" class="peer sr-only">
+                            <div class="p-3 bg-base border-2 border-border rounded-xl text-center transition-all peer-checked:border-main peer-checked:bg-main/5 hover:border-main/30">
+                                <div class="font-medium text-main text-sm">02:00 PM</div>
+                            </div>
+                        </label>
+                        <label class="relative cursor-pointer">
+                            <input type="radio" name="time_slot" value="15:30" class="peer sr-only">
+                            <div class="p-3 bg-base border-2 border-border rounded-xl text-center transition-all peer-checked:border-main peer-checked:bg-main/5 hover:border-main/30">
+                                <div class="font-medium text-main text-sm">03:30 PM</div>
+                            </div>
+                        </label>
+                        <label class="relative cursor-pointer">
+                            <input type="radio" name="time_slot" value="17:00" class="peer sr-only">
+                            <div class="p-3 bg-base border-2 border-border rounded-xl text-center transition-all peer-checked:border-main peer-checked:bg-main/5 hover:border-main/30">
+                                <div class="font-medium text-main text-sm">05:00 PM</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Reason for Visit -->
+                <div>
+                    <label class="block text-sm font-medium text-main mb-2">Reason for Visit / Symptoms</label>
+                    <textarea name="reason" rows="4" class="w-full bg-base border border-border rounded-xl px-4 py-3 text-main focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all resize-none" placeholder="Please describe your symptoms or reason for visit..."></textarea>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="pt-4">
+                    <button type="submit" class="w-full bg-main hover:bg-main/90 text-white font-medium px-6 py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                        Confirm Appointment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Side Card: Upcoming Appointments -->
+    <div class="lg:col-span-1">
+        <div class="bg-card rounded-xl border border-border p-6 shadow-sm sticky top-24">
+            <div class="flex items-center gap-2 mb-6">
+                <svg class="w-5 h-5 text-main/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                </svg>
+                <h3 class="font-semibold text-main">Upcoming Appointments</h3>
+            </div>
+
+            <div class="space-y-4">
+                <!-- Appointment 1 -->
+                <div class="p-4 bg-base rounded-xl border border-border hover:border-main/30 transition-colors">
+                    <div class="flex items-start justify-between mb-2">
+                        <div>
+                            <p class="font-medium text-main text-sm">Dr. Ahmed Khan</p>
+                            <p class="text-xs text-main/60 mt-0.5">General Physician</p>
+                        </div>
+                        <span class="px-2 py-1 text-xs font-medium bg-green-50 text-green-700 rounded-md border border-green-100">
+                            Confirmed
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-3 text-xs text-main/60 mt-3">
+                        <div class="flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                            <span>Tomorrow</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <span>10:00 AM</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Appointment 2 -->
+                <div class="p-4 bg-base rounded-xl border border-border hover:border-main/30 transition-colors">
+                    <div class="flex items-start justify-between mb-2">
+                        <div>
+                            <p class="font-medium text-main text-sm">Dr. Sarah Smith</p>
+                            <p class="text-xs text-main/60 mt-0.5">Pediatrician</p>
+                        </div>
+                        <span class="px-2 py-1 text-xs font-medium bg-orange-50 text-orange-700 rounded-md border border-orange-100">
+                            Pending
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-3 text-xs text-main/60 mt-3">
+                        <div class="flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                            <span>Friday, Dec 20</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <span>02:30 PM</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Empty State (Optional) -->
+                <div class="text-center py-6 text-main/40">
+                    <svg class="w-8 h-8 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                    </svg>
+                    <p class="text-xs">No other appointments scheduled.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
