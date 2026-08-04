@@ -234,10 +234,46 @@ Niter-centralized-dash/
     └── HANDOVER.md              # This documentation
 ```
 
-## 9. Next Steps
+## 9. Django Configuration
+
+### Key Settings (`config/settings.py`)
+- **DEBUG:** `True` (development mode)
+- **ALLOWED_HOSTS:** `[]` (add your domain in production)
+- **INSTALLED_APPS:** `django.contrib.staticfiles`, `core`
+- **TEMPLATES DIRS:** `[BASE_DIR / 'templates']`
+- **DATABASES:** `{}` (no database configured yet)
+
+### Environment Variables (Recommended for Production)
+Create a `.env` file in the root directory:
+```env
+DEBUG=False
+SECRET_KEY=your-secret-key-here
+ALLOWED_HOSTS=yourdomain.com
+DATABASE_URL=postgres://user:pass@localhost:5432/niter_db
+```
+
+## 10. Git Repository
+
+## 9. Git Repository
+- **Repository:** [https://github.com/kn8trix/Niter-centralized-dash](https://github.com/kn8trix/Niter-centralized-dash)
+- **Branch:** `main`
+- **Git Ignore:** `venv/`, `__pycache__/`, `*.pyc`, `.env`
+
+## 10. API Endpoints (Planned)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| POST | `/claim-meal/` | Claim a meal ticket |
+| POST | `/book-transport/` | Book a transport ticket |
+| POST | `/book-appointment/` | Schedule a medical appointment |
+| GET | `/api/notices/` | Fetch official notices |
+| GET | `/api/courses/` | Fetch course materials |
+
+## 11. Next Steps
 1. **Backend Integration:** Connect templates to Django views and models.
 2. **API Development:** Create endpoints for meal claims, transport bookings, and appointments.
 3. **User Authentication:** Implement login/logout functionality.
 4. **Database Models:** Design models for users, courses, tickets, and appointments.
 5. **Testing:** Add unit tests for views and forms.
 6. **Deployment:** Configure for production environment.
+7. **Mobile App:** Consider building a React Native or Flutter companion app.
+8. **Real-time Updates:** Implement WebSocket for live notifications and seat availability.
