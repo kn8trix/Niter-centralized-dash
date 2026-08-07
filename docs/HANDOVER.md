@@ -277,3 +277,36 @@ DATABASE_URL=postgres://user:pass@localhost:5432/niter_db
 6. **Deployment:** Configure for production environment.
 7. **Mobile App:** Consider building a React Native or Flutter companion app.
 8. **Real-time Updates:** Implement WebSocket for live notifications and seat availability.
+
+## 12. Update by Tajkia Tasnim
+
+**Date:** 07 August 2026  
+**Branch:** taj
+
+### Overview
+
+Completed UI architecture refactoring and improved the dashboard structure while preserving the existing design and functionality.
+
+### Completed Work
+
+- Refactored shared layout into reusable partial templates.
+- Created reusable UI components for better code organization.
+- Added shared CSS and JavaScript resources.
+- Improved accessibility and responsiveness.
+- Implemented interactive mock confirmation flows for:
+  - Meal Ticket
+  - Transport Booking
+  - Medical Appointment
+
+### Files Modified
+
+- `templates/base.html`
+- `templates/dashboard/home.html`
+- `templates/ticketing/tickets.html`
+- `templates/medical/booking.html`
+- `core/views.py`
+
+### Testing
+
+- `python manage.py check` ✔
+- Tested successfully on localhost.
