@@ -58,6 +58,7 @@
 </head>
 <body class="font-sans antialiased min-h-screen flex">
     
+    {% block sidebar %}
     <!-- Sidebar -->
     <aside class="w-64 bg-card border-r border-border h-screen fixed top-0 left-0 flex flex-col overflow-y-auto">
         <!-- Logo Area -->
@@ -130,9 +131,10 @@
             </div>
         </div>
     </aside>
+    {% endblock %}
     
     <!-- Main Content Area -->
-    <main class="flex-1 ml-64">
+    <main id="main-content" class="flex-1 ml-64 transition-all duration-200">
         <!-- Top Bar -->
         <header class="sticky top-0 z-10 bg-base/80 backdrop-blur-md border-b border-border">
             <div class="px-8 py-4 flex items-center justify-between">
@@ -177,21 +179,30 @@
     </button>
     
     <script>
-        // Mobile sidebar toggle
+        // Mobile / Desktop sidebar toggle
         const mobileMenuBtn = document.getElementById('mobile-menu-btn');
         const sidebar = document.querySelector('aside');
-        
+        const mainContent = document.getElementById('main-content');
+
         if (mobileMenuBtn) {
             mobileMenuBtn.addEventListener('click', () => {
+                // toggle sidebar visibility (keeps existing behavior)
                 sidebar.classList.toggle('-translate-x-full');
                 sidebar.classList.toggle('lg:translate-x-0');
+
+                // also toggle main content left margin so content expands/reflows
+                // original layout uses `ml-64` to offset the fixed sidebar; switch to `ml-0` when collapsed
+                if (mainContent) {
+                    mainContent.classList.toggle('ml-64');
+                    mainContent.classList.toggle('ml-0');
+                }
             });
         }
-        
+
         // Set active link based on current URL
         const currentPath = window.location.pathname;
         const sidebarLinks = document.querySelectorAll('.sidebar-link');
-        
+
         sidebarLinks.forEach(link => {
             if (link.getAttribute('href') === currentPath) {
                 link.classList.add('active');

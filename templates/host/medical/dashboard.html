@@ -1,0 +1,136 @@
+{% extends "host/host_base.html" %}
+
+{% block title %}Medical Host Dashboard{% endblock %}
+
+{% block header %}Medical Host Dashboard{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div class="bg-card rounded-xl border border-border p-4 text-center">
+            <div class="text-sm text-main/60">Total Appointments</div>
+            <div class="text-2xl font-bold">{{ summaries.total }}</div>
+        </div>
+        <div class="bg-card rounded-xl border border-border p-4 text-center">
+            <div class="text-sm text-main/60">Pending</div>
+            <div class="text-2xl font-bold text-orange-600">{{ summaries.pending }}</div>
+        </div>
+        <div class="bg-card rounded-xl border border-border p-4 text-center">
+            <div class="text-sm text-main/60">Confirmed</div>
+            <div class="text-2xl font-bold text-green-600">{{ summaries.confirmed }}</div>
+        </div>
+        <div class="bg-card rounded-xl border border-border p-4 text-center">
+            <div class="text-sm text-main/60">Completed</div>
+            <div class="text-2xl font-bold text-gray-600">{{ summaries.completed }}</div>
+        </div>
+        <div class="bg-card rounded-xl border border-border p-4 text-center">
+            <div class="text-sm text-main/60">Cancelled</div>
+            <div class="text-2xl font-bold text-red-600">{{ summaries.cancelled }}</div>
+        </div>
+        <div class="bg-card rounded-xl border border-border p-4 text-center">
+            <div class="text-sm text-main/60">Today's Queue</div>
+            <div class="text-2xl font-bold text-indigo-600">{{ summaries.todays_queue }}</div>
+        </div>
+    </div>
+
+    <!-- Search & Filters -->
+    <div class="bg-card rounded-xl border border-border p-4 flex items-center justify-between gap-4">
+        <form method="get" class="flex items-center gap-3 w-full">
+            <input type="text" name="q" value="{{ search_query }}" placeholder="Search by student name or ID" class="flex-1 bg-base border border-border rounded-lg px-4 py-2 text-sm">
+            <select name="filter" class="bg-base border border-border rounded-lg px-3 py-2 text-sm">
+                <option value="all" {% if active_filter == 'all' %}selected{% endif %}>All</option>
+                <option value="today" {% if active_filter == 'today' %}selected{% endif %}>Today's Appointments</option>
+                <option value="pending" {% if active_filter == 'pending' %}selected{% endif %}>Pending</option>
+                <option value="confirmed" {% if active_filter == 'confirmed' %}selected{% endif %}>Confirmed</option>
+                <option value="completed" {% if active_filter == 'completed' %}selected{% endif %}>Completed</option>
+                <option value="cancelled" {% if active_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+            </select>
+            <button type="submit" class="bg-accent px-4 py-2 rounded-lg">Apply</button>
+        </form>
+    </div>
+
+    <!-- Confirmation Panel -->
+    {% if messages %}
+    <div>
+        {% for message in messages %}
+        <div class="bg-card rounded-xl border border-border p-4 text-sm text-main/80">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Appointments Table -->
+    <div class="bg-card rounded-xl border border-border p-4">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-main/60">
+                        <th class="px-3 py-2">Appointment ID</th>
+                        <th class="px-3 py-2">Student Name</th>
+                        <th class="px-3 py-2">Student ID</th>
+                        <th class="px-3 py-2">Department</th>
+                        <th class="px-3 py-2">Phone</th>
+                        <th class="px-3 py-2">Doctor</th>
+                        <th class="px-3 py-2">Date</th>
+                        <th class="px-3 py-2">Time</th>
+                        <th class="px-3 py-2">Reason</th>
+                        <th class="px-3 py-2">Status</th>
+                        <th class="px-3 py-2">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in appointments %}
+                    <tr class="border-t border-border">
+                        <td class="px-3 py-2">{{ a.id }}</td>
+                        <td class="px-3 py-2">{{ a.student_name }}</td>
+                        <td class="px-3 py-2">{{ a.student_id }}</td>
+                        <td class="px-3 py-2">{{ a.department }}</td>
+                        <td class="px-3 py-2">{{ a.phone }}</td>
+                        <td class="px-3 py-2">{{ a.doctor }}</td>
+                        <td class="px-3 py-2">{{ a.date }}</td>
+                        <td class="px-3 py-2">{{ a.time }}</td>
+                        <td class="px-3 py-2">{{ a.reason }}</td>
+                        <td class="px-3 py-2"> 
+                            {% if a.status == 'Pending' %}
+                                <span class="px-2 py-1 rounded text-xs bg-orange-50 text-orange-700">Pending</span>
+                            {% elif a.status == 'Confirmed' %}
+                                <span class="px-2 py-1 rounded text-xs bg-green-50 text-green-700">Confirmed</span>
+                            {% elif a.status == 'Cancelled' %}
+                                <span class="px-2 py-1 rounded text-xs bg-red-50 text-red-700">Cancelled</span>
+                            {% else %}
+                                <span class="px-2 py-1 rounded text-xs bg-base text-main">{{ a.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-3 py-2">
+                            <div class="flex items-center gap-2">
+                                <a href="?action=view&id={{ a.id }}" class="text-main/60 hover:text-main">View</a>
+                                <a href="?action=edit&id={{ a.id }}" class="text-main/60 hover:text-main">Edit</a>
+                                <a href="?action=assign&id={{ a.id }}" class="text-main/60 hover:text-main">Assign</a>
+                                {% if a.status != 'Confirmed' and a.status != 'Completed' %}
+                                <a href="?action=confirm&id={{ a.id }}" class="text-green-600 hover:underline">Confirm</a>
+                                {% endif %}
+                                {% if a.status != 'Pending' and a.status != 'Completed' %}
+                                <a href="?action=return_pending&id={{ a.id }}" class="text-orange-600 hover:underline">Return</a>
+                                {% endif %}
+                                {% if a.status != 'Cancelled' and a.status != 'Completed' %}
+                                <a href="?action=cancel&id={{ a.id }}" class="text-red-600 hover:underline">Cancel</a>
+                                {% endif %}
+                                {% if a.status != 'Completed' %}
+                                <a href="?action=complete&id={{ a.id }}" class="text-gray-700 hover:underline">Mark Completed</a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="11" class="px-3 py-6 text-center text-main/50">No appointments found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
