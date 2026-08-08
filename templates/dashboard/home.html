@@ -8,12 +8,12 @@
 <div class="space-y-8">
 
     <!-- 1. Welcome Banner -->
-    <div class="bg-card rounded-xl border border-border p-6 flex items-center justify-between shadow-sm">
+    <div data-component="card" data-widget="welcome-banner" class="bg-card rounded-xl border border-border p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm">
         <div>
             <h2 class="text-2xl font-semibold text-main mb-1">Welcome back, John! 👋</h2>
             <p class="text-main/60">Here's what's happening with your campus life today.</p>
         </div>
-        <button class="flex items-center gap-2 bg-accent hover:bg-accentHover text-main font-medium px-5 py-2.5 rounded-lg transition-colors shadow-sm border border-border">
+        <button data-component="button" data-action="quick-action" class="flex items-center gap-2 bg-accent hover:bg-accentHover text-main font-medium px-5 py-2.5 rounded-lg transition-colors shadow-sm border border-border">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
@@ -25,9 +25,9 @@
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         
         <!-- Meal Ratio Counter Card -->
-        <div class="bg-card rounded-xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow">
+        <div data-component="card" data-widget="meal-ratio" class="bg-card rounded-xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow">
             <div class="flex items-center gap-3 mb-4">
-                <div class="w-10 h-10 rounded-lg bg-[#F0EBE1] flex items-center justify-center">
+                <div class="w-10 h-10 rounded-lg bg-chip flex items-center justify-center">
                     <svg class="w-5 h-5 text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
@@ -51,9 +51,9 @@
         </div>
 
         <!-- Transport Card -->
-        <div class="bg-card rounded-xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow">
+        <div data-component="card" data-widget="transport" class="bg-card rounded-xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow">
             <div class="flex items-center gap-3 mb-4">
-                <div class="w-10 h-10 rounded-lg bg-[#F0EBE1] flex items-center justify-center">
+                <div class="w-10 h-10 rounded-lg bg-chip flex items-center justify-center">
                     <svg class="w-5 h-5 text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
                     </svg>
@@ -82,9 +82,9 @@
         </div>
 
         <!-- Medical Center Card -->
-        <div class="bg-card rounded-xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow">
+        <div data-component="card" data-widget="medical-center" class="bg-card rounded-xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow">
             <div class="flex items-center gap-3 mb-4">
-                <div class="w-10 h-10 rounded-lg bg-[#F0EBE1] flex items-center justify-center">
+                <div class="w-10 h-10 rounded-lg bg-chip flex items-center justify-center">
                     <svg class="w-5 h-5 text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
                     </svg>
@@ -126,7 +126,7 @@
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         <!-- Recent Official Notices -->
-        <div class="bg-card rounded-xl border border-border p-6 shadow-sm">
+        <div data-component="card" data-widget="recent-notices" class="bg-card rounded-xl border border-border p-6 shadow-sm">
             <div class="flex items-center justify-between mb-6">
                 <h3 class="font-semibold text-main flex items-center gap-2">
                     <svg class="w-5 h-5 text-main/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -154,7 +154,7 @@
                     <div class="w-2 h-2 rounded-full bg-accent mt-2 shrink-0"></div>
                     <div class="flex-1 border-b border-border pb-4 group-hover:border-main/20 transition-colors">
                         <div class="flex items-center gap-2 mb-1">
-                            <span class="text-xs font-medium text-main bg-[#F0EBE1] px-2 py-0.5 rounded">General</span>
+                            <span class="text-xs font-medium text-main bg-chip px-2 py-0.5 rounded">General</span>
                             <span class="text-xs text-main/50">Yesterday</span>
                         </div>
                         <h4 class="font-medium text-main group-hover:text-main/80 transition-colors">Campus Library Hours Extended</h4>
@@ -177,7 +177,7 @@
         </div>
 
         <!-- Quick Links to Academic Notes -->
-        <div class="bg-card rounded-xl border border-border p-6 shadow-sm">
+        <div data-component="card" data-widget="academic-quick-links" class="bg-card rounded-xl border border-border p-6 shadow-sm">
             <div class="flex items-center justify-between mb-6">
                 <h3 class="font-semibold text-main flex items-center gap-2">
                     <svg class="w-5 h-5 text-main/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">

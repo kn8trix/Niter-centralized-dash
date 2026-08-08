@@ -2,7 +2,9 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    path('', views.dashboard, name='dashboard'),
+    # Public homepage (landing page) at the root; the student dashboard lives at /dashboard/
+    path('', views.public_home, name='home'),
+    path('dashboard/', views.dashboard, name='dashboard'),
     path('tickets/', views.tickets, name='tickets'),
     path('medical/', views.medical, name='medical'),
     path('notes/', views.notes, name='notes'),

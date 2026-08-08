@@ -1,0 +1,61 @@
+/* ============================================================================
+   CampusDash — Global Design Tokens
+   ----------------------------------------------------------------------------
+   Single source of truth for the "Warm Minimal Notion-style" theme.
+
+   - Colors are defined as space-separated RGB triplets so Tailwind's
+     `<alpha-value>` pattern (opacity modifiers like `bg-base/80`) keeps
+     working when consumed via `rgb(var(--color-x) / <alpha-value>)`.
+   - Every declaration in component CSS should reference these tokens with
+     a fallback value, e.g. `var(--color-card, 255 255 255)`.
+   - Edit this file to re-theme the whole app without touching markup.
+   ========================================================================== */
+
+:root {
+    /* ------------------------------------------------------------------ */
+    /* Brand palette                                                       */
+    /* ------------------------------------------------------------------ */
+    --color-base: 251 249 245;          /* #FBF9F5  app background        */
+    --color-card: 255 255 255;          /* #FFFFFF  content cards/sidebar */
+    --color-border: 235 230 223;        /* #EBE6DF  subtle separators     */
+    --color-main: 43 41 39;             /* #2B2927  primary text          */
+    --color-accent: 234 220 201;        /* #EADCC9  active states/buttons */
+    --color-accent-hover: 216 202 180;  /* #D8CAB4  accent hover          */
+    --color-chip: 240 235 225;          /* #F0EBE1  soft icon chips       */
+
+    /* ------------------------------------------------------------------ */
+    /* Semantic status palette (used by badges & alerts)                   */
+    /* ------------------------------------------------------------------ */
+    --color-success: 22 163 74;         /* green-600                     */
+    --color-success-soft: 240 253 244;  /* green-50                      */
+    --color-warning: 234 88 12;         /* orange-600                    */
+    --color-warning-soft: 255 247 237;  /* orange-50                     */
+    --color-danger: 220 38 38;          /* red-600                       */
+    --color-danger-soft: 254 242 242;   /* red-50                        */
+    --color-info: 37 99 235;            /* blue-600                      */
+    --color-info-soft: 239 246 255;     /* blue-50                       */
+
+    /* ------------------------------------------------------------------ */
+    /* Typography                                                          */
+    /* ------------------------------------------------------------------ */
+    --font-main: 'Inter', system-ui, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    /* ------------------------------------------------------------------ */
+    /* Radii (mirror Tailwind defaults so layouts stay identical)          */
+    /* ------------------------------------------------------------------ */
+    --radius: 0.25rem;          /* rounded      (4px)  */
+    --radius-sm: 0.125rem;      /* rounded-sm   (2px)  */
+    --radius-md: 0.375rem;      /* rounded-md   (6px)  */
+    --radius-lg: 0.5rem;        /* rounded-lg   (8px)  */
+    --radius-xl: 0.75rem;       /* rounded-xl  (12px)  */
+    --radius-2xl: 1rem;         /* rounded-2xl (16px)  */
+    --radius-3xl: 1.5rem;       /* rounded-3xl (24px)  */
+    --radius-full: 9999px;      /* rounded-full        */
+    --radius-scrollbar: 10px;   /* custom scrollbar    */
+
+    /* ------------------------------------------------------------------ */
+    /* Layout                                                              */
+    /* ------------------------------------------------------------------ */
+    --sidebar-width: 16rem;     /* 256px fixed sidebar  */
+}

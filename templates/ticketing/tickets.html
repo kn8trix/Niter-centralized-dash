@@ -8,10 +8,10 @@
 <div class="space-y-8">
 
     <!-- Section 1: Online Meal Ticket Counter -->
-    <div class="bg-card rounded-xl border border-border p-6 shadow-sm">
+    <div data-component="card" data-widget="meal-ticket-counter" class="bg-card rounded-xl border border-border p-6 shadow-sm">
         <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
             <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-lg bg-[#F0EBE1] flex items-center justify-center">
+                <div class="w-10 h-10 rounded-lg bg-chip flex items-center justify-center">
                     <svg class="w-5 h-5 text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
@@ -27,13 +27,13 @@
             </div>
         </div>
 
-        <form method="post" action="{% url 'claim_meal_ticket' %}" class="bg-base rounded-xl border border-border p-6">
+        <form method="post" action="{{ ENDPOINTS.claim_meal_ticket }}" data-endpoint="claim_meal_ticket" data-component="form" class="bg-base rounded-xl border border-border p-6">
             {% csrf_token %}
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                 <!-- Meal Type Selector -->
                 <div class="md:col-span-2">
                     <label class="block text-sm font-medium text-main mb-2">Select Meal Type</label>
-                    <div class="grid grid-cols-3 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <label class="relative cursor-pointer">
                             <input type="radio" name="meal_type" value="breakfast" class="peer sr-only" checked>
                             <div class="p-4 bg-card border-2 border-border rounded-xl text-center transition-all peer-checked:border-main peer-checked:bg-main/5 hover:border-main/30">
@@ -81,10 +81,10 @@
     </div>
 
     <!-- Section 2: Transport Ticket Booking -->
-    <div class="bg-card rounded-xl border border-border p-6 shadow-sm">
+    <div data-component="card" data-widget="transport-booking" class="bg-card rounded-xl border border-border p-6 shadow-sm">
         <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
             <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-lg bg-[#F0EBE1] flex items-center justify-center">
+                <div class="w-10 h-10 rounded-lg bg-chip flex items-center justify-center">
                     <svg class="w-5 h-5 text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
                     </svg>
@@ -127,7 +127,7 @@
                             </span>
                         </td>
                         <td class="py-4 text-right">
-                            <form method="post" action="{% url 'book_transport_ticket' %}" class="inline-block">
+                            <form method="post" action="{{ ENDPOINTS.book_transport_ticket }}" data-endpoint="book_transport_ticket" data-component="form" class="inline-block">
                                 {% csrf_token %}
                                 <input type="hidden" name="route_id" value="1">
                                 <button type="submit" class="bg-accent hover:bg-accentHover text-main font-medium px-4 py-2 rounded-lg text-sm transition-colors border border-border flex items-center gap-2 ml-auto">
@@ -156,7 +156,7 @@
                             </span>
                         </td>
                         <td class="py-4 text-right">
-                            <form method="post" action="{% url 'book_transport_ticket' %}" class="inline-block">
+                            <form method="post" action="{{ ENDPOINTS.book_transport_ticket }}" data-endpoint="book_transport_ticket" data-component="form" class="inline-block">
                                 {% csrf_token %}
                                 <input type="hidden" name="route_id" value="2">
                                 <button type="submit" class="bg-accent hover:bg-accentHover text-main font-medium px-4 py-2 rounded-lg text-sm transition-colors border border-border flex items-center gap-2 ml-auto">

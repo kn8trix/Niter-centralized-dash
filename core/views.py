@@ -1,5 +1,11 @@
 from django.shortcuts import render
 
+
+def public_home(request):
+    """Public homepage (landing page) served at the root URL."""
+    return render(request, 'index.html')
+
+
 def dashboard(request):
     return render(request, 'dashboard/home.html')
 
