@@ -114,6 +114,28 @@ Markdown notebook-style interface with:
     - Keywords extraction preview.
     - Status indicator showing summary readiness.
 
+### 4.7 Host Portal Base (`templates/host/host_base.html`)
+Host-side layout extending the student base template with a dedicated host sidebar:
+- **Host Sidebar:** Host logo, host menu (Medical Admin Dashboard, Medical Dashboard, Appointments, Today's Queue, Reports, Settings), and a staff profile footer.
+- **Reuses** `base.html` via `{% block sidebar %}` so the host sidebar replaces the student navigation while keeping the same header and content shell.
+
+### 4.8 Medical Host Dashboard (`templates/host/medical/dashboard.html`)
+Staff view of medical appointments with:
+- **Summary Cards:** Total, Pending, Confirmed, Completed, Cancelled, and Today's Queue counts.
+- **Search & Filter Bar:** Search by student name/ID plus status filter (All, Today, Pending, Confirmed, Completed, Cancelled).
+- **Appointments Table:** Student details, doctor, date/time, reason, status badge, and inline actions (View, Edit, Assign, Confirm, Return, Cancel, Mark Completed).
+- **Mock actions** via query params with Django `messages` feedback (no DB changes yet).
+
+### 4.9 Medical Admin Dashboard (`templates/host/medical/admin_dashboard.html`)
+Admin-only medical management interface at `/medical/admin/` with:
+- **Summary Cards:** Total, Pending, Confirmed, and Cancelled appointment counts.
+- **Appointment Management:** Multi-field filter form (keyword, student name, student ID, date, status, department, doctor) and a table with Confirm / Cancel / View Details actions.
+- **Appointment Details Panel:** Full student and appointment info (contact, reason, doctor, booking time).
+- **Medical Chat Management:** Mock chat threads with statuses (Active, Waiting, Resolved).
+- **Doctor Schedule:** Doctor list with specialty, working days, and availability status.
+- **Medical Content Management:** Mock content sections (Health Tips, Disease Awareness, First Aid, Medical Facilities, Emergency Contacts, Medical News).
+- **Home Page Medical Information:** Mock editable sections for the medical center's public pages.
+
 ## 5. Template Usage
 
 ### 5.1 Base Template
@@ -194,6 +216,8 @@ python manage.py runserver 0.0.0.0:8000
 | **Tickets** | [http://127.0.0.1:8000/tickets/](http://127.0.0.1:8000/tickets/) | Meal & transport tickets |
 | **Medical** | [http://127.0.0.1:8000/medical/](http://127.0.0.1:8000/medical/) | Appointment booking |
 | **Notes Engine** | [http://127.0.0.1:8000/notes/](http://127.0.0.1:8000/notes/) | Notes engine |
+| **Medical Admin** | [http://127.0.0.1:8000/medical/admin/](http://127.0.0.1:8000/medical/admin/) | Medical admin dashboard |
+| **Medical Host** | [http://127.0.0.1:8000/host/medical/](http://127.0.0.1:8000/host/medical/) | Medical host dashboard (`/host/` redirects here) |
 
 ### Troubleshooting
 - **Port already in use:** Use `python manage.py runserver 8080` to run on a different port.
@@ -216,6 +240,11 @@ Niter-centralized-dash/
 │   ├── __init__.py
 │   ├── views.py                 # View functions
 │   └── urls.py                  # App URL routes
+├── host/
+│   ├── __init__.py
+│   ├── views.py                 # Host portal views (medical host + admin dashboards)
+│   ├── urls.py                  # Host app URL routes
+│   └── tests.py                 # Host app tests
 ├── templates/
 │   ├── base.html                # Base template with sidebar & header
 │   ├── dashboard/
@@ -228,6 +257,11 @@ Niter-centralized-dash/
 │   │   └── tickets.html         # Meal & transport tickets
 │   ├── medical/
 │   │   └── booking.html         # Medical appointments
+│   ├── host/
+│   │   ├── host_base.html       # Host portal base (host sidebar)
+│   │   └── medical/
+│   │       ├── dashboard.html       # Medical host dashboard
+│   │       └── admin_dashboard.html # Medical admin dashboard
 │   └── notes/
 │       └── notes_engine.html    # Notes engine
 └── docs/
@@ -253,13 +287,11 @@ DATABASE_URL=postgres://user:pass@localhost:5432/niter_db
 ```
 
 ## 10. Git Repository
-
-## 9. Git Repository
 - **Repository:** [https://github.com/kn8trix/Niter-centralized-dash](https://github.com/kn8trix/Niter-centralized-dash)
-- **Branch:** `main`
-- **Git Ignore:** `venv/`, `__pycache__/`, `*.pyc`, `.env`
+- **Branch:** `main` (work-in-progress lives on `taj` and gets merged into `main`)
+- **Git Ignore:** `venv/`, `.venv/`, `__pycache__/`, `*.pyc`, `.env`
 
-## 10. API Endpoints (Planned)
+## 11. API Endpoints
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | POST | `/claim-meal/` | Claim a meal ticket |
@@ -267,8 +299,11 @@ DATABASE_URL=postgres://user:pass@localhost:5432/niter_db
 | POST | `/book-appointment/` | Schedule a medical appointment |
 | GET | `/api/notices/` | Fetch official notices |
 | GET | `/api/courses/` | Fetch course materials |
+| GET | `/medical/admin/` | Medical admin dashboard (implemented) |
+| GET | `/host/medical/` | Medical host dashboard (implemented) |
+| GET | `/host/` | Host portal index (redirects to medical host dashboard) |
 
-## 11. Next Steps
+## 12. Next Steps
 1. **Backend Integration:** Connect templates to Django views and models.
 2. **API Development:** Create endpoints for meal claims, transport bookings, and appointments.
 3. **User Authentication:** Implement login/logout functionality.
@@ -278,7 +313,7 @@ DATABASE_URL=postgres://user:pass@localhost:5432/niter_db
 7. **Mobile App:** Consider building a React Native or Flutter companion app.
 8. **Real-time Updates:** Implement WebSocket for live notifications and seat availability.
 
-## 12. Update by Tajkia Tasnim
+## 13. Update by Tajkia Tasnim
 
 **Date:** 07 August 2026  
 **Branch:** taj
@@ -310,3 +345,48 @@ Completed UI architecture refactoring and improved the dashboard structure while
 
 - `python manage.py check` ✔
 - Tested successfully on localhost.
+
+---
+
+## 14. Update by Tajkia Tasnim
+
+**Date:** 08 August 2026  
+**Branch:** taj
+
+### Overview
+
+Added a medical admin dashboard and a host portal to the project, built on top of the refactored layout from the previous update.
+
+### Completed Work
+
+- Created a new `host/` Django app with:
+  - **Medical host dashboard** (`/host/medical/`) - staff view of appointments with search, filters, and mock status actions.
+  - **Medical admin dashboard** (`/medical/admin/`) - admin-only management UI with appointment confirm/cancel/view, chat management, doctor schedules, and medical content sections.
+- Added `host_base.html` - a host-specific sidebar that replaces the student sidebar via `{% block sidebar %}` in `base.html`.
+- Wired new routes in `config/urls.py` (`/medical/admin/`, `/host/`).
+- Wrapped the sidebar in `base.html` with `{% block sidebar %}` and improved the mobile toggle so content reflows (`ml-64` <-> `ml-0`).
+- Added `.venv/` to `.gitignore`.
+- Added unit tests for the admin dashboard and verified the student booking page still works.
+
+### Files Added / Modified
+
+- `host/` (new app: `views.py`, `urls.py`, `tests.py`, `__init__.py`)
+- `config/urls.py`
+- `templates/host/host_base.html`
+- `templates/host/medical/dashboard.html`
+- `templates/host/medical/admin_dashboard.html`
+- `templates/base.html`
+- `.gitignore`
+
+### URLs
+
+| URL | View | Description |
+| :--- | :--- | :--- |
+| `/medical/admin/` | `medical_admin_dashboard` | Medical admin dashboard |
+| `/host/` | `host:index` | Redirects to medical host dashboard |
+| `/host/medical/` | `host:medical_host_dashboard` | Medical host dashboard |
+
+### Testing
+
+- `python manage.py check` ✔
+- `python manage.py test` ✔ (2 tests pass)
