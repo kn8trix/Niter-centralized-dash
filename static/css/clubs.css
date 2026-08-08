@@ -1,0 +1,899 @@
+/* ============================================================================
+   CampusDash — Clubs & Events Stylesheet (Warm Light Theme, Frontend-only)
+   ----------------------------------------------------------------------------
+   Standalone styles for templates/clubs.html — a frontend-only Club & Event
+   dashboard driven entirely by mock JavaScript data (no backend/database).
+
+   Palette (matches the landing/login pages):
+     bg #faf9f6 · card #ffffff · border #f0ebe1 · accent #e8e2d8
+     text #1f2937 · muted #6b7280 · charcoal #27272a
+
+   Sections:
+     1. Tokens
+     2. Base & top bar
+     3. View toggle
+     4. Club cards
+     5. Event cards
+     6. Stat cards & registration table (executive view)
+     7. Announcement form
+     8. Registration modal
+     9. Toast
+     10. Responsive & motion
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   1. Tokens
+--------------------------------------------------------------------------- */
+:root {
+    --bg-main: #faf9f6;
+    --bg-card: #ffffff;
+    --bg-subtle: #f7f4ef;
+
+    --text-primary: #1f2937;
+    --text-muted: #6b7280;
+
+    --border-color: #f0ebe1;
+    --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.03);
+    --shadow-hover: 0 14px 36px rgba(0, 0, 0, 0.10);
+
+    --accent-primary: #e8e2d8;
+    --accent-primary-hover: #dfd7c9;
+    --accent-dark: #27272a;
+
+    --success: #166534;
+    --success-soft: #dcfce7;
+    --success-border: #bbf7d0;
+    --warning: #b45309;
+    --warning-soft: #fef3c7;
+    --warning-border: #fde68a;
+
+    --clubs-font: var(--font-main, 'Inter', system-ui, sans-serif);
+}
+
+/* ---------------------------------------------------------------------------
+   2. Base & top bar
+--------------------------------------------------------------------------- */
+body.clubs {
+    margin: 0;
+    min-height: 100vh;
+    font-family: var(--clubs-font);
+    background:
+        radial-gradient(1000px 520px at 85% -10%, rgba(232, 226, 216, 0.55), transparent 60%),
+        radial-gradient(800px 420px at 5% 12%, rgba(240, 235, 225, 0.6), transparent 55%),
+        var(--bg-main);
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+}
+
+body.clubs *,
+body.clubs *::before,
+body.clubs *::after {
+    box-sizing: border-box;
+}
+
+body.clubs a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.clubs-shell {
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: 1.5rem clamp(1.1rem, 4vw, 2.5rem) 4rem;
+}
+
+/* Slim top bar with brand + quick links */
+.clubs-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.6rem;
+}
+
+.clubs-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+}
+
+.clubs-brand-icon {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 1.05rem;
+}
+
+.clubs-navlinks {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.clubs-navlinks a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-card);
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.clubs-navlinks a:hover {
+    background: var(--bg-subtle);
+    transform: translateY(-1px);
+}
+
+/* Page intro */
+.clubs-intro {
+    text-align: center;
+    margin-bottom: 1.8rem;
+}
+
+.clubs-intro h1 {
+    margin: 0 0 0.35rem;
+    font-size: clamp(1.6rem, 4vw, 2.1rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+}
+
+.clubs-intro p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.98rem;
+}
+
+/* ---------------------------------------------------------------------------
+   3. View toggle
+--------------------------------------------------------------------------- */
+.view-toggle-wrap {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 2.2rem;
+}
+
+.view-toggle {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    padding: 0.3rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    box-shadow: var(--shadow-card);
+}
+
+.view-toggle button {
+    padding: 0.55rem 1.15rem;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.view-toggle button:hover {
+    color: var(--text-primary);
+}
+
+.view-toggle button.active {
+    background: var(--accent-primary);
+    color: var(--text-primary);
+}
+
+/* Panels */
+.view-panel {
+    display: block;
+}
+
+.view-panel.hidden {
+    display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   4. Club cards
+--------------------------------------------------------------------------- */
+.clubs-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.1rem;
+    margin-bottom: 2.4rem;
+}
+
+.club-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+    padding: 1.3rem;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.club-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-hover);
+}
+
+.club-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 0.9rem;
+}
+
+.club-icon {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 1.15rem;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    background: var(--success-soft);
+    border: 1px solid var(--success-border);
+    color: var(--success);
+}
+
+.status-badge::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    animation: statusPulse 1.8s ease-out infinite;
+}
+
+.club-name {
+    margin: 0 0 0.2rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.club-tagline {
+    margin: 0 0 1rem;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+.club-footer {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.club-members {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.club-join {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent-dark);
+    cursor: pointer;
+    border: none;
+    background: none;
+    padding: 0;
+    font-family: inherit;
+    transition: color 0.2s ease;
+}
+
+.club-join:hover {
+    color: var(--text-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   5. Event cards
+--------------------------------------------------------------------------- */
+.section-title {
+    margin: 0 0 0.2rem;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.section-subtitle {
+    margin: 0 0 1.1rem;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+}
+
+.events-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.1rem;
+}
+
+.event-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+    padding: 1.3rem 1.4rem;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.event-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-hover);
+}
+
+.event-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.8rem;
+    margin-bottom: 0.7rem;
+}
+
+.event-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.35;
+    color: var(--text-primary);
+}
+
+.fee-badge {
+    flex-shrink: 0;
+    padding: 0.3rem 0.8rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.fee-free {
+    background: var(--success-soft);
+    border: 1px solid var(--success-border);
+    color: var(--success);
+}
+
+.fee-paid {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+.event-desc {
+    margin: 0 0 0.9rem;
+    font-size: 0.86rem;
+    color: var(--text-muted);
+}
+
+.event-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.2rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 1.1rem;
+}
+
+.event-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.event-meta i {
+    color: var(--accent-dark);
+    font-size: 0.85rem;
+}
+
+.register-btn {
+    margin-top: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.1rem;
+    border: none;
+    border-radius: 0.7rem;
+    background: var(--accent-primary);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.register-btn:hover {
+    background: var(--accent-primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+/* ---------------------------------------------------------------------------
+   6. Stat cards & registration table (executive view)
+--------------------------------------------------------------------------- */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.1rem;
+    margin-bottom: 1.6rem;
+}
+
+.stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+    padding: 1.2rem 1.3rem;
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+}
+
+.stat-icon {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.stat-value {
+    font-size: 1.45rem;
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--text-primary);
+}
+
+.stat-value.warning {
+    color: var(--warning);
+}
+
+.stat-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.table-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+    padding: 1.2rem 1.4rem;
+    margin-bottom: 1.6rem;
+    overflow: hidden;
+}
+
+.table-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    margin-bottom: 0.9rem;
+}
+
+.table-count {
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+.table-scroll {
+    overflow-x: auto;
+}
+
+.reg-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+
+.reg-table th {
+    text-align: left;
+    padding: 0.6rem 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.reg-table td {
+    padding: 0.7rem 0.8rem;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.reg-table tr:last-child td {
+    border-bottom: none;
+}
+
+.reg-table td.name {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.method-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.28rem 0.7rem;
+    border-radius: 0.5rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.method-bkash {
+    background: #fdf2f8;
+    border: 1px solid #fbcfe8;
+    color: #be185d;
+}
+
+.method-nagad {
+    background: var(--warning-soft);
+    border: 1px solid var(--warning-border);
+    color: var(--warning);
+}
+
+.status-pill {
+    padding: 0.28rem 0.7rem;
+    border-radius: 0.4rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.status-verified {
+    background: var(--success-soft);
+    border: 1px solid var(--success-border);
+    color: var(--success);
+}
+
+.status-pending {
+    background: var(--warning-soft);
+    border: 1px solid var(--warning-border);
+    color: var(--warning);
+}
+
+.amount {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   7. Announcement form
+--------------------------------------------------------------------------- */
+.announce-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+    padding: 1.5rem 1.6rem;
+}
+
+.announce-card h3 {
+    margin: 0 0 0.25rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.announce-card .section-subtitle {
+    margin-bottom: 1.2rem;
+}
+
+.field {
+    margin-bottom: 1.05rem;
+}
+
+.field-label {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.field-input,
+.field-select,
+.field-textarea {
+    width: 100%;
+    padding: 0.7rem 0.95rem;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 0.65rem;
+    font-family: inherit;
+    font-size: 0.92rem;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.field-select {
+    max-width: 340px;
+}
+
+.field-textarea {
+    resize: vertical;
+    min-height: 110px;
+}
+
+.field-input:focus,
+.field-select:focus,
+.field-textarea:focus {
+    background: var(--bg-card);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(232, 226, 216, 0.55);
+}
+
+.publish-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.4rem;
+    border: none;
+    border-radius: 0.7rem;
+    background: var(--accent-primary);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.publish-btn:hover {
+    background: var(--accent-primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+/* ---------------------------------------------------------------------------
+   8. Registration modal
+--------------------------------------------------------------------------- */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+    background: rgba(39, 39, 42, 0.45);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    visibility: hidden;                 /* remove hidden fields from tab order */
+    pointer-events: none;
+    transition: opacity 0.25s ease, visibility 0.25s;
+}
+
+.modal-backdrop.open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.modal {
+    width: 100%;
+    max-width: 440px;
+    max-height: calc(100vh - 3rem);
+    overflow-y: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1.1rem;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
+    padding: 1.7rem 1.8rem 1.5rem;
+    transform: translateY(16px);
+    transition: transform 0.25s ease;
+}
+
+.modal-backdrop.open .modal {
+    transform: translateY(0);
+}
+
+.modal-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.2rem;
+}
+
+.modal-head h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.modal-head p {
+    margin: 0.25rem 0 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.modal-close {
+    border: none;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    transition: color 0.2s ease, background 0.2s ease;
+}
+
+.modal-close:hover {
+    color: var(--text-primary);
+    background: var(--border-color);
+}
+
+/* Visible keyboard focus for interactive controls */
+.view-toggle button:focus-visible,
+.club-join:focus-visible,
+.register-btn:focus-visible,
+.modal-close:focus-visible,
+.modal-submit:focus-visible,
+.publish-btn:focus-visible,
+.clubs-navlinks a:focus-visible {
+    outline: 2px solid var(--accent-dark);
+    outline-offset: 2px;
+}
+
+.modal-submit {
+    width: 100%;
+    padding: 0.8rem 1.2rem;
+    margin-top: 0.4rem;
+    border: none;
+    border-radius: 0.7rem;
+    background: var(--accent-primary);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.modal-submit:hover {
+    background: var(--accent-primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+/* ---------------------------------------------------------------------------
+   9. Toast
+--------------------------------------------------------------------------- */
+.toast {
+    position: fixed;
+    bottom: 1.4rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 70;
+    max-width: min(90vw, 560px);
+    padding: 0.8rem 1.3rem;
+    border-radius: 999px;
+    background: var(--accent-dark);
+    color: #ffffff;
+    font-size: 0.88rem;
+    font-weight: 500;
+    text-align: center;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.toast.show {
+    opacity: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   10. Responsive & motion
+--------------------------------------------------------------------------- */
+@keyframes statusPulse {
+    0%   { box-shadow: 0 0 0 0 rgba(22, 101, 52, 0.45); }
+    70%  { box-shadow: 0 0 0 6px rgba(22, 101, 52, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(22, 101, 52, 0); }
+}
+
+@media (max-width: 1024px) {
+    .clubs-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 700px) {
+    .events-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 560px) {
+    .clubs-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .view-toggle {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .modal {
+        padding: 1.4rem 1.2rem 1.2rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .status-badge::before {
+        animation: none;
+    }
+
+    .club-card,
+    .event-card {
+        transition: none;
+    }
+}

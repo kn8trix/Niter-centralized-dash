@@ -31,9 +31,11 @@ The theme is built around a warm, paper-like background with neutral accents.
     - **Dashboard:** Main landing view.
     - **Academic & Notes:** Course materials and personal notes.
     - **Official Notices:** Institutional announcements.
-    - **Bus & Meal Tickets:** Campus service management.
+    - **Transport Tickets:** Bus routes, seat booking, QR boarding pass (`/transport/`).
+    - **Meal System:** Meal slot ratio, claim, supply stats (`/meals/`).
     - **Medical Booking:** Appointment scheduling.
-- **Footer:** User profile section with avatar and logout option.
+    - **Clubs & Events:** Club discovery + executive workspace (`/clubs/`).
+- **Footer:** User profile section with avatar and logout option (posts to `/logout/` when signed in).
 
 ### 3.2 Main Content Area
 - **Margin:** Offset by `256px` on desktop (`lg:ml-64`); full-width on mobile (`ml-0`) so content reflows when the drawer is hidden.
@@ -136,6 +138,31 @@ Admin-only medical management interface at `/medical/admin/` with:
 - **Medical Content Management:** Mock content sections (Health Tips, Disease Awareness, First Aid, Medical Facilities, Emergency Contacts, Medical News).
 - **Home Page Medical Information:** Mock editable sections for the medical center's public pages.
 
+### 4.10 Clubs & Events (`templates/clubs.html`)
+Frontend-only Club & Event dashboard at `/clubs/` — a standalone page (own `clubs.css`, exact warm palette `#faf9f6` / `#ffffff` / `#f0ebe1` / `#e8e2d8`) driven entirely by mock JavaScript data (no backend/database):
+- **Student View:**
+    - Featured clubs showcase (Computer Club, Electronics Club, Cultural Society, Sports Club) rendered from JS with active status badges and member counts.
+    - Upcoming events grid (date, time, location, description, fee tags "Free" / "৳200 BDT") with a "Register Now" button that opens a mock registration modal (Student Name, Student ID, Payment Method bKash/Nagad, Trx ID).
+- **Club Executive Workspace:**
+    - Stat summary cards: Total Members, Active Registrations, Event Revenue, Pending Approvals.
+    - Mock registrations & payment tracking table (student name/ID, event, bKash/Nagad + TrxID chips, amount, Verified / Pending Review badges) rendered from JS.
+    - Announcement Publisher form (title, target audience dropdown, details) with mock confirmation toast.
+- The view (`clubs_dashboard`) is a pure stub rendering `clubs.html`; toggle + modal + toast are client-side vanilla JS with mock data arrays in the template.
+
+### 4.11 Transport Online Ticket System (`templates/transport.html`)
+Standalone frontend-only transport booking dashboard at `/transport/` (`static/css/transport.css`, mock JS data):
+- **Live Status Tracker** — pulsing status badges per route ("On Time" green, "In Transit" blue, "Arriving in 10 mins" amber).
+- **Bus Routes & Schedules** — route cards (Route 1: Campus → Town Center, etc.) with driver info, departure times, and color-coded live seats badges ("12 / 40 seats left").
+- **Seat Selector / Booking Form** — route dropdown, trip-time chips, passenger name, and a clickable 40-seat grid (booked seats disabled); "Book Seat" validates and generates the pass, then live-updates seats-left on the route cards.
+- **Digital Boarding Pass** — visual QR ticket (deterministic SVG QR placeholder) showing passenger, route, assigned seat, departure time, and token.
+
+### 4.12 Online Meal Ticket System (`templates/meals.html`)
+Standalone frontend-only meal ticket dashboard at `/meals/` (`static/css/meals.css`, mock JS data):
+- **Live Meal Ratio Counter** — animated SVG progress ring (142 / 200 slots claimed, 58 remaining).
+- **Meal Booking & Claim Card** — Lunch/Dinner selector chips, date picker, and a "Claim Meal Ticket" button that issues a pass and live-updates the ring + supply stats.
+- **Active Digital Meal Pass** — coupon-style card (perforated edges) with token (`#MEAL-8921`), student name, meal type, date, and a "Mark as Redeemed" toggle (Unused → Redeemed).
+- **Cafeteria Supply Overview** — stat cards for meals prepared, tickets claimed, remaining supply, and slots remaining.
+
 ## 5. Template Usage
 
 ### 5.1 Base Template
@@ -210,7 +237,7 @@ python manage.py runserver 0.0.0.0:8000
 ### Available Pages
 | Page | URL | Description |
 | :--- | :--- | :--- |
-| **Public Homepage** | [http://127.0.0.1:8000/](http://127.0.0.1:8000/) | Glassmorphism landing page (public nodes) |
+| **Public Homepage** | [http://127.0.0.1:8000/](http://127.0.0.1:8000/) | Warm light landing page (public nodes, NITER content) |
 | **Dashboard** | [http://127.0.0.1:8000/dashboard/](http://127.0.0.1:8000/dashboard/) | Main student dashboard (moved from `/`) |
 | **Academic & Notes** | [http://127.0.0.1:8000/academic-notes/](http://127.0.0.1:8000/academic-notes/) | Courses & assignments |
 | **Official Notices** | [http://127.0.0.1:8000/notices/](http://127.0.0.1:8000/notices/) | Announcements & events |
@@ -219,6 +246,11 @@ python manage.py runserver 0.0.0.0:8000
 | **Notes Engine** | [http://127.0.0.1:8000/notes/](http://127.0.0.1:8000/notes/) | Notes engine |
 | **Medical Admin** | [http://127.0.0.1:8000/medical/admin/](http://127.0.0.1:8000/medical/admin/) | Medical admin dashboard |
 | **Medical Host** | [http://127.0.0.1:8000/host/medical/](http://127.0.0.1:8000/host/medical/) | Medical host dashboard (`/host/` redirects here) |
+| **Clubs & Events** | [http://127.0.0.1:8000/clubs/](http://127.0.0.1:8000/clubs/) | Club discovery + executive workspace |
+| **Transport Tickets** | [http://127.0.0.1:8000/transport/](http://127.0.0.1:8000/transport/) | Bus routes, seat booking, QR pass |
+| **Meal System** | [http://127.0.0.1:8000/meals/](http://127.0.0.1:8000/meals/) | Meal slot ratio, claim, supply stats |
+| **Login** | [http://127.0.0.1:8000/login/](http://127.0.0.1:8000/login/) | Student/staff sign-in page |
+| **Logout** | [http://127.0.0.1:8000/logout/](http://127.0.0.1:8000/logout/) | Sign out (POST) |
 
 ### Troubleshooting
 - **Port already in use:** Use `python manage.py runserver 8080` to run on a different port.
@@ -250,9 +282,17 @@ Niter-centralized-dash/
 ├── static/
 │   └── css/
 │       ├── theme.css            # Global design tokens (:root variables)
-│       └── main.css             # Public homepage glassmorphism styles
+│       ├── main.css             # Public homepage warm light styles
+│       ├── auth.css             # Login page styles
+│       ├── clubs.css            # Clubs & Events page styles
+│       ├── transport.css        # Transport ticket page styles
+│       └── meals.css            # Meal ticket page styles
 ├── templates/
-│   ├── index.html               # Public homepage (glass hero, about/medical nodes)
+│   ├── index.html               # Public homepage (warm light hero, about/medical nodes)
+│   ├── login.html               # Standalone sign-in page
+│   ├── clubs.html               # Clubs & Events (frontend-only, mock JS data)
+│   ├── transport.html           # Transport Online Ticket System (mock JS data)
+│   ├── meals.html               # Online Meal Ticket System (mock JS data)
 │   ├── base.html                # Base template with sidebar & header
 │   ├── dashboard/
 │   │   └── home.html            # Student dashboard
@@ -261,7 +301,7 @@ Niter-centralized-dash/
 │   ├── notices/
 │   │   └── notices.html         # Official announcements
 │   ├── ticketing/
-│   │   └── tickets.html         # Meal & transport tickets
+│   │   └── tickets.html         # Legacy meal & transport tickets page
 │   ├── medical/
 │   │   └── booking.html         # Medical appointments
 │   ├── host/
@@ -280,9 +320,11 @@ Niter-centralized-dash/
 ### Key Settings (`config/settings.py`)
 - **DEBUG:** `True` (development mode)
 - **ALLOWED_HOSTS:** `[]` (add your domain in production)
-- **INSTALLED_APPS:** `django.contrib.staticfiles`, `core`
+- **INSTALLED_APPS:** `django.contrib.staticfiles`, `django.contrib.contenttypes`, `django.contrib.auth`, `django.contrib.sessions`, `core`
+- **MIDDLEWARE:** Security, Session, Common, Csrf, Auth
 - **TEMPLATES DIRS:** `[BASE_DIR / 'templates']`
-- **DATABASES:** `{}` (no database configured yet)
+- **DATABASES:** SQLite (`db.sqlite3`) — required for Django auth (run `manage.py migrate` first)
+- **AUTH SETTINGS:** `LOGIN_URL='/login/'`, `LOGIN_REDIRECT_URL='/dashboard/'`, `LOGOUT_REDIRECT_URL='/'`
 
 ### Environment Variables (Recommended for Production)
 Create a `.env` file in the root directory:
@@ -296,7 +338,7 @@ DATABASE_URL=postgres://user:pass@localhost:5432/niter_db
 ## 10. Git Repository
 - **Repository:** [https://github.com/kn8trix/Niter-centralized-dash](https://github.com/kn8trix/Niter-centralized-dash)
 - **Branch:** `main` (work-in-progress lives on `taj` and gets merged into `main`)
-- **Git Ignore:** `venv/`, `.venv/`, `__pycache__/`, `*.pyc`, `.env`
+- **Git Ignore:** `venv/`, `.venv/`, `__pycache__/`, `*.pyc`, `.env`, `db.sqlite3`
 
 ## 11. API Endpoints
 | Method | Endpoint | Description |
@@ -308,22 +350,27 @@ DATABASE_URL=postgres://user:pass@localhost:5432/niter_db
 | GET | `/api/courses/` | Fetch course materials |
 | GET | `/` | Public homepage (glassmorphism landing page) |
 | GET | `/dashboard/` | Student dashboard (moved from `/`) |
+| GET | `/clubs/` | Clubs & Events (frontend-only) |
+| GET | `/transport/` | Transport ticket system (frontend-only) |
+| GET | `/meals/` | Meal ticket system (frontend-only) |
 | GET | `/medical/admin/` | Medical admin dashboard (implemented) |
 | GET | `/host/medical/` | Medical host dashboard (implemented) |
 | GET | `/host/` | Host portal index (redirects to medical host dashboard) |
+| POST | `/login/` | Sign in (Django `LoginView`, redirects to `/dashboard/`) |
+| POST | `/logout/` | Sign out (Django `LogoutView`, redirects to `/`) |
 
 ## 12. Next Steps
 
 ### Remaining Internal Pages (UI)
 1. **5 Department Student Dashboards** - one dashboard per department (CSE, TEX, IPE, FD, EEE).
-2. **Club Admin Dashboard** - student club management view.
+2. **Club Admin Dashboard** - base club management now lives at `/clubs/` (executive workspace view); extend with role-gated admin actions and a dedicated club-admin dashboard.
 3. **Meal System (Admin/Kitchen side)** - meal management beyond the student claim counter.
 4. **Visual Builder / Editor Integration** - the public homepage is now fully tagged with `data-widget-id` / `data-editable-field`; wire the standalone WYSIWYG editor to it and the app templates (`data-widget`/`data-component` tags) next.
 
 ### Backend & Infrastructure
 5. **Backend Integration:** Connect templates to Django views and models (most flows are still mock-only).
 6. **Database Models:** Design models for users, courses, tickets, and appointments.
-7. **User Authentication:** Implement login/logout and role-based access (student / host / admin).
+7. **Role-based Access Control:** Base login/logout is implemented (see section 20); add role-based access (student / host / admin) and `@login_required` guards on dashboard pages.
 8. **API Development:** Create endpoints for meal claims, transport bookings, and appointments.
 9. **Real-time Updates:** WebSocket for live notifications and seat availability.
 10. **Deployment:** Configure for production (env vars, ALLOWED_HOSTS, static files).
@@ -622,3 +669,123 @@ Final release pass: full error check, mobile-viewport audit, and push of the acc
 ### Committed
 - 12 modified files + 2 new files (`templates/index.html`, `static/css/main.css`).
 - Pushed to `origin/main`.
+
+---
+
+## 20. Login Page & Authentication Wiring
+
+**Date:** 09 August 2026
+
+### Overview
+
+Added a warm light-themed login page (`templates/login.html`) and wired Django's built-in authentication so the public homepage, login page, and student dashboard connect seamlessly.
+
+### Completed Work
+
+1. **Login Template (`templates/login.html`) + `static/css/auth.css`**
+   - Standalone page matching the warm beige design system (`#faf9f6` bg, `#ffffff` card, `#f0ebe1` borders, `#e8e2d8` primary button).
+   - Heading "Niter Hub" with subtext "Sign in to access your portal & dashboard"; Student/Staff ID + Password fields, CSRF token, error alert container, "Sign In" submit, and a "Skip login & view Dashboard demo →" fallback link.
+
+2. **Auth Routes (`config/urls.py`)**
+   - `/login/` → `LoginView.as_view(template_name='login.html', redirect_authenticated_user=True)`
+   - `/logout/` → `LogoutView.as_view()` (POST-only)
+   - Added `login` / `logout` to the `ENDPOINTS` registry (`core/context_processors.py`).
+
+3. **Settings (`config/settings.py`)**
+   - Added `django.contrib.auth` / `contenttypes` / `sessions` apps + Session/Common/Csrf/Auth middleware.
+   - `LOGIN_URL = '/login/'`, `LOGIN_REDIRECT_URL = '/dashboard/'`, `LOGOUT_REDIRECT_URL = '/'`.
+   - Configured SQLite (`db.sqlite3`) so authentication works end-to-end locally.
+
+4. **Homepage Navigation (`templates/index.html`, `static/css/main.css`)**
+   - Navbar: added "Sign In" link and a warm beige "Dashboard" pill button (`.btn-dashboard`); navbar collapses to the hamburger below 1120px so the extra items never crowd the pill.
+   - Hero primary CTA now reads "Login to Dashboard →" and links to `/login/`.
+
+5. **Dashboard (`templates/base.html`)**
+   - Sidebar profile shows the real logged-in user (`user.get_full_name|default:user.username`); logout icon wrapped in a CSRF-protected POST form, hidden for anonymous users.
+
+6. **Demo Users (SQLite, dev only — `db.sqlite3` is gitignored)**
+   - `admin` / `admin123` (superuser)
+   - `student` / `student123` (regular user)
+   - Fresh clones must run `venv/bin/python manage.py migrate` and recreate users before real logins work.
+
+### Testing
+
+- `python manage.py check` ✔
+- `python manage.py test` ✔ (9 tests — added `LoginFlowTests` in `core/tests.py` covering page render, valid login redirect, invalid-login error alert, authenticated redirect, and logout redirect).
+- Verified end-to-end via HTTP: valid login → 302 to `/dashboard/`, bad credentials re-render with the error alert, logout → 302 to `/`.
+
+### Next Steps
+
+- Add `@login_required` / role-based access (student / host / admin) now that auth is in place.
+
+---
+
+## 21. Transport & Meal Ticket Dashboards
+
+**Date:** 09 August 2026
+
+### Overview
+
+Added two frontend-only standalone dashboards following the clubs pattern: **Transport Online Ticket System** (`/transport/`, `templates/transport.html` + `static/css/transport.css`) and **Online Meal Ticket System** (`/meals/`, `templates/meals.html` + `static/css/meals.css`). Both use mock JavaScript data, the exact warm palette (#faf9f6 / #ffffff / #f0ebe1 / #e8e2d8, hover #dfd7cb), and stub views.
+
+### Completed Work
+
+1. **Routes & Views** — `path('transport/', views.transport_dashboard, name='transport_dashboard')` and `path('meals/', views.meal_dashboard, name='meal_dashboard')` in `core/urls.py`; stub views in `core/views.py`; entries added to the `ENDPOINTS` registry.
+2. **Transport** — live status tracker, 3 route cards with driver/departure/live seats badges, seat selector (40-seat grid, route dropdown, trip-time chips), and a digital boarding pass with a deterministic SVG QR placeholder. Booking live-updates seats-left and regenerates the QR.
+3. **Meals** — animated SVG ratio ring (142/200), Lunch/Dinner chips + date picker claim card, perforated coupon-style meal pass with token + Redeemed toggle, and 4 cafeteria supply stat cards that live-update on claim.
+4. **Navigation** — replaced the single "Bus & Meal Tickets" sidebar link with "Transport Tickets" and "Meal System" (icons included); the legacy `/tickets/` route and page remain functional.
+5. **Tests** — `transport_dashboard` / `meal_dashboard` added to the smoke-test PAGES list and endpoint-registry coverage.
+
+### Testing
+
+- `python manage.py check` ✔
+- `python manage.py test` ✔
+
+---
+
+## 23. Public Homepage Light Theme Refactor
+
+**Date:** 09 August 2026
+
+### Overview
+
+Converted the public landing page from the original dark-navy glassmorphism theme to the **warm light design system** (`#faf9f6` bg, `#ffffff` cards, `#f0ebe1` borders, `#e8e2d8` accents, `#1f2937` text) so `/` transitions seamlessly into `/dashboard/`.
+
+### Completed Work (`static/css/main.css`, `templates/index.html`)
+
+- **Tokens** — landing palette (`--bg-main`, `--bg-card`, `--border-color`, `--text-primary`, `--text-muted`, `--accent-primary`, `--accent-dark`) defined in `main.css` `:root` with hex fallbacks.
+- **Navbar** — semi-transparent white pill (`#ffffffcc`), light `#f0ebe1` border, charcoal Emergency button; collapses to the hamburger below 1120px.
+- **Hero** — light warm gradient overlay (`rgba(250,249,246,.85)` → `.95`) over the campus photo; headline `#1f2937`, tagline `#6b7280`.
+- **CTAs** — "Login to Dashboard" beige button (`#e8e2d8`); white "Medical Services" button with light border.
+- **Cards/badges** — white cards with `#f0ebe1` borders, beige icon chips, soft-green status chips (`#dcfce7` / `#166534`), `#f7f4ef` alt section band.
+- Comments-only HTML updates — all `data-widget-id` / `data-editable-field` tags preserved.
+
+### Testing
+
+- `python manage.py check` ✔, `python manage.py test` ✔ (9 tests).
+- Headless Chrome: computed styles match the palette exactly; no overflow at 1280px / 1024px / 360px; zero console errors.
+
+---
+
+## 22. Clubs & Events Module (Frontend-only Rebuild)
+
+**Date:** 09 August 2026
+
+### Overview
+
+Rebuilt the Club & Event dashboard at `/clubs/` as a **frontend-only standalone page** (`templates/clubs.html` + `static/css/clubs.css`) driven by mock JavaScript data — no backend or database code. Supersedes the earlier `templates/clubs/clubs.html` (view-context data) implementation, which was removed.
+
+### Completed Work
+
+1. **Route & View** — route `path('clubs/', views.clubs_dashboard, name='clubs_dashboard')` unchanged; `clubs_dashboard` is now a pure stub rendering `clubs.html`. `clubs_dashboard` stays in the `ENDPOINTS` registry and the student sidebar.
+2. **Template (`templates/clubs.html`)** — standalone page (theme.css + clubs.css, FontAwesome, Inter) with all mock data in JS arrays (`CLUBS`, `EVENTS`, `STATS`, `REGISTRATIONS`) rendered client-side:
+   - Student View: club showcase cards with member counts + pulsing Active badges; events grid with fee tags ("Free" / "৳200 BDT") and "Register Now" triggers.
+   - Registration modal: Student Name, Student ID, Payment Method (bKash/Nagad), Trx ID — mock submit with toast confirmation; closes via backdrop, ✕, or Esc.
+   - Executive Workspace: 4 stat cards, registrations & payment tracking table (method + TrxID chips, amounts, Verified/Pending Review badges), announcement publisher form with mock publish toast.
+3. **Styling** — `static/css/clubs.css` scoped to `body.clubs` with the exact warm palette (`#faf9f6`, `#ffffff`, `#f0ebe1`, `#e8e2d8`, `#1f2937`, `#6b7280`); responsive grids (4→2→1 columns), scrollable table, accessible modal.
+4. **Tests** — `clubs_dashboard` smoke test + endpoint-registry coverage unchanged (page renders 200).
+
+### Testing
+
+- `python manage.py check` ✔
+- `python manage.py test` ✔

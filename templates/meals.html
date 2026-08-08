@@ -1,0 +1,277 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meal Tickets — Niter Hub</title>
+    <meta name="description" content="Claim your campus meal ticket online — live slot ratio, meal passes, and cafeteria supply.">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Meals page styles -->
+    <link rel="stylesheet" href="{% static 'css/meals.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="meals" data-app="campusdash-public">
+
+    <div class="shell">
+
+        <!-- ============================================================
+             Top bar
+        ============================================================ -->
+        <header class="topbar">
+            <a href="{% url 'home' %}" class="brand">
+                <span class="brand-icon"><i class="fa-solid fa-graduation-cap"></i></span>
+                <span>CampusDash</span>
+            </a>
+            <nav class="navlinks" aria-label="Quick links">
+                <a href="{% url 'dashboard' %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+                <a href="{% url 'transport_dashboard' %}"><i class="fa-solid fa-bus"></i> Transport</a>
+                <a href="{% url 'clubs_dashboard' %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
+            </nav>
+        </header>
+
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <div class="intro">
+            <h1>Online Meal Ticket System</h1>
+            <p>Claim your meal slot and board the line with a digital pass.</p>
+        </div>
+
+        <!-- ============================================================
+             Ratio ring + claim card
+        ============================================================ -->
+        <div class="ratio-layout">
+
+            <!-- Live ratio ring -->
+            <div class="card">
+                <h2 class="section-title">Live Meal Ratio</h2>
+                <p class="section-subtitle">Today's cafeteria slot usage.</p>
+                <div class="ring-wrap">
+                    <div class="ring" role="img" aria-label="Meal slot progress">
+                        <svg viewBox="0 0 200 200">
+                            <circle class="ring-track" cx="100" cy="100" r="88"></circle>
+                            <circle class="ring-bar" id="ring-bar" cx="100" cy="100" r="88"></circle>
+                        </svg>
+                        <div class="ring-center">
+                            <div class="ring-claimed"><span id="ring-claimed">142</span><small> / <span id="ring-total">200</span></small></div>
+                            <span class="ring-remaining" id="ring-remaining">58 remaining</span>
+                        </div>
+                    </div>
+                    <p class="ring-caption">Slots claimed today. Claim early — once 200 slots are gone, the kitchen closes for the day.</p>
+                </div>
+            </div>
+
+            <!-- Meal booking & claim -->
+            <div class="card">
+                <h2 class="section-title">Claim a Meal Ticket</h2>
+                <p class="section-subtitle">Pick a meal type and date, then claim your slot.</p>
+
+                <div class="field">
+                    <span class="field-label">Meal Type</span>
+                    <div class="meal-chips">
+                        <button type="button" class="meal-chip selected" data-meal="Lunch" aria-pressed="true"><i class="fa-solid fa-sun"></i> Lunch</button>
+                        <button type="button" class="meal-chip" data-meal="Dinner" aria-pressed="false"><i class="fa-solid fa-moon"></i> Dinner</button>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label for="meal-date" class="field-label">Date</label>
+                    <input type="date" id="meal-date" class="field-input">
+                </div>
+
+                <button type="button" class="claim-btn" id="claim-btn">
+                    <i class="fa-solid fa-ticket"></i> Claim Meal Ticket
+                </button>
+            </div>
+
+        </div>
+
+        <!-- ============================================================
+             Active digital meal pass
+        ============================================================ -->
+        <h2 class="section-title">Active Digital Meal Pass</h2>
+        <p class="section-subtitle">Show this pass at the cafeteria counter.</p>
+
+        <div class="pass">
+            <div class="pass-strip">
+                <strong><i class="fa-solid fa-utensils"></i> Niter Cafeteria Meal Pass</strong>
+                <span class="pass-token" id="pass-token">#MEAL-8921</span>
+            </div>
+            <div class="pass-body">
+                <div class="pass-details">
+                    <div>
+                        <span class="pass-k">Student Name</span>
+                        <span class="pass-v" id="pass-name">Rifat Hasan</span>
+                    </div>
+                    <div>
+                        <span class="pass-k">Meal Type</span>
+                        <span class="pass-v" id="pass-type">Lunch</span>
+                    </div>
+                    <div>
+                        <span class="pass-k">Date</span>
+                        <span class="pass-v" id="pass-date">—</span>
+                    </div>
+                </div>
+                <span class="status-badge status-unused" id="pass-status"><i class="fa-solid fa-circle-check"></i> Unused</span>
+                <button type="button" class="redeem-btn" id="redeem-btn"><i class="fa-solid fa-check"></i> Mark as Redeemed</button>
+            </div>
+        </div>
+
+        <!-- ============================================================
+             Cafeteria supply overview
+        ============================================================ -->
+        <h2 class="section-title">Cafeteria Supply Overview</h2>
+        <p class="section-subtitle">Daily kitchen numbers for cafeteria management.</p>
+
+        <div class="supply-grid">
+            <div class="stat-card">
+                <span class="stat-icon"><i class="fa-solid fa-kitchen-set"></i></span>
+                <div>
+                    <div class="stat-value" id="stat-prepared">500</div>
+                    <div class="stat-label">Meals Prepared</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <span class="stat-icon"><i class="fa-solid fa-ticket"></i></span>
+                <div>
+                    <div class="stat-value" id="stat-claimed">142</div>
+                    <div class="stat-label">Tickets Claimed</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <span class="stat-icon"><i class="fa-solid fa-utensils"></i></span>
+                <div>
+                    <div class="stat-value" id="stat-supply">358</div>
+                    <div class="stat-label">Remaining Supply</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <span class="stat-icon"><i class="fa-solid fa-hourglass-half"></i></span>
+                <div>
+                    <div class="stat-value warning" id="stat-slots">58</div>
+                    <div class="stat-label">Slots Remaining</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script>
+        // ====================================================================
+        // Mock state (frontend-only)
+        // ====================================================================
+        const state = {
+            total: 200,
+            claimed: 142,
+            prepared: 500,
+            mealType: 'Lunch',
+            token: 8921,
+        };
+
+        const ringBar = document.getElementById('ring-bar');
+        const R = 88;
+        const CIRC = 2 * Math.PI * R;
+        ringBar.style.strokeDasharray = CIRC;
+
+        // Date input defaults to today
+        const dateInput = document.getElementById('meal-date');
+        dateInput.value = new Date().toISOString().slice(0, 10);
+
+        const toastEl = document.getElementById('toast');
+        let toastTimer;
+
+        function showToast(message) {
+            toastEl.textContent = message;
+            toastEl.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3800);
+        }
+
+        function fmtDate(value) {
+            const d = new Date(value + 'T00:00:00');
+            if (isNaN(d)) return value;
+            return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        }
+
+        // ====================================================================
+        // Rendering
+        // ====================================================================
+        function updateRing() {
+            const ratio = state.claimed / state.total;
+            ringBar.style.strokeDashoffset = CIRC * (1 - ratio);
+            document.getElementById('ring-claimed').textContent = state.claimed;
+            document.getElementById('ring-total').textContent = state.total;
+            document.getElementById('ring-remaining').textContent = (state.total - state.claimed) + ' remaining';
+            document.getElementById('stat-claimed').textContent = state.claimed;
+            document.getElementById('stat-supply').textContent = state.prepared - state.claimed;
+            document.getElementById('stat-slots').textContent = state.total - state.claimed;
+        }
+
+        function resetPass() {
+            document.getElementById('pass-status').className = 'status-badge status-unused';
+            document.getElementById('pass-status').innerHTML = '<i class="fa-solid fa-circle-check"></i> Unused';
+            document.getElementById('redeem-btn').disabled = false;
+        }
+
+        // ====================================================================
+        // Interactions
+        // ====================================================================
+        document.querySelectorAll('.meal-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                state.mealType = chip.dataset.meal;
+                document.querySelectorAll('.meal-chip').forEach(c => {
+                    const on = c === chip;
+                    c.classList.toggle('selected', on);
+                    c.setAttribute('aria-pressed', on ? 'true' : 'false');
+                });
+            });
+        });
+
+        document.getElementById('claim-btn').addEventListener('click', () => {
+            if (state.claimed >= state.total) {
+                showToast('All ' + state.total + ' slots are claimed for today.');
+                return;
+            }
+            state.claimed += 1;
+            state.token += 1;
+
+            document.getElementById('pass-token').textContent = '#MEAL-' + state.token;
+            document.getElementById('pass-name').textContent = 'Rifat Hasan';
+            document.getElementById('pass-type').textContent = state.mealType;
+            document.getElementById('pass-date').textContent = fmtDate(dateInput.value);
+            resetPass();
+
+            updateRing();
+            showToast(state.mealType + ' ticket claimed — #MEAL-' + state.token + ' is ready to use.');
+        });
+
+        document.getElementById('redeem-btn').addEventListener('click', () => {
+            const badge = document.getElementById('pass-status');
+            badge.className = 'status-badge status-redeemed';
+            badge.innerHTML = '<i class="fa-solid fa-circle-check"></i> Redeemed';
+            document.getElementById('redeem-btn').disabled = true;
+            showToast('Meal pass marked as redeemed at the counter.');
+        });
+
+        // ====================================================================
+        // Init
+        // ====================================================================
+        updateRing();
+        document.getElementById('pass-date').textContent = fmtDate(dateInput.value);
+    </script>
+</body>
+</html>

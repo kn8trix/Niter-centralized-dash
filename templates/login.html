@@ -1,0 +1,96 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In — Niter Hub</title>
+    <meta name="description" content="Sign in to Niter Hub to access your student portal and dashboard.">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Login page styles -->
+    <link rel="stylesheet" href="{% static 'css/auth.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="auth" data-app="campusdash-public">
+
+    <!-- Back to homepage -->
+    <a href="{% url 'home' %}" class="auth-back-link" aria-label="Back to homepage">
+        <i class="fa-solid fa-arrow-left"></i> Back to Home
+    </a>
+
+    <main class="auth-shell">
+        <div class="auth-card">
+
+            <!-- Brand -->
+            <div class="auth-brand">
+                <span class="auth-brand-icon"><i class="fa-solid fa-graduation-cap"></i></span>
+            </div>
+
+            <!-- Heading -->
+            <h1 class="auth-title">Niter Hub</h1>
+            <p class="auth-subtitle">Sign in to access your portal &amp; dashboard</p>
+
+            <!-- Error container (shown on invalid credentials) -->
+            {% if form.errors %}
+            <div class="auth-alert" role="alert">
+                <i class="fa-solid fa-circle-exclamation"></i>
+                <div>
+                    {% for field in form %}
+                        {% for error in field.errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    {% endfor %}
+                    {% for error in form.non_field_errors %}
+                        <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Login form -->
+            <form method="post" action="{% url 'login' %}" class="auth-form" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ next }}">
+
+                <div class="field">
+                    <label for="{{ form.username.id_for_label }}" class="field-label">Student/Staff ID</label>
+                    <div class="field-input">
+                        <i class="fa-solid fa-id-card"></i>
+                        {{ form.username }}
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label for="{{ form.password.id_for_label }}" class="field-label">Password</label>
+                    <div class="field-input">
+                        <i class="fa-solid fa-lock"></i>
+                        {{ form.password }}
+                    </div>
+                </div>
+
+                <button type="submit" class="auth-submit">
+                    Sign In <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </form>
+
+            <!-- Demo fallback -->
+            <div class="auth-divider"><span>or</span></div>
+            <a href="{% url 'dashboard' %}" class="auth-demo-link">
+                Skip login &amp; view Dashboard demo <i class="fa-solid fa-arrow-right"></i>
+            </a>
+
+        </div>
+    </main>
+
+</body>
+</html>

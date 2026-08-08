@@ -12,6 +12,9 @@ urlpatterns = [
     # Additional routes for sidebar links
     path('academic-notes/', views.academic_notes, name='academic_notes'),
     path('notices/', views.notices, name='notices'),
+    path('clubs/', views.clubs_dashboard, name='clubs_dashboard'),
+    path('transport/', views.transport_dashboard, name='transport_dashboard'),
+    path('meals/', views.meal_dashboard, name='meal_dashboard'),
     
     # Form submission placeholders
     path('claim-meal/', views.claim_meal_ticket, name='claim_meal_ticket'),

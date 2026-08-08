@@ -1,0 +1,382 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transport Tickets — Niter Hub</title>
+    <meta name="description" content="Book campus transport seats online — routes, schedules, and digital boarding passes.">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Transport page styles -->
+    <link rel="stylesheet" href="{% static 'css/transport.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="transport" data-app="campusdash-public">
+
+    <div class="shell">
+
+        <!-- ============================================================
+             Top bar
+        ============================================================ -->
+        <header class="topbar">
+            <a href="{% url 'home' %}" class="brand">
+                <span class="brand-icon"><i class="fa-solid fa-graduation-cap"></i></span>
+                <span>CampusDash</span>
+            </a>
+            <nav class="navlinks" aria-label="Quick links">
+                <a href="{% url 'dashboard' %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+                <a href="{% url 'meal_dashboard' %}"><i class="fa-solid fa-utensils"></i> Meals</a>
+                <a href="{% url 'clubs_dashboard' %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
+            </nav>
+        </header>
+
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <div class="intro">
+            <h1>Transport Online Ticket System</h1>
+            <p>Pick a route, choose your seat, and board with a digital pass.</p>
+        </div>
+
+        <!-- ============================================================
+             Live status tracker
+        ============================================================ -->
+        <div class="tracker" data-component="live-status">
+            <div class="tracker-label">Live Bus Status</div>
+            <div id="status-tracker"><!-- JS-rendered status items --></div>
+        </div>
+
+        <!-- ============================================================
+             Bus routes & schedules
+        ============================================================ -->
+        <h2 class="section-title">Bus Routes &amp; Schedules</h2>
+        <p class="section-subtitle">Active routes with live available seats.</p>
+        <div class="routes-grid" id="routes-grid"><!-- JS-rendered route cards --></div>
+
+        <!-- ============================================================
+             Seat selector + digital pass
+        ============================================================ -->
+        <div class="booking-layout">
+
+            <!-- Booking form -->
+            <div class="card">
+                <h2 class="section-title">Book a Seat</h2>
+                <p class="section-subtitle">Select a route, trip time, and seat from the grid.</p>
+
+                <div class="field">
+                    <label for="route-select" class="field-label">Route</label>
+                    <select id="route-select" class="field-select"></select>
+                </div>
+
+                <div class="field">
+                    <span class="field-label">Trip Time</span>
+                    <div class="time-chips" id="time-chips"><!-- JS-rendered time chips --></div>
+                </div>
+
+                <div class="field">
+                    <label for="passenger-name" class="field-label">Passenger Name</label>
+                    <input type="text" id="passenger-name" class="field-input" placeholder="e.g. Rifat Hasan" value="Rifat Hasan">
+                </div>
+
+                <div class="field">
+                    <span class="field-label">Select Seat</span>
+                    <div class="seat-grid" id="seat-grid"><!-- JS-rendered seats --></div>
+                    <div class="seat-legend">
+                        <span><span class="seat-swatch"></span> Available</span>
+                        <span><span class="seat-swatch booked-swatch"></span> Booked</span>
+                        <span><span class="seat-swatch selected-swatch"></span> Selected</span>
+                    </div>
+                </div>
+
+                <button type="button" class="book-btn" id="book-btn">
+                    <i class="fa-solid fa-ticket"></i> Book Seat
+                </button>
+            </div>
+
+            <!-- Digital pass -->
+            <div class="card">
+                <h2 class="section-title">Digital Boarding Pass</h2>
+                <p class="section-subtitle">Scan the QR at the bus door to board.</p>
+
+                <div class="pass">
+                    <div class="pass-strip">
+                        <strong><i class="fa-solid fa-bus"></i> Campus Shuttle Pass</strong>
+                        <span class="pass-token" id="pass-token">—</span>
+                    </div>
+                    <div class="pass-body">
+                        <div class="qr-box" id="qr-box">
+                            <span class="pass-empty" id="pass-empty">QR will appear after booking</span>
+                        </div>
+                        <div class="pass-fields" id="pass-fields">
+                            <div class="pass-field">
+                                <span class="pass-k">Passenger</span>
+                                <span class="pass-v" id="pass-name">—</span>
+                            </div>
+                            <div class="pass-field">
+                                <span class="pass-k">Route</span>
+                                <span class="pass-v" id="pass-route">—</span>
+                            </div>
+                            <div class="pass-field">
+                                <span class="pass-k">Seat</span>
+                                <span class="pass-v" id="pass-seat">—</span>
+                            </div>
+                            <div class="pass-field">
+                                <span class="pass-k">Departure</span>
+                                <span class="pass-v" id="pass-time">—</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script>
+        // ====================================================================
+        // Mock JavaScript data (frontend-only)
+        // ====================================================================
+        const ROUTES = [
+            {
+                id: 1, name: 'Route 1: Campus → Town Center', dest: 'Campus Main Gate → Town Center Bus Stand',
+                driver: 'Abdul Karim', phone: '+880 1712-345601',
+                departures: ['8:00 AM', '1:00 PM', '5:00 PM'],
+                total: 40, booked: 12, status: 'On Time', dot: 'dot-green',
+            },
+            {
+                id: 2, name: 'Route 2: Campus → Savar Bazar', dest: 'Campus Main Gate → Savar Bazar',
+                driver: 'Rashed Mia', phone: '+880 1712-345602',
+                departures: ['9:00 AM', '3:00 PM'],
+                total: 40, booked: 25, status: 'In Transit', dot: 'dot-blue',
+            },
+            {
+                id: 3, name: 'Route 3: Campus → Dhaka (Mirpur)', dest: 'Campus Main Gate → Mirpur 10',
+                driver: 'Faruk Hossain', phone: '+880 1712-345603',
+                departures: ['7:30 AM', '5:00 PM'],
+                total: 40, booked: 37, status: 'Arriving in 10 mins', dot: 'dot-amber',
+            },
+        ];
+
+        // Deterministic PRNG for seat booking / QR patterns
+        function seeded(seed) {
+            let s = 0;
+            for (let i = 0; i < String(seed).length; i++) s = (s * 31 + String(seed).charCodeAt(i)) >>> 0;
+            return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+        }
+
+        function bookedSeats(route) {
+            const rand = seeded('route-' + route.id);
+            const set = new Set();
+            while (set.size < route.booked) set.add(Math.floor(rand() * route.total));
+            return set;
+        }
+
+        // ====================================================================
+        // State
+        // ====================================================================
+        let selectedRouteId = 1;
+        let selectedTime = null;
+        let selectedSeat = null;
+
+        // Cache each route's booked seats once so the grid stays consistent
+        // and genuinely "live" (new bookings are added, never regenerated).
+        ROUTES.forEach(r => { r.bookedSet = bookedSeats(r); });
+
+        const routesGrid = document.getElementById('routes-grid');
+        const trackerEl = document.getElementById('status-tracker');
+        const routeSelect = document.getElementById('route-select');
+        const timeChipsEl = document.getElementById('time-chips');
+        const seatGridEl = document.getElementById('seat-grid');
+        const bookBtn = document.getElementById('book-btn');
+        const toastEl = document.getElementById('toast');
+        let toastTimer;
+
+        function showToast(message) {
+            toastEl.textContent = message;
+            toastEl.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3800);
+        }
+
+        function currentRoute() {
+            return ROUTES.find(r => r.id === selectedRouteId);
+        }
+
+        function seatsLeft(route) {
+            return route.total - route.booked;
+        }
+
+        function seatsBadgeClass(route) {
+            const left = seatsLeft(route);
+            if (left <= 5) return 'seats-low';
+            if (left === 0) return 'seats-full';
+            return 'seats-ok';
+        }
+
+        // ====================================================================
+        // Rendering
+        // ====================================================================
+        function renderTracker() {
+            trackerEl.innerHTML = ROUTES.map(r => `
+                <span class="tracker-item">
+                    <span class="status-dot ${r.dot}"></span>
+                    <i class="fa-solid fa-bus"></i>
+                    Route ${r.id}: ${r.status}
+                </span>
+            `).join('');
+        }
+
+        function renderRoutes() {
+            routesGrid.innerHTML = ROUTES.map(r => `
+                <article class="route-card">
+                    <div class="route-card-head">
+                        <span class="route-icon"><i class="fa-solid fa-bus-simple"></i></span>
+                        <span class="seats-badge ${seatsBadgeClass(r)}">${seatsLeft(r)} / ${r.total} seats left</span>
+                    </div>
+                    <h3 class="route-name">${r.name}</h3>
+                    <p class="route-dest">${r.dest}</p>
+                    <div class="route-meta">
+                        <span><i class="fa-solid fa-user"></i> ${r.driver}</span>
+                        <span><i class="fa-solid fa-phone"></i> ${r.phone}</span>
+                        <span><i class="fa-regular fa-clock"></i> ${r.departures.join(' · ')}</span>
+                    </div>
+                </article>
+            `).join('');
+        }
+
+        function renderRouteSelect() {
+            routeSelect.innerHTML = ROUTES.map(r =>
+                `<option value="${r.id}" ${r.id === selectedRouteId ? 'selected' : ''}>${r.name}</option>`
+            ).join('');
+        }
+
+        function renderTimeChips() {
+            const route = currentRoute();
+            if (!route.departures.includes(selectedTime)) selectedTime = route.departures[0];
+            timeChipsEl.innerHTML = route.departures.map(t =>
+                `<button type="button" class="time-chip ${t === selectedTime ? 'selected' : ''}" data-time="${t}" aria-pressed="${t === selectedTime}">${t}</button>`
+            ).join('');
+        }
+
+        function renderSeats() {
+            const route = currentRoute();
+            const booked = route.bookedSet;
+            seatGridEl.innerHTML = Array.from({ length: route.total }, (_, i) => {
+                const num = i + 1;
+                const cls = booked.has(i) ? 'booked' : (selectedSeat === i ? 'selected' : '');
+                const label = booked.has(i) ? '✕' : num;
+                return `<button type="button" class="seat ${cls}" data-seat="${i}" aria-pressed="${!booked.has(i) && selectedSeat === i}" ${booked.has(i) ? 'disabled' : ''}>${label}</button>`;
+            }).join('');
+        }
+
+        // ====================================================================
+        // QR generation (deterministic placeholder)
+        // ====================================================================
+        function makeQrSvg(seed) {
+            const N = 21, cell = 10, pad = 2, q = 7;
+            const rand = seeded('qr-' + seed);
+            const g = Array.from({ length: N }, () => Array.from({ length: N }, () => rand() > 0.5));
+            const finder = (ox, oy) => {
+                for (let dy = 0; dy < q; dy++) for (let dx = 0; dx < q; dx++) {
+                    const edge = dx === 0 || dx === q - 1 || dy === 0 || dy === q - 1;
+                    const core = dx >= 2 && dx <= q - 3 && dy >= 2 && dy <= q - 3;
+                    g[oy + dy][ox + dx] = edge || core;
+                }
+            };
+            finder(0, 0); finder(N - q, 0); finder(0, N - q);
+            let rects = '';
+            for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+                if (g[y][x]) rects += `<rect x="${pad + x * cell}" y="${pad + y * cell}" width="${cell}" height="${cell}"/>`;
+            }
+            const S = pad * 2 + N * cell;
+            return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S} ${S}" shape-rendering="crispEdges" role="img" aria-label="Boarding pass QR code"><rect width="${S}" height="${S}" fill="#ffffff"/><g fill="#1f2937">${rects}</g></svg>`;
+        }
+
+        // ====================================================================
+        // Pass
+        // ====================================================================
+        function updatePass(pass) {
+            document.getElementById('pass-token').textContent = pass.token;
+            document.getElementById('pass-name').textContent = pass.name;
+            document.getElementById('pass-route').textContent = pass.route;
+            document.getElementById('pass-seat').textContent = pass.seat;
+            document.getElementById('pass-time').textContent = pass.time;
+            const qr = document.getElementById('qr-box');
+            qr.innerHTML = makeQrSvg(pass.token);
+        }
+
+        // ====================================================================
+        // Interactions
+        // ====================================================================
+        routeSelect.addEventListener('change', () => {
+            selectedRouteId = Number(routeSelect.value);
+            selectedSeat = null;
+            renderRouteSelect();
+            renderTimeChips();
+            renderSeats();
+        });
+
+        timeChipsEl.addEventListener('click', (e) => {
+            const chip = e.target.closest('[data-time]');
+            if (!chip) return;
+            selectedTime = chip.dataset.time;
+            renderTimeChips();
+        });
+
+        seatGridEl.addEventListener('click', (e) => {
+            const seat = e.target.closest('[data-seat]');
+            if (!seat || seat.classList.contains('booked')) return;
+            selectedSeat = Number(seat.dataset.seat);
+            renderSeats();
+        });
+
+        bookBtn.addEventListener('click', () => {
+            const route = currentRoute();
+            if (selectedSeat === null) { showToast('Please select a seat first.'); return; }
+            if (seatsLeft(route) <= 0) { showToast('This bus is fully booked.'); return; }
+
+            const seatNo = selectedSeat + 1;
+            const token = 'TRP-' + route.id + '-' + String(seatNo).padStart(2, '0') + '-' + (route.booked + 1);
+            const name = document.getElementById('passenger-name').value.trim() || 'Rifat Hasan';
+
+            updatePass({
+                token, name,
+                route: route.name,
+                seat: 'Seat ' + seatNo,
+                time: selectedTime,
+            });
+
+            // Update live seats (cache the newly booked seat in the route's set)
+            route.booked += 1;
+            route.bookedSet.add(selectedSeat);
+            renderRoutes();
+            renderSeats();
+
+            showToast('Seat ' + seatNo + ' booked on Route ' + route.id + ' — boarding pass generated.');
+        });
+
+        // ====================================================================
+        // Init
+        // ====================================================================
+        renderTracker();
+        renderRoutes();
+        renderRouteSelect();
+        renderTimeChips();
+        renderSeats();
+    </script>
+</body>
+</html>

@@ -24,6 +24,21 @@ def academic_notes(request):
 def notices(request):
     return render(request, 'notices/notices.html')
 
+
+def clubs_dashboard(request):
+    """Club & Event dashboard — frontend-only page driven by mock JS data."""
+    return render(request, 'clubs.html')
+
+
+def transport_dashboard(request):
+    """Transport online ticket system — frontend-only page driven by mock JS data."""
+    return render(request, 'transport.html')
+
+
+def meal_dashboard(request):
+    """Online meal ticket system — frontend-only page driven by mock JS data."""
+    return render(request, 'meals.html')
+
 def claim_meal_ticket(request):
     return render(request, 'ticketing/tickets.html')
 

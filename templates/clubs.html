@@ -1,0 +1,440 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clubs &amp; Events — Niter Hub</title>
+    <meta name="description" content="Discover campus clubs and events, register online, and manage your club executive workspace.">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Clubs & Events frontend-only styles -->
+    <link rel="stylesheet" href="{% static 'css/clubs.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="clubs" data-app="campusdash-public">
+
+    <div class="clubs-shell">
+
+        <!-- ============================================================
+             Top bar
+        ============================================================ -->
+        <header class="clubs-topbar">
+            <a href="{% url 'home' %}" class="clubs-brand">
+                <span class="clubs-brand-icon"><i class="fa-solid fa-graduation-cap"></i></span>
+                <span>CampusDash</span>
+            </a>
+            <nav class="clubs-navlinks" aria-label="Quick links">
+                <a href="{% url 'dashboard' %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+                <a href="{% url 'login' %}"><i class="fa-solid fa-user"></i> Sign In</a>
+            </nav>
+        </header>
+
+        <!-- ============================================================
+             Intro + View toggle
+        ============================================================ -->
+        <div class="clubs-intro">
+            <h1>Clubs &amp; Events</h1>
+            <p>Discover clubs, register for events, and manage your club workspace — all in one place.</p>
+        </div>
+
+        <div class="view-toggle-wrap">
+            <div class="view-toggle" role="tablist" aria-label="View switcher">
+                <button type="button" id="tab-student" class="active" role="tab" aria-controls="panel-student" aria-selected="true">Student View</button>
+                <button type="button" id="tab-exec" role="tab" aria-controls="panel-exec" aria-selected="false">Club Executive Workspace</button>
+            </div>
+        </div>
+
+        <!-- ============================================================
+             View 1 — Public Student View
+        ============================================================ -->
+        <section id="panel-student" class="view-panel" role="tabpanel" aria-labelledby="tab-student">
+
+            <h2 class="section-title">Featured Clubs</h2>
+            <p class="section-subtitle">Find your community and join an active campus club.</p>
+            <div class="clubs-grid" id="clubs-grid"><!-- JS-rendered club cards --></div>
+
+            <h2 class="section-title">Upcoming Events</h2>
+            <p class="section-subtitle">Register online — payments via bKash / Nagad.</p>
+            <div class="events-grid" id="events-grid"><!-- JS-rendered event cards --></div>
+
+        </section>
+
+        <!-- ============================================================
+             View 2 — Club Executive Workspace
+        ============================================================ -->
+        <section id="panel-exec" class="view-panel hidden" role="tabpanel" aria-labelledby="tab-exec">
+
+            <h2 class="section-title">Executive Overview</h2>
+            <p class="section-subtitle">Track membership, registrations, revenue, and approvals.</p>
+            <div class="stats-grid" id="stats-grid"><!-- JS-rendered stat cards --></div>
+
+            <div class="table-card">
+                <div class="table-card-head">
+                    <div>
+                        <h2 class="section-title">Registrations &amp; Payment Tracking</h2>
+                        <p class="section-subtitle">Verify bKash / Nagad payments before approving seats.</p>
+                    </div>
+                    <span class="table-count" id="reg-count">0 total</span>
+                </div>
+                <div class="table-scroll">
+                    <table class="reg-table">
+                        <thead>
+                            <tr>
+                                <th>Student Name</th>
+                                <th>Student ID</th>
+                                <th>Event</th>
+                                <th>Payment Method</th>
+                                <th>Amount Paid</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reg-tbody"><!-- JS-rendered rows --></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="announce-card">
+                <h3>Announcement Publisher</h3>
+                <p class="section-subtitle">Broadcast updates to your club audience instantly.</p>
+                <form id="announcement-form" novalidate>
+                    <div class="field">
+                        <label for="ann-title" class="field-label">Announcement Title</label>
+                        <input type="text" id="ann-title" class="field-input" placeholder="e.g. Club meeting moved to Room 302" required>
+                    </div>
+                    <div class="field">
+                        <label for="ann-audience" class="field-label">Target Audience</label>
+                        <select id="ann-audience" class="field-select">
+                            <option value="All Students">All Students</option>
+                            <option value="Participants">Participants</option>
+                            <option value="Club Members">Club Members</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="ann-details" class="field-label">Announcement Details</label>
+                        <textarea id="ann-details" class="field-textarea" placeholder="Write the full announcement here…" required></textarea>
+                    </div>
+                    <button type="submit" class="publish-btn"><i class="fa-solid fa-bullhorn"></i> Publish Announcement</button>
+                </form>
+            </div>
+
+        </section>
+
+    </div>
+
+    <!-- ============================================================
+         Registration modal (mock)
+    ============================================================ -->
+    <div class="modal-backdrop" id="register-modal" role="presentation">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <div class="modal-head">
+                <div>
+                    <h3 id="modal-title">Register for Event</h3>
+                    <p id="modal-event">Event name</p>
+                </div>
+                <button type="button" class="modal-close" id="modal-close" aria-label="Close registration dialog">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <form id="register-form" novalidate>
+                <div class="field">
+                    <label for="reg-name" class="field-label">Student Name</label>
+                    <input type="text" id="reg-name" class="field-input" placeholder="e.g. Rifat Hasan" required>
+                </div>
+                <div class="field">
+                    <label for="reg-id" class="field-label">Student ID</label>
+                    <input type="text" id="reg-id" class="field-input" placeholder="e.g. CSE-22014" required>
+                </div>
+                <div class="field">
+                    <label for="reg-method" class="field-label">Payment Method</label>
+                    <select id="reg-method" class="field-select">
+                        <option value="bKash">bKash</option>
+                        <option value="Nagad">Nagad</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="reg-trx" class="field-label">Trx ID</label>
+                    <input type="text" id="reg-trx" class="field-input" placeholder="e.g. 9JXK2L4M8N" required>
+                </div>
+                <button type="submit" class="modal-submit">Submit Registration</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast for mock confirmations -->
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script>
+        // ====================================================================
+        // Mock JavaScript data (frontend-only — no backend/database involved)
+        // ====================================================================
+        const CLUBS = [
+            { name: 'Computer Club', tagline: 'Code · Hack · Innovate', members: 320, icon: 'fa-laptop-code' },
+            { name: 'Electronics Club', tagline: 'Circuits · Robotics · IoT', members: 210, icon: 'fa-microchip' },
+            { name: 'Cultural Society', tagline: 'Music · Dance · Drama', members: 450, icon: 'fa-masks-theater' },
+            { name: 'Sports Club', tagline: 'Cricket · Football · Athletics', members: 380, icon: 'fa-trophy' },
+        ];
+
+        const EVENTS = [
+            {
+                title: 'CodeStorm 2026 — Inter-University Hackathon',
+                date: 'Mar 14, 2026', time: '9:00 AM – 6:00 PM',
+                location: 'Innovation Lab, Building C',
+                description: 'A 24-hour build sprint where student teams solve real textile & software problems. Prizes, mentors, and refreshments included.',
+                fee_label: 'Free', fee_type: 'free',
+            },
+            {
+                title: 'Tech Talk: AI in the Textile Industry',
+                date: 'Mar 18, 2026', time: '3:00 PM – 5:00 PM',
+                location: 'Central Auditorium',
+                description: 'Industry experts discuss computer vision, automation, and predictive maintenance reshaping textile manufacturing.',
+                fee_label: 'Free', fee_type: 'free',
+            },
+            {
+                title: 'Spring Cultural Night',
+                date: 'Mar 21, 2026', time: '6:30 PM – 10:30 PM',
+                location: 'Main Auditorium, Block A',
+                description: 'An evening of music, dance, and drama celebrating spring — featuring performances from every department.',
+                fee_label: '৳200 BDT', fee_type: 'paid',
+            },
+            {
+                title: 'Inter-Department Football Cup',
+                date: 'Mar 25, 2026', time: '4:00 PM – 8:00 PM',
+                location: 'Main Field, Sports Complex',
+                description: 'Knockout tournament between the five departments. Squad of 11 + 5 substitutes per department.',
+                fee_label: '৳150 BDT', fee_type: 'paid',
+            },
+        ];
+
+        const STATS = [
+            { label: 'Total Members', value: '1,360', icon: 'fa-users' },
+            { label: 'Active Registrations', value: '84', icon: 'fa-clipboard-list' },
+            { label: 'Event Revenue', value: '৳28,400', icon: 'fa-sack-dollar' },
+            { label: 'Pending Approvals', value: '12', icon: 'fa-clock', warning: true },
+        ];
+
+        const REGISTRATIONS = [
+            { name: 'Rifat Hasan', id: 'CSE-22014', event: 'CodeStorm 2026', method: 'bKash', trx: '9JXK2L4M8N', amount: '৳0', status: 'Verified' },
+            { name: 'Nusrat Jahan', id: 'TEX-21008', event: 'Spring Cultural Night', method: 'Nagad', trx: '8PLK3Q7R2T', amount: '৳200', status: 'Verified' },
+            { name: 'Tanim Ahmed', id: 'IPE-23005', event: 'Football Cup', method: 'bKash', trx: '7MNB2V9C1Q', amount: '৳150', status: 'Pending Review' },
+            { name: 'Farhana Akter', id: 'FD-22019', event: 'Cultural Night', method: 'bKash', trx: '6ZXC5T3R8W', amount: '৳200', status: 'Verified' },
+            { name: 'Shakil Mahmud', id: 'EEE-21031', event: 'Tech Talk', method: 'Nagad', trx: '5QWE4R2T9Y', amount: '৳0', status: 'Pending Review' },
+            { name: 'Moumita Saha', id: 'CSE-23027', event: 'CodeStorm 2026', method: 'bKash', trx: '4UIO1P7A3S', amount: '৳0', status: 'Verified' },
+        ];
+
+        // ====================================================================
+        // Render helpers
+        // ====================================================================
+        function renderClubs() {
+            const grid = document.getElementById('clubs-grid');
+            grid.innerHTML = CLUBS.map(c => `
+                <article class="club-card">
+                    <div class="club-card-top">
+                        <span class="club-icon"><i class="fa-solid ${c.icon}"></i></span>
+                        <span class="status-badge">Active</span>
+                    </div>
+                    <h3 class="club-name">${c.name}</h3>
+                    <p class="club-tagline">${c.tagline}</p>
+                    <div class="club-footer">
+                        <span class="club-members"><i class="fa-solid fa-user-group"></i> ${c.members} members</span>
+                        <button type="button" class="club-join" data-club="${c.name}">Join →</button>
+                    </div>
+                </article>
+            `).join('');
+        }
+
+        function renderEvents() {
+            const grid = document.getElementById('events-grid');
+            grid.innerHTML = EVENTS.map(e => {
+                const badge = e.fee_type === 'free'
+                    ? '<span class="fee-badge fee-free">Free</span>'
+                    : `<span class="fee-badge fee-paid">${e.fee_label}</span>`;
+                return `
+                    <article class="event-card">
+                        <div class="event-card-head">
+                            <h3 class="event-title">${e.title}</h3>
+                            ${badge}
+                        </div>
+                        <p class="event-desc">${e.description}</p>
+                        <div class="event-meta">
+                            <span><i class="fa-regular fa-calendar"></i> ${e.date}</span>
+                            <span><i class="fa-regular fa-clock"></i> ${e.time}</span>
+                            <span><i class="fa-solid fa-location-dot"></i> ${e.location}</span>
+                        </div>
+                        <button type="button" class="register-btn" data-event="${e.title}" data-fee="${e.fee_label}">
+                            <i class="fa-solid fa-ticket"></i> Register Now
+                        </button>
+                    </article>
+                `;
+            }).join('');
+        }
+
+        function renderStats() {
+            const grid = document.getElementById('stats-grid');
+            grid.innerHTML = STATS.map(s => `
+                <div class="stat-card">
+                    <span class="stat-icon"><i class="fa-solid ${s.icon}"></i></span>
+                    <div>
+                        <div class="stat-value ${s.warning ? 'warning' : ''}">${s.value}</div>
+                        <div class="stat-label">${s.label}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderRegistrations() {
+            const tbody = document.getElementById('reg-tbody');
+            tbody.innerHTML = REGISTRATIONS.map(r => {
+                const methodClass = r.method === 'bKash' ? 'method-bkash' : 'method-nagad';
+                const statusClass = r.status === 'Verified' ? 'status-verified' : 'status-pending';
+                return `
+                    <tr>
+                        <td class="name">${r.name}</td>
+                        <td>${r.id}</td>
+                        <td>${r.event}</td>
+                        <td><span class="method-chip ${methodClass}">${r.method} · ${r.trx}</span></td>
+                        <td><span class="amount">${r.amount}</span></td>
+                        <td><span class="status-pill ${statusClass}">${r.status}</span></td>
+                    </tr>
+                `;
+            }).join('');
+            document.getElementById('reg-count').textContent = REGISTRATIONS.length + ' total';
+        }
+
+        // ====================================================================
+        // Toast
+        // ====================================================================
+        const toastEl = document.getElementById('toast');
+        let toastTimer;
+
+        function showToast(message) {
+            toastEl.textContent = message;
+            toastEl.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3800);
+        }
+
+        // ====================================================================
+        // Dual-view toggle
+        // ====================================================================
+        const tabs = document.querySelectorAll('.view-toggle button');
+        const panels = document.querySelectorAll('.view-panel');
+
+        function setView(view) {
+            panels.forEach(p => p.classList.toggle('hidden', p.id !== 'panel-' + view));
+            tabs.forEach(t => {
+                const active = t.id === 'tab-' + view;
+                t.classList.toggle('active', active);
+                t.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+        }
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => setView(tab.id.replace('tab-', '')));
+        });
+
+        // ====================================================================
+        // Registration modal
+        // ====================================================================
+        const modal = document.getElementById('register-modal');
+        const modalEvent = document.getElementById('modal-event');
+        const modalClose = document.getElementById('modal-close');
+        const registerForm = document.getElementById('register-form');
+        let lastFocused = null;
+
+        function openModal(eventName, feeLabel) {
+            modalEvent.textContent = (eventName || 'Event') + (feeLabel && feeLabel !== 'Free' ? ' · ' + feeLabel : ' · Free');
+            modal.classList.add('open');
+            lastFocused = document.activeElement;
+            setTimeout(() => document.getElementById('reg-name').focus(), 80);
+        }
+
+        function closeModal() {
+            modal.classList.remove('open');
+            registerForm.reset();
+            if (lastFocused) lastFocused.focus();
+        }
+
+        modalClose.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.classList.contains('open')) closeModal();
+        });
+
+        registerForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('reg-name').value.trim();
+            const studentId = document.getElementById('reg-id').value.trim();
+            const method = document.getElementById('reg-method').value;
+            const trx = document.getElementById('reg-trx').value.trim();
+
+            if (!name) { showToast('Please enter your name to register.'); return; }
+            if (!studentId) { showToast('Please enter your Student ID.'); return; }
+            if (!trx) { showToast('Please enter the bKash/Nagad Trx ID.'); return; }
+
+            const event = modalEvent.textContent.split(' · ')[0];
+            showToast('Registration submitted for ' + event + ' via ' + method + ' — pending verification.');
+            closeModal();
+        });
+
+        // Delegated mock actions: Register Now (modal) + Join Club (toast)
+        document.addEventListener('click', (e) => {
+            const registerBtn = e.target.closest('[data-event]');
+            if (registerBtn) {
+                openModal(registerBtn.dataset.event, registerBtn.dataset.fee);
+                return;
+            }
+            const joinBtn = e.target.closest('[data-club]');
+            if (joinBtn) {
+                showToast('Membership request sent to ' + joinBtn.dataset.club + '. Welcome aboard!');
+            }
+        });
+
+        // Keyboard navigation for the view tabs (Left/Right/Home/End)
+        const tabList = document.querySelector('.view-toggle');
+        tabList.addEventListener('keydown', (e) => {
+            const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+            if (!keys.includes(e.key)) return;
+            e.preventDefault();
+            const current = tabs.indexOf(document.activeElement);
+            let next = current;
+            if (e.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length;
+            else if (e.key === 'ArrowRight') next = (current + 1) % tabs.length;
+            else if (e.key === 'Home') next = 0;
+            else if (e.key === 'End') next = tabs.length - 1;
+            tabs[next].focus();
+            setView(tabs[next].id.replace('tab-', ''));
+        });
+
+        // ====================================================================
+        // Announcement publisher (mock)
+        // ====================================================================
+        document.getElementById('announcement-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const audience = document.getElementById('ann-audience').value;
+            showToast('Announcement published to ' + audience + '.');
+            e.target.reset();
+        });
+
+        // ====================================================================
+        // Init
+        // ====================================================================
+        renderClubs();
+        renderEvents();
+        renderStats();
+        renderRegistrations();
+    </script>
+</body>
+</html>

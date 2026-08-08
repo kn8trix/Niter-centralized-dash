@@ -1,16 +1,19 @@
 /* ============================================================================
-   CampusDash — Public Homepage Stylesheet (Glassmorphism)
+   CampusDash — Public Homepage Stylesheet (Warm Light Theme)
    ----------------------------------------------------------------------------
-   Modern glass/landing styling for the public homepage (templates/index.html).
-   Builds on top of the global design tokens in theme.css — every color / font /
-   radius below falls back to a theme.css variable so the site stays re-themable
-   from a single place.
+   Warm, light landing styling for the public homepage (templates/index.html),
+   matching the "Warm Minimal Notion-style" design system of the Niter Hub
+   Student Dashboard (/dashboard/) for a seamless visual transition.
+
+   The palette below mirrors the app design tokens (bg #faf9f6, cards #ffffff,
+   borders #f0ebe1, charcoal accents #27272a) and falls back to theme.css
+   variables where possible so the site stays re-themable from one place.
 
    Sections:
-     1. Landing-page tokens
+     1. Landing-page tokens (light theme palette)
      2. Base & helpers
-     3. Navbar
-     4. Full-screen hero viewport + glass card deck
+     3. Navbar — floating light pill
+     4. Full-screen hero viewport + card deck
      5. Content sections (about / medical) & grids
      6. Footer
      7. Animations
@@ -21,27 +24,32 @@
    1. Landing-page tokens (extend :root from theme.css)
 --------------------------------------------------------------------------- */
 :root {
-    --landing-bg: #0b1220;                 /* page base (deep navy)          */
-    --landing-bg-alt: #0f1a2e;             /* section alt band               */
-    --glass-bg: rgba(30, 41, 59, 0.65);    /* frosted panel fill             */
-    --glass-bg-strong: rgba(15, 23, 42, 0.88);
-    --glass-border: rgba(255, 255, 255, 0.12);
-    --glass-blur: 16px;
+    /* Light theme palette — matches the Niter Hub dashboard design system */
+    --bg-main: #faf9f6;              /* page base                          */
+    --bg-card: #ffffff;              /* cards / panels                     */
+    --bg-sidebar: #ffffff;           /* sidebar (kept for parity)          */
+    --bg-active: #e7dfd5;            /* active states                      */
+    --bg-subtle: #f7f4ef;            /* soft chips / alt bands             */
 
-    --text-primary: #f1f5f9;               /* headings / hero text           */
-    --text-secondary: #cbd5e1;             /* body copy                      */
-    --text-muted: #94a3b8;                 /* captions / meta                */
+    --text-primary: #1f2937;         /* headings / hero text               */
+    --text-muted: #6b7280;           /* body copy / captions               */
 
-    --accent: #38bdf8;                     /* sky — primary CTA              */
-    --accent-2: #818cf8;                   /* indigo — secondary CTA         */
-    --emergency: #f87171;                  /* red — emergency accents        */
-    --success: #34d399;                    /* green — health/status          */
-    --gold: #fbbf24;                       /* amber — highlights             */
+    --border-color: #f0ebe1;         /* subtle separators                  */
+    --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.03);  /* soft card shadow    */
 
-    /* Reference theme.css tokens (with safe fallbacks) for the public page */
+    --accent-primary: #e8e2d8;       /* warm beige — primary CTA           */
+    --accent-primary-hover: #dfd7c9; /* warm beige — hover state           */
+    --accent-dark: #27272a;          /* charcoal — emergency / ink         */
+
+    /* Semantic aliases used below */
+    --success: #166534;              /* green-800 — status text            */
+    --success-soft: #dcfce7;         /* green-100 — status chip            */
+    --success-border: #bbf7d0;       /* green-200 — status chip border     */
+    --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.06);
+    --shadow-hover: 0 14px 36px rgba(0, 0, 0, 0.10);
+
     --landing-font: var(--font-main, 'Inter', system-ui, sans-serif);
     --landing-radius: var(--radius-2xl, 1rem);
-    --landing-radius-sm: var(--radius-lg, 0.5rem);
 }
 
 /* ---------------------------------------------------------------------------
@@ -55,9 +63,9 @@ body.landing {
     margin: 0;
     font-family: var(--landing-font);
     background:
-        radial-gradient(1200px 600px at 80% -10%, rgba(56, 189, 248, 0.08), transparent 60%),
-        radial-gradient(1000px 500px at 10% 10%, rgba(129, 140, 248, 0.08), transparent 55%),
-        var(--landing-bg);
+        radial-gradient(1200px 600px at 85% -10%, rgba(232, 226, 216, 0.55), transparent 60%),
+        radial-gradient(1000px 500px at 5% 5%, rgba(240, 235, 225, 0.6), transparent 55%),
+        var(--bg-main);
     color: var(--text-primary);
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
@@ -76,34 +84,32 @@ body.landing a {
 }
 
 body.landing [id] {
-    scroll-margin-top: 96px; /* clear the fixed glass navbar when anchor-jumping */
+    scroll-margin-top: 96px; /* clear the fixed pill navbar when anchor-jumping */
 }
 
-/* Glassmorphism panel (core primitive) */
+/* Card panel (core primitive — light, matches dashboard cards) */
 .glass-panel {
-    background: var(--glass-bg);
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    backdrop-filter: blur(var(--glass-blur));
-    border: 1px solid var(--glass-border);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
     border-radius: var(--radius-2xl, 1rem);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    box-shadow: var(--shadow-card);
 }
 
-/* Public-only badge */
+/* Public-only badge — warm neutral chip */
 .badge-public {
     display: inline-block;
-    background: rgba(239, 68, 68, 0.2);
-    color: var(--emergency, #f87171);
-    border: 1px solid rgba(239, 68, 68, 0.4);
+    background: var(--bg-subtle);
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
     padding: 0.3rem 0.8rem;
     border-radius: 20px;
-    font-size: 0.85rem;
-    font-weight: 700;
+    font-size: 0.8rem;
+    font-weight: 600;
     letter-spacing: 0.02em;
 }
 
 /* ---------------------------------------------------------------------------
-   3. Navbar — floating transparent glass header
+   3. Navbar — floating light pill
 --------------------------------------------------------------------------- */
 .navbar {
     position: fixed;
@@ -117,18 +123,18 @@ body.landing [id] {
     justify-content: space-between;
     gap: 1.25rem;
     padding: 0.65rem 1.1rem;
-    background: rgba(15, 23, 42, 0.55);
+    background: #ffffffcc;                       /* semi-transparent white  */
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
     border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-soft);
     transition: background 0.3s ease, box-shadow 0.3s ease;
 }
 
 .navbar.scrolled {
-    background: rgba(15, 23, 42, 0.85);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    background: #ffffffee;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
 }
 
 .navbar .brand {
@@ -137,6 +143,7 @@ body.landing [id] {
     gap: 0.6rem;
     font-weight: 700;
     font-size: 1.15rem;
+    color: var(--text-primary);
     white-space: nowrap;
 }
 
@@ -146,17 +153,14 @@ body.landing [id] {
     width: 38px;
     height: 38px;
     border-radius: 12px;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color: #0b1220;
+    background: var(--accent-primary);
+    color: var(--accent-dark);
     font-size: 1.05rem;
-    box-shadow: 0 4px 14px rgba(56, 189, 248, 0.35);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
 }
 
 .brand-name {
-    background: linear-gradient(90deg, #f1f5f9, var(--accent));
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: var(--text-primary);
 }
 
 .nav-links {
@@ -173,33 +177,53 @@ body.landing [id] {
     padding: 0.55rem 0.95rem;
     font-size: 0.95rem;
     font-weight: 500;
-    color: var(--text-secondary);
+    color: var(--text-muted);
     border-radius: 999px;
     transition: color 0.2s ease, background 0.2s ease;
 }
 
 .nav-links a:not(.btn-emergency):hover {
     color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--bg-subtle);
 }
 
+/* Emergency button — dark charcoal pill with white text */
 .btn-emergency {
-    background: linear-gradient(135deg, #ef4444, #b91c1c);
+    background: var(--accent-dark);
     color: #fff !important;
     font-weight: 600;
-    box-shadow: 0 4px 16px rgba(239, 68, 68, 0.35);
+    box-shadow: 0 4px 14px rgba(39, 39, 42, 0.18);
 }
 
 .btn-emergency:hover {
-    filter: brightness(1.1);
-    box-shadow: 0 6px 22px rgba(239, 68, 68, 0.5);
+    background: #1d1d20;
+    box-shadow: 0 6px 18px rgba(39, 39, 42, 0.28);
+}
+
+/* Dashboard pill button — warm beige with dark text */
+.nav-links a.btn-dashboard {
+    background: var(--accent-primary);
+    color: var(--accent-dark);
+    font-weight: 600;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+.nav-links a.btn-dashboard:hover {
+    background: var(--accent-primary-hover);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.10);
+}
+
+/* Sign In nav link — emphasized text link */
+.nav-links a.nav-signin {
+    color: var(--text-primary);
+    font-weight: 600;
 }
 
 /* Mobile hamburger (hidden on desktop) */
 .nav-toggle {
     display: none;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
     color: var(--text-primary);
     border-radius: 10px;
     width: 40px;
@@ -210,7 +234,7 @@ body.landing [id] {
 }
 
 /* ---------------------------------------------------------------------------
-   4. Full-screen hero viewport + glass card deck
+   4. Full-screen hero viewport + card deck
 --------------------------------------------------------------------------- */
 .hero-viewport {
     position: relative;
@@ -228,9 +252,8 @@ body.landing [id] {
     left: 0;
     width: 100%;
     height: 100%;
-    /* Gradient fallback keeps the hero beautiful even if the remote image fails */
+    /* Campus photo; the light warm overlay below keeps text readable */
     background-image:
-        linear-gradient(180deg, rgba(11, 18, 32, 0.35), rgba(11, 18, 32, 0.55)),
         url('https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=1920&q=80');
     background-size: cover;
     background-position: center;
@@ -239,13 +262,14 @@ body.landing [id] {
     will-change: transform;
 }
 
+/* Light warm gradient overlay (replaces the old dark navy overlay) */
 .hero-overlay {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(180deg, rgba(15, 23, 42, 0.6) 0%, rgba(15, 23, 42, 0.95) 100%);
+    background: linear-gradient(180deg, rgba(250, 249, 246, 0.85) 0%, rgba(250, 249, 246, 0.95) 100%);
     z-index: 2;
 }
 
@@ -269,10 +293,10 @@ body.landing [id] {
     gap: 0.5rem;
     padding: 0.4rem 1rem;
     border-radius: 999px;
-    background: rgba(56, 189, 248, 0.12);
-    border: 1px solid rgba(56, 189, 248, 0.3);
-    color: var(--accent);
-    font-size: 0.85rem;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 0.82rem;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -285,18 +309,14 @@ body.landing [id] {
     font-weight: 800;
     line-height: 1.08;
     letter-spacing: -0.02em;
-    background: linear-gradient(180deg, #ffffff 40%, #a5b4fc 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    filter: drop-shadow(0 4px 24px rgba(0, 0, 0, 0.45));
+    color: var(--text-primary);
 }
 
 .hero-subtitle {
     margin: 1.1rem 0 0;
     font-size: clamp(1rem, 2.2vw, 1.3rem);
     font-weight: 400;
-    color: var(--text-secondary);
+    color: var(--text-muted);
     max-width: 560px;
 }
 
@@ -317,34 +337,35 @@ body.landing [id] {
     border-radius: 999px;
     font-size: 1rem;
     font-weight: 600;
-    transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
+/* "Explore Campus" — warm beige with dark text */
 .hero-btn-primary {
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color: #0b1220;
-    box-shadow: 0 8px 28px rgba(56, 189, 248, 0.4);
+    background: var(--accent-primary);
+    color: var(--text-primary);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
 }
 
 .hero-btn-primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 12px 34px rgba(56, 189, 248, 0.55);
+    background: var(--accent-primary-hover);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.10);
 }
 
+/* "Medical Services" — pure white with light border */
 .hero-btn-secondary {
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: #ffffff;
+    border: 1px solid var(--border-color);
     color: var(--text-primary);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
 }
 
 .hero-btn-secondary:hover {
     transform: translateY(-2px);
-    background: rgba(255, 255, 255, 0.14);
+    background: var(--bg-subtle);
 }
 
-/* Bottom floating glass quick-card deck */
+/* Bottom floating quick-card deck */
 .hero-card-deck {
     position: relative;
     z-index: 3;
@@ -363,7 +384,7 @@ body.landing [id] {
 
 .hero-card:hover {
     transform: translateY(-4px);
-    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-hover);
 }
 
 .hero-card .card-label {
@@ -376,27 +397,27 @@ body.landing [id] {
 }
 
 .hero-card-emerg {
-    border-left: 3px solid var(--emergency);
+    border-left: 3px solid var(--accent-dark);
 }
 
 .hero-card-med {
-    border-left: 3px solid var(--accent);
+    border-left: 3px solid var(--success);
 }
 
 .hero-card-depts {
-    border-left: 3px solid var(--gold);
+    border-left: 3px solid var(--bg-active);
 }
 
-/* Pulsing emergency badge */
+/* Pulsing status badge — soft green chip with green text */
 .pulse-badge {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
     padding: 0.3rem 0.8rem;
     border-radius: 999px;
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.4);
-    color: var(--emergency);
+    background: var(--success-soft);
+    border: 1px solid var(--success-border);
+    color: var(--success);
     font-size: 0.8rem;
     font-weight: 700;
 }
@@ -405,7 +426,7 @@ body.landing [id] {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--emergency);
+    background: var(--success);
     animation: pulse 1.6s ease-out infinite;
 }
 
@@ -430,7 +451,7 @@ body.landing [id] {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    color: var(--emergency);
+    color: var(--accent-dark);
     font-size: 0.9rem;
     font-weight: 600;
 }
@@ -452,8 +473,8 @@ body.landing [id] {
     width: 42px;
     height: 42px;
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color: #0b1220;
+    background: var(--accent-primary);
+    color: var(--accent-dark);
     font-weight: 700;
     font-size: 0.95rem;
     flex-shrink: 0;
@@ -468,7 +489,7 @@ body.landing [id] {
 .incharge-role,
 .med-hours {
     font-size: 0.8rem;
-    color: var(--text-secondary);
+    color: var(--text-muted);
 }
 
 .med-hours {
@@ -489,17 +510,17 @@ body.landing [id] {
 .dept-tag {
     padding: 0.35rem 0.85rem;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
     font-size: 0.8rem;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--text-muted);
     transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
 .dept-tag:hover {
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color: #0b1220;
+    background: var(--accent-primary);
+    color: var(--accent-dark);
     transform: translateY(-1px);
 }
 
@@ -517,11 +538,9 @@ body.landing [id] {
 }
 
 .section-alt {
-    background:
-        radial-gradient(900px 400px at 15% 0%, rgba(129, 140, 248, 0.07), transparent 55%),
-        var(--landing-bg-alt);
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--bg-subtle);
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
 }
 
 .section-inner {
@@ -544,11 +563,12 @@ body.landing [id] {
     font-size: clamp(1.8rem, 4vw, 2.6rem);
     font-weight: 800;
     letter-spacing: -0.02em;
+    color: var(--text-primary);
 }
 
 .section-lead {
     margin: 0;
-    color: var(--text-secondary);
+    color: var(--text-muted);
     font-size: 1.02rem;
 }
 
@@ -562,8 +582,8 @@ body.landing [id] {
 
 .card:hover {
     transform: translateY(-4px);
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
-    border-color: rgba(255, 255, 255, 0.22);
+    box-shadow: var(--shadow-hover);
+    border-color: var(--border-color);
 }
 
 .card-icon {
@@ -572,9 +592,9 @@ body.landing [id] {
     width: 48px;
     height: 48px;
     border-radius: 14px;
-    background: rgba(56, 189, 248, 0.12);
-    border: 1px solid rgba(56, 189, 248, 0.3);
-    color: var(--accent);
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
     font-size: 1.25rem;
     margin-bottom: 1.1rem;
 }
@@ -583,11 +603,12 @@ body.landing [id] {
     margin: 0 0 0.6rem;
     font-size: 1.15rem;
     font-weight: 700;
+    color: var(--text-primary);
 }
 
 .card p {
     margin: 0;
-    color: var(--text-secondary);
+    color: var(--text-muted);
     font-size: 0.95rem;
 }
 
@@ -599,16 +620,16 @@ body.landing [id] {
     font-size: 0.85rem;
 }
 
-/* Emergency contact card */
+/* Emergency contact card — subtle warm tint to distinguish */
 .card-emergency {
-    border: 1px solid rgba(239, 68, 68, 0.35);
-    background: linear-gradient(160deg, rgba(239, 68, 68, 0.12), rgba(30, 41, 59, 0.65));
+    border: 1px solid var(--border-color);
+    background: var(--bg-subtle);
 }
 
 .card-emergency .card-icon {
-    background: rgba(239, 68, 68, 0.14);
-    border-color: rgba(239, 68, 68, 0.4);
-    color: var(--emergency);
+    background: var(--bg-subtle);
+    border-color: var(--border-color);
+    color: var(--accent-dark);
 }
 
 /* Contact / info list rows */
@@ -623,8 +644,8 @@ body.landing [id] {
     align-items: flex-start;
     gap: 0.8rem;
     padding: 0.65rem 0;
-    border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
-    color: var(--text-secondary);
+    border-bottom: 1px dashed var(--border-color);
+    color: var(--text-muted);
     font-size: 0.95rem;
 }
 
@@ -633,7 +654,7 @@ body.landing [id] {
 }
 
 .info-list i {
-    color: var(--accent);
+    color: var(--accent-dark);
     margin-top: 0.25rem;
     width: 16px;
     text-align: center;
@@ -678,6 +699,7 @@ body.landing [id] {
     margin: 0 0 0.25rem;
     font-size: 1.02rem;
     font-weight: 700;
+    color: var(--text-primary);
 }
 
 .dept-card p {
@@ -690,10 +712,7 @@ body.landing [id] {
     font-size: 2.1rem;
     font-weight: 800;
     line-height: 1;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: var(--accent-dark);
 }
 
 /* Affiliation / management highlight band */
@@ -712,8 +731,8 @@ body.landing [id] {
     gap: 0.8rem;
     padding: 0.5rem 1.1rem;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
 }
 
 .highlight-icon {
@@ -722,8 +741,8 @@ body.landing [id] {
     width: 34px;
     height: 34px;
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color: #0b1220;
+    background: var(--accent-primary);
+    color: var(--accent-dark);
     font-size: 0.9rem;
     flex-shrink: 0;
 }
@@ -755,7 +774,7 @@ body.landing [id] {
     align-items: center;
     gap: 0.7rem;
     padding: 0.5rem 0;
-    color: var(--text-secondary);
+    color: var(--text-muted);
     font-size: 0.95rem;
 }
 
@@ -767,7 +786,7 @@ body.landing [id] {
    6. Footer
 --------------------------------------------------------------------------- */
 .footer {
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid var(--border-color);
     padding: 2.2rem clamp(1.25rem, 5vw, 4rem);
     text-align: center;
     color: var(--text-muted);
@@ -783,12 +802,12 @@ body.landing [id] {
 }
 
 .footer .footer-links a {
-    color: var(--text-secondary);
+    color: var(--text-muted);
     font-size: 0.9rem;
 }
 
 .footer .footer-links a:hover {
-    color: var(--accent);
+    color: var(--text-primary);
 }
 
 /* ---------------------------------------------------------------------------
@@ -800,9 +819,9 @@ body.landing [id] {
 }
 
 @keyframes pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55); }
-    70%  { box-shadow: 0 0 0 9px rgba(239, 68, 68, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    0%   { box-shadow: 0 0 0 0 rgba(22, 101, 52, 0.5); }
+    70%  { box-shadow: 0 0 0 9px rgba(22, 101, 52, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(22, 101, 52, 0); }
 }
 
 @keyframes fadeUp {
@@ -828,8 +847,11 @@ body.landing [id] {
     }
 }
 
-@media (max-width: 900px) {
-    /* Navbar becomes a glass pill with a hamburger */
+@media (max-width: 1120px) {
+    /* With the added Sign In / Dashboard / Emergency pills the navbar is
+       too crowded for a single pill row on tablets — collapse to the
+       hamburger + dropdown earlier (hero/grid layouts keep their own
+       breakpoints below). */
     .nav-toggle {
         display: grid;
     }
@@ -844,11 +866,9 @@ body.landing [id] {
         gap: 0.3rem;
         padding: 0.8rem;
         border-radius: 18px;
-        background: var(--glass-bg-strong);
-        -webkit-backdrop-filter: blur(20px);
-        backdrop-filter: blur(20px);
-        border: 1px solid var(--glass-border);
-        box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        box-shadow: var(--shadow-hover);
         opacity: 0;
         pointer-events: none;
         transform: translateY(-8px);
@@ -866,7 +886,9 @@ body.landing [id] {
         padding: 0.75rem 1rem;
         border-radius: 12px;
     }
+}
 
+@media (max-width: 900px) {
     .hero-card-deck {
         grid-template-columns: 1fr;
     }

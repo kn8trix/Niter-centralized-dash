@@ -1,0 +1,334 @@
+/* ============================================================================
+   CampusDash — Login Page Stylesheet (Warm Light Theme)
+   ----------------------------------------------------------------------------
+   Standalone auth screen for templates/login.html, matching the warm beige
+   design system of the landing page and the Niter Hub dashboard
+   (#faf9f6 background, #ffffff card, #f0ebe1 borders, #e8e2d8 primary CTA).
+
+   The palette mirrors the landing-page tokens in main.css so the auth screen
+   stays re-themable from one place (tokens declared here because this page
+   loads without main.css).
+
+   Sections:
+     1. Landing-page tokens
+     2. Base (scoped to body.auth)
+     3. Back link
+     4. Card layout
+     5. Form fields
+     6. Alert / error box
+     7. Submit button
+     8. Demo fallback & divider
+     9. Responsive & motion
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   1. Landing-page tokens (self-contained palette)
+--------------------------------------------------------------------------- */
+:root {
+    --bg-main: #faf9f6;
+    --bg-card: #ffffff;
+    --bg-subtle: #f7f4ef;
+
+    --text-primary: #1f2937;
+    --text-muted: #6b7280;
+
+    --border-color: #f0ebe1;
+    --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.03);
+
+    --accent-primary: #e8e2d8;
+    --accent-primary-hover: #dfd7c9;
+    --accent-dark: #27272a;
+
+    --auth-font: var(--font-main, 'Inter', system-ui, sans-serif);
+}
+
+/* ---------------------------------------------------------------------------
+   2. Base (scoped to body.auth)
+--------------------------------------------------------------------------- */
+body.auth {
+    margin: 0;
+    min-height: 100vh;
+    font-family: var(--auth-font);
+    background:
+        radial-gradient(900px 480px at 85% -10%, rgba(232, 226, 216, 0.6), transparent 60%),
+        radial-gradient(800px 420px at 5% 15%, rgba(240, 235, 225, 0.65), transparent 55%),
+        var(--bg-main);
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow-x: hidden;
+}
+
+body.auth *,
+body.auth *::before,
+body.auth *::after {
+    box-sizing: border-box;
+}
+
+body.auth a {
+    text-decoration: none;
+    color: inherit;
+}
+
+/* ---------------------------------------------------------------------------
+   3. Back link
+--------------------------------------------------------------------------- */
+.auth-back-link {
+    position: fixed;
+    top: 20px;
+    left: 22px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-card);
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    transition: color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+    z-index: 10;
+}
+
+.auth-back-link:hover {
+    color: var(--text-primary);
+    background: var(--bg-card);
+    transform: translateX(-2px);
+}
+
+/* ---------------------------------------------------------------------------
+   4. Card layout
+--------------------------------------------------------------------------- */
+.auth-shell {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5rem 1.25rem;
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1.25rem;
+    box-shadow: var(--shadow-card);
+    padding: 2.6rem 2.2rem 2.2rem;
+    text-align: center;
+    animation: authFadeUp 0.5s ease both;
+}
+
+.auth-brand-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 54px;
+    height: 54px;
+    border-radius: 16px;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 1.45rem;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.03);
+}
+
+.auth-title {
+    margin: 1.1rem 0 0.3rem;
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+}
+
+.auth-subtitle {
+    margin: 0 0 1.8rem;
+    font-size: 0.95rem;
+    color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------------
+   5. Form fields
+--------------------------------------------------------------------------- */
+.auth-form {
+    text-align: left;
+}
+
+.auth-form .field {
+    margin-bottom: 1.15rem;
+}
+
+.field-label {
+    display: block;
+    margin-bottom: 0.45rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.field-input {
+    position: relative;
+}
+
+.field-input i {
+    position: absolute;
+    left: 0.95rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+/* Django's AuthenticationForm renders unclassed inputs — style by type */
+.field-input input[type="text"],
+.field-input input[type="password"] {
+    width: 100%;
+    padding: 0.78rem 0.95rem 0.78rem 2.55rem;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
+    font-family: inherit;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.field-input input::placeholder {
+    color: #9ca3af;
+}
+
+.field-input input:focus {
+    background: var(--bg-card);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(232, 226, 216, 0.55);
+}
+
+/* ---------------------------------------------------------------------------
+   6. Alert / error box
+--------------------------------------------------------------------------- */
+.auth-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+    text-align: left;
+    background: rgba(220, 38, 38, 0.06);
+    border: 1px solid rgba(220, 38, 38, 0.22);
+    color: #b91c1c;
+    border-radius: 0.75rem;
+    padding: 0.85rem 1rem;
+    margin-bottom: 1.4rem;
+    font-size: 0.87rem;
+}
+
+.auth-alert > i {
+    margin-top: 0.2rem;
+}
+
+.auth-alert p {
+    margin: 0;
+}
+
+.auth-alert p + p {
+    margin-top: 0.35rem;
+}
+
+/* ---------------------------------------------------------------------------
+   7. Submit button
+--------------------------------------------------------------------------- */
+.auth-submit {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    margin-top: 0.4rem;
+    padding: 0.85rem 1.5rem;
+    border: none;
+    border-radius: 999px;
+    background: var(--accent-primary);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.auth-submit:hover {
+    background: var(--accent-primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.auth-submit:active {
+    transform: translateY(0);
+}
+
+/* ---------------------------------------------------------------------------
+   8. Demo fallback & divider
+--------------------------------------------------------------------------- */
+.auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    margin: 1.6rem 0 1.1rem;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--border-color);
+}
+
+.auth-demo-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--accent-dark);
+    transition: color 0.2s ease, gap 0.2s ease;
+}
+
+.auth-demo-link:hover {
+    color: var(--text-primary);
+    gap: 0.65rem;
+}
+
+/* ---------------------------------------------------------------------------
+   9. Responsive & motion
+--------------------------------------------------------------------------- */
+@keyframes authFadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 480px) {
+    .auth-back-link {
+        top: 14px;
+        left: 14px;
+    }
+
+    .auth-card {
+        padding: 2.1rem 1.5rem 1.8rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .auth-card {
+        animation: none;
+    }
+}
