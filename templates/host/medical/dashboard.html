@@ -37,9 +37,9 @@
 
     <!-- Search & Filters -->
     <div data-component="card" data-widget="search-filters" class="bg-card rounded-xl border border-border p-4 flex items-center justify-between gap-4">
-        <form method="get" data-endpoint="host_medical_dashboard" data-component="form" class="flex items-center gap-3 w-full">
-            <input type="text" name="q" value="{{ search_query }}" placeholder="Search by student name or ID" class="flex-1 bg-base border border-border rounded-lg px-4 py-2 text-sm">
-            <select name="filter" class="bg-base border border-border rounded-lg px-3 py-2 text-sm">
+        <form method="get" data-endpoint="host_medical_dashboard" data-component="form" class="flex flex-col md:flex-row items-stretch md:items-center gap-3 w-full">
+            <input type="text" name="q" value="{{ search_query }}" placeholder="Search by student name or ID" class="flex-1 min-w-0 bg-base border border-border rounded-lg px-4 py-2 text-sm">
+            <select name="filter" class="bg-base border border-border rounded-lg px-3 py-2 text-sm max-w-full">
                 <option value="all" {% if active_filter == 'all' %}selected{% endif %}>All</option>
                 <option value="today" {% if active_filter == 'today' %}selected{% endif %}>Today's Appointments</option>
                 <option value="pending" {% if active_filter == 'pending' %}selected{% endif %}>Pending</option>
@@ -47,7 +47,7 @@
                 <option value="completed" {% if active_filter == 'completed' %}selected{% endif %}>Completed</option>
                 <option value="cancelled" {% if active_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
             </select>
-            <button type="submit" class="bg-accent px-4 py-2 rounded-lg">Apply</button>
+            <button type="submit" class="bg-accent px-4 py-2 rounded-lg shrink-0">Apply</button>
         </form>
     </div>
 

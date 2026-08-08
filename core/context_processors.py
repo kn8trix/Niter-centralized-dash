@@ -16,7 +16,8 @@ def endpoints(request):
     """
     return {
         'ENDPOINTS': {
-            # Student app pages
+            # Public homepage + student app pages
+            'home': reverse('home'),
             'dashboard': reverse('dashboard'),
             'academic_notes': reverse('academic_notes'),
             'notices': reverse('notices'),

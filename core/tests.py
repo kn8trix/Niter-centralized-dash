@@ -6,6 +6,7 @@ class StudentPagesSmokeTest(SimpleTestCase):
     """Every student page renders without error after the refactor."""
 
     PAGES = [
+        'home',
         'dashboard',
         'academic_notes',
         'notices',

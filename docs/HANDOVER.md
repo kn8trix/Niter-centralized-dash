@@ -36,8 +36,8 @@ The theme is built around a warm, paper-like background with neutral accents.
 - **Footer:** User profile section with avatar and logout option.
 
 ### 3.2 Main Content Area
-- **Margin:** Offset by `256px` (ml-64).
-- **Header:** Sticky top bar with page title, global search, and notification bell.
+- **Margin:** Offset by `256px` on desktop (`lg:ml-64`); full-width on mobile (`ml-0`) so content reflows when the drawer is hidden.
+- **Header:** Sticky top bar with page title, global search, and notification bell. On mobile the hamburger sits inline next to the title and the search bar wraps to its own row.
 - **Grid System:** Responsive grid using Tailwind CSS utility classes.
 
 ## 4. Implemented Templates
@@ -140,10 +140,10 @@ Admin-only medical management interface at `/medical/admin/` with:
 
 ### 5.1 Base Template
 All templates extend `templates/base.html` which provides:
-- Fixed sidebar with navigation.
+- Fixed sidebar with navigation (off-canvas drawer on mobile, toggled by the inline hamburger in the sticky header).
 - Sticky header with search and notifications.
 - Consistent styling and theme colors.
-- Responsive design with mobile toggle.
+- Responsive design: mobile drawer with dark backdrop overlay (tap-away or tapping any nav link closes it), `overflow-x-hidden` on the body to prevent horizontal scroll.
 
 ### 5.2 Creating New Pages
 To create a new page, extend the base template:
@@ -210,7 +210,8 @@ python manage.py runserver 0.0.0.0:8000
 ### Available Pages
 | Page | URL | Description |
 | :--- | :--- | :--- |
-| **Dashboard** | [http://127.0.0.1:8000/](http://127.0.0.1:8000/) | Main student dashboard |
+| **Public Homepage** | [http://127.0.0.1:8000/](http://127.0.0.1:8000/) | Glassmorphism landing page (public nodes) |
+| **Dashboard** | [http://127.0.0.1:8000/dashboard/](http://127.0.0.1:8000/dashboard/) | Main student dashboard (moved from `/`) |
 | **Academic & Notes** | [http://127.0.0.1:8000/academic-notes/](http://127.0.0.1:8000/academic-notes/) | Courses & assignments |
 | **Official Notices** | [http://127.0.0.1:8000/notices/](http://127.0.0.1:8000/notices/) | Announcements & events |
 | **Tickets** | [http://127.0.0.1:8000/tickets/](http://127.0.0.1:8000/tickets/) | Meal & transport tickets |
@@ -248,8 +249,10 @@ Niter-centralized-dash/
 │   └── tests.py                 # Host app tests
 ├── static/
 │   └── css/
-│       └── theme.css            # Global design tokens (:root variables)
+│       ├── theme.css            # Global design tokens (:root variables)
+│       └── main.css             # Public homepage glassmorphism styles
 ├── templates/
+│   ├── index.html               # Public homepage (glass hero, about/medical nodes)
 │   ├── base.html                # Base template with sidebar & header
 │   ├── dashboard/
 │   │   └── home.html            # Student dashboard
@@ -303,19 +306,27 @@ DATABASE_URL=postgres://user:pass@localhost:5432/niter_db
 | POST | `/book-appointment/` | Schedule a medical appointment |
 | GET | `/api/notices/` | Fetch official notices |
 | GET | `/api/courses/` | Fetch course materials |
+| GET | `/` | Public homepage (glassmorphism landing page) |
+| GET | `/dashboard/` | Student dashboard (moved from `/`) |
 | GET | `/medical/admin/` | Medical admin dashboard (implemented) |
 | GET | `/host/medical/` | Medical host dashboard (implemented) |
 | GET | `/host/` | Host portal index (redirects to medical host dashboard) |
 
 ## 12. Next Steps
-1. **Backend Integration:** Connect templates to Django views and models.
-2. **API Development:** Create endpoints for meal claims, transport bookings, and appointments.
-3. **User Authentication:** Implement login/logout functionality.
-4. **Database Models:** Design models for users, courses, tickets, and appointments.
-5. **Testing:** Add unit tests for views and forms.
-6. **Deployment:** Configure for production environment.
-7. **Mobile App:** Consider building a React Native or Flutter companion app.
-8. **Real-time Updates:** Implement WebSocket for live notifications and seat availability.
+
+### Remaining Internal Pages (UI)
+1. **5 Department Student Dashboards** - one dashboard per department (CSE, TEX, IPE, FD, EEE).
+2. **Club Admin Dashboard** - student club management view.
+3. **Meal System (Admin/Kitchen side)** - meal management beyond the student claim counter.
+4. **Visual Builder / Editor Integration** - the public homepage is now fully tagged with `data-widget-id` / `data-editable-field`; wire the standalone WYSIWYG editor to it and the app templates (`data-widget`/`data-component` tags) next.
+
+### Backend & Infrastructure
+5. **Backend Integration:** Connect templates to Django views and models (most flows are still mock-only).
+6. **Database Models:** Design models for users, courses, tickets, and appointments.
+7. **User Authentication:** Implement login/logout and role-based access (student / host / admin).
+8. **API Development:** Create endpoints for meal claims, transport bookings, and appointments.
+9. **Real-time Updates:** WebSocket for live notifications and seat availability.
+10. **Deployment:** Configure for production (env vars, ALLOWED_HOSTS, static files).
 
 ## 13. Update by Tajkia Tasnim
 
@@ -458,3 +469,156 @@ Refactored the full codebase to be compatible with a standalone Visual WYSIWYG B
 - `python manage.py check` ✔
 - `python manage.py test` ✔ (2 tests pass)
 - Verified in browser: all pages render with correct theme, data attributes present, no console errors.
+
+---
+
+## 16. Mobile Responsiveness Pass
+
+**Date:** 08 August 2026  
+**Branch:** main (working tree, uncommitted)
+
+### Overview
+
+Completed the mobile responsiveness pass that was in progress (cut off by a session limit). The app is now fully usable on viewports from 360px–414px up to desktop, with no horizontal page overflow anywhere.
+
+### Completed Work
+
+1. **Mobile Navigation (`templates/base.html`)**
+   - Moved the hamburger button **inside the sticky header**, inline next to the page title (previously it was a floating fixed button that overlapped the title on mobile).
+   - Sidebar now slides in as an off-canvas drawer on mobile (`-translate-x-full lg:translate-x-0`) with `z-40 lg:z-auto` so it renders **above** the sticky header when open.
+   - Added a dark **backdrop overlay** (`#sidebar-backdrop`) that appears with the drawer; tapping it closes the menu, and tapping any sidebar link also closes it. `aria-expanded` is synced on the toggle button.
+   - Added `overflow-x-hidden` to the body to prevent horizontal scrolling.
+   - Header search bar wraps to its own row on mobile; content padding is `p-4 md:p-8`.
+
+2. **Host Sidebar (`templates/host/host_base.html`)**
+   - Same `z-40 lg:z-auto` drawer treatment so the host portal menu behaves identically on mobile.
+
+3. **Dashboard (`templates/dashboard/home.html`)**
+   - Welcome banner stacks vertically on mobile (`flex-col sm:flex-row`) so the "Quick Action" button never squeezes the greeting.
+
+4. **Tickets (`templates/ticketing/tickets.html`)**
+   - Meal type selector (Breakfast/Lunch/Dinner) stacks to a single column on mobile (`grid-cols-1 sm:grid-cols-3`) instead of cramming three cards into 360px.
+
+5. **Notes Engine (`templates/notes/notes_engine.html`)**
+   - Workspace becomes a vertical stack on mobile (`flex-col lg:flex-row`, `h-auto lg:h-[calc(100vh-160px)]`).
+   - File browser is full-width with a capped height (`max-h-[45vh]`) and internal scroll instead of a fixed 288px side column.
+   - Editor action buttons wrap (`flex-wrap`); the flex spacer is hidden on mobile.
+   - Textarea gets `min-h-[320px]` on mobile (prevents collapse in an auto-height parent) with an internal scroll.
+
+6. **Medical Host Dashboard (`templates/host/medical/dashboard.html`)**
+   - Search + filter form stacks vertically on mobile (`flex-col md:flex-row`); appointments table scrolls inside its `overflow-x-auto` container.
+
+7. **Medical Admin Dashboard (`templates/host/medical/admin_dashboard.html`)**
+   - Chat rows stack on mobile (`flex-col sm:flex-row`). Other sections were already responsive (summary cards, filter grid, tables wrapped in `overflow-x-auto`).
+
+### Verification
+
+- `python manage.py check` ✔ (no issues)
+- `python manage.py test` ✔ (4 tests pass)
+- **Headless Chrome @ 390×844 viewport** (all 8 pages: `/`, `/notes/`, `/tickets/`, `/host/medical/`, `/medical/admin/`, `/medical/`, `/academic-notes/`, `/notices/`):
+  - No horizontal overflow on any page (`scrollWidth == clientWidth`).
+  - Hamburger visible on every page, header title never overlapped.
+  - Drawer opens with backdrop (opacity 1) and closes on backdrop tap (`sidebar` returns off-screen).
+  - Only console noise: `/favicon.ico` 404 (no favicon defined — harmless).
+
+### Files Modified (this pass)
+
+- `templates/base.html`
+- `templates/host/host_base.html`
+- `templates/dashboard/home.html`
+- `templates/ticketing/tickets.html`
+- `templates/notes/notes_engine.html`
+- `templates/host/medical/dashboard.html`
+- `templates/host/medical/admin_dashboard.html`
+
+### Notes for the Visual Builder
+
+- All new/modified elements keep the existing `data-component`, `data-widget`, `data-region` tags (e.g. `data-component="sidebar-toggle"`, `data-component="sidebar-backdrop"`) so the WYSIWYG editor can target them unchanged.
+- The mobile drawer state is pure CSS transforms + a tiny vanilla JS helper (`setSidebar`), so the builder can style/relocate the sidebar without touching the toggle logic.
+
+---
+
+## 17. Dynamic Public Homepage (Glassmorphism Landing Page)
+
+**Date:** 08 August 2026  
+**Branch:** main (working tree, uncommitted)
+
+### Overview
+
+Built the public-facing homepage (`templates/index.html`) with a full-screen dynamic hero and glassmorphism UI, and its stylesheet `static/css/main.css`. The homepage became the new root URL — the student dashboard moved from `/` to `/dashboard/` (URL name `dashboard` kept, so existing tests and `ENDPOINTS.dashboard` keep working).
+
+### Routing Change
+- `core/urls.py`: `'' → views.public_home` (`name='home'`), `'dashboard/' → views.dashboard` (`name='dashboard'`).
+- `core/views.py`: added `public_home` view (renders `templates/index.html`).
+- `core/context_processors.py`: added `'home'` to the `ENDPOINTS` registry.
+
+### Homepage Sections (`templates/index.html`)
+- **Navbar (`.navbar.glass-panel`)** — floating glass pill with `nav-logo-icon` / `nav-brand-name` tags; links to About University, Faculty & Teachers, Departments, Medical System, and a red `.btn-emergency`; hamburger + stacked glass dropdown on mobile.
+- **Hero (`.hero-viewport`)** — full-screen animated background layer (`.hero-bg-slider`, Unsplash campus photo + gradient fallback, `zoomEffect` 20s), dark overlay (`.hero-overlay`), center `hero-title` / `hero-subtitle` / `hero-btn-primary` / `hero-btn-secondary`, and a 3-card floating glass deck (`.hero-card-deck`): emergency hotline with pulsing badge, medical center overview (Dr. Alex Mercer), and the 5 department quick-selector tags (CSE, TEX, IPE, FD, EEE).
+- **About University (`#about-university`)** — `badge-public` header, Varsity Overview card, Emergency Contact & Address card, Faculty & Teachers 2-card grid, and a 5-card departments grid (FontAwesome icons).
+- **Medical Info System (`#medical-system`)** — `badge-public` header, About Medical In-Charge, Contact Information, Medical Facilities checklist, Emergency Contacts (`.card-emergency`), and Health Tips — mirroring the sections managed from the Medical Admin dashboard's "Home Page Medical Information" mock.
+- **Footer** — `footer-text` tag + dashboard link.
+
+### Visual Builder Readiness
+- The homepage is the first page fully tagged with the builder's canonical attributes: **77 `data-widget-id`** and **51 `data-editable-field`** elements after the NITER content pass (all required per spec: `nav-logo-icon`, `nav-brand-name`, `hero-bg`, `hero-title`, `hero-subtitle`, `hero-btn-primary`, `hero-btn-secondary`, `footer-text`, `niter-*` content fields, plus cards and text nodes).
+
+### Styling (`static/css/main.css`)
+- Glassmorphism primitives (`.glass-panel` with `backdrop-filter: blur(16px)`), full-screen hero classes, grid helpers `.grid-2` / `.grid-3` / `.grid-5` (collapse to `1fr` below 768px), `.badge-public`, pulse/zoom/fadeUp animations, `prefers-reduced-motion` support.
+- Colors/fonts/radii fall back to `theme.css` tokens; landing-specific tokens (dark navy base, glass fills) live at the top of `main.css`.
+
+### Verification
+- `python manage.py check` ✔, `python manage.py test` ✔ (4 tests pass).
+- Headless Chrome @1280px: hero fills the viewport, 18 glass panels, 3-card deck, 5 department cards, all sections present, **no horizontal overflow**, zero JS errors (favicon 404 only).
+- Headless Chrome @390px: **no horizontal overflow** (before/after nav open), hamburger opens the stacked menu, card deck collapses to 1 column, zero console errors.
+- `/` serves the homepage; `/dashboard/` still serves the student dashboard with its sidebar.
+
+### Files Added / Modified
+- `templates/index.html` (new)
+- `static/css/main.css` (new)
+- `core/views.py`, `core/urls.py`, `core/context_processors.py`
+- `docs/HANDOVER.md`
+
+---
+
+## 18. Real-World NITER Content (About University Section)
+
+**Date:** 08 August 2026  
+**Branch:** main (working tree, uncommitted)
+
+### Overview
+
+Replaced the placeholder "About University" content on the public homepage with accurate NITER (National Institute of Textile Engineering and Research) information, and added an affiliation/governance highlight band.
+
+### Updated Content (`templates/index.html`)
+- **Varsity Overview → "About NITER"** — `niter-overview-title` / `niter-overview-text`: NITER is a constituent institute of the University of Dhaka, run under the Bangladesh Textile Mills Association (BTMA) under the Ministry of Textiles and Jute.
+- **Address & Emergency Contact → "NITER Campus & Contact"** — `niter-address-title`, `niter-address-text` (Nayarhat, Savar, Dhaka-1350), `niter-phone-text` (+880 2-7791888 / +880 1711-000000), `niter-email-text` (info@niter.edu.bd).
+- **Affiliation & Management Highlights** — new `highlight-card` band (`niter-highlights`) with two pill items: `niter-affiliation-text` (Constituent Institute of the University of Dhaka) and `niter-governance-text` (Managed by BTMA).
+- **Department cards** — `dept-*-desc` fields now state full B.Sc. programs: CSE (Computer Science & Engineering), TEX (Textile Engineering), IPE (Industrial & Production Engineering), FD (Fashion Design & Technology), EEE (Electrical & Electronic Engineering).
+
+### Styling (`static/css/main.css`)
+- Added `.highlight-card`, `.highlight-item`, `.highlight-icon`, `.highlight-label`, `.highlight-text` (wrapable pill band, responsive).
+
+### Verification
+- `python manage.py check` ✔, `python manage.py test` ✔ (4 tests pass).
+- Headless Chrome: all new widget texts render exactly as specified, highlight band shows 2 items, all 5 department descriptions updated, **no horizontal overflow** at 1280px or 390px (favicon 404 only).
+
+---
+
+## 19. Session Finalization & Release to main
+
+**Date:** 08 August 2026  
+**Branch:** main (committed & pushed)
+
+### Overview
+
+Final release pass: full error check, mobile-viewport audit, and push of the accumulated work (mobile responsiveness, public homepage + route change, NITER content) to `main`.
+
+### Final Verification (before push)
+- `python manage.py check` ✔ (no issues), `python manage.py test` ✔ (4 tests pass — including `home` route coverage).
+- **Mobile @390px (9 pages):** `/`, `/dashboard/`, `/notes/`, `/tickets/`, `/host/medical/`, `/medical/admin/`, `/medical/`, `/academic-notes/`, `/notices/` — zero horizontal overflow; hamburger drawer opens/closes via backdrop and nav-link tap on the moved `/dashboard/` (backdrop opacity 1 → 0, sidebar returns to `-256`).
+- **Homepage @1280px/390px:** hero full-screen, 19 glass panels, 3-col deck on desktop / 1-col on mobile, all sections present, NITER content exact, **77 widget ids / 51 editable fields**, no overflow, no console errors (favicon 404 only).
+- **Desktop:** sticky header, fixed sidebar, hamburger hidden on lg+.
+
+### Committed
+- 12 modified files + 2 new files (`templates/index.html`, `static/css/main.css`).
+- Pushed to `origin/main`.

@@ -1,0 +1,373 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CampusDash — Public University Information &amp; Medical Services</title>
+    <meta name="description" content="CampusDash — public university information, academic departments, and medical services system.">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Public homepage glassmorphism styles -->
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="landing" data-app="campusdash-public">
+
+    <!-- ============================================================
+         A. Modern Navbar (floating glass)
+    ============================================================ -->
+    <nav class="navbar glass-panel" data-widget-id="navbar">
+        <a href="#hero" class="brand" aria-label="CampusDash home">
+            <span class="brand-icon" data-widget-id="nav-logo-icon" data-editable-field="icon">
+                <i class="fa-solid fa-graduation-cap"></i>
+            </span>
+            <span class="brand-name" data-widget-id="nav-brand-name" data-editable-field="text">CampusDash</span>
+        </a>
+
+        <ul class="nav-links" id="nav-links">
+            <li><a href="#about-university">About University</a></li>
+            <li><a href="#faculty-teachers">Faculty &amp; Teachers</a></li>
+            <li><a href="#departments">Departments</a></li>
+            <li><a href="#medical-system">Medical System</a></li>
+            <li><a href="#medical-emergency" class="btn-emergency"><i class="fa-solid fa-phone-volume"></i> Emergency</a></li>
+        </ul>
+
+        <button class="nav-toggle" id="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">
+            <i class="fa-solid fa-bars"></i>
+        </button>
+    </nav>
+
+    <!-- ============================================================
+         B. Dynamic Full-Screen Hero
+    ============================================================ -->
+    <section class="hero-viewport" id="hero" data-widget-id="hero-viewport">
+        <!-- Background layer (image/video container for the Visual Builder) -->
+        <div class="hero-bg-slider" data-widget-id="hero-bg" data-editable-field="bg-image"></div>
+        <!-- Dark gradient overlay -->
+        <div class="hero-overlay"></div>
+
+        <!-- Center hero text -->
+        <div class="hero-content">
+            <span class="hero-eyebrow"><i class="fa-solid fa-university"></i> NITER · Est. 1998</span>
+            <h1 class="hero-title" data-widget-id="hero-title" data-editable-field="text">Welcome to CampusDash</h1>
+            <p class="hero-subtitle" data-widget-id="hero-subtitle" data-editable-field="text">Public University Information &amp; Medical Services System</p>
+            <div class="hero-actions">
+                <a href="#about-university" class="hero-btn-primary" data-widget-id="hero-btn-primary" data-editable-field="text">
+                    Explore Campus <i class="fa-solid fa-arrow-right"></i>
+                </a>
+                <a href="#medical-system" class="hero-btn-secondary" data-widget-id="hero-btn-secondary" data-editable-field="text">
+                    <i class="fa-solid fa-heart-pulse"></i> Medical Services
+                </a>
+            </div>
+        </div>
+
+        <!-- Bottom floating glass quick-card deck -->
+        <div class="hero-card-deck">
+
+            <!-- Card 1: Emergency Hotline -->
+            <div class="hero-card hero-card-emerg glass-panel" data-widget-id="hero-card-emerg">
+                <div class="card-label">Emergency Hotline</div>
+                <span class="pulse-badge"><span class="pulse-dot"></span> 24/7 Active</span>
+                <div class="hotline" data-widget-id="hero-emerg-number" data-editable-field="text">
+                    +880 1700-000000 <small>— campus emergency</small>
+                </div>
+                <a href="tel:+8801700000000" class="call-link">
+                    <i class="fa-solid fa-phone"></i> Quick Call
+                </a>
+            </div>
+
+            <!-- Card 2: Medical Center Overview -->
+            <div class="hero-card hero-card-med glass-panel" data-widget-id="hero-card-med">
+                <div class="card-label">Medical Center</div>
+                <div class="incharge">
+                    <span class="incharge-avatar">AM</span>
+                    <div>
+                        <div class="incharge-name" data-widget-id="hero-med-incharge" data-editable-field="text">Dr. Alex Mercer</div>
+                        <div class="incharge-role" data-widget-id="hero-med-designation" data-editable-field="text">Medical In-Charge · Chief Medical Officer</div>
+                    </div>
+                </div>
+                <div class="med-hours">
+                    <i class="fa-solid fa-clock"></i>
+                    <span data-widget-id="hero-med-hours" data-editable-field="text">Sat–Thu · 9:00 AM – 5:00 PM</span>
+                </div>
+            </div>
+
+            <!-- Card 3: Academic Departments -->
+            <div class="hero-card hero-card-depts glass-panel" data-widget-id="hero-card-depts">
+                <div class="card-label">Academic Departments</div>
+                <div class="dept-tags">
+                    <a href="#departments" class="dept-tag">CSE</a>
+                    <a href="#departments" class="dept-tag">TEX</a>
+                    <a href="#departments" class="dept-tag">IPE</a>
+                    <a href="#departments" class="dept-tag">FD</a>
+                    <a href="#departments" class="dept-tag">EEE</a>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- ============================================================
+         C. Main Content Sections
+    ============================================================ -->
+    <main class="landing-main">
+
+        <!-- ==========================================================
+             1. About University
+        ========================================================== -->
+        <section class="section" id="about-university" data-widget-id="section-about-university">
+            <div class="section-inner">
+
+                <div class="section-head">
+                    <span class="badge-public">* Visible for Public Only</span>
+                    <h2 class="section-title" data-widget-id="about-title" data-editable-field="text">About University</h2>
+                    <p class="section-lead">Everything public visitors need to know about the institution, its faculty, and its departments.</p>
+                </div>
+
+                <!-- Affiliation & Management highlights -->
+                <div class="card glass-panel highlight-card" data-widget-id="niter-highlights">
+                    <div class="highlight-item">
+                        <span class="highlight-icon"><i class="fa-solid fa-building-columns"></i></span>
+                        <div>
+                            <span class="highlight-label">Affiliation</span>
+                            <span class="highlight-text" data-widget-id="niter-affiliation-text" data-editable-field="text">Constituent Institute of the University of Dhaka (DU)</span>
+                        </div>
+                    </div>
+                    <div class="highlight-item">
+                        <span class="highlight-icon"><i class="fa-solid fa-handshake"></i></span>
+                        <div>
+                            <span class="highlight-label">Governance</span>
+                            <span class="highlight-text" data-widget-id="niter-governance-text" data-editable-field="text">Managed by the Bangladesh Textile Mills Association (BTMA)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Overview + Emergency Contact & Address -->
+                <div class="grid-2">
+                    <div class="card glass-panel" data-widget-id="about-overview">
+                        <div class="card-icon"><i class="fa-solid fa-landmark"></i></div>
+                        <h3 data-widget-id="niter-overview-title" data-editable-field="text">About NITER</h3>
+                        <p data-widget-id="niter-overview-text" data-editable-field="text">The National Institute of Textile Engineering and Research (NITER) is a premier constituent institute of the University of Dhaka, run under the management of the Bangladesh Textile Mills Association (BTMA) under the Ministry of Textiles and Jute. NITER is dedicated to producing world-class engineers, designers, and industrial leaders across engineering and technological disciplines.</p>
+                    </div>
+
+                    <div class="card glass-panel" data-widget-id="about-contact">
+                        <div class="card-icon"><i class="fa-solid fa-location-dot"></i></div>
+                        <h3 data-widget-id="niter-address-title" data-editable-field="text">NITER Campus &amp; Contact</h3>
+                        <ul class="info-list">
+                            <li>
+                                <i class="fa-solid fa-map-pin"></i>
+                                <span><strong>Campus Address</strong><br><span data-widget-id="niter-address-text" data-editable-field="text">Nayarhat, Savar, Dhaka-1350, Bangladesh</span></span>
+                            </li>
+                            <li>
+                                <i class="fa-solid fa-phone"></i>
+                                <span><strong>Campus Phone</strong><br><span data-widget-id="niter-phone-text" data-editable-field="text">+880 2-7791888 / +880 1711-000000</span></span>
+                            </li>
+                            <li>
+                                <i class="fa-solid fa-envelope"></i>
+                                <span><strong>Official Email</strong><br><span data-widget-id="niter-email-text" data-editable-field="text">info@niter.edu.bd</span></span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Faculty & Teachers Grid -->
+                <div class="grid-2" id="faculty-teachers" data-widget-id="section-faculty-teachers">
+                    <div class="card glass-panel" data-widget-id="about-faculty">
+                        <div class="card-icon"><i class="fa-solid fa-chalkboard-user"></i></div>
+                        <h3 data-widget-id="about-faculty-title" data-editable-field="text">About Faculty</h3>
+                        <p data-widget-id="about-faculty-text" data-editable-field="text">A diverse faculty body spans every department, bringing together PhD holders, industry veterans, and researchers who mentor students beyond the classroom.</p>
+                    </div>
+
+                    <div class="card glass-panel" data-widget-id="about-teachers">
+                        <div class="card-icon"><i class="fa-solid fa-user-tie"></i></div>
+                        <h3 data-widget-id="about-teachers-title" data-editable-field="text">About Teachers</h3>
+                        <p style="margin-bottom: 1rem;" data-widget-id="about-teachers-text" data-editable-field="text">Professors and researchers drive our publication record and lab culture, with ongoing work in textiles, computing, and applied engineering.</p>
+                        <div class="card-meta">
+                            <span><span class="stat">120+</span> faculty</span>
+                            <span style="margin-left: 1.2rem;"><span class="stat">85%</span> with advanced degrees</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- About Departments Grid (5 cards) -->
+                <div class="grid-5" id="departments" data-widget-id="section-departments">
+                    <div class="card glass-panel dept-card" data-widget-id="dept-cse">
+                        <div class="card-icon"><i class="fa-solid fa-laptop-code"></i></div>
+                        <h4 data-widget-id="dept-cse-name" data-editable-field="text">CSE</h4>
+                        <p data-widget-id="dept-cse-desc" data-editable-field="text">B.Sc. in Computer Science &amp; Engineering</p>
+                    </div>
+                    <div class="card glass-panel dept-card" data-widget-id="dept-tex">
+                        <div class="card-icon"><i class="fa-solid fa-industry"></i></div>
+                        <h4 data-widget-id="dept-tex-name" data-editable-field="text">TEX</h4>
+                        <p data-widget-id="dept-tex-desc" data-editable-field="text">B.Sc. in Textile Engineering</p>
+                    </div>
+                    <div class="card glass-panel dept-card" data-widget-id="dept-ipe">
+                        <div class="card-icon"><i class="fa-solid fa-gears"></i></div>
+                        <h4 data-widget-id="dept-ipe-name" data-editable-field="text">IPE</h4>
+                        <p data-widget-id="dept-ipe-desc" data-editable-field="text">B.Sc. in Industrial &amp; Production Engineering</p>
+                    </div>
+                    <div class="card glass-panel dept-card" data-widget-id="dept-fd">
+                        <div class="card-icon"><i class="fa-solid fa-shirt"></i></div>
+                        <h4 data-widget-id="dept-fd-name" data-editable-field="text">FD</h4>
+                        <p data-widget-id="dept-fd-desc" data-editable-field="text">B.Sc. in Fashion Design &amp; Technology</p>
+                    </div>
+                    <div class="card glass-panel dept-card" data-widget-id="dept-eee">
+                        <div class="card-icon"><i class="fa-solid fa-bolt"></i></div>
+                        <h4 data-widget-id="dept-eee-name" data-editable-field="text">EEE</h4>
+                        <p data-widget-id="dept-eee-desc" data-editable-field="text">B.Sc. in Electrical &amp; Electronic Engineering</p>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ==========================================================
+             2. Medical Info System
+        ========================================================== -->
+        <section class="section section-alt" id="medical-system" data-widget-id="section-medical-system">
+            <div class="section-inner">
+
+                <div class="section-head">
+                    <span class="badge-public">* Visible for Public Only</span>
+                    <h2 class="section-title" data-widget-id="medical-title" data-editable-field="text">Medical Info System</h2>
+                    <p class="section-lead">Public health information, facilities, and emergency contacts — managed from the Medical Admin dashboard.</p>
+                </div>
+
+                <!-- Incharge + Contact -->
+                <div class="grid-2">
+                    <div class="card glass-panel" data-widget-id="med-incharge">
+                        <div class="card-icon"><i class="fa-solid fa-user-doctor"></i></div>
+                        <h3 data-widget-id="med-incharge-title" data-editable-field="text">About Medical In-Charge</h3>
+                        <ul class="info-list">
+                            <li>
+                                <i class="fa-solid fa-user"></i>
+                                <span><strong>Name</strong> — <span data-widget-id="med-incharge-name" data-editable-field="text">Dr. Alex Mercer</span></span>
+                            </li>
+                            <li>
+                                <i class="fa-solid fa-briefcase"></i>
+                                <span><strong>Designation</strong> — <span data-widget-id="med-incharge-designation" data-editable-field="text">Chief Medical Officer</span></span>
+                            </li>
+                            <li>
+                                <i class="fa-solid fa-hospital-user"></i>
+                                <span><strong>Department</strong> — <span data-widget-id="med-incharge-dept" data-editable-field="text">Medical Center</span></span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="card glass-panel" data-widget-id="med-contact">
+                        <div class="card-icon"><i class="fa-solid fa-address-book"></i></div>
+                        <h3 data-widget-id="med-contact-title" data-editable-field="text">Contact Information</h3>
+                        <ul class="info-list">
+                            <li>
+                                <i class="fa-solid fa-phone"></i>
+                                <span><strong>Phone</strong> — <span data-widget-id="med-contact-phone" data-editable-field="text">+880 1700-111111</span></span>
+                            </li>
+                            <li>
+                                <i class="fa-solid fa-envelope"></i>
+                                <span><strong>Email</strong> — <span data-widget-id="med-contact-email" data-editable-field="text">medical@campusdash.edu.bd</span></span>
+                            </li>
+                            <li>
+                                <i class="fa-solid fa-location-dot"></i>
+                                <span><strong>Campus Medical Location</strong> — <span data-widget-id="med-contact-location" data-editable-field="text">Medical Center, Ground Floor, Main Academic Block</span></span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Facilities + Emergency Contacts -->
+                <div class="grid-2">
+                    <div class="card glass-panel" data-widget-id="med-facilities">
+                        <div class="card-icon"><i class="fa-solid fa-kit-medical"></i></div>
+                        <h3 data-widget-id="med-facilities-title" data-editable-field="text">Medical Facilities</h3>
+                        <ul class="check-list" data-widget-id="med-facilities-list">
+                            <li><i class="fa-solid fa-circle-check"></i> On-campus infirmary with 24/7 duty staff</li>
+                            <li><i class="fa-solid fa-circle-check"></i> First-aid room in every academic block</li>
+                            <li><i class="fa-solid fa-circle-check"></i> General physician consultation — daily</li>
+                            <li><i class="fa-solid fa-circle-check"></i> Ambulance coordination with nearby hospitals</li>
+                            <li><i class="fa-solid fa-circle-check"></i> Free health check-up camps each semester</li>
+                        </ul>
+                    </div>
+
+                    <div class="card glass-panel card-emergency" id="medical-emergency" data-widget-id="med-emergency">
+                        <div class="card-icon"><i class="fa-solid fa-truck-medical"></i></div>
+                        <h3 data-widget-id="med-emergency-title" data-editable-field="text">Emergency Contacts</h3>
+                        <ul class="info-list">
+                            <li>
+                                <i class="fa-solid fa-ambulance"></i>
+                                <span><strong>Ambulance</strong> — <span data-widget-id="med-emergency-ambulance" data-editable-field="text">+880 1700-222222</span></span>
+                            </li>
+                            <li>
+                                <i class="fa-solid fa-house-medical"></i>
+                                <span><strong>ER Hotline</strong> — <span data-widget-id="med-emergency-er" data-editable-field="text">+880 1700-000000</span></span>
+                            </li>
+                            <li>
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                                <span><strong>Emergency Procedure</strong> — <span data-widget-id="med-emergency-procedure" data-editable-field="text">Call the ER hotline, stay with the student, and inform the Medical In-Charge immediately.</span></span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Health Tips -->
+                <div class="card glass-panel" data-widget-id="med-health-tips">
+                    <div class="card-icon"><i class="fa-solid fa-leaf"></i></div>
+                    <h3 data-widget-id="med-health-tips-title" data-editable-field="text">Health Tips</h3>
+                    <p data-widget-id="med-health-tips-text" data-editable-field="text">Stay hydrated, keep a consistent sleep schedule, and use the campus infirmary for routine check-ups. Report any fever, rash, or persistent symptoms to the Medical Center early — early care keeps our campus community healthy.</p>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ============================================================
+         D. Footer
+    ============================================================ -->
+    <footer class="footer" data-widget-id="footer">
+        <div class="footer-links">
+            <a href="#about-university">About University</a>
+            <a href="#faculty-teachers">Faculty &amp; Teachers</a>
+            <a href="#departments">Departments</a>
+            <a href="#medical-system">Medical System</a>
+            <a href="{{ ENDPOINTS.dashboard }}" class="footer-dashboard-link"><i class="fa-solid fa-user"></i> Student Dashboard</a>
+        </div>
+        <p data-widget-id="footer-text" data-editable-field="text">© 2026 CampusDash. All rights reserved.</p>
+    </footer>
+
+    <script>
+        // Mobile nav toggle
+        const navToggle = document.getElementById('nav-toggle');
+        const navLinks = document.getElementById('nav-links');
+
+        if (navToggle && navLinks) {
+            navToggle.addEventListener('click', () => {
+                const open = navLinks.classList.toggle('open');
+                navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            });
+            // Close the mobile menu after tapping a link
+            navLinks.querySelectorAll('a').forEach(link => {
+                link.addEventListener('click', () => {
+                    navLinks.classList.remove('open');
+                    navToggle.setAttribute('aria-expanded', 'false');
+                });
+            });
+        }
+
+        // Solidify the navbar once the page is scrolled
+        const navbar = document.querySelector('.navbar');
+        const onScroll = () => navbar.classList.toggle('scrolled', window.scrollY > 24);
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+    </script>
+</body>
+</html>

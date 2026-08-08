@@ -5,10 +5,10 @@
 {% block header %}Notes Engine{% endblock %}
 
 {% block content %}
-<div data-widget="notes-engine" data-component="workspace" class="flex h-[calc(100vh-160px)] bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+<div data-widget="notes-engine" data-component="workspace" class="flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-160px)] bg-card rounded-xl border border-border shadow-sm overflow-hidden">
 
     <!-- Left Column: File Browser -->
-    <div data-region="file-browser" class="w-72 border-r border-border bg-card flex flex-col">
+    <div data-region="file-browser" class="w-full lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-border bg-card flex flex-col max-h-[45vh] lg:max-h-none">
         <!-- Search Bar -->
         <div class="p-4 border-b border-border">
             <div class="relative">
@@ -89,7 +89,7 @@
             <div class="p-6 pb-4">
                 <input type="text" value="Advanced Algorithms - Lecture 5 Summary" class="w-full text-2xl font-bold text-main bg-transparent border-none focus:outline-none placeholder-main/30 mb-4" placeholder="Untitled Note">
                 
-                <div class="flex items-center gap-3">
+                <div class="flex flex-wrap items-center gap-3">
                     <button type="button" class="flex items-center gap-2 bg-main hover:bg-main/90 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors shadow-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
@@ -104,7 +104,7 @@
                         Extract Keywords
                     </button>
 
-                    <div class="flex-1"></div>
+                    <div class="hidden md:block md:flex-1"></div>
 
                     <button type="button" class="flex items-center gap-2 bg-card hover:bg-white text-main font-medium px-4 py-2 rounded-lg text-sm transition-colors border border-border shadow-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -116,8 +116,8 @@
             </div>
 
             <!-- Textarea -->
-            <div class="flex-1 px-6 pb-6">
-                <textarea class="w-full h-full bg-transparent text-main/80 font-mono text-sm leading-relaxed resize-none focus:outline-none placeholder-main/30" placeholder="Start typing your notes here... (Markdown supported)">## Key Concepts from Lecture 5
+            <div class="flex-1 px-6 pb-6 overflow-y-auto">
+                <textarea class="w-full h-full min-h-[320px] lg:min-h-0 bg-transparent text-main/80 font-mono text-sm leading-relaxed resize-none focus:outline-none placeholder-main/30" placeholder="Start typing your notes here... (Markdown supported)">## Key Concepts from Lecture 5
 
 - **Divide and Conquer Strategy**: Breaking problems into subproblems.
 - **Recurrence Relations**: Using Big-O notation to analyze recursive algorithms.
