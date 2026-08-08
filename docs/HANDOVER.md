@@ -310,3 +310,79 @@ Completed UI architecture refactoring and improved the dashboard structure while
 
 - `python manage.py check` ✔
 - Tested successfully on localhost.
+
+# CampusDash – Development Handover
+
+## Latest Development Update
+**Date:** August 8, 2026  
+**Branch:** `taj`  
+**Latest Commit:** `7366f53`
+
+---
+
+## 1. Medical Admin Dashboard
+
+A separate Medical Admin Dashboard has been added to keep medical administration functionality separate from the Student Dashboard.
+
+### Intended Route
+
+`/medical/admin/`
+
+### Medical Admin Features
+
+The Medical Admin Dashboard is designed to provide:
+
+- Dashboard overview
+- Appointment management
+- Pending appointment management
+- Confirm appointment
+- Cancel appointment
+- Appointment search/filter
+- Appointment details
+- Medical chat management
+- Doctor schedule management
+- Medical information management
+- Health tips management
+- Disease awareness management
+- First aid information
+- Medical facilities management
+- Emergency contacts management
+- Medical news management
+- Public medical information management
+
+---
+
+## 2. Student Medical Appointment
+
+The Student Dashboard should only provide student-level medical appointment functionality.
+
+### Student can:
+
+- Book a medical appointment
+- View their own appointments
+- View appointment status
+
+### Student cannot:
+
+- Confirm appointments
+- Cancel appointments as an admin
+- Approve appointments
+- Manage other students' appointments
+- Manage doctors
+- Manage medical information
+- Access Medical Admin controls
+
+### Intended Flow
+
+```text
+Student
+   ↓
+Book Appointment
+   ↓
+PENDING
+   ↓
+Medical Admin Reviews
+   ↓
+CONFIRMED / CANCELLED
+   ↓
+Student Views Updated Status
