@@ -6,7 +6,7 @@
 
 {% block content %}
 <div class="space-y-6">
-    <div class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+    <div data-component="card" data-widget="admin-header" class="rounded-2xl border border-border bg-card p-6 shadow-sm">
         <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
                 <p class="text-sm font-semibold uppercase tracking-[0.2em] text-main/50">Medical Admin Area</p>
@@ -20,20 +20,20 @@
         </div>
     </div>
 
-    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div class="rounded-xl border border-border bg-card p-4">
+    <div data-widget="summary-cards" class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div data-component="card" data-metric="total" class="rounded-xl border border-border bg-card p-4">
             <div class="text-sm text-main/60">Total Appointments</div>
             <div class="mt-2 text-3xl font-semibold text-main">{{ summaries.total }}</div>
         </div>
-        <div class="rounded-xl border border-border bg-card p-4">
+        <div data-component="card" data-metric="pending" class="rounded-xl border border-border bg-card p-4">
             <div class="text-sm text-main/60">Pending Appointments</div>
             <div class="mt-2 text-3xl font-semibold text-amber-600">{{ summaries.pending }}</div>
         </div>
-        <div class="rounded-xl border border-border bg-card p-4">
+        <div data-component="card" data-metric="confirmed" class="rounded-xl border border-border bg-card p-4">
             <div class="text-sm text-main/60">Confirmed Appointments</div>
             <div class="mt-2 text-3xl font-semibold text-emerald-600">{{ summaries.confirmed }}</div>
         </div>
-        <div class="rounded-xl border border-border bg-card p-4">
+        <div data-component="card" data-metric="cancelled" class="rounded-xl border border-border bg-card p-4">
             <div class="text-sm text-main/60">Cancelled Appointments</div>
             <div class="mt-2 text-3xl font-semibold text-red-600">{{ summaries.cancelled }}</div>
         </div>
@@ -48,7 +48,7 @@
             <div class="text-xs text-main/50">Admin-only actions are shown here.</div>
         </div>
 
-        <form method="get" class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <form method="get" data-endpoint="medical_admin_dashboard" data-component="form" class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             <input type="text" name="q" value="{{ search_query }}" placeholder="Search appointment" class="rounded-lg border border-border bg-base px-3 py-2 text-sm" />
             <input type="text" name="student" placeholder="Search by student name" class="rounded-lg border border-border bg-base px-3 py-2 text-sm" />
             <input type="text" name="student_id" placeholder="Search by student ID" class="rounded-lg border border-border bg-base px-3 py-2 text-sm" />
@@ -147,7 +147,7 @@
                 <h3 class="text-lg font-semibold text-main">Appointment Details</h3>
                 <p class="text-sm text-main/60">View full student and appointment information.</p>
             </div>
-            <a href="{% url 'medical_admin_dashboard' %}" class="text-sm text-main/60 hover:text-main">Close</a>
+            <a href="{{ ENDPOINTS.medical_admin_dashboard }}" class="text-sm text-main/60 hover:text-main">Close</a>
         </div>
         <div class="mt-6 grid gap-6 lg:grid-cols-2">
             <div class="rounded-xl border border-border p-4">
@@ -175,7 +175,7 @@
     {% endif %}
 
     <div class="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <div class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <div data-component="card" data-widget="chat-management" class="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <div class="mb-4 flex items-center justify-between gap-3">
                 <div>
                     <h3 class="text-lg font-semibold text-main">Medical Chat Management</h3>
@@ -199,7 +199,7 @@
             </div>
         </div>
 
-        <div class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <div data-component="card" data-widget="doctor-schedule" class="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <h3 class="text-lg font-semibold text-main">Doctor Schedule</h3>
             <div class="mt-4 space-y-3">
                 {% for doctor in doctors %}
@@ -219,7 +219,7 @@
         </div>
     </div>
 
-    <div class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+    <div data-component="card" data-widget="content-management" class="rounded-2xl border border-border bg-card p-6 shadow-sm">
         <h3 class="text-lg font-semibold text-main">Medical Content Management</h3>
         <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {% for section in content_sections %}
@@ -238,7 +238,7 @@
         </div>
     </div>
 
-    <div class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+    <div data-component="card" data-widget="home-page-info" class="rounded-2xl border border-border bg-card p-6 shadow-sm">
         <h3 class="text-lg font-semibold text-main">Home Page Medical Information</h3>
         <div class="mt-4 space-y-3">
             {% for item in home_page_sections %}

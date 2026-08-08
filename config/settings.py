@@ -28,6 +28,8 @@ TEMPLATES = [
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.request',
+                # Centralized endpoint registry for decoupled URL mappings
+                'core.context_processors.endpoints',
             ],
         },
     },
@@ -40,3 +42,6 @@ DATABASES = {}
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 STATIC_URL = '/static/'
+
+# Global stylesheets (theme.css) served from this directory
+STATICFILES_DIRS = [BASE_DIR / 'static']

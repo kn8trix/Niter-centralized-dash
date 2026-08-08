@@ -239,12 +239,16 @@ Niter-centralized-dash/
 ├── core/
 │   ├── __init__.py
 │   ├── views.py                 # View functions
-│   └── urls.py                  # App URL routes
+│   ├── urls.py                  # App URL routes
+│   └── context_processors.py    # Centralized ENDPOINTS registry
 ├── host/
 │   ├── __init__.py
 │   ├── views.py                 # Host portal views (medical host + admin dashboards)
 │   ├── urls.py                  # Host app URL routes
 │   └── tests.py                 # Host app tests
+├── static/
+│   └── css/
+│       └── theme.css            # Global design tokens (:root variables)
 ├── templates/
 │   ├── base.html                # Base template with sidebar & header
 │   ├── dashboard/
@@ -390,3 +394,67 @@ Added a medical admin dashboard and a host portal to the project, built on top o
 
 - `python manage.py check` ✔
 - `python manage.py test` ✔ (2 tests pass)
+
+---
+
+## 15. Visual Builder Compatibility Refactor
+
+**Date:** 08 August 2026  
+**Branch:** main
+
+### Overview
+
+Refactored the full codebase to be compatible with a standalone Visual WYSIWYG Builder App. Applied standard CSS variables, data attribute tags, and decoupled endpoint mappings without breaking any page layouts, functionality, or responsiveness.
+
+### Completed Work
+
+1. **CSS & Theme Variable Migration**
+   - Created `static/css/theme.css` with a global `:root` block containing all design tokens (colors, fonts, radii, layout).
+   - Colors stored as space-separated RGB triplets so Tailwind opacity modifiers (e.g. `bg-base/80`) keep working via the `rgb(var(--color-x) / <alpha-value>)` pattern.
+   - Replaced all hardcoded hex values (body, scrollbar, sidebar-link hover/active in `base.html` and the `bg-[#F0EBE1]` icon chips across 5 templates) with `var()` references + fallbacks.
+   - Replaced `bg-[#F0EBE1]` with a new `chip` color token (`bg-chip`).
+
+2. **Data Attribute Tags**
+   - Added `data-component`, `data-widget`, `data-region`, `data-route`, `data-endpoint`, and `data-category` attributes across all templates so the Visual Builder can target components.
+   - `base.html`: `data-app="campusdash"` on `<body>`, `data-region` on sidebar/nav/main/header/content, `data-component` on brand/profile/search/notifications.
+   - Cards tagged `data-widget="meal-ratio"`, `"transport"`, `"medical-center"`, `"notice"`, `"course-card"`, `"appointment-form"`, etc.
+
+3. **Decoupled Endpoint Mappings**
+   - Created `core/context_processors.py` exposing a single `ENDPOINTS` dict (logical name -> resolved URL) to every template.
+   - Replaced hardcoded `{% url %}` references in forms and sidebar links with `{{ ENDPOINTS.<name> }}`.
+   - `base.html` emits the endpoint map as machine-readable JSON for the builder via `{{ ENDPOINTS|json_script:"app-endpoints" }}`.
+
+### Files Added / Modified
+
+- `static/css/theme.css` (new)
+- `core/context_processors.py` (new)
+- `config/settings.py` (added `core.context_processors.endpoints`, `STATICFILES_DIRS`)
+- `templates/base.html`
+- `templates/dashboard/home.html`
+- `templates/ticketing/tickets.html`
+- `templates/medical/booking.html`
+- `templates/academic/notes.html`
+- `templates/notices/notices.html`
+- `templates/notes/notes_engine.html`
+- `templates/host/host_base.html`
+- `templates/host/medical/dashboard.html`
+- `templates/host/medical/admin_dashboard.html`
+
+### Design Tokens (`static/css/theme.css`)
+
+| Token | Value | Usage |
+| :--- | :--- | :--- |
+| `--color-base` | `251 249 245` (#FBF9F5) | App background |
+| `--color-card` | `255 255 255` (#FFFFFF) | Cards & sidebar |
+| `--color-border` | `235 230 223` (#EBE6DF) | Separators |
+| `--color-main` | `43 41 39` (#2B2927) | Primary text |
+| `--color-accent` | `234 220 201` (#EADCC9) | Active states / buttons |
+| `--color-accent-hover` | `216 202 180` (#D8CAB4) | Accent hover |
+| `--color-chip` | `240 235 225` (#F0EBE1) | Icon chips / soft badges |
+| `--font-main` | `'Inter', system-ui, sans-serif` | Primary font |
+
+### Testing
+
+- `python manage.py check` ✔
+- `python manage.py test` ✔ (2 tests pass)
+- Verified in browser: all pages render with correct theme, data attributes present, no console errors.
