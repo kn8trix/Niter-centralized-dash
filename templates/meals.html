@@ -9,6 +9,8 @@
 
     <!-- Global design tokens -->
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
     <!-- Meals page styles -->
     <link rel="stylesheet" href="{% static 'css/meals.css' %}">
 
@@ -28,17 +30,7 @@
         <!-- ============================================================
              Top bar
         ============================================================ -->
-        <header class="topbar">
-            <a href="{% url 'home' %}" class="brand">
-                <span class="brand-icon"><i class="fa-solid fa-graduation-cap"></i></span>
-                <span>CampusDash</span>
-            </a>
-            <nav class="navlinks" aria-label="Quick links">
-                <a href="{% url 'dashboard' %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
-                <a href="{% url 'transport_dashboard' %}"><i class="fa-solid fa-bus"></i> Transport</a>
-                <a href="{% url 'clubs_dashboard' %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
-            </nav>
-        </header>
+        {% include 'partials/topbar.html' with active='meals' %}
 
         <!-- ============================================================
              Intro

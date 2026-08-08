@@ -9,6 +9,8 @@
 
     <!-- Global design tokens -->
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
     <!-- Clubs & Events frontend-only styles -->
     <link rel="stylesheet" href="{% static 'css/clubs.css' %}">
 
@@ -28,21 +30,12 @@
         <!-- ============================================================
              Top bar
         ============================================================ -->
-        <header class="clubs-topbar">
-            <a href="{% url 'home' %}" class="clubs-brand">
-                <span class="clubs-brand-icon"><i class="fa-solid fa-graduation-cap"></i></span>
-                <span>CampusDash</span>
-            </a>
-            <nav class="clubs-navlinks" aria-label="Quick links">
-                <a href="{% url 'dashboard' %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
-                <a href="{% url 'login' %}"><i class="fa-solid fa-user"></i> Sign In</a>
-            </nav>
-        </header>
+        {% include 'partials/topbar.html' with active='clubs' %}
 
         <!-- ============================================================
              Intro + View toggle
         ============================================================ -->
-        <div class="clubs-intro">
+        <div class="intro">
             <h1>Clubs &amp; Events</h1>
             <p>Discover clubs, register for events, and manage your club workspace — all in one place.</p>
         </div>

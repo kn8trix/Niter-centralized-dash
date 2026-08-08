@@ -12,6 +12,8 @@ urlpatterns = [
     # Additional routes for sidebar links
     path('academic-notes/', views.academic_notes, name='academic_notes'),
     path('notices/', views.notices, name='notices'),
+    path('settings/', views.placeholder, {'page': 'settings'}, name='settings'),
+    path('signup/', views.placeholder, {'page': 'signup'}, name='signup'),
     path('clubs/', views.clubs_dashboard, name='clubs_dashboard'),
     path('transport/', views.transport_dashboard, name='transport_dashboard'),
     path('meals/', views.meal_dashboard, name='meal_dashboard'),

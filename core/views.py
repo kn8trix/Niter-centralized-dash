@@ -39,6 +39,27 @@ def meal_dashboard(request):
     """Online meal ticket system — frontend-only page driven by mock JS data."""
     return render(request, 'meals.html')
 
+def placeholder(request, page='settings'):
+    """Minimal warm-beige placeholder pages (settings / signup) so the shared
+    profile popover links resolve. Swap in real pages later."""
+    pages = {
+        'settings': {
+            'title': 'Account Settings',
+            'subtitle': 'Manage your profile, notifications, and preferences.',
+            'icon': 'fa-gear',
+            'message': 'Profile, notification, and privacy preferences are being prepared and will live here soon.',
+        },
+        'signup': {
+            'title': 'Create an Account',
+            'subtitle': 'Join the Niter campus portal.',
+            'icon': 'fa-user-plus',
+            'message': 'Self-registration is not available yet — contact the administration office to get your student account created.',
+        },
+    }
+    data = pages.get(page, pages['settings'])
+    return render(request, 'placeholder.html', data)
+
+
 def claim_meal_ticket(request):
     return render(request, 'ticketing/tickets.html')
 

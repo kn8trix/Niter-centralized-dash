@@ -10,7 +10,7 @@
 
    Sections:
      1. Tokens
-     2. Base & top bar
+     2. Base
      3. View toggle
      4. Club cards
      5. Event cards
@@ -51,7 +51,7 @@
 }
 
 /* ---------------------------------------------------------------------------
-   2. Base & top bar
+   2. Base
 --------------------------------------------------------------------------- */
 body.clubs {
     margin: 0;
@@ -82,84 +82,6 @@ body.clubs a {
     max-width: 1160px;
     margin: 0 auto;
     padding: 1.5rem clamp(1.1rem, 4vw, 2.5rem) 4rem;
-}
-
-/* Slim top bar with brand + quick links */
-.clubs-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    flex-wrap: wrap;
-    margin-bottom: 1.6rem;
-}
-
-.clubs-brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.6rem;
-    font-weight: 700;
-    font-size: 1.1rem;
-    color: var(--text-primary);
-}
-
-.clubs-brand-icon {
-    display: grid;
-    place-items: center;
-    width: 38px;
-    height: 38px;
-    border-radius: 12px;
-    background: var(--accent-primary);
-    border: 1px solid var(--border-color);
-    color: var(--accent-dark);
-    font-size: 1.05rem;
-}
-
-.clubs-navlinks {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-}
-
-.clubs-navlinks a {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.5rem 1rem;
-    border-radius: 999px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-card);
-    transition: background 0.2s ease, transform 0.2s ease;
-}
-
-.clubs-navlinks a:hover {
-    background: var(--bg-subtle);
-    transform: translateY(-1px);
-}
-
-/* Page intro */
-.clubs-intro {
-    text-align: center;
-    margin-bottom: 1.8rem;
-}
-
-.clubs-intro h1 {
-    margin: 0 0 0.35rem;
-    font-size: clamp(1.6rem, 4vw, 2.1rem);
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    color: var(--text-primary);
-}
-
-.clubs-intro p {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: 0.98rem;
 }
 
 /* ---------------------------------------------------------------------------
@@ -789,8 +711,7 @@ body.clubs a {
 .register-btn:focus-visible,
 .modal-close:focus-visible,
 .modal-submit:focus-visible,
-.publish-btn:focus-visible,
-.clubs-navlinks a:focus-visible {
+.publish-btn:focus-visible {
     outline: 2px solid var(--accent-dark);
     outline-offset: 2px;
 }

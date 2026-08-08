@@ -1,237 +1,193 @@
-{% extends "base.html" %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Dashboard — Niter Hub</title>
+    <meta name="description" content="Your central campus overview — meals, transport, medical bookings, and updates.">
 
-{% block title %}Student Dashboard{% endblock %}
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Dashboard page styles -->
+    <link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
 
-{% block header %}Student Dashboard{% endblock %}
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-{% block content %}
-<div class="space-y-8">
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
 
-    <!-- 1. Welcome Banner -->
-    <div data-component="card" data-widget="welcome-banner" class="bg-card rounded-xl border border-border p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm">
-        <div>
-            <h2 class="text-2xl font-semibold text-main mb-1">Welcome back, John! 👋</h2>
-            <p class="text-main/60">Here's what's happening with your campus life today.</p>
-        </div>
-        <button data-component="button" data-action="quick-action" class="flex items-center gap-2 bg-accent hover:bg-accentHover text-main font-medium px-5 py-2.5 rounded-lg transition-colors shadow-sm border border-border">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-            </svg>
-            Quick Action
-        </button>
-    </div>
+<body class="dashboard" data-app="campusdash-public">
 
-    <!-- 2. 3-Column Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        
-        <!-- Meal Ratio Counter Card -->
-        <div data-component="card" data-widget="meal-ratio" class="bg-card rounded-xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow">
-            <div class="flex items-center gap-3 mb-4">
-                <div class="w-10 h-10 rounded-lg bg-chip flex items-center justify-center">
-                    <svg class="w-5 h-5 text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                </div>
-                <h3 class="font-semibold text-main">Meal Ratio Counter</h3>
-            </div>
-            
-            <div class="mb-2 flex justify-between items-end">
-                <span class="text-3xl font-bold text-main">140 <span class="text-base font-normal text-main/50">/ 200</span></span>
-                <span class="text-sm font-medium text-green-600 bg-green-50 px-2 py-1 rounded-md">Active</span>
-            </div>
-            <p class="text-sm text-main/60 mb-4">slots remaining for this month.</p>
-            
-            <div class="w-full bg-base rounded-full h-2.5 mb-2">
-                <div class="bg-accent h-2.5 rounded-full" style="width: 70%"></div>
-            </div>
-            <div class="flex justify-between text-xs font-medium text-main/50">
-                <span>Used: 60</span>
-                <span>Remaining: 140</span>
-            </div>
+    <div class="shell">
+
+        {% include 'partials/topbar.html' with active='dashboard' %}
+
+        <!-- ============================================================
+             Intro — centered hero
+        ============================================================ -->
+        <div class="intro">
+            <h1>Welcome back, {{ user.get_full_name|default:user.username|default:"Guest" }}!</h1>
+            <p>Here is your central campus overview — quick access to meals, transport, medical bookings, and updates.</p>
         </div>
 
-        <!-- Transport Card -->
-        <div data-component="card" data-widget="transport" class="bg-card rounded-xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow">
-            <div class="flex items-center gap-3 mb-4">
-                <div class="w-10 h-10 rounded-lg bg-chip flex items-center justify-center">
-                    <svg class="w-5 h-5 text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
-                    </svg>
+        <!-- ============================================================
+             Row 1 — Quick summary widgets
+        ============================================================ -->
+        <div class="summary-grid">
+
+            <!-- Meal Ratio Counter -->
+            <a href="{% url 'meal_dashboard' %}" class="widget-card" data-component="card" data-widget="meal-ratio">
+                <div class="widget-head">
+                    <span class="widget-icon"><i class="fa-solid fa-utensils"></i></span>
+                    <h3 class="widget-title">Meal Ratio Counter</h3>
                 </div>
-                <h3 class="font-semibold text-main">Transport Service</h3>
-            </div>
-            
-            <div class="mb-4">
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="text-xl font-bold text-main">Bus Route 1</span>
-                    <span class="text-sm font-medium text-main/60">•</span>
-                    <span class="text-lg font-medium text-main">8:00 AM</span>
+                <div class="stat-row">
+                    <span class="stat-number">140 <small>/ 200</small></span>
+                    <span class="status-chip chip-green"><i class="fa-solid fa-circle-check"></i> Active</span>
                 </div>
-                <p class="text-sm text-main/60">Morning shuttle to Academic Block</p>
-            </div>
-            
-            <div class="flex items-center justify-between pt-4 border-t border-border">
-                <div class="flex items-center gap-2 text-sm text-main/70">
-                    <div class="w-2 h-2 rounded-full bg-green-500"></div>
-                    <span>12 seats available</span>
+                <p class="stat-caption">slots remaining for this month.</p>
+                <div class="progress-track">
+                    <div class="progress-bar" style="width: 70%"></div>
                 </div>
-                <button class="bg-main text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-main/90 transition-colors">
-                    Reserve Seat
-                </button>
-            </div>
+                <div class="progress-legend">
+                    <span>Used: 60</span>
+                    <span>Remaining: 140</span>
+                </div>
+            </a>
+
+            <!-- Transport Service -->
+            <a href="{% url 'transport_dashboard' %}" class="widget-card" data-component="card" data-widget="transport">
+                <div class="widget-head">
+                    <span class="widget-icon"><i class="fa-solid fa-bus"></i></span>
+                    <h3 class="widget-title">Transport Service</h3>
+                </div>
+                <div class="route-name">Bus Route 1</div>
+                <div class="route-time"><i class="fa-regular fa-clock"></i> 8:00 AM</div>
+                <p class="route-dest">Morning shuttle to Academic Block</p>
+                <div class="widget-footer">
+                    <span class="seats-avail"><span class="status-dot"></span> 12 seats available</span>
+                    <span class="btn-dark"><i class="fa-solid fa-ticket"></i> Reserve Seat</span>
+                </div>
+            </a>
+
+            <!-- Medical Center -->
+            <a href="{% url 'medical' %}" class="widget-card" data-component="card" data-widget="medical-center">
+                <div class="widget-head">
+                    <span class="widget-icon"><i class="fa-solid fa-stethoscope"></i></span>
+                    <h3 class="widget-title">Medical Center</h3>
+                </div>
+                <div class="doctor-row">
+                    <span class="doctor-id">DR</span>
+                    <div class="doctor-info">
+                        <strong>Dr. Sarah Smith</strong>
+                        <span>General Physician</span>
+                    </div>
+                    <span class="status-chip chip-green">Available</span>
+                </div>
+                <div class="doctor-row">
+                    <span class="doctor-id">DR</span>
+                    <div class="doctor-info">
+                        <strong>Dr. Mike Johnson</strong>
+                        <span>Specialist</span>
+                    </div>
+                    <span class="status-chip chip-amber">In Session</span>
+                </div>
+                <span class="btn-accent"><i class="fa-solid fa-calendar-check"></i> Book Slot</span>
+            </a>
+
         </div>
 
-        <!-- Medical Center Card -->
-        <div data-component="card" data-widget="medical-center" class="bg-card rounded-xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow">
-            <div class="flex items-center gap-3 mb-4">
-                <div class="w-10 h-10 rounded-lg bg-chip flex items-center justify-center">
-                    <svg class="w-5 h-5 text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
-                    </svg>
-                </div>
-                <h3 class="font-semibold text-main">Medical Center</h3>
-            </div>
-            
-            <div class="space-y-3 mb-4">
-                <div class="flex items-center justify-between p-3 bg-base rounded-lg">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-full bg-accent flex items-center justify-center font-medium text-sm">DR</div>
-                        <div>
-                            <p class="font-medium text-main text-sm">Dr. Sarah Smith</p>
-                            <p class="text-xs text-main/60">General Physician</p>
-                        </div>
-                    </div>
-                    <span class="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded">Available</span>
-                </div>
-                <div class="flex items-center justify-between p-3 bg-base rounded-lg">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-full bg-accent flex items-center justify-center font-medium text-sm">DR</div>
-                        <div>
-                            <p class="font-medium text-main text-sm">Dr. Mike Johnson</p>
-                            <p class="text-xs text-main/60">Specialist</p>
-                        </div>
-                    </div>
-                    <span class="text-xs font-medium text-orange-600 bg-orange-50 px-2 py-1 rounded">In Session</span>
-                </div>
-            </div>
-            
-            <button class="w-full bg-accent hover:bg-accentHover text-main font-medium py-2.5 rounded-lg transition-colors border border-border mt-auto">
-                Book Slot
-            </button>
-        </div>
+        <!-- ============================================================
+             Row 2 — Feeds & activity
+        ============================================================ -->
+        <div class="split-grid">
 
-    </div>
+            <!-- Recent Official Notices -->
+            <div class="panel-card" data-component="card" data-widget="recent-notices">
+                <div class="panel-head">
+                    <h3 class="section-title"><i class="fa-solid fa-bullhorn"></i> Official Notices</h3>
+                    <a href="{% url 'notices' %}" class="panel-link">View All →</a>
+                </div>
 
-    <!-- 3. Bottom Split Section -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        <!-- Recent Official Notices -->
-        <div data-component="card" data-widget="recent-notices" class="bg-card rounded-xl border border-border p-6 shadow-sm">
-            <div class="flex items-center justify-between mb-6">
-                <h3 class="font-semibold text-main flex items-center gap-2">
-                    <svg class="w-5 h-5 text-main/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"></path>
-                    </svg>
-                    Official Notices
-                </h3>
-                <a href="#" class="text-sm font-medium text-main/60 hover:text-main">View All</a>
-            </div>
-            
-            <div class="space-y-4">
-                <div class="flex gap-4 group cursor-pointer">
-                    <div class="w-2 h-2 rounded-full bg-red-500 mt-2 shrink-0"></div>
-                    <div class="flex-1 border-b border-border pb-4 group-hover:border-main/20 transition-colors">
-                        <div class="flex items-center gap-2 mb-1">
-                            <span class="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded">Urgent</span>
-                            <span class="text-xs text-main/50">Today, 10:30 AM</span>
+                <div class="notice-list">
+                    <a href="{% url 'notices' %}" class="notice-item">
+                        <span class="notice-dot dot-red"></span>
+                        <div class="notice-body">
+                            <div class="notice-meta">
+                                <span class="notice-badge badge-urgent">Urgent</span>
+                                <span class="notice-date">Today, 10:30 AM</span>
+                            </div>
+                            <h4 class="notice-title">Exam Schedule Update</h4>
+                            <p class="notice-text">Mid-term examinations have been rescheduled to next week.</p>
                         </div>
-                        <h4 class="font-medium text-main group-hover:text-main/80 transition-colors">Exam Schedule Update</h4>
-                        <p class="text-sm text-main/60 mt-1 line-clamp-1">Mid-term examinations have been rescheduled to next week.</p>
-                    </div>
-                </div>
-                
-                <div class="flex gap-4 group cursor-pointer">
-                    <div class="w-2 h-2 rounded-full bg-accent mt-2 shrink-0"></div>
-                    <div class="flex-1 border-b border-border pb-4 group-hover:border-main/20 transition-colors">
-                        <div class="flex items-center gap-2 mb-1">
-                            <span class="text-xs font-medium text-main bg-chip px-2 py-0.5 rounded">General</span>
-                            <span class="text-xs text-main/50">Yesterday</span>
-                        </div>
-                        <h4 class="font-medium text-main group-hover:text-main/80 transition-colors">Campus Library Hours Extended</h4>
-                        <p class="text-sm text-main/60 mt-1 line-clamp-1">The central library will now remain open until 10 PM during exam season.</p>
-                    </div>
-                </div>
-                
-                <div class="flex gap-4 group cursor-pointer">
-                    <div class="w-2 h-2 rounded-full bg-blue-500 mt-2 shrink-0"></div>
-                    <div class="flex-1 group-hover:border-main/20 transition-colors">
-                        <div class="flex items-center gap-2 mb-1">
-                            <span class="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded">Event</span>
-                            <span class="text-xs text-main/50">2 days ago</span>
-                        </div>
-                        <h4 class="font-medium text-main group-hover:text-main/80 transition-colors">Annual Tech Fest Registration Open</h4>
-                        <p class="text-sm text-main/60 mt-1 line-clamp-1">Register now for the upcoming technical festival happening next month.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
+                    </a>
 
-        <!-- Quick Links to Academic Notes -->
-        <div data-component="card" data-widget="academic-quick-links" class="bg-card rounded-xl border border-border p-6 shadow-sm">
-            <div class="flex items-center justify-between mb-6">
-                <h3 class="font-semibold text-main flex items-center gap-2">
-                    <svg class="w-5 h-5 text-main/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
-                    </svg>
-                    Academic Notes
-                </h3>
-                <a href="#" class="text-sm font-medium text-main/60 hover:text-main">Browse All</a>
+                    <a href="{% url 'notices' %}" class="notice-item">
+                        <span class="notice-dot dot-amber"></span>
+                        <div class="notice-body">
+                            <div class="notice-meta">
+                                <span class="notice-badge badge-general">General</span>
+                                <span class="notice-date">Yesterday</span>
+                            </div>
+                            <h4 class="notice-title">Campus Library Hours Extended</h4>
+                            <p class="notice-text">The central library will now remain open until 10 PM during exam season.</p>
+                        </div>
+                    </a>
+
+                    <a href="{% url 'notices' %}" class="notice-item">
+                        <span class="notice-dot dot-blue"></span>
+                        <div class="notice-body">
+                            <div class="notice-meta">
+                                <span class="notice-badge badge-event">Event</span>
+                                <span class="notice-date">2 days ago</span>
+                            </div>
+                            <h4 class="notice-title">Annual Tech Fest Registration Open</h4>
+                            <p class="notice-text">Register now for the upcoming technical festival happening next month.</p>
+                        </div>
+                    </a>
+                </div>
             </div>
-            
-            <div class="grid grid-cols-2 gap-4">
-                <a href="#" class="flex flex-col items-center p-4 bg-base rounded-xl border border-border hover:border-main/30 hover:shadow-sm transition-all group">
-                    <div class="w-12 h-12 rounded-full bg-white border border-border flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                        <svg class="w-6 h-6 text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                        </svg>
-                    </div>
-                    <span class="font-medium text-sm text-main text-center">CS101 Notes</span>
-                    <span class="text-xs text-main/50 mt-1">12 files</span>
-                </a>
-                
-                <a href="#" class="flex flex-col items-center p-4 bg-base rounded-xl border border-border hover:border-main/30 hover:shadow-sm transition-all group">
-                    <div class="w-12 h-12 rounded-full bg-white border border-border flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                        <svg class="w-6 h-6 text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                        </svg>
-                    </div>
-                    <span class="font-medium text-sm text-main text-center">Mathematics</span>
-                    <span class="text-xs text-main/50 mt-1">8 files</span>
-                </a>
-                
-                <a href="#" class="flex flex-col items-center p-4 bg-base rounded-xl border border-border hover:border-main/30 hover:shadow-sm transition-all group">
-                    <div class="w-12 h-12 rounded-full bg-white border border-border flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                        <svg class="w-6 h-6 text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                        </svg>
-                    </div>
-                    <span class="font-medium text-sm text-main text-center">Physics Lab</span>
-                    <span class="text-xs text-main/50 mt-1">5 files</span>
-                </a>
-                
-                <a href="#" class="flex flex-col items-center p-4 bg-base rounded-xl border border-border hover:border-main/30 hover:shadow-sm transition-all group">
-                    <div class="w-12 h-12 rounded-full bg-white border border-border flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                        <svg class="w-6 h-6 text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                        </svg>
-                    </div>
-                    <span class="font-medium text-sm text-main text-center">Programming</span>
-                    <span class="text-xs text-main/50 mt-1">24 files</span>
-                </a>
+
+            <!-- Recent Academic Notes shortcuts -->
+            <div class="panel-card" data-component="card" data-widget="academic-quick-links">
+                <div class="panel-head">
+                    <h3 class="section-title"><i class="fa-solid fa-book-open"></i> Academic Notes</h3>
+                    <a href="{% url 'academic_notes' %}" class="panel-link">Browse All →</a>
+                </div>
+
+                <div class="quick-grid">
+                    <a href="{% url 'academic_notes' %}" class="quick-tile">
+                        <span class="quick-icon"><i class="fa-solid fa-file-lines"></i></span>
+                        <span class="quick-name">CS101 Notes</span>
+                        <span class="quick-meta">12 files</span>
+                    </a>
+                    <a href="{% url 'academic_notes' %}" class="quick-tile">
+                        <span class="quick-icon"><i class="fa-solid fa-file-lines"></i></span>
+                        <span class="quick-name">Mathematics</span>
+                        <span class="quick-meta">8 files</span>
+                    </a>
+                    <a href="{% url 'academic_notes' %}" class="quick-tile">
+                        <span class="quick-icon"><i class="fa-solid fa-file-lines"></i></span>
+                        <span class="quick-name">Physics Lab</span>
+                        <span class="quick-meta">5 files</span>
+                    </a>
+                    <a href="{% url 'academic_notes' %}" class="quick-tile">
+                        <span class="quick-icon"><i class="fa-solid fa-file-lines"></i></span>
+                        <span class="quick-name">Programming</span>
+                        <span class="quick-meta">24 files</span>
+                    </a>
+                </div>
             </div>
+
         </div>
 
     </div>
-
-</div>
-{% endblock %}
+</body>
+</html>

@@ -1,230 +1,201 @@
-{% extends "base.html" %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Academic Notes — Niter Hub</title>
+    <meta name="description" content="Search, view, and organize lecture materials, notes, and study guides for your courses.">
 
-{% block title %}Academic & Notes{% endblock %}
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Academic notes drive styles -->
+    <link rel="stylesheet" href="{% static 'css/notes.css' %}">
 
-{% block header %}Academic & Notes{% endblock %}
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-{% block content %}
-<div class="space-y-8">
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
 
-    <!-- Header Section -->
-    <div data-component="card" data-widget="academic-header" class="bg-card rounded-xl border border-border p-6 shadow-sm">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-lg bg-chip flex items-center justify-center">
-                    <svg class="w-5 h-5 text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
-                    </svg>
-                </div>
-                <div>
-                    <h3 class="font-semibold text-lg text-main">Your Academic Materials</h3>
-                    <p class="text-sm text-main/60">Access your courses, assignments, and study resources.</p>
-                </div>
-            </div>
-            
-            <div class="flex items-center gap-3">
-                <button class="flex items-center gap-2 bg-accent hover:bg-accentHover text-main font-medium px-4 py-2 rounded-lg text-sm transition-colors border border-border">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
-                    </svg>
-                    Upload Notes
-                </button>
-            </div>
-        </div>
-    </div>
+<body class="notes" data-app="campusdash-public">
 
-    <!-- Course Cards Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        
-        <!-- Course 1 -->
-        <div data-component="card" data-widget="course-card" data-course="CS101" class="bg-card rounded-xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-            <div class="flex items-start justify-between mb-4">
-                <div class="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center">
-                    <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-                    </svg>
-                </div>
-                <span class="px-2 py-1 text-xs font-medium bg-green-50 text-green-700 rounded-md border border-green-100">
-                    Active
-                </span>
-            </div>
-            <h4 class="font-semibold text-main mb-1">CS101 - Introduction to AI</h4>
-            <p class="text-sm text-main/60 mb-4">Dr. Sarah Smith • Mon/Wed 10:00 AM</p>
-            
-            <div class="space-y-2">
-                <div class="flex items-center justify-between text-sm">
-                    <span class="text-main/60">Lecture Notes</span>
-                    <span class="font-medium text-main">12 files</span>
-                </div>
-                <div class="w-full bg-base rounded-full h-2">
-                    <div class="bg-blue-500 h-2 rounded-full" style="width: 75%"></div>
-                </div>
-                <div class="flex items-center justify-between text-xs text-main/50">
-                    <span>Progress: 75%</span>
-                    <span>7 of 9 weeks</span>
-                </div>
-            </div>
+    <div class="shell">
+
+        {% include 'partials/topbar.html' with active='notes' %}
+
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <div class="intro">
+            <h1>Academic Notes &amp; PDF Drive</h1>
+            <p>Search, view, and organize lecture materials, notes, and study guides.</p>
         </div>
 
-        <!-- Course 2 -->
-        <div data-component="card" data-widget="course-card" data-course="MATH201" class="bg-card rounded-xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-            <div class="flex items-start justify-between mb-4">
-                <div class="w-12 h-12 rounded-lg bg-purple-50 flex items-center justify-center">
-                    <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                    </svg>
-                </div>
-                <span class="px-2 py-1 text-xs font-medium bg-green-50 text-green-700 rounded-md border border-green-100">
-                    Active
-                </span>
+        <!-- ============================================================
+             Top controls: search + upload
+        ============================================================ -->
+        <div class="drive-controls">
+            <div class="search-box">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" id="notes-search" placeholder="Search notes, topics, or course codes..." aria-label="Search notes">
             </div>
-            <h4 class="font-semibold text-main mb-1">MATH201 - Linear Algebra</h4>
-            <p class="text-sm text-main/60 mb-4">Prof. Michael Chen • Tue/Thu 2:00 PM</p>
-            
-            <div class="space-y-2">
-                <div class="flex items-center justify-between text-sm">
-                    <span class="text-main/60">Lecture Notes</span>
-                    <span class="font-medium text-main">8 files</span>
-                </div>
-                <div class="w-full bg-base rounded-full h-2">
-                    <div class="bg-purple-500 h-2 rounded-full" style="width: 60%"></div>
-                </div>
-                <div class="flex items-center justify-between text-xs text-main/50">
-                    <span>Progress: 60%</span>
-                    <span>5 of 9 weeks</span>
-                </div>
-            </div>
+            <button type="button" class="upload-btn" id="upload-btn">
+                <i class="fa-solid fa-arrow-up-from-bracket"></i> Upload Note / PDF
+            </button>
         </div>
 
-        <!-- Course 3 -->
-        <div data-component="card" data-widget="course-card" data-course="PHY101" class="bg-card rounded-xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-            <div class="flex items-start justify-between mb-4">
-                <div class="w-12 h-12 rounded-lg bg-orange-50 flex items-center justify-center">
-                    <svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
-                    </svg>
-                </div>
-                <span class="px-2 py-1 text-xs font-medium bg-orange-50 text-orange-700 rounded-md border border-orange-100">
-                    Lab
-                </span>
-            </div>
-            <h4 class="font-semibold text-main mb-1">PHY101 - Physics Lab</h4>
-            <p class="text-sm text-main/60 mb-4">Dr. Emily Johnson • Fri 9:00 AM</p>
-            
-            <div class="space-y-2">
-                <div class="flex items-center justify-between text-sm">
-                    <span class="text-main/60">Lab Reports</span>
-                    <span class="font-medium text-main">5 files</span>
-                </div>
-                <div class="w-full bg-base rounded-full h-2">
-                    <div class="bg-orange-500 h-2 rounded-full" style="width: 40%"></div>
-                </div>
-                <div class="flex items-center justify-between text-xs text-main/50">
-                    <span>Progress: 40%</span>
-                    <span>3 of 8 labs</span>
-                </div>
-            </div>
-        </div>
+        <!-- ============================================================
+             Course folders
+        ============================================================ -->
+        <h2 class="section-title">Course Folders</h2>
+        <p class="section-subtitle">Browse study material by department folder.</p>
+        <div class="folders-grid" id="folders-grid"><!-- JS-rendered folder cards --></div>
 
-        <!-- Course 4 -->
-        <div data-component="card" data-widget="course-card" data-course="CS201" class="bg-card rounded-xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-            <div class="flex items-start justify-between mb-4">
-                <div class="w-12 h-12 rounded-lg bg-green-50 flex items-center justify-center">
-                    <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
-                    </svg>
-                </div>
-                <span class="px-2 py-1 text-xs font-medium bg-green-50 text-green-700 rounded-md border border-green-100">
-                    Active
-                </span>
-            </div>
-            <h4 class="font-semibold text-main mb-1">CS201 - Data Structures</h4>
-            <p class="text-sm text-main/60 mb-4">Prof. David Lee • Mon/Wed 2:00 PM</p>
-            
-            <div class="space-y-2">
-                <div class="flex items-center justify-between text-sm">
-                    <span class="text-main/60">Lecture Notes</span>
-                    <span class="font-medium text-main">24 files</span>
-                </div>
-                <div class="w-full bg-base rounded-full h-2">
-                    <div class="bg-green-500 h-2 rounded-full" style="width: 85%"></div>
-                </div>
-                <div class="flex items-center justify-between text-xs text-main/50">
-                    <span>Progress: 85%</span>
-                    <span>8 of 9 weeks</span>
-                </div>
-            </div>
-        </div>
+        <!-- ============================================================
+             Document previews
+        ============================================================ -->
+        <h2 class="section-title">Recent Documents</h2>
+        <p class="section-subtitle">Latest uploads with file size, tags, and summaries.</p>
+        <div class="docs-grid" id="docs-grid"><!-- JS-rendered document cards --></div>
 
     </div>
 
-    <!-- Recent Assignments Section -->
-    <div data-component="card" data-widget="recent-assignments" class="bg-card rounded-xl border border-border p-6 shadow-sm">
-        <div class="flex items-center justify-between mb-6">
-            <h3 class="font-semibold text-main flex items-center gap-2">
-                <svg class="w-5 h-5 text-main/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
-                </svg>
-                Recent Assignments
-            </h3>
-            <a href="#" class="text-sm font-medium text-main/60 hover:text-main">View All</a>
-        </div>
+    <!-- Toast -->
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-        <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
-                <thead>
-                    <tr class="border-b border-border">
-                        <th class="pb-3 font-semibold text-main text-sm">Assignment</th>
-                        <th class="pb-3 font-semibold text-main text-sm">Course</th>
-                        <th class="pb-3 font-semibold text-main text-sm">Due Date</th>
-                        <th class="pb-3 font-semibold text-main text-sm text-center">Status</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-border">
-                    <tr class="hover:bg-base/50 transition-colors">
-                        <td class="py-4 font-medium text-main">Assignment 3: Neural Networks</td>
-                        <td class="py-4 text-main/60">CS101</td>
-                        <td class="py-4 text-main/60">Dec 20, 2024</td>
-                        <td class="py-4 text-center">
-                            <span class="px-2 py-1 text-xs font-medium bg-yellow-50 text-yellow-700 rounded-md border border-yellow-100">
-                                In Progress
-                            </span>
-                        </td>
-                    </tr>
-                    <tr class="hover:bg-base/50 transition-colors">
-                        <td class="py-4 font-medium text-main">Problem Set 5: Eigenvalues</td>
-                        <td class="py-4 text-main/60">MATH201</td>
-                        <td class="py-4 text-main/60">Dec 22, 2024</td>
-                        <td class="py-4 text-center">
-                            <span class="px-2 py-1 text-xs font-medium bg-blue-50 text-blue-700 rounded-md border border-blue-100">
-                                Not Started
-                            </span>
-                        </td>
-                    </tr>
-                    <tr class="hover:bg-base/50 transition-colors">
-                        <td class="py-4 font-medium text-main">Lab Report: Pendulum Experiment</td>
-                        <td class="py-4 text-main/60">PHY101</td>
-                        <td class="py-4 text-main/60">Dec 18, 2024</td>
-                        <td class="py-4 text-center">
-                            <span class="px-2 py-1 text-xs font-medium bg-green-50 text-green-700 rounded-md border border-green-100">
-                                Submitted
-                            </span>
-                        </td>
-                    </tr>
-                    <tr class="hover:bg-base/50 transition-colors">
-                        <td class="py-4 font-medium text-main">Project: Binary Tree Implementation</td>
-                        <td class="py-4 text-main/60">CS201</td>
-                        <td class="py-4 text-main/60">Dec 25, 2024</td>
-                        <td class="py-4 text-center">
-                            <span class="px-2 py-1 text-xs font-medium bg-red-50 text-red-700 rounded-md border border-red-100">
-                                Urgent
-                            </span>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
+    <script>
+        // ====================================================================
+        // Mock data (frontend-only)
+        // ====================================================================
+        const FOLDERS = [
+            { name: 'Computer Science', code: 'CSE', count: 42, icon: 'fa-laptop-code' },
+            { name: 'Electrical Engineering', code: 'EEE', count: 28, icon: 'fa-bolt' },
+            { name: 'Mathematics', code: 'MATH', count: 19, icon: 'fa-square-root-variable' },
+            { name: 'Textile Engineering', code: 'TEX', count: 35, icon: 'fa-industry' },
+            { name: 'Physics', code: 'PHY', count: 12, icon: 'fa-flask' },
+            { name: 'Industrial & Production Eng.', code: 'IPE', count: 17, icon: 'fa-robot' },
+        ];
 
-</div>
-{% endblock %}
+        const DOCS = [
+            { title: 'Lecture 5 — Divide & Conquer', course: 'CSE-2201', size: '2.4 MB', date: 'Dec 18', tags: ['Algorithms', 'Big-O'], snippet: 'Covers merge sort, recurrence relations, and the Master Theorem for analyzing recursive algorithms.' },
+            { title: 'Data Structures Mid-Term Review', course: 'CSE-2204', size: '1.8 MB', date: 'Dec 16', tags: ['Arrays', 'Trees', 'Graphs'], snippet: 'A condensed review of arrays, linked lists, trees, and graph traversals with exam-style practice problems.' },
+            { title: 'Circuit Analysis Lab Manual', course: 'EEE-2102', size: '3.1 MB', date: 'Dec 15', tags: ['Circuits', 'Ohm\u2019s Law'], snippet: 'Step-by-step lab procedures for Ohm\u2019s law, Kirchhoff\u2019s rules, and AC circuit measurements.' },
+            { title: 'Linear Algebra Problem Set 5', course: 'MATH-2201', size: '900 KB', date: 'Dec 14', tags: ['Eigenvalues', 'Matrices'], snippet: 'Problems on eigenvalues, eigenvectors, and diagonalization with full worked solutions.' },
+            { title: 'Textile Fibre Science Notes', course: 'TEX-1101', size: '2.2 MB', date: 'Dec 12', tags: ['Fibres', 'Yarns'], snippet: 'Natural and synthetic fibre properties, yarn numbering systems, and spinning basics.' },
+            { title: 'Thermodynamics Formula Sheet', course: 'PHY-1102', size: '480 KB', date: 'Dec 10', tags: ['Thermo', 'Formulas'], snippet: 'One-page formula sheet covering the laws of thermodynamics, entropy, and heat engines.' },
+            { title: 'Machine Learning Basics', course: 'CSE-3301', size: '5.6 MB', date: 'Dec 08', tags: ['ML', 'Neural Nets'], snippet: 'Intro to supervised learning, gradient descent, and a first look at neural network architectures.' },
+            { title: 'Fluid Mechanics — Chapter 3', course: 'IPE-2103', size: '2.9 MB', date: 'Dec 06', tags: ['Fluids', 'Bernoulli'], snippet: 'Hydrostatics, continuity equation, and Bernoulli\u2019s principle with solved examples.' },
+        ];
+
+        // ====================================================================
+        // Render
+        // ====================================================================
+        const foldersGrid = document.getElementById('folders-grid');
+        const docsGrid = document.getElementById('docs-grid');
+        const searchInput = document.getElementById('notes-search');
+        const uploadBtn = document.getElementById('upload-btn');
+        const toastEl = document.getElementById('toast');
+        let toastTimer;
+
+        function showToast(message) {
+            toastEl.textContent = message;
+            toastEl.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3800);
+        }
+
+        function renderFolders() {
+            foldersGrid.innerHTML = FOLDERS.map(f => `
+                <article class="folder-card" data-folder="${f.name}" tabindex="0">
+                    <div class="folder-card-top">
+                        <span class="folder-icon"><i class="fa-solid ${f.icon}"></i></span>
+                        <span class="folder-count">${f.count} files</span>
+                    </div>
+                    <h3 class="folder-name">${f.name}</h3>
+                    <p class="folder-code">${f.code}</p>
+                </article>
+            `).join('');
+        }
+
+        function renderDocs(list) {
+            docsGrid.innerHTML = list.length
+                ? list.map(d => `
+                    <article class="doc-card">
+                        <div class="doc-card-head">
+                            <span class="doc-icon"><i class="fa-solid fa-file-pdf"></i></span>
+                            <span class="doc-course">${d.course}</span>
+                        </div>
+                        <h3 class="doc-title">${d.title}</h3>
+                        <p class="doc-snippet">${d.snippet}</p>
+                        <div class="doc-tags">${d.tags.map(t => `<span class="doc-tag">${t}</span>`).join('')}</div>
+                        <div class="doc-meta">
+                            <span><i class="fa-regular fa-file"></i> ${d.size}</span>
+                            <span><i class="fa-regular fa-calendar"></i> ${d.date}</span>
+                            <button type="button" class="doc-view" data-title="${d.title}">View</button>
+                        </div>
+                    </article>
+                `).join('')
+                : '<p class="empty-docs">No documents match your search.</p>';
+        }
+
+        // ====================================================================
+        // Interactions
+        // ====================================================================
+        let folderFilter = null;
+
+        function applyFilters() {
+            const q = searchInput.value.trim().toLowerCase();
+            const list = DOCS.filter(d => {
+                const matchesFolder = !folderFilter || d.course.startsWith(folderFilter);
+                const matchesQuery = !q ||
+                    d.title.toLowerCase().includes(q) ||
+                    d.course.toLowerCase().includes(q) ||
+                    d.tags.some(t => t.toLowerCase().includes(q));
+                return matchesFolder && matchesQuery;
+            });
+            renderDocs(list);
+        }
+
+        searchInput.addEventListener('input', applyFilters);
+
+        foldersGrid.addEventListener('click', (e) => {
+            const card = e.target.closest('[data-folder]');
+            if (!card) return;
+            const code = FOLDERS.find(f => f.name === card.dataset.folder).code;
+            folderFilter = folderFilter === code ? null : code;
+            document.querySelectorAll('.folder-card').forEach(c =>
+                c.classList.toggle('selected', c === card && folderFilter === code));
+            applyFilters();
+        });
+
+        // Folder cards are keyboard-accessible (Enter / Space)
+        foldersGrid.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            e.target.closest('[data-folder]') && e.target.click();
+        });
+
+        uploadBtn.addEventListener('click', () => {
+            showToast('Upload is ready — drag a PDF or connect Google Drive to continue.');
+        });
+
+        docsGrid.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-title]');
+            if (!btn) return;
+            showToast('Opening "' + btn.dataset.title + '" in the PDF viewer.');
+        });
+
+        // ====================================================================
+        // Init
+        // ====================================================================
+        renderFolders();
+        renderDocs(DOCS);
+    </script>
+</body>
+</html>

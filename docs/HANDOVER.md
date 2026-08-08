@@ -251,6 +251,8 @@ python manage.py runserver 0.0.0.0:8000
 | **Meal System** | [http://127.0.0.1:8000/meals/](http://127.0.0.1:8000/meals/) | Meal slot ratio, claim, supply stats |
 | **Login** | [http://127.0.0.1:8000/login/](http://127.0.0.1:8000/login/) | Student/staff sign-in page |
 | **Logout** | [http://127.0.0.1:8000/logout/](http://127.0.0.1:8000/logout/) | Sign out (POST) |
+| **Settings** | [http://127.0.0.1:8000/settings/](http://127.0.0.1:8000/settings/) | Account settings (placeholder page) |
+| **Sign Up** | [http://127.0.0.1:8000/signup/](http://127.0.0.1:8000/signup/) | Sign up / switch account (placeholder page) |
 
 ### Troubleshooting
 - **Port already in use:** Use `python manage.py runserver 8080` to run on a different port.
@@ -286,13 +288,22 @@ Niter-centralized-dash/
 │       ├── auth.css             # Login page styles
 │       ├── clubs.css            # Clubs & Events page styles
 │       ├── transport.css        # Transport ticket page styles
-│       └── meals.css            # Meal ticket page styles
+│       ├── meals.css            # Meal ticket page styles
+│       ├── topbar.css           # Shared topbar/nav pills/profile popover/intro/toast
+│       ├── dashboard.css        # Student dashboard styles
+│       ├── medical.css          # Medical booking page styles
+│       ├── notices.css          # Notices page styles
+│       ├── notes.css            # Academic notes drive styles
+│       └── placeholder.css      # Settings / Sign Up placeholder styles
 ├── templates/
 │   ├── index.html               # Public homepage (warm light hero, about/medical nodes)
 │   ├── login.html               # Standalone sign-in page
 │   ├── clubs.html               # Clubs & Events (frontend-only, mock JS data)
 │   ├── transport.html           # Transport Online Ticket System (mock JS data)
 │   ├── meals.html               # Online Meal Ticket System (mock JS data)
+│   ├── placeholder.html         # Settings / Sign Up placeholder pages
+│   ├── partials/
+│   │   └── topbar.html          # Shared top navigation (brand, nav pills, profile popover)
 │   ├── base.html                # Base template with sidebar & header
 │   ├── dashboard/
 │   │   └── home.html            # Student dashboard
@@ -358,6 +369,8 @@ DATABASE_URL=postgres://user:pass@localhost:5432/niter_db
 | GET | `/host/` | Host portal index (redirects to medical host dashboard) |
 | POST | `/login/` | Sign in (Django `LoginView`, redirects to `/dashboard/`) |
 | POST | `/logout/` | Sign out (Django `LogoutView`, redirects to `/`) |
+| GET | `/settings/` | Account settings (placeholder page) |
+| GET | `/signup/` | Sign up / switch account (placeholder page) |
 
 ## 12. Next Steps
 
@@ -789,3 +802,89 @@ Rebuilt the Club & Event dashboard at `/clubs/` as a **frontend-only standalone 
 
 - `python manage.py check` ✔
 - `python manage.py test` ✔
+
+---
+
+## 24. Unified Top Navigation & Standalone Page Refactor
+
+**Date:** 09 August 2026  
+**Branch:** main
+
+### Overview
+
+Standardized the entire student front end on **one shared top navigation header**. Every standalone page (`/dashboard/`, `/transport/`, `/meals/`, `/clubs/`, `/medical/`, `/notices/`, `/academic-notes/`) now uses the exact same top bar, pill navigation, and profile popover — one source of truth, no per-page duplication.
+
+### Completed Work
+
+1. **Shared header partial (`templates/partials/topbar.html`)**
+   - Top-left brand **"CampusDash"** (links to `{% url 'dashboard' %}` per spec).
+   - Desktop nav pills: Dashboard, Academic Notes, Notices, Transport, Meals, Medical, Clubs — the current page's pill is highlighted `#e8e2d8` (`active` class), the rest stay white.
+   - Circular profile avatar + popover (user name/email, page links, account actions).
+   - Included via `{% include 'partials/topbar.html' with active='<page>' %}`.
+2. **Shared styles (`static/css/topbar.css`)**
+   - Single source of truth for `.topbar`, `.brand`, `.navlinks` (+ `.active`), `.profile`/`.avatar-btn`/`.profile-popover`, the centered `.intro` hero, and the `.toast`.
+   - Responsive: `.navlinks` hidden below 768px; profile popover content switches per viewport (see section 26).
+   - Duplicated header CSS removed from `transport.css`, `meals.css`, `clubs.css`.
+3. **Pages converted to standalone** (no longer extend `base.html`)
+   - `/dashboard/`, `/medical/`, `/notices/`, `/academic-notes/`. `base.html` (sidebar layout) remains only for `/tickets/`, `/notes/` (Notes Engine) and the host portal.
+   - New page stylesheets: `dashboard.css`, `medical.css`, `notices.css`, `notes.css` (warm beige palette `#faf9f6` / `#ffffff` / `#f0ebe1` / `#e8e2d8`).
+4. **Auth context processor** — added `django.contrib.auth.context_processors.auth` to `config/settings.py` so `{{ user }}` resolves on every page (also fixed the `base.html` sidebar profile).
+
+### Files Added / Modified
+
+- **New:** `templates/partials/topbar.html`, `static/css/topbar.css`, `static/css/dashboard.css`, `static/css/medical.css`, `static/css/notices.css`, `static/css/notes.css`
+- **Modified:** `templates/dashboard/home.html`, `templates/medical/booking.html`, `templates/notices/notices.html`, `templates/academic/notes.html`, `templates/transport.html`, `templates/meals.html`, `templates/clubs.html`, `static/css/transport.css`, `static/css/meals.css`, `static/css/clubs.css`, `config/settings.py`, `core/tests.py`
+
+### Testing
+
+- `python manage.py check` ✔
+- `python manage.py test` ✔ (**13 tests** — added `UnifiedHeaderTest` covering the shared header + active pill on all 7 pages, and `ProfilePopoverAuthTest` for the popover's authenticated/anonymous states).
+- Headless Chrome @390px / @1280px on all pages: zero console errors, zero horizontal overflow; nav pills hidden on mobile, visible on desktop.
+
+---
+
+## 25. Student Dashboard Refactor (`/dashboard/`)
+
+**Date:** 09 August 2026  
+**Branch:** main
+
+### Completed Work
+
+- `/dashboard/` is now a standalone page (sidebar removed, shared top navigation with the Dashboard pill active).
+- **Centered hero:** "Welcome back, {active user name}!" + subtitle *"Here is your central campus overview — quick access to meals, transport, medical bookings, and updates."* (resolves the real logged-in user via the auth context processor; falls back to "Guest").
+- **Row 1 — Quick Summary Widgets** (cards link to the real pages, replacing old dead `#` links):
+  - Meal Ratio Counter (140/200 + progress bar) → `/meals/`
+  - Transport Service route preview ("Reserve Seat") → `/transport/`
+  - Medical Center doctor availability ("Book Slot") → `/medical/`
+- **Row 2 — Feeds & Activity:** Official Notices feed (Urgent/General/Event badges) → `/notices/`, Recent Academic Notes shortcuts → `/academic-notes/`.
+- Styling in `static/css/dashboard.css`; `data-widget` / `data-component` tags preserved for the Visual Builder.
+
+---
+
+## 26. Responsive Profile Dropdown
+
+**Date:** 09 August 2026  
+**Branch:** main
+
+The shared profile popover now adjusts its menu contents by screen size (pure CSS, no JS):
+
+- **Desktop (≥768px):** header (name + email) + **account actions only** — Settings → `/settings/`, Sign Up / Switch Account → `/signup/`, Sign Out → POST `/logout/`. Page links are hidden (`@media (min-width: 768px)` → `.profile-links { display: none }`) since the top bar already shows them.
+- **Mobile (<768px):** header + all 7 page navigation links + a `#f0ebe1` divider + the account actions section (the `.profile-actions` top border serves as the divider).
+- Guests see **"Sign Up"** → `/signup/` and **"Sign In"** → `/login/`; logged-in users see **"Switch Account"** → `/signup/` and a real **Sign Out** POST form.
+- Click-outside-to-close, Escape, and the smooth toggle animation are unchanged.
+
+---
+
+## 27. Settings & Sign Up Placeholder Pages
+
+**Date:** 09 August 2026  
+**Branch:** main
+
+- New routes **`/settings/`** and **`/signup/`** (names `settings`, `signup`) → `views.placeholder` rendering `templates/placeholder.html` (styled by `static/css/placeholder.css`): warm-beige "Coming soon" pages so the profile popover links resolve.
+- Both routes registered in the `ENDPOINTS` registry (`core/context_processors.py`) and added to the smoke-test `PAGES` list in `core/tests.py`.
+- Swap in real pages later by replacing the `views.placeholder` entries.
+
+### Testing
+
+- `python manage.py check` ✔
+- `python manage.py test` ✔ (13 tests — including smoke renders + endpoint-registry coverage for `settings`/`signup`).

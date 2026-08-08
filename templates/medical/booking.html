@@ -1,182 +1,169 @@
-{% extends "base.html" %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medical Booking — Niter Hub</title>
+    <meta name="description" content="Book campus medical appointments online — doctors, time slots, and live availability.">
 
-{% block title %}Medical Booking{% endblock %}
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Medical booking page styles -->
+    <link rel="stylesheet" href="{% static 'css/medical.css' %}">
 
-{% block header %}Medical Booking{% endblock %}
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-{% block content %}
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
 
-    <!-- Main Appointment Form -->
-    <div class="lg:col-span-2 space-y-6">
-        <div data-component="card" data-widget="appointment-form" class="bg-card rounded-xl border border-border p-6 shadow-sm">
-            <div class="flex items-center gap-3 mb-6">
-                <div class="w-10 h-10 rounded-lg bg-chip flex items-center justify-center">
-                    <svg class="w-5 h-5 text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
-                    </svg>
-                </div>
-                <h3 class="font-semibold text-lg text-main">Book an Appointment</h3>
-            </div>
+<body class="medical" data-app="campusdash-public">
 
-            <form method="post" action="{{ ENDPOINTS.book_appointment }}" data-endpoint="book_appointment" data-component="form" class="space-y-6">
-                {% csrf_token %}
+    <div class="shell">
 
-                <!-- Doctor Selection -->
-                <div>
-                    <label class="block text-sm font-medium text-main mb-2">Select Doctor</label>
-                    <select name="doctor" class="w-full bg-base border border-border rounded-xl px-4 py-3 text-main focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all appearance-none cursor-pointer">
-                        <option value="">-- Choose a Doctor --</option>
-                        <option value="1">Dr. Ahmed Khan - General Physician</option>
-                        <option value="2">Dr. Sarah Smith - Pediatrician</option>
-                        <option value="3">Dr. Michael Chen - Cardiologist</option>
-                        <option value="4">Dr. Emily Johnson - Dermatologist</option>
-                    </select>
-                </div>
+        {% include 'partials/topbar.html' with active='medical' %}
 
-                <!-- Date Picker -->
-                <div>
-                    <label class="block text-sm font-medium text-main mb-2">Preferred Date</label>
-                    <input type="date" name="appointment_date" class="w-full bg-base border border-border rounded-xl px-4 py-3 text-main focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all">
-                </div>
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <div class="intro">
+            <h1>Medical Center Appointment System</h1>
+            <p>Book appointments with campus doctors and view real-time medical slot availability.</p>
+        </div>
 
-                <!-- Time Slot Grid -->
-                <div>
-                    <label class="block text-sm font-medium text-main mb-3">Select Time Slot</label>
-                    <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                        <label class="relative cursor-pointer">
-                            <input type="radio" name="time_slot" value="09:00" class="peer sr-only">
-                            <div class="p-3 bg-base border-2 border-border rounded-xl text-center transition-all peer-checked:border-main peer-checked:bg-main/5 hover:border-main/30">
-                                <div class="font-medium text-main text-sm">09:00 AM</div>
-                            </div>
-                        </label>
-                        <label class="relative cursor-pointer">
-                            <input type="radio" name="time_slot" value="10:00" class="peer sr-only" checked>
-                            <div class="p-3 bg-base border-2 border-border rounded-xl text-center transition-all peer-checked:border-main peer-checked:bg-main/5 hover:border-main/30">
-                                <div class="font-medium text-main text-sm">10:00 AM</div>
-                            </div>
-                        </label>
-                        <label class="relative cursor-pointer">
-                            <input type="radio" name="time_slot" value="11:30" class="peer sr-only">
-                            <div class="p-3 bg-base border-2 border-border rounded-xl text-center transition-all peer-checked:border-main peer-checked:bg-main/5 hover:border-main/30">
-                                <div class="font-medium text-main text-sm">11:30 AM</div>
-                            </div>
-                        </label>
-                        <label class="relative cursor-pointer">
-                            <input type="radio" name="time_slot" value="14:00" class="peer sr-only">
-                            <div class="p-3 bg-base border-2 border-border rounded-xl text-center transition-all peer-checked:border-main peer-checked:bg-main/5 hover:border-main/30">
-                                <div class="font-medium text-main text-sm">02:00 PM</div>
-                            </div>
-                        </label>
-                        <label class="relative cursor-pointer">
-                            <input type="radio" name="time_slot" value="15:30" class="peer sr-only">
-                            <div class="p-3 bg-base border-2 border-border rounded-xl text-center transition-all peer-checked:border-main peer-checked:bg-main/5 hover:border-main/30">
-                                <div class="font-medium text-main text-sm">03:30 PM</div>
-                            </div>
-                        </label>
-                        <label class="relative cursor-pointer">
-                            <input type="radio" name="time_slot" value="17:00" class="peer sr-only">
-                            <div class="p-3 bg-base border-2 border-border rounded-xl text-center transition-all peer-checked:border-main peer-checked:bg-main/5 hover:border-main/30">
-                                <div class="font-medium text-main text-sm">05:00 PM</div>
-                            </div>
-                        </label>
+        <!-- ============================================================
+             Booking form + side panel
+        ============================================================ -->
+        <div class="booking-layout">
+
+            <!-- Main booking form -->
+            <div class="card">
+                <h2 class="section-title">Book an Appointment</h2>
+                <p class="section-subtitle">Choose a doctor, pick a date and time slot, then confirm your visit.</p>
+
+                <form method="post" action="{{ ENDPOINTS.book_appointment }}" data-endpoint="book_appointment" data-component="appointment-form">
+                    {% csrf_token %}
+
+                    <div class="field">
+                        <label for="doctor-select" class="field-label">Select Doctor</label>
+                        <select id="doctor-select" name="doctor" class="field-select">
+                            <option value="">-- Choose a Doctor --</option>
+                            <option value="1">Dr. Ahmed Khan — General Physician</option>
+                            <option value="2">Dr. Sarah Smith — Pediatrician</option>
+                            <option value="3">Dr. Michael Chen — Cardiologist</option>
+                            <option value="4">Dr. Emily Johnson — Dermatologist</option>
+                        </select>
                     </div>
-                </div>
 
-                <!-- Reason for Visit -->
-                <div>
-                    <label class="block text-sm font-medium text-main mb-2">Reason for Visit / Symptoms</label>
-                    <textarea name="reason" rows="4" class="w-full bg-base border border-border rounded-xl px-4 py-3 text-main focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all resize-none" placeholder="Please describe your symptoms or reason for visit..."></textarea>
-                </div>
+                    <div class="field">
+                        <label for="appt-date" class="field-label">Preferred Date</label>
+                        <input type="date" id="appt-date" name="appointment_date" class="field-input">
+                    </div>
 
-                <!-- Submit Button -->
-                <div class="pt-4">
-                    <button type="submit" class="w-full bg-main hover:bg-main/90 text-white font-medium px-6 py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                        </svg>
-                        Confirm Appointment
+                    <div class="field">
+                        <span class="field-label">Time Slot</span>
+                        <div class="slot-grid">
+                            <label class="slot-chip"><input type="radio" name="time_slot" value="09:00"><span>09:00 AM</span></label>
+                            <label class="slot-chip"><input type="radio" name="time_slot" value="10:00" checked><span>10:00 AM</span></label>
+                            <label class="slot-chip"><input type="radio" name="time_slot" value="11:30"><span>11:30 AM</span></label>
+                            <label class="slot-chip"><input type="radio" name="time_slot" value="14:00"><span>02:00 PM</span></label>
+                            <label class="slot-chip"><input type="radio" name="time_slot" value="15:30"><span>03:30 PM</span></label>
+                            <label class="slot-chip"><input type="radio" name="time_slot" value="17:00"><span>05:00 PM</span></label>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label for="reason" class="field-label">Symptoms / Reason for Visit</label>
+                        <textarea id="reason" name="reason" class="field-textarea" placeholder="Please describe your symptoms or reason for visit..."></textarea>
+                    </div>
+
+                    <button type="submit" class="confirm-btn">
+                        <i class="fa-solid fa-calendar-check"></i> Confirm Appointment
                     </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Side Card: Upcoming Appointments -->
-    <div class="lg:col-span-1">
-        <div data-component="card" data-widget="upcoming-appointments" class="bg-card rounded-xl border border-border p-6 shadow-sm sticky top-24">
-            <div class="flex items-center gap-2 mb-6">
-                <svg class="w-5 h-5 text-main/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                </svg>
-                <h3 class="font-semibold text-main">Upcoming Appointments</h3>
+                </form>
             </div>
 
-            <div class="space-y-4">
-                <!-- Appointment 1 -->
-                <div class="p-4 bg-base rounded-xl border border-border hover:border-main/30 transition-colors">
-                    <div class="flex items-start justify-between mb-2">
-                        <div>
-                            <p class="font-medium text-main text-sm">Dr. Ahmed Khan</p>
-                            <p class="text-xs text-main/60 mt-0.5">General Physician</p>
+            <!-- Side panel: upcoming appointments + active pass -->
+            <aside class="card side-card">
+                <h2 class="section-title">Upcoming Appointments</h2>
+                <p class="section-subtitle">Your scheduled visits and their status.</p>
+
+                <div class="appt-list">
+                    <div class="appt-item">
+                        <div class="appt-head">
+                            <div>
+                                <strong>Dr. Ahmed Khan</strong>
+                                <span class="appt-spec">General Physician</span>
+                            </div>
+                            <span class="status-badge status-confirmed"><i class="fa-solid fa-circle-check"></i> Confirmed</span>
                         </div>
-                        <span class="px-2 py-1 text-xs font-medium bg-green-50 text-green-700 rounded-md border border-green-100">
-                            Confirmed
-                        </span>
+                        <div class="appt-meta">
+                            <span><i class="fa-regular fa-calendar"></i> Tomorrow</span>
+                            <span><i class="fa-regular fa-clock"></i> 10:00 AM</span>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-3 text-xs text-main/60 mt-3">
-                        <div class="flex items-center gap-1">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                            </svg>
-                            <span>Tomorrow</span>
+
+                    <div class="appt-item">
+                        <div class="appt-head">
+                            <div>
+                                <strong>Dr. Sarah Smith</strong>
+                                <span class="appt-spec">Pediatrician</span>
+                            </div>
+                            <span class="status-badge status-pending"><i class="fa-regular fa-clock"></i> Pending</span>
                         </div>
-                        <div class="flex items-center gap-1">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                            <span>10:00 AM</span>
+                        <div class="appt-meta">
+                            <span><i class="fa-regular fa-calendar"></i> Friday, Dec 20</span>
+                            <span><i class="fa-regular fa-clock"></i> 02:30 PM</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Appointment 2 -->
-                <div class="p-4 bg-base rounded-xl border border-border hover:border-main/30 transition-colors">
-                    <div class="flex items-start justify-between mb-2">
-                        <div>
-                            <p class="font-medium text-main text-sm">Dr. Sarah Smith</p>
-                            <p class="text-xs text-main/60 mt-0.5">Pediatrician</p>
-                        </div>
-                        <span class="px-2 py-1 text-xs font-medium bg-orange-50 text-orange-700 rounded-md border border-orange-100">
-                            Pending
-                        </span>
-                    </div>
-                    <div class="flex items-center gap-3 text-xs text-main/60 mt-3">
-                        <div class="flex items-center gap-1">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                            </svg>
-                            <span>Friday, Dec 20</span>
-                        </div>
-                        <div class="flex items-center gap-1">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                            <span>02:30 PM</span>
-                        </div>
-                    </div>
+                <div class="pass-heading">
+                    <i class="fa-solid fa-heart-pulse"></i>
+                    <h3>Active Medical Pass</h3>
                 </div>
 
-                <!-- Empty State (Optional) -->
-                <div class="text-center py-6 text-main/40">
-                    <svg class="w-8 h-8 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
-                    </svg>
-                    <p class="text-xs">No other appointments scheduled.</p>
+                <div class="med-pass">
+                    <div class="med-pass-strip">
+                        <strong><i class="fa-solid fa-stethoscope"></i> Niter Medical Pass</strong>
+                        <span class="pass-token">#MED-1042</span>
+                    </div>
+                    <div class="med-pass-body">
+                        <div class="pass-detail">
+                            <span class="pass-k">Patient</span>
+                            <span class="pass-v">Rifat Hasan</span>
+                        </div>
+                        <div class="pass-detail">
+                            <span class="pass-k">Doctor</span>
+                            <span class="pass-v">Dr. Ahmed Khan</span>
+                        </div>
+                        <div class="pass-detail">
+                            <span class="pass-k">Date</span>
+                            <span class="pass-v">Tomorrow</span>
+                        </div>
+                        <div class="pass-detail">
+                            <span class="pass-k">Time</span>
+                            <span class="pass-v">10:00 AM</span>
+                        </div>
+                    </div>
+                    <span class="status-badge status-confirmed"><i class="fa-solid fa-circle-check"></i> Confirmed</span>
                 </div>
-            </div>
+            </aside>
+
         </div>
+
     </div>
 
-</div>
-{% endblock %}
+    <script>
+        // Default the date picker to today (matches the meal ticket page)
+        const dateInput = document.getElementById('appt-date');
+        if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
+    </script>
+</body>
+</html>

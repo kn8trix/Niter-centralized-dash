@@ -36,6 +36,8 @@ def endpoints(request):
             # Authentication
             'login': reverse('login'),
             'logout': reverse('logout'),
+            'settings': reverse('settings'),
+            'signup': reverse('signup'),
 
             # Host portal pages
             'medical_admin_dashboard': reverse('medical_admin_dashboard'),

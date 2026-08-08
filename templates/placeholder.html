@@ -1,0 +1,54 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} — Niter Hub</title>
+    <meta name="description" content="{{ subtitle }}">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Placeholder page styles -->
+    <link rel="stylesheet" href="{% static 'css/placeholder.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="placeholder" data-app="campusdash-public">
+
+    <div class="shell">
+
+        {% include 'partials/topbar.html' with active='' %}
+
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <div class="intro">
+            <h1>{{ title }}</h1>
+            <p>{{ subtitle }}</p>
+        </div>
+
+        <!-- ============================================================
+             Placeholder card
+        ============================================================ -->
+        <div class="placeholder-card">
+            <span class="placeholder-icon"><i class="fa-solid {{ icon }}"></i></span>
+            <h2>Coming soon</h2>
+            <p>{{ message }}</p>
+            <a href="{% url 'dashboard' %}" class="placeholder-btn">
+                <i class="fa-solid fa-gauge-high"></i> Back to Dashboard
+            </a>
+        </div>
+
+    </div>
+</body>
+</html>

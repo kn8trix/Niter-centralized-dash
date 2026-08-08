@@ -9,7 +9,7 @@
 
    Sections:
      1. Tokens
-     2. Base & top bar
+     2. Base
      3. Live status tracker
      4. Route cards
      5. Booking layout (form + seat grid)
@@ -51,7 +51,7 @@
 }
 
 /* ---------------------------------------------------------------------------
-   2. Base & top bar
+   2. Base
 --------------------------------------------------------------------------- */
 body.transport {
     margin: 0;
@@ -82,82 +82,6 @@ body.transport a {
     max-width: 1160px;
     margin: 0 auto;
     padding: 1.5rem clamp(1.1rem, 4vw, 2.5rem) 4rem;
-}
-
-.topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    flex-wrap: wrap;
-    margin-bottom: 1.6rem;
-}
-
-.brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.6rem;
-    font-weight: 700;
-    font-size: 1.1rem;
-    color: var(--text-primary);
-}
-
-.brand-icon {
-    display: grid;
-    place-items: center;
-    width: 38px;
-    height: 38px;
-    border-radius: 12px;
-    background: var(--accent-primary);
-    border: 1px solid var(--border-color);
-    color: var(--accent-dark);
-    font-size: 1.05rem;
-}
-
-.navlinks {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-}
-
-.navlinks a {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.5rem 1rem;
-    border-radius: 999px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-card);
-    transition: background 0.2s ease, transform 0.2s ease;
-}
-
-.navlinks a:hover {
-    background: var(--bg-subtle);
-    transform: translateY(-1px);
-}
-
-.intro {
-    text-align: center;
-    margin-bottom: 1.8rem;
-}
-
-.intro h1 {
-    margin: 0 0 0.35rem;
-    font-size: clamp(1.6rem, 4vw, 2.1rem);
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    color: var(--text-primary);
-}
-
-.intro p {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: 0.98rem;
 }
 
 .section-title {

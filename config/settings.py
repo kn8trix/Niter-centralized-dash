@@ -35,6 +35,8 @@ TEMPLATES = [
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.request',
+                # Expose the authenticated user ({{ user }}) to every template
+                'django.contrib.auth.context_processors.auth',
                 # Centralized endpoint registry for decoupled URL mappings
                 'core.context_processors.endpoints',
             ],

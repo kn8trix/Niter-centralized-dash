@@ -1,0 +1,322 @@
+/* ============================================================================
+   CampusDash — Shared Top Navigation (Warm Light Theme)
+   ----------------------------------------------------------------------------
+   Single source of truth for the header used by every standalone public
+   page (transport, meals, clubs, medical, notices, notes). Includes the
+   brand, desktop nav pills (active = #e8e2d8), the mobile user-profile
+   popover, the centered intro hero, and the shared toast component.
+
+   Palette: bg #faf9f6 · card #ffffff · border #f0ebe1 · accent #e8e2d8
+            (hover #dfd7cb) · text #1f2937 · muted #6b7280
+
+   Sections:
+     1. Top bar (brand + nav pills)
+     2. Profile avatar & popover
+     3. Intro hero
+     4. Toast
+     5. Responsive & motion
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   1. Top bar (brand + nav pills)
+--------------------------------------------------------------------------- */
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.6rem;
+}
+
+.brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+}
+
+.brand-icon {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 1.05rem;
+}
+
+.navlinks {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.navlinks a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-card);
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.navlinks a:hover {
+    background: var(--bg-subtle);
+    transform: translateY(-1px);
+}
+
+/* Current page pill — warm accent #e8e2d8 */
+.navlinks a.active {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   2. Profile avatar & popover
+--------------------------------------------------------------------------- */
+.profile {
+    position: relative;
+}
+
+.avatar-btn {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 1rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.avatar-btn:hover {
+    background: var(--accent-primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+
+.profile-popover {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: min(282px, 86vw);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-hover, 0 14px 36px rgba(0, 0, 0, 0.10));
+    padding: 0.55rem;
+    z-index: 60;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-6px);
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+}
+
+.profile-popover.open {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.profile-head {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.55rem 0.7rem 0.85rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.profile-avatar {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.profile-id strong {
+    display: block;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.25;
+}
+
+.profile-id span {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.profile-links {
+    display: flex;
+    flex-direction: column;
+    padding: 0.35rem 0;
+}
+
+.profile-links a {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: 0.6rem;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    transition: background 0.15s ease;
+}
+
+.profile-links a:hover {
+    background: var(--bg-subtle);
+}
+
+.profile-links a.active {
+    background: var(--accent-primary);
+}
+
+.profile-actions {
+    border-top: 1px solid var(--border-color);
+    padding-top: 0.35rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.profile-actions a,
+.profile-actions button {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: 0.6rem;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: none;
+    border: none;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.profile-actions a:hover,
+.profile-actions button:hover {
+    background: var(--bg-subtle);
+}
+
+/* ---------------------------------------------------------------------------
+   3. Intro hero (centered page title + subtitle)
+--------------------------------------------------------------------------- */
+.intro {
+    text-align: center;
+    margin-bottom: 1.8rem;
+}
+
+.intro h1 {
+    margin: 0 0 0.35rem;
+    font-size: clamp(1.6rem, 4vw, 2.1rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+}
+
+.intro p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.98rem;
+    max-width: 640px;
+    margin-inline: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   4. Toast
+--------------------------------------------------------------------------- */
+.toast {
+    position: fixed;
+    bottom: 1.4rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 70;
+    max-width: min(90vw, 560px);
+    padding: 0.8rem 1.3rem;
+    border-radius: 999px;
+    background: var(--accent-dark);
+    color: #ffffff;
+    font-size: 0.88rem;
+    font-weight: 500;
+    text-align: center;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.toast.show {
+    opacity: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   5. Responsive & motion
+--------------------------------------------------------------------------- */
+@media (max-width: 767px) {
+    /* Horizontal page buttons collapse into the avatar profile popover */
+    .navlinks {
+        display: none;
+    }
+}
+
+@media (min-width: 768px) {
+    /* Desktop: the top bar already shows every page, so the profile popover
+       keeps only the header info + account actions (page links hidden). */
+    .profile-links {
+        display: none;
+    }
+
+    /* The header's own border separates the sections — avoid a doubled seam. */
+    .profile-actions {
+        border-top: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .navlinks a,
+    .avatar-btn,
+    .profile-popover {
+        transition: none;
+    }
+}
+
+/* Visible keyboard focus for header controls */
+.navlinks a:focus-visible,
+.avatar-btn:focus-visible,
+.profile-links a:focus-visible,
+.profile-actions a:focus-visible,
+.profile-actions button:focus-visible {
+    outline: 2px solid var(--accent-dark);
+    outline-offset: 2px;
+}
