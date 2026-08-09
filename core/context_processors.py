@@ -43,6 +43,12 @@ def endpoints(request):
             'logout': reverse('logout'),
             'settings': reverse('settings'),
             'signup': reverse('signup'),
+            'profile': reverse('profile'),
+
+            # Staff / admin dashboards
+            'sys_admin': reverse('sys_admin'),
+            'cafeteria_admin': reverse('cafeteria_admin'),
+            'club_admin': reverse('club_admin'),
 
             # Host portal pages
             'medical_admin_dashboard': reverse('medical_admin_dashboard'),

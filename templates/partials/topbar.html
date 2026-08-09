@@ -21,7 +21,7 @@ active: dashboard | notes | departments | research | notices | transport | meals
     <!-- Desktop navigation pills (hidden on mobile, see topbar.css) -->
     <nav class="navlinks" aria-label="Primary navigation">
         <a href="{% url 'dashboard' %}" class="{% if active == 'dashboard' %}active{% endif %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
-        <a href="{% url 'academic_notes' %}" class="{% if active == 'notes' %}active{% endif %}"><i class="fa-solid fa-book-open"></i> Academic Notes</a>
+        <a href="{% url 'notes' %}" class="{% if active == 'notes' %}active{% endif %}"><i class="fa-solid fa-book-open"></i> Academic Notes</a>
         <a href="{% url 'departments' %}" class="{% if active == 'departments' %}active{% endif %}"><i class="fa-solid fa-building-columns"></i> Departments</a>
         <a href="{% url 'research_ai' %}" class="{% if active == 'research' %}active{% endif %}"><i class="fa-solid fa-robot"></i> Research AI</a>
         <a href="{% url 'notices' %}" class="{% if active == 'notices' %}active{% endif %}"><i class="fa-solid fa-bullhorn"></i> Notices</a>
@@ -54,7 +54,7 @@ active: dashboard | notes | departments | research | notices | transport | meals
             -->
             <nav class="profile-links" aria-label="Page links">
                 <a href="{% url 'dashboard' %}" class="{% if active == 'dashboard' %}active{% endif %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
-                <a href="{% url 'academic_notes' %}" class="{% if active == 'notes' %}active{% endif %}"><i class="fa-solid fa-book-open"></i> Academic Notes</a>
+                <a href="{% url 'notes' %}" class="{% if active == 'notes' %}active{% endif %}"><i class="fa-solid fa-book-open"></i> Academic Notes</a>
                 <a href="{% url 'departments' %}" class="{% if active == 'departments' %}active{% endif %}"><i class="fa-solid fa-building-columns"></i> Departments</a>
                 <a href="{% url 'research_ai' %}" class="{% if active == 'research' %}active{% endif %}"><i class="fa-solid fa-robot"></i> Research AI</a>
                 <a href="{% url 'notices' %}" class="{% if active == 'notices' %}active{% endif %}"><i class="fa-solid fa-bullhorn"></i> Notices</a>
@@ -62,6 +62,7 @@ active: dashboard | notes | departments | research | notices | transport | meals
                 <a href="{% url 'meal_dashboard' %}" class="{% if active == 'meals' %}active{% endif %}"><i class="fa-solid fa-utensils"></i> Meals</a>
                 <a href="{% url 'medical' %}" class="{% if active == 'medical' %}active{% endif %}"><i class="fa-solid fa-stethoscope"></i> Medical</a>
                 <a href="{% url 'clubs_dashboard' %}" class="{% if active == 'clubs' %}active{% endif %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
+                <a href="{% url 'tickets' %}"><i class="fa-solid fa-ticket"></i> Tickets</a>
             </nav>
 
             <!-- Account actions (separated by a #f0ebe1 divider on mobile) -->

@@ -12,8 +12,16 @@ urlpatterns = [
     # Additional routes for sidebar links
     path('academic-notes/', views.academic_notes, name='academic_notes'),
     path('notices/', views.notices, name='notices'),
-    path('settings/', views.placeholder, {'page': 'settings'}, name='settings'),
-    path('signup/', views.placeholder, {'page': 'signup'}, name='signup'),
+
+    # Account & profile pages
+    path('signup/', views.signup_view, name='signup'),
+    path('settings/', views.settings_view, name='settings'),
+    path('profile/', views.profile_view, name='profile'),
+
+    # Staff / admin dashboards
+    path('admin-dashboard/', views.system_admin_view, name='sys_admin'),
+    path('cafeteria/admin/', views.cafeteria_admin_view, name='cafeteria_admin'),
+    path('clubs/manage/', views.club_admin_view, name='club_admin'),
     path('clubs/', views.clubs_dashboard, name='clubs_dashboard'),
     path('transport/', views.transport_dashboard, name='transport_dashboard'),
     path('meals/', views.meal_dashboard, name='meal_dashboard'),

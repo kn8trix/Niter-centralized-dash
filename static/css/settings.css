@@ -1,0 +1,377 @@
+/* ============================================================================
+   CampusDash — Account Settings Page (Warm Light Theme)
+   ----------------------------------------------------------------------------
+   Standalone styles for templates/settings.html: password reset form,
+   notification preference toggles, and theme picker.
+
+   Palette: bg #faf9f6 · card #ffffff · border #f0ebe1 · accent #e8e2d8
+            (hover #dfd7cb) · text #1f2937 · muted #6b7280
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   1. Tokens
+--------------------------------------------------------------------------- */
+:root {
+    --bg-main: #faf9f6;
+    --bg-card: #ffffff;
+    --bg-subtle: #f7f4ef;
+
+    --text-primary: #1f2937;
+    --text-muted: #6b7280;
+
+    --border-color: #f0ebe1;
+    --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.03);
+
+    --accent-primary: #e8e2d8;
+    --accent-primary-hover: #dfd7cb;
+    --accent-dark: #27272a;
+
+    --success: #166534;
+    --success-soft: #dcfce7;
+    --success-border: #bbf7d0;
+    --danger: #b91c1c;
+    --danger-soft: #fee2e2;
+    --danger-border: #fecaca;
+}
+
+/* ---------------------------------------------------------------------------
+   2. Base
+--------------------------------------------------------------------------- */
+body.settings {
+    margin: 0;
+    min-height: 100vh;
+    font-family: var(--font-main, 'Inter', system-ui, sans-serif);
+    background:
+        radial-gradient(1000px 520px at 85% -10%, rgba(232, 226, 216, 0.55), transparent 60%),
+        radial-gradient(800px 420px at 5% 12%, rgba(240, 235, 225, 0.6), transparent 55%),
+        var(--bg-main);
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+}
+
+body.settings *,
+body.settings *::before,
+body.settings *::after {
+    box-sizing: border-box;
+}
+
+body.settings a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.shell {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 1.5rem clamp(1.1rem, 4vw, 2.5rem) 4rem;
+}
+
+.section-title {
+    margin: 0 0 0.2rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.section-title i {
+    margin-right: 0.45rem;
+    color: var(--text-muted);
+}
+
+.section-subtitle {
+    margin: 0 0 1.1rem;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+}
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+    padding: 1.4rem 1.5rem;
+}
+
+/* ---------------------------------------------------------------------------
+   3. Layout
+--------------------------------------------------------------------------- */
+.settings-layout {
+    display: grid;
+    gap: 1.1rem;
+}
+
+/* ---------------------------------------------------------------------------
+   4. Alerts
+--------------------------------------------------------------------------- */
+.alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    border-radius: 0.75rem;
+    padding: 0.8rem 1rem;
+    font-size: 0.87rem;
+    margin-bottom: 1.1rem;
+}
+
+.alert p {
+    margin: 0;
+}
+
+.alert p + p {
+    margin-top: 0.3rem;
+}
+
+.alert.success {
+    background: var(--success-soft);
+    border: 1px solid var(--success-border);
+    color: var(--success);
+}
+
+.alert.error {
+    background: var(--danger-soft);
+    border: 1px solid var(--danger-border);
+    color: var(--danger);
+}
+
+/* ---------------------------------------------------------------------------
+   5. Password form
+--------------------------------------------------------------------------- */
+.settings-form {
+    max-width: 460px;
+}
+
+.field {
+    margin-bottom: 1rem;
+}
+
+.field-label {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.field-input {
+    position: relative;
+}
+
+.field-input i {
+    position: absolute;
+    left: 0.95rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.field-input input {
+    width: 100%;
+    padding: 0.72rem 0.95rem 0.72rem 2.5rem;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
+    font-family: inherit;
+    font-size: 0.93rem;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.field-input input:focus {
+    background: var(--bg-card);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(232, 226, 216, 0.55);
+}
+
+.btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+    padding: 0.72rem 1.4rem;
+    border: none;
+    border-radius: 999px;
+    background: var(--accent-primary);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.btn-primary:hover {
+    background: var(--accent-primary-hover);
+    transform: translateY(-1px);
+}
+
+/* ---------------------------------------------------------------------------
+   6. Notification toggles
+--------------------------------------------------------------------------- */
+.toggle-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 0;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+}
+
+.toggle-row:last-child {
+    border-bottom: 0;
+}
+
+.toggle-row strong {
+    display: block;
+    font-size: 0.93rem;
+    color: var(--text-primary);
+}
+
+.toggle-row div span {
+    display: block;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+/* Hidden checkbox + styled switch */
+.toggle-input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.toggle-switch {
+    position: relative;
+    flex-shrink: 0;
+    width: 44px;
+    height: 25px;
+    border-radius: 999px;
+    background: var(--border-color);
+    transition: background 0.2s ease;
+}
+
+.toggle-switch::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 19px;
+    height: 19px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s ease;
+}
+
+.toggle-input:checked + .toggle-switch {
+    background: var(--accent-dark);
+}
+
+.toggle-input:checked + .toggle-switch::after {
+    transform: translateX(19px);
+}
+
+.toggle-input:focus-visible + .toggle-switch {
+    outline: 2px solid var(--accent-dark);
+    outline-offset: 2px;
+}
+
+.toast-note {
+    margin: 0.9rem 0 0;
+    font-size: 0.85rem;
+    color: var(--success);
+}
+
+/* ---------------------------------------------------------------------------
+   7. Theme picker
+--------------------------------------------------------------------------- */
+.theme-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.9rem;
+    max-width: 460px;
+}
+
+.theme-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
+    padding: 1.1rem;
+    border-radius: 1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.theme-option:hover {
+    transform: translateY(-1px);
+}
+
+.theme-option.selected {
+    border-color: var(--accent-dark);
+    box-shadow: 0 0 0 2px var(--accent-primary);
+}
+
+.theme-option strong {
+    font-size: 0.93rem;
+    color: var(--text-primary);
+}
+
+.theme-option span:last-child {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.theme-swatch {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 74px;
+    border-radius: 0.75rem;
+    font-size: 1.4rem;
+    margin-bottom: 0.4rem;
+}
+
+.theme-swatch.light {
+    background: linear-gradient(135deg, #faf9f6 0%, #f0ebe1 100%);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+}
+
+.theme-swatch.dark {
+    background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+    border: 1px solid #374151;
+    color: #f9fafb;
+}
+
+/* ---------------------------------------------------------------------------
+   8. Responsive
+--------------------------------------------------------------------------- */
+@media (max-width: 520px) {
+    .theme-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .theme-option,
+    .toggle-switch,
+    .toggle-switch::after,
+    .btn-primary {
+        transition: none;
+    }
+}

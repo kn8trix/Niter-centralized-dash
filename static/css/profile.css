@@ -1,0 +1,432 @@
+/* ============================================================================
+   CampusDash — Profile Page (Warm Light Theme)
+   ----------------------------------------------------------------------------
+   Standalone styles for templates/profile.html: virtual student ID card with
+   QR, and the booking & activity history tab.
+
+   Palette: bg #faf9f6 · card #ffffff · border #f0ebe1 · accent #e8e2d8
+            (hover #dfd7cb) · text #1f2937 · muted #6b7280
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   1. Tokens
+--------------------------------------------------------------------------- */
+:root {
+    --bg-main: #faf9f6;
+    --bg-card: #ffffff;
+    --bg-subtle: #f7f4ef;
+
+    --text-primary: #1f2937;
+    --text-muted: #6b7280;
+
+    --border-color: #f0ebe1;
+    --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.03);
+
+    --accent-primary: #e8e2d8;
+    --accent-primary-hover: #dfd7cb;
+    --accent-dark: #27272a;
+}
+
+/* ---------------------------------------------------------------------------
+   2. Base
+--------------------------------------------------------------------------- */
+body.profile {
+    margin: 0;
+    min-height: 100vh;
+    font-family: var(--font-main, 'Inter', system-ui, sans-serif);
+    background:
+        radial-gradient(1000px 520px at 85% -10%, rgba(232, 226, 216, 0.55), transparent 60%),
+        radial-gradient(800px 420px at 5% 12%, rgba(240, 235, 225, 0.6), transparent 55%),
+        var(--bg-main);
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+}
+
+body.profile *,
+body.profile *::before,
+body.profile *::after {
+    box-sizing: border-box;
+}
+
+body.profile a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.shell {
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: 1.5rem clamp(1.1rem, 4vw, 2.5rem) 4rem;
+}
+
+.section-title {
+    margin: 0 0 0.2rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.section-title i {
+    margin-right: 0.45rem;
+    color: var(--text-muted);
+}
+
+.section-subtitle {
+    margin: 0 0 1.1rem;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+}
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+    padding: 1.4rem 1.5rem;
+}
+
+/* ---------------------------------------------------------------------------
+   3. Tabs
+--------------------------------------------------------------------------- */
+.profile-tabs {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.3rem;
+}
+
+.profile-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.2rem;
+    border-radius: 999px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.profile-tab:hover {
+    background: var(--bg-subtle);
+    transform: translateY(-1px);
+}
+
+.profile-tab.active {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   4. Virtual student ID card
+--------------------------------------------------------------------------- */
+.id-card-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 460px) 1fr;
+    gap: 1.1rem;
+    align-items: start;
+}
+
+.id-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1.1rem;
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+    animation: idFadeUp 0.4s ease both;
+}
+
+.id-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.3rem;
+    background: var(--accent-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.id-card-brand {
+    font-weight: 800;
+    font-size: 0.95rem;
+    letter-spacing: 0.04em;
+    color: var(--accent-dark);
+}
+
+.id-card-brand i {
+    margin-right: 0.4rem;
+}
+
+.id-card-chip {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 0.85rem;
+}
+
+.id-card-photo {
+    display: grid;
+    place-items: center;
+    width: 84px;
+    height: 84px;
+    margin: 1.3rem auto 0;
+    border-radius: 50%;
+    background: var(--bg-subtle);
+    border: 3px solid var(--accent-primary);
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--accent-dark);
+}
+
+.id-card-details {
+    text-align: center;
+    padding: 0.9rem 1.3rem 1.1rem;
+}
+
+.id-name {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.id-role {
+    margin: 0.1rem 0 1rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.id-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+    text-align: left;
+}
+
+.id-meta > div {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
+    padding: 0.6rem 0.8rem;
+}
+
+.id-meta > div:first-child {
+    grid-column: 1 / -1;
+}
+
+.id-k {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+.id-v {
+    display: block;
+    margin-top: 0.1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.id-card-footer {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.3rem;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-subtle);
+}
+
+.id-qr {
+    width: 84px;
+    height: 84px;
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
+    padding: 4px;
+    flex-shrink: 0;
+}
+
+.id-qr svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.id-footer-text strong {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.id-footer-text span {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+/* Side note card */
+.id-tips {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+
+.id-tips li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+}
+
+.id-tips li i {
+    margin-top: 0.2rem;
+    color: #16a34a;
+}
+
+/* ---------------------------------------------------------------------------
+   5. Activity history
+--------------------------------------------------------------------------- */
+.activity-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.1rem;
+}
+
+.activity-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+
+.activity-item {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0.8rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.85rem;
+    background: var(--bg-subtle);
+}
+
+.activity-icon {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    flex-shrink: 0;
+}
+
+.activity-icon.transport {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+.activity-icon.meals {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.activity-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.activity-body strong {
+    display: block;
+    font-size: 0.88rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.activity-body span {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.empty {
+    margin: 0;
+    padding: 1rem;
+    text-align: center;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    border: 1px dashed var(--border-color);
+    border-radius: 0.85rem;
+}
+
+/* ---------------------------------------------------------------------------
+   6. Badges
+--------------------------------------------------------------------------- */
+.badge {
+    display: inline-block;
+    padding: 0.22rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.badge.confirmed,
+.badge.booked,
+.badge.boarded,
+.badge.active {
+    background: var(--success-soft, #dcfce7);
+    color: #166534;
+}
+
+.badge.pending,
+.badge.unused {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+/* ---------------------------------------------------------------------------
+   7. Motion & responsive
+--------------------------------------------------------------------------- */
+@keyframes idFadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 760px) {
+    .id-card-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .id-card,
+    .profile-tab {
+        animation: none;
+        transition: none;
+    }
+}

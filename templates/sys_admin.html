@@ -1,0 +1,460 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Admin — Niter Hub</title>
+    <meta name="description" content="System admin dashboard — users & roles, notices, transport management, and security.">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Shared admin dashboard styles -->
+    <link rel="stylesheet" href="{% static 'css/admin.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="sys-admin" data-app="campusdash-public">
+
+    <div class="shell">
+
+        {% include 'partials/topbar.html' with active='' %}
+
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <div class="intro">
+            <h1>System Admin Dashboard</h1>
+            <p>Users &amp; roles, university notices, transport management, and platform security — in one place.</p>
+        </div>
+
+        <!-- ============================================================
+             Tabs
+        ============================================================ -->
+        <div class="admin-tabs" role="tablist" aria-label="System admin sections">
+            <button type="button" class="admin-tab active" data-tab="users" role="tab" aria-selected="true">
+                <i class="fa-solid fa-user-gear"></i> Users &amp; Roles
+            </button>
+            <button type="button" class="admin-tab" data-tab="notices" role="tab" aria-selected="false">
+                <i class="fa-solid fa-bullhorn"></i> Notices &amp; Materials
+            </button>
+            <button type="button" class="admin-tab" data-tab="transport" role="tab" aria-selected="false">
+                <i class="fa-solid fa-bus"></i> Transport Management
+            </button>
+            <button type="button" class="admin-tab" data-tab="security" role="tab" aria-selected="false">
+                <i class="fa-solid fa-shield-halved"></i> AI Vector DB &amp; Security
+            </button>
+        </div>
+
+        <!-- ============================================================
+             Tab 1 — Users & Role Management
+        ============================================================ -->
+        <section class="admin-panel active" id="panel-users" role="tabpanel">
+
+            <div class="card">
+                <h2 class="section-title"><i class="fa-solid fa-user-graduate"></i> Students</h2>
+                <p class="section-subtitle">Manage student accounts and status.</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Student ID</th>
+                                <th>Department</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for student in students %}
+                            <tr>
+                                <td>{{ student.name }}</td>
+                                <td class="mono">{{ student.student_id }}</td>
+                                <td>{{ student.department }}</td>
+                                <td><span class="badge {{ student.status|lower }}">{{ student.status }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 class="section-title"><i class="fa-solid fa-user-tie"></i> Staff</h2>
+                <p class="section-subtitle">Staff accounts and their campus roles.</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Role</th>
+                                <th>Department</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for member in staff %}
+                            <tr>
+                                <td>{{ member.name }}</td>
+                                <td>{{ member.role }}</td>
+                                <td>{{ member.department }}</td>
+                                <td><span class="badge {{ member.status|lower }}">{{ member.status }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 class="section-title"><i class="fa-solid fa-lock"></i> Role &amp; Permission Matrix</h2>
+                <p class="section-subtitle">What each role can do across the portal.</p>
+                <div class="table-wrap">
+                    <table class="matrix">
+                        <thead>
+                            <tr>
+                                <th>Permission</th>
+                                {% for role in roles %}
+                                <th>{{ role }}</th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for perm in permissions %}
+                            <tr>
+                                <td>{{ perm.name }}</td>
+                                {% for allowed in perm.roles %}
+                                <td>
+                                    {% if allowed %}
+                                    <span class="perm-yes" title="Allowed"><i class="fa-solid fa-check"></i></span>
+                                    {% else %}
+                                    <span class="perm-no" title="Not allowed"><i class="fa-solid fa-xmark"></i></span>
+                                    {% endif %}
+                                </td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- ============================================================
+             Tab 2 — University Notices & Material Drive
+        ============================================================ -->
+        <section class="admin-panel" id="panel-notices" role="tabpanel" hidden>
+
+            <div class="card">
+                <h2 class="section-title"><i class="fa-solid fa-bullhorn"></i> Official Notices</h2>
+                <p class="section-subtitle">Create and manage institutional announcements.</p>
+
+                <form class="inline-form" data-component="notice-form">
+                    {% csrf_token %}
+                    <input type="text" name="title" placeholder="Notice title…" aria-label="Notice title">
+                    <select name="category" aria-label="Category">
+                        <option>Academic</option>
+                        <option>General</option>
+                        <option>Event</option>
+                        <option>Workshop</option>
+                    </select>
+                    <select name="status" aria-label="Status">
+                        <option>Draft</option>
+                        <option>Scheduled</option>
+                        <option>Published</option>
+                    </select>
+                    <button type="submit" class="btn-primary"><i class="fa-solid fa-plus"></i> Post Notice</button>
+                </form>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Category</th>
+                                <th>Status</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for notice in notices %}
+                            <tr>
+                                <td>{{ notice.title }}</td>
+                                <td><span class="badge category">{{ notice.category }}</span></td>
+                                <td><span class="badge {{ notice.status|lower }}">{{ notice.status }}</span></td>
+                                <td class="mono">{{ notice.date }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 class="section-title"><i class="fa-solid fa-folder-open"></i> Material Drive</h2>
+                <p class="section-subtitle">Course materials and files uploaded for students.</p>
+
+                <form class="inline-form" data-component="material-form">
+                    {% csrf_token %}
+                    <input type="text" name="course" placeholder="Course code (e.g. CS101)" aria-label="Course code">
+                    <input type="text" name="title" placeholder="Material title…" aria-label="Material title">
+                    <button type="submit" class="btn-primary"><i class="fa-solid fa-upload"></i> Upload</button>
+                </form>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Course</th>
+                                <th>Material</th>
+                                <th>Type</th>
+                                <th>Size</th>
+                                <th>Uploaded</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for material in materials %}
+                            <tr>
+                                <td class="mono">{{ material.course }}</td>
+                                <td>{{ material.title }}</td>
+                                <td><span class="badge type">{{ material.type }}</span></td>
+                                <td>{{ material.size }}</td>
+                                <td class="mono">{{ material.date }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- ============================================================
+             Tab 3 — Transport Management (consolidated)
+        ============================================================ -->
+        <section class="admin-panel" id="panel-transport" role="tabpanel" hidden>
+
+            <h2 class="section-title"><i class="fa-solid fa-bus"></i> Live Bus Status</h2>
+            <p class="section-subtitle">Real-time position and status of every campus route.</p>
+            <div class="stat-cards">
+                {% for bus in buses %}
+                <div class="stat-card">
+                    <span class="stat-icon transport"><i class="fa-solid fa-bus"></i></span>
+                    <strong class="stat-title">{{ bus.route }}</strong>
+                    <span class="stat-sub">Driver: {{ bus.driver }}</span>
+                    <span class="badge {{ bus.status|lower|cut:" " }}">{{ bus.status }}</span>
+                    <div class="stat-footer">
+                        <span>Next stop: <strong>{{ bus.next_stop }}</strong></span>
+                        <span>ETA: <strong>{{ bus.eta }}</strong></span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="card">
+                <h2 class="section-title"><i class="fa-solid fa-comment-dots"></i> Driver Updates</h2>
+                <p class="section-subtitle">Latest field updates reported by drivers.</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Route</th>
+                                <th>Driver</th>
+                                <th>Update</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for update in driver_updates %}
+                            <tr>
+                                <td class="mono">{{ update.route }}</td>
+                                <td>{{ update.driver }}</td>
+                                <td>{{ update.update }}</td>
+                                <td class="mono">{{ update.time }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 class="section-title"><i class="fa-solid fa-qrcode"></i> Boarding Scans</h2>
+                <p class="section-subtitle">QR token scans at the bus door.</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Token</th>
+                                <th>Route</th>
+                                <th>Time</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for scan in boarding_scans %}
+                            <tr>
+                                <td class="mono">{{ scan.token }}</td>
+                                <td class="mono">{{ scan.route }}</td>
+                                <td class="mono">{{ scan.time }}</td>
+                                <td><span class="badge {{ scan.status|lower }}">{{ scan.status }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- ============================================================
+             Tab 4 — Local AI Vector DB & System Security Logs
+        ============================================================ -->
+        <section class="admin-panel" id="panel-security" role="tabpanel" hidden>
+
+            <h2 class="section-title"><i class="fa-solid fa-database"></i> Local AI Vector DB</h2>
+            <p class="section-subtitle">Documents embedded and indexed for the campus assistant.</p>
+            <div class="stat-cards">
+                <div class="stat-card">
+                    <span class="stat-icon"><i class="fa-solid fa-file-lines"></i></span>
+                    <strong class="stat-value">{{ vector_stats.documents }}</strong>
+                    <span class="stat-sub">Documents indexed</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-icon"><i class="fa-solid fa-cubes"></i></span>
+                    <strong class="stat-value">{{ vector_stats.chunks }}</strong>
+                    <span class="stat-sub">Vector chunks</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-icon"><i class="fa-solid fa-hard-drive"></i></span>
+                    <strong class="stat-value">{{ vector_stats.storage }}</strong>
+                    <span class="stat-sub">Storage used</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-icon"><i class="fa-solid fa-clock"></i></span>
+                    <strong class="stat-value">{{ vector_stats.last_index }}</strong>
+                    <span class="stat-sub">Last indexed</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 class="section-title"><i class="fa-solid fa-magnifying-glass"></i> Recent Queries</h2>
+                <p class="section-subtitle">Latest semantic searches hitting the vector store.</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Query</th>
+                                <th>Hits</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for query in vector_queries %}
+                            <tr>
+                                <td>{{ query.query }}</td>
+                                <td>{{ query.hits }}</td>
+                                <td class="mono">{{ query.time }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 class="section-title"><i class="fa-solid fa-shield-halved"></i> System Security Logs</h2>
+                <p class="section-subtitle">Audit trail of logins, role changes, and flagged activity.</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>User</th>
+                                <th>Action</th>
+                                <th>IP</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in security_logs %}
+                            <tr>
+                                <td class="mono">{{ log.time }}</td>
+                                <td class="mono">{{ log.user }}</td>
+                                <td>{{ log.action }}</td>
+                                <td class="mono">{{ log.ip }}</td>
+                                <td><span class="badge {{ log.status|lower }}">{{ log.status }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </section>
+
+    </div>
+
+    <div class="toast" id="admin-toast" role="status" hidden>
+        <i class="fa-solid fa-circle-check"></i> <span id="admin-toast-text">Saved</span>
+    </div>
+
+    <script>
+        // ====================================================================
+        // Tab switching
+        // ====================================================================
+        (function () {
+            const tabs = document.querySelectorAll('.admin-tab');
+            const panels = {};
+            document.querySelectorAll('.admin-panel').forEach((p) => { panels[p.id.replace('panel-', '')] = p; });
+
+            tabs.forEach((tab) => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach((t) => {
+                        t.classList.toggle('active', t === tab);
+                        t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+                    });
+                    Object.entries(panels).forEach(([key, panel]) => {
+                        panel.hidden = key !== tab.dataset.tab;
+                        panel.classList.toggle('active', key === tab.dataset.tab);
+                    });
+                });
+            });
+        })();
+
+        // ====================================================================
+        // Mock toast + form confirmations (frontend-only)
+        // ====================================================================
+        (function () {
+            const toast = document.getElementById('admin-toast');
+            const text = document.getElementById('admin-toast-text');
+            let timer;
+
+            function show(msg) {
+                text.textContent = msg;
+                toast.hidden = false;
+                toast.classList.add('show');
+                clearTimeout(timer);
+                timer = setTimeout(() => { toast.classList.remove('show'); toast.hidden = true; }, 2600);
+            }
+
+            document.querySelectorAll('form.inline-form').forEach((form) => {
+                form.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    show('Saved (demo — no backend changes yet).');
+                    form.reset();
+                });
+            });
+        })();
+    </script>
+</body>
+</html>

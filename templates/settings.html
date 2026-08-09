@@ -1,0 +1,226 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Settings — Niter Hub</title>
+    <meta name="description" content="Manage your Niter Hub password, notification preferences, and theme.">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Settings page styles -->
+    <link rel="stylesheet" href="{% static 'css/settings.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="settings" data-app="campusdash-public">
+
+    <div class="shell">
+
+        {% include 'partials/topbar.html' with active='' %}
+
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <div class="intro">
+            <h1>Account Settings</h1>
+            <p>Manage your password, notifications, and appearance.</p>
+        </div>
+
+        <div class="settings-layout">
+
+            <!-- ============================================================
+                 Password reset
+            ============================================================ -->
+            <section class="card" data-component="password-reset">
+                <h2 class="section-title"><i class="fa-solid fa-key"></i> Password Reset</h2>
+                <p class="section-subtitle">Change the password you use to sign in to Niter Hub.</p>
+
+                {% if password_updated %}
+                <div class="alert success" role="status">
+                    <i class="fa-solid fa-circle-check"></i>
+                    <span>Your password has been updated successfully.</span>
+                </div>
+                {% endif %}
+
+                {% if password_form.errors %}
+                <div class="alert error" role="alert">
+                    <i class="fa-solid fa-circle-exclamation"></i>
+                    <div>
+                        {% for field in password_form %}
+                            {% for error in field.errors %}<p>{{ error }}</p>{% endfor %}
+                        {% endfor %}
+                        {% for error in password_form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <form method="post" action="{% url 'settings' %}" class="settings-form" novalidate>
+                    {% csrf_token %}
+                    <div class="field">
+                        <label for="{{ password_form.old_password.id_for_label }}" class="field-label">Current Password</label>
+                        <div class="field-input">
+                            <i class="fa-solid fa-lock"></i>
+                            {{ password_form.old_password }}
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="{{ password_form.new_password1.id_for_label }}" class="field-label">New Password</label>
+                        <div class="field-input">
+                            <i class="fa-solid fa-lock"></i>
+                            {{ password_form.new_password1 }}
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="{{ password_form.new_password2.id_for_label }}" class="field-label">Confirm New Password</label>
+                        <div class="field-input">
+                            <i class="fa-solid fa-lock"></i>
+                            {{ password_form.new_password2 }}
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-primary">
+                        <i class="fa-solid fa-rotate"></i> Update Password
+                    </button>
+                </form>
+            </section>
+
+            <!-- ============================================================
+                 Notification preferences
+            ============================================================ -->
+            <section class="card" data-component="notification-preferences">
+                <h2 class="section-title"><i class="fa-solid fa-bell"></i> Notification Preferences</h2>
+                <p class="section-subtitle">Choose which updates you want to receive.</p>
+
+                <div class="toggle-list">
+                    <label class="toggle-row">
+                        <div>
+                            <strong>Email notifications</strong>
+                            <span>Notices and announcements to your inbox.</span>
+                        </div>
+                        <input type="checkbox" class="toggle-input" checked data-pref="email">
+                        <span class="toggle-switch" aria-hidden="true"></span>
+                    </label>
+
+                    <label class="toggle-row">
+                        <div>
+                            <strong>SMS alerts</strong>
+                            <span>Urgent campus alerts via text message.</span>
+                        </div>
+                        <input type="checkbox" class="toggle-input" data-pref="sms">
+                        <span class="toggle-switch" aria-hidden="true"></span>
+                    </label>
+
+                    <label class="toggle-row">
+                        <div>
+                            <strong>Notice digest</strong>
+                            <span>A weekly summary of official notices.</span>
+                        </div>
+                        <input type="checkbox" class="toggle-input" checked data-pref="digest">
+                        <span class="toggle-switch" aria-hidden="true"></span>
+                    </label>
+
+                    <label class="toggle-row">
+                        <div>
+                            <strong>Appointment reminders</strong>
+                            <span>Reminders before your medical appointments.</span>
+                        </div>
+                        <input type="checkbox" class="toggle-input" checked data-pref="appointments">
+                        <span class="toggle-switch" aria-hidden="true"></span>
+                    </label>
+                </div>
+
+                <p class="toast-note" id="pref-note" role="status" hidden>
+                    <i class="fa-solid fa-circle-check"></i> Preferences saved locally.
+                </p>
+            </section>
+
+            <!-- ============================================================
+                 Theme preferences
+            ============================================================ -->
+            <section class="card" data-component="theme-preferences">
+                <h2 class="section-title"><i class="fa-solid fa-palette"></i> Theme</h2>
+                <p class="section-subtitle">Pick how the portal looks for you.</p>
+
+                <div class="theme-grid">
+                    <button type="button" class="theme-option" data-theme="light" aria-pressed="true">
+                        <span class="theme-swatch light"><i class="fa-solid fa-sun"></i></span>
+                        <strong>Warm Light</strong>
+                        <span>Paper-like, easy on the eyes.</span>
+                    </button>
+                    <button type="button" class="theme-option" data-theme="dark" aria-pressed="false">
+                        <span class="theme-swatch dark"><i class="fa-solid fa-moon"></i></span>
+                        <strong>Dark</strong>
+                        <span>Low-glare for late-night work.</span>
+                    </button>
+                </div>
+            </section>
+
+        </div>
+    </div>
+
+    <script>
+        // ====================================================================
+        // Notification toggles — persist to localStorage (mock, no backend).
+        // ====================================================================
+        (function () {
+            const note = document.getElementById('pref-note');
+            const inputs = document.querySelectorAll('.toggle-input');
+            const KEY = 'campusdash-prefs';
+
+            let prefs = {};
+            try { prefs = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { /* ignore */ }
+
+            inputs.forEach((input) => {
+                const key = input.dataset.pref;
+                if (key in prefs) input.checked = !!prefs[key];
+                input.addEventListener('change', () => {
+                    prefs[key] = input.checked;
+                    localStorage.setItem(KEY, JSON.stringify(prefs));
+                    note.hidden = false;
+                    setTimeout(() => { note.hidden = true; }, 2000);
+                });
+            });
+        })();
+
+        // ====================================================================
+        // Theme toggle — applies data-theme on <html>, persisted per visitor.
+        // theme.css maps the tokens under [data-theme="dark"].
+        // ====================================================================
+        (function () {
+            const KEY = 'campusdash-theme';
+            const options = document.querySelectorAll('.theme-option');
+
+            function apply(theme) {
+                document.documentElement.dataset.theme = theme;
+                options.forEach((opt) => {
+                    const pressed = opt.dataset.theme === theme;
+                    opt.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+                    opt.classList.toggle('selected', pressed);
+                });
+            }
+
+            let saved = 'light';
+            try { saved = localStorage.getItem(KEY) || 'light'; } catch (e) { /* ignore */ }
+            apply(saved);
+
+            options.forEach((opt) => {
+                opt.addEventListener('click', () => {
+                    const theme = opt.dataset.theme;
+                    try { localStorage.setItem(KEY, theme); } catch (e) { /* ignore */ }
+                    apply(theme);
+                });
+            });
+        })();
+    </script>
+</body>
+</html>

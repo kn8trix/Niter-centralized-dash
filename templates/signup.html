@@ -1,0 +1,137 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Account — Niter Hub</title>
+    <meta name="description" content="Create your Niter Hub student account to access your portal and dashboard.">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared auth screen styles (login/signup) -->
+    <link rel="stylesheet" href="{% static 'css/auth.css' %}">
+    <!-- Signup-specific styles -->
+    <link rel="stylesheet" href="{% static 'css/signup.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="auth signup" data-app="campusdash-public">
+
+    <!-- Back to homepage -->
+    <a href="{% url 'home' %}" class="auth-back-link" aria-label="Back to homepage">
+        <i class="fa-solid fa-arrow-left"></i> Back to Home
+    </a>
+
+    <main class="auth-shell">
+        <div class="auth-card">
+
+            <!-- Brand -->
+            <div class="auth-brand">
+                <span class="auth-brand-icon"><i class="fa-solid fa-graduation-cap"></i></span>
+            </div>
+
+            <!-- Heading -->
+            <h1 class="auth-title">Create Account</h1>
+            <p class="auth-subtitle">Join the Niter campus portal</p>
+
+            <!-- Error container -->
+            {% if errors %}
+            <div class="auth-alert" role="alert">
+                <i class="fa-solid fa-circle-exclamation"></i>
+                <div>
+                    {% for error in errors %}
+                    <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Signup form -->
+            <form method="post" action="{% url 'signup' %}" class="auth-form signup-form" novalidate>
+                {% csrf_token %}
+
+                <div class="form-row">
+                    <div class="field">
+                        <label for="id_student_id" class="field-label">Student ID</label>
+                        <div class="field-input">
+                            <i class="fa-solid fa-id-card"></i>
+                            <input type="text" id="id_student_id" name="student_id" placeholder="e.g. S1024"
+                                   value="{{ form_data.student_id|default:'' }}" required>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label for="id_full_name" class="field-label">Full Name</label>
+                        <div class="field-input">
+                            <i class="fa-solid fa-user"></i>
+                            <input type="text" id="id_full_name" name="full_name" placeholder="Your full name"
+                                   value="{{ form_data.full_name|default:'' }}" required>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="field">
+                        <label for="id_department" class="field-label">Department</label>
+                        <div class="field-input">
+                            <i class="fa-solid fa-building-columns"></i>
+                            <select id="id_department" name="department" required>
+                                <option value="" disabled {% if not form_data.department %}selected{% endif %}>Select department…</option>
+                                {% for code, label in departments %}
+                                <option value="{{ code }}" {% if form_data.department == code %}selected{% endif %}>{{ label }} ({{ code }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label for="id_email" class="field-label">Email</label>
+                        <div class="field-input">
+                            <i class="fa-solid fa-envelope"></i>
+                            <input type="email" id="id_email" name="email" placeholder="you@example.com"
+                                   value="{{ form_data.email|default:'' }}" required>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="field">
+                        <label for="id_password" class="field-label">Password</label>
+                        <div class="field-input">
+                            <i class="fa-solid fa-lock"></i>
+                            <input type="password" id="id_password" name="password" placeholder="At least 8 characters" minlength="8" required>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label for="id_confirm_password" class="field-label">Confirm Password</label>
+                        <div class="field-input">
+                            <i class="fa-solid fa-lock"></i>
+                            <input type="password" id="id_confirm_password" name="confirm_password" placeholder="Repeat password" required>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="auth-submit">
+                    Create Account <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </form>
+
+            <!-- Existing account fallback -->
+            <div class="auth-divider"><span>or</span></div>
+            <a href="{% url 'login' %}" class="auth-demo-link">
+                Already have an account? Sign in <i class="fa-solid fa-arrow-right"></i>
+            </a>
+
+        </div>
+    </main>
+</body>
+</html>

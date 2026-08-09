@@ -1,0 +1,78 @@
+/* ============================================================================
+   CampusDash — Signup Page Styles (Warm Light Theme)
+   ----------------------------------------------------------------------------
+   Complements static/css/auth.css (body.auth base + card + buttons). This file
+   only adds what the signup form needs: a wider card, two-column form rows,
+   and matching styles for the email input and department <select> that the
+   login page never uses.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   1. Card — slightly wider than login to fit two-column rows
+--------------------------------------------------------------------------- */
+body.signup .auth-card {
+    max-width: 560px;
+    padding: 2.4rem 2.1rem 2rem;
+}
+
+/* ---------------------------------------------------------------------------
+   2. Two-column form rows (stack on small screens)
+--------------------------------------------------------------------------- */
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.9rem;
+}
+
+/* ---------------------------------------------------------------------------
+   3. Field inputs — email + select share the login input look
+--------------------------------------------------------------------------- */
+.signup-form .field-input input[type="email"],
+.signup-form .field-input select {
+    width: 100%;
+    padding: 0.78rem 0.95rem 0.78rem 2.55rem;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
+    font-family: inherit;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.signup-form .field-input select {
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.9rem center;
+}
+
+.signup-form .field-input input::placeholder {
+    color: #9ca3af;
+}
+
+.signup-form .field-input input:focus,
+.signup-form .field-input select:focus {
+    background: var(--bg-card);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(232, 226, 216, 0.55);
+}
+
+/* ---------------------------------------------------------------------------
+   4. Responsive
+--------------------------------------------------------------------------- */
+@media (max-width: 480px) {
+    .form-row {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body.signup .auth-card {
+        animation: none;
+    }
+}

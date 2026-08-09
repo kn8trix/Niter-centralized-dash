@@ -251,8 +251,12 @@ python manage.py runserver 0.0.0.0:8000
 | **Meal System** | [http://127.0.0.1:8000/meals/](http://127.0.0.1:8000/meals/) | Meal slot ratio, claim, supply stats |
 | **Login** | [http://127.0.0.1:8000/login/](http://127.0.0.1:8000/login/) | Student/staff sign-in page |
 | **Logout** | [http://127.0.0.1:8000/logout/](http://127.0.0.1:8000/logout/) | Sign out (POST) |
-| **Settings** | [http://127.0.0.1:8000/settings/](http://127.0.0.1:8000/settings/) | Account settings (placeholder page) |
-| **Sign Up** | [http://127.0.0.1:8000/signup/](http://127.0.0.1:8000/signup/) | Sign up / switch account (placeholder page) |
+| **Settings** | [http://127.0.0.1:8000/settings/](http://127.0.0.1:8000/settings/) | Account settings (password change, toggles, theme) |
+| **Sign Up** | [http://127.0.0.1:8000/signup/](http://127.0.0.1:8000/signup/) | Student sign-up (creates account + profile) |
+| **Profile** | [http://127.0.0.1:8000/profile/](http://127.0.0.1:8000/profile/) | Virtual student ID card + booking history |
+| **System Admin** | [http://127.0.0.1:8000/admin-dashboard/](http://127.0.0.1:8000/admin-dashboard/) | Staff-only dashboard (users, notices, transport, security) |
+| **Cafeteria Admin** | [http://127.0.0.1:8000/cafeteria/admin/](http://127.0.0.1:8000/cafeteria/admin/) | Staff-only meal slots, inventory, QR redemption |
+| **Club Management** | [http://127.0.0.1:8000/clubs/manage/](http://127.0.0.1:8000/clubs/manage/) | Staff-only club executive workspace |
 
 ### Troubleshooting
 - **Port already in use:** Use `python manage.py runserver 8080` to run on a different port.
@@ -273,9 +277,12 @@ Niter-centralized-dash/
 │   └── wsgi.py                  # WSGI application
 ├── core/
 │   ├── __init__.py
+│   ├── models.py                # StudentProfile (student ID + department, 1:1 User)
 │   ├── views.py                 # View functions
 │   ├── urls.py                  # App URL routes
-│   └── context_processors.py    # Centralized ENDPOINTS registry
+│   ├── context_processors.py    # Centralized ENDPOINTS registry
+│   └── migrations/
+│       └── 0001_initial.py      # StudentProfile
 ├── host/
 │   ├── __init__.py
 │   ├── views.py                 # Host portal views (medical host + admin dashboards)
@@ -294,14 +301,22 @@ Niter-centralized-dash/
 │       ├── medical.css          # Medical booking page styles
 │       ├── notices.css          # Notices page styles
 │       ├── notes.css            # Academic notes drive styles
-│       └── placeholder.css      # Settings / Sign Up placeholder styles
+│       ├── admin.css            # Shared System Admin / Cafeteria / Club admin styles
+│       ├── signup.css           # Sign up page styles
+│       ├── settings.css         # Account settings page styles
+│       └── profile.css          # Virtual student ID card styles
 ├── templates/
 │   ├── index.html               # Public homepage (warm light hero, about/medical nodes)
 │   ├── login.html               # Standalone sign-in page
 │   ├── clubs.html               # Clubs & Events (frontend-only, mock JS data)
 │   ├── transport.html           # Transport Online Ticket System (mock JS data)
 │   ├── meals.html               # Online Meal Ticket System (mock JS data)
-│   ├── placeholder.html         # Settings / Sign Up placeholder pages
+│   ├── signup.html              # Student sign-up (creates User + StudentProfile)
+│   ├── settings.html            # Account settings (password, toggles, theme)
+│   ├── profile.html             # Virtual student ID card + booking history
+│   ├── sys_admin.html           # System Admin dashboard (4 tabs, staff-only)
+│   ├── cafeteria_admin.html     # Cafeteria admin (slots, inventory, QR redemption)
+│   ├── club_admin.html          # Club executive admin (/clubs/manage/)
 │   ├── partials/
 │   │   └── topbar.html          # Shared top navigation (brand, nav pills, profile popover)
 │   ├── base.html                # Base template with sidebar & header
@@ -369,21 +384,25 @@ DATABASE_URL=postgres://user:pass@localhost:5432/niter_db
 | GET | `/host/` | Host portal index (redirects to medical host dashboard) |
 | POST | `/login/` | Sign in (Django `LoginView`, redirects to `/dashboard/`) |
 | POST | `/logout/` | Sign out (Django `LogoutView`, redirects to `/`) |
-| GET | `/settings/` | Account settings (placeholder page) |
-| GET | `/signup/` | Sign up / switch account (placeholder page) |
+| GET | `/settings/` | Account settings (password change, toggles, theme) |
+| GET | `/signup/` | Student sign-up (creates account + profile) |
+| GET | `/profile/` | Virtual student ID card + booking history |
+| GET | `/admin-dashboard/` | System Admin dashboard (staff-only, 4 tabs) |
+| GET | `/cafeteria/admin/` | Cafeteria admin (staff-only) |
+| GET | `/clubs/manage/` | Club admin / executive workspace (staff-only) |
 
 ## 12. Next Steps
 
 ### Remaining Internal Pages (UI)
 1. **5 Department Student Dashboards** - one dashboard per department (CSE, TEX, IPE, FD, EEE).
-2. **Club Admin Dashboard** - base club management now lives at `/clubs/` (executive workspace view); extend with role-gated admin actions and a dedicated club-admin dashboard.
-3. **Meal System (Admin/Kitchen side)** - meal management beyond the student claim counter.
+2. ~~**Club Admin Dashboard**~~ — **done (see section 31):** `/clubs/manage/` now provides the role-gated club executive workspace.
+3. ~~**Meal System (Admin/Kitchen side)**~~ — **done (see section 31):** `/cafeteria/admin/` covers meal slots, kitchen inventory, and QR redemption.
 4. **Visual Builder / Editor Integration** - the public homepage is now fully tagged with `data-widget-id` / `data-editable-field`; wire the standalone WYSIWYG editor to it and the app templates (`data-widget`/`data-component` tags) next.
 
 ### Backend & Infrastructure
 5. **Backend Integration:** Connect templates to Django views and models (most flows are still mock-only).
 6. **Database Models:** Design models for users, courses, tickets, and appointments.
-7. **Role-based Access Control:** Base login/logout is implemented (see section 20); add role-based access (student / host / admin) and `@login_required` guards on dashboard pages.
+7. **Role-based Access Control:** Login/logout (section 20) plus `@login_required` on `/profile/` + `/settings/` and `@staff_member_required` on `/admin-dashboard/`, `/cafeteria/admin/`, `/clubs/manage/` (section 31). Remaining: host-portal gating and a full student/staff/admin permission model.
 8. **API Development:** Create endpoints for meal claims, transport bookings, and appointments.
 9. **Real-time Updates:** WebSocket for live notifications and seat availability.
 10. **Deployment:** Configure for production (env vars, ALLOWED_HOSTS, static files).
@@ -978,4 +997,86 @@ Added the **Department Directory** (`/departments/`) and **Department Detail Hub
 
 - `python manage.py check` ✔
 - `python manage.py test` ✔ (27 tests — added `DepartmentsPageTest`; smoke + unified-header + active-pill coverage extended to `departments`).
+
+---
+
+## 31. Account Pages, Staff/Admin Dashboards & Nav Fixes
+
+**Date:** 09 August 2026  
+**Branch:** main (working tree)
+
+### Overview
+
+Replaced the placeholder `/settings/` and `/signup/` pages with real account surfaces, added three staff/admin dashboards (System Admin consolidates Transport Management), introduced the first database model, and fixed stale navigation links. This is the largest single pass since section 30.
+
+### Completed Work
+
+1. **StudentProfile model (`core/models.py` + migration `core/0001_initial`)** — one-to-one with Django `User` (`related_name='student_profile'`): `student_id` (unique) + `department` (choices CSE / TEX / IPE / FDAE / EEE) + `get_department_display_name()`.
+2. **System Admin Dashboard (`/admin-dashboard/`, `system_admin_view`)** — `@staff_member_required(login_url=settings.LOGIN_URL)` rendering `templates/sys_admin.html` (shared `static/css/admin.css`). Clean HTML/JS 4-tab interface:
+   - **Tab 1 — Users & Roles:** student + staff tables and a role & permission matrix.
+   - **Tab 2 — Notices & Material Drive:** university notices and a material drive table.
+   - **Tab 3 — Transport Management (consolidated):** live bus status stat cards, driver updates table, and boarding-scan (QR) table. *(Seat Allocations lived here until section 32.)*
+   - **Tab 4 — Local AI Vector DB & System Security Logs:** vector stats, recent queries, security logs.
+3. **Cafeteria Admin (`/cafeteria/admin/`, `cafeteria_admin_view`)** — staff-only: daily meal slot capacity counters, kitchen inventory table (stock/unit/status), and a QR token / meal coupon redemption form (mock validation).
+4. **Club Admin (`/clubs/manage/`, `club_admin_view`)** — staff-only executive workspace: member approval list, role assignment selects, event post creator, and bKash/Nagad/Rocket transaction verifier fields.
+5. **Sign Up (`/signup/`, `signup_view`)** — replaced the placeholder: form (Student ID, Full Name, Department dropdown, Email, Password) creates a `User` (username = student ID) **plus** `StudentProfile`, logs the student in, and redirects to `/dashboard/`. Duplicate student ID / username is rejected with an inline error.
+6. **Settings (`/settings/`, `settings_view`)** — replaced the placeholder: working Django `PasswordChangeForm` (saved with `update_session_auth_hash` so the session survives), notification preference toggles, and a Warm Light / Dark theme picker persisted in `localStorage` (CSS token overrides — affects var()-based pages only).
+7. **Profile (`/profile/`, `profile_view`, `@login_required`)** — virtual student ID card (photo placeholder, dept + student ID, deterministic SVG QR — same technique as the transport pass) with a **Booking & Activity History** tab showing mock medical appointments, transport tickets, and meal coupons.
+8. **Navigation fixes (`templates/partials/topbar.html`)** — the Academic Notes pill (desktop + mobile dropdown) now points cleanly to `/notes/`; an unlinked **Tickets** item was added to the profile dropdown.
+9. **Cleanup** — removed `templates/placeholder.html`, `static/css/placeholder.css`, and the `views.placeholder` view (all dead references gone).
+
+### Files Added / Modified
+
+- **New:** `core/models.py`, `core/migrations/0001_initial.py`, `templates/sys_admin.html`, `templates/cafeteria_admin.html`, `templates/club_admin.html`, `templates/signup.html`, `templates/settings.html`, `templates/profile.html`, `static/css/admin.css`, `static/css/signup.css`, `static/css/settings.css`, `static/css/profile.css`
+- **Modified:** `core/views.py`, `core/urls.py`, `core/context_processors.py`, `templates/partials/topbar.html`, `core/tests.py`
+- **Removed:** `templates/placeholder.html`, `static/css/placeholder.css`
+
+### URLs
+
+| URL | View | Access |
+| :--- | :--- | :--- |
+| `/admin-dashboard/` | `system_admin_view` | staff only |
+| `/cafeteria/admin/` | `cafeteria_admin_view` | staff only |
+| `/clubs/manage/` | `club_admin_view` | staff only |
+| `/signup/` | `signup_view` | public |
+| `/settings/` | `settings_view` | logged in |
+| `/profile/` | `profile_view` | logged in |
+
+### Testing
+
+- `python manage.py check` ✔
+- `python manage.py test` ✔ (**40 tests**, up from 27): new coverage for all six routes (smoke + endpoint registry), auth redirects (`/profile/` + `/settings/` → login when anonymous; admin pages → login for non-staff), signup creating user + profile, duplicate-ID rejection, the password-change flow, and staff gating.
+- Verified live in the browser: all four System Admin tabs switch correctly; student login sees their real profile; admin pages 403/redirect correctly for non-staff.
+
+### Notes
+
+- `@staff_member_required` defaults to redirecting to `admin:index`, which doesn't exist here, so it is bound to `settings.LOGIN_URL` (`/login/`).
+- Demo users recreated locally (`db.sqlite3` is gitignored): `admin` / `admin123` (staff) and `student` / `student123`. See `.freebuff/run.md` for the one-liner to recreate them.
+- The settings page's Dark toggle is a bonus foundation only — the project theme remains warm-light (section 23).
+
+---
+
+## 32. Transport Seat Allocations Removal
+
+**Date:** 09 August 2026
+
+### Overview
+
+Removed the **"Seat Allocations"** card from the System Admin dashboard's Transport Management tab together with its mock data. Live Bus Status, Driver Updates, and Boarding Scans remain completely intact.
+
+### Completed Work
+
+1. `templates/sys_admin.html` — deleted the Seat Allocations card (title, "Assigned seats per route" subtitle, the ROUTE / SEAT / PASSENGER / STATUS table, and its `{% for seat in seat_allocations %}` rows). The remaining transport cards are stacked blocks, so the layout simply closes up with no grid breakage.
+2. `core/views.py` — removed the `seat_allocations` mock list and its `'seat_allocations': seat_allocations` context entry from `system_admin_view`. `buses`, `driver_updates`, and `boarding_scans` are untouched.
+3. `core/tests.py` — dropped `'Seat Allocations'` from the admin tab-rendering test's expected needles.
+
+### Testing
+
+- `python manage.py check` ✔
+- `python manage.py test` ✔ (40 tests)
+- Verified live: logged-in fetch of `/admin-dashboard/` contains **0** "seat allocation" mentions while "Live Bus Status", "Driver Updates", and "Boarding Scans" each render once.
+
+### Scope note
+
+- The student `/profile/` page's Booking & Activity History still shows transport tickets with seat numbers (`transport_tickets` in `profile_view`) — that is the student's own booking history, a separate feature from the admin Seat Allocations table, and was intentionally left intact.
 - Verified over HTTP: `/departments/` and all 5 `/departments/<slug>/` pages return 200; unknown slug renders the fallback; all inline scripts pass `node --check`.

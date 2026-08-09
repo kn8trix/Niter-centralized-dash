@@ -1,0 +1,257 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Profile — Niter Hub</title>
+    <meta name="description" content="Your virtual student ID card and booking & activity history.">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Profile page styles -->
+    <link rel="stylesheet" href="{% static 'css/profile.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="profile" data-app="campusdash-public">
+
+    <div class="shell">
+
+        {% include 'partials/topbar.html' with active='' %}
+
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <div class="intro">
+            <h1>My Profile</h1>
+            <p>Your virtual student ID card and campus activity.</p>
+        </div>
+
+        <!-- ============================================================
+             Tabs
+        ============================================================ -->
+        <div class="profile-tabs" role="tablist" aria-label="Profile sections">
+            <button type="button" class="profile-tab active" data-tab="id-card" role="tab" aria-selected="true">
+                <i class="fa-solid fa-id-card"></i> Virtual ID Card
+            </button>
+            <button type="button" class="profile-tab" data-tab="activity" role="tab" aria-selected="false">
+                <i class="fa-solid fa-clock-rotate-left"></i> Booking &amp; Activity History
+            </button>
+        </div>
+
+        <!-- ============================================================
+             Tab: Virtual ID Card
+        ============================================================ -->
+        <section class="profile-panel active" id="panel-id-card" role="tabpanel">
+
+            <div class="id-card-layout">
+
+                <!-- Virtual student ID card -->
+                <article class="id-card" data-component="student-id-card">
+                    <header class="id-card-header">
+                        <span class="id-card-brand"><i class="fa-solid fa-graduation-cap"></i> NITER HUB</span>
+                        <span class="id-card-chip"><i class="fa-solid fa-wifi"></i></span>
+                    </header>
+
+                    <div class="id-card-photo">
+                        {% if user.get_full_name %}
+                        <span>{{ user.get_full_name|slice:":2"|upper }}</span>
+                        {% else %}
+                        <span>{{ user.username|slice:":2"|upper }}</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="id-card-details">
+                        <p class="id-name">{{ user.get_full_name|default:user.username }}</p>
+                        <p class="id-role">Student</p>
+                        <div class="id-meta">
+                            <div>
+                                <span class="id-k">Student ID</span>
+                                <span class="id-v">{{ profile.student_id|default:"—" }}</span>
+                            </div>
+                            <div>
+                                <span class="id-k">Department</span>
+                                <span class="id-v">{{ profile.get_department_display_name|default:"—" }}</span>
+                            </div>
+                            <div>
+                                <span class="id-k">Email</span>
+                                <span class="id-v">{{ user.email|default:"—" }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <footer class="id-card-footer">
+                        <div class="id-qr" id="id-qr" role="img" aria-label="Student ID QR code"></div>
+                        <div class="id-footer-text">
+                            <strong>CampusDash Student ID</strong>
+                            <span>Valid for the {{ 2026 }}–{{ 2027 }} academic year</span>
+                        </div>
+                    </footer>
+                </article>
+
+                <!-- Side notes -->
+                <aside class="id-side">
+                    <div class="card">
+                        <h2 class="section-title"><i class="fa-solid fa-circle-info"></i> About this card</h2>
+                        <p class="section-subtitle">Show this card at the campus gates, library, cafeteria, and medical center.</p>
+                        <ul class="id-tips">
+                            <li><i class="fa-solid fa-check"></i> The QR is regenerated from your Student ID and can be scanned by staff.</li>
+                            <li><i class="fa-solid fa-check"></i> Keep your profile photo updated at the admin office.</li>
+                            <li><i class="fa-solid fa-check"></i> Report a lost ID immediately to campus security.</li>
+                        </ul>
+                    </div>
+                </aside>
+
+            </div>
+        </section>
+
+        <!-- ============================================================
+             Tab: Booking & Activity History
+        ============================================================ -->
+        <section class="profile-panel" id="panel-activity" role="tabpanel" hidden>
+
+            <div class="activity-grid">
+
+                <!-- Medical appointments -->
+                <div class="card">
+                    <h2 class="section-title"><i class="fa-solid fa-stethoscope"></i> Active Medical Appointments</h2>
+                    <p class="section-subtitle">Your upcoming visits at the medical center.</p>
+                    <div class="activity-list">
+                        {% for item in appointments %}
+                        <div class="activity-item">
+                            <span class="activity-icon medical"><i class="fa-solid fa-user-doctor"></i></span>
+                            <div class="activity-body">
+                                <strong>{{ item.doctor }}</strong>
+                                <span>{{ item.date }} · {{ item.time }}</span>
+                            </div>
+                            <span class="badge {{ item.status|lower }}">{{ item.status }}</span>
+                        </div>
+                        {% empty %}
+                        <p class="empty">No medical appointments booked yet.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Transport tickets -->
+                <div class="card">
+                    <h2 class="section-title"><i class="fa-solid fa-bus"></i> Transport Tickets</h2>
+                    <p class="section-subtitle">Your active bus seat bookings.</p>
+                    <div class="activity-list">
+                        {% for item in transport_tickets %}
+                        <div class="activity-item">
+                            <span class="activity-icon transport"><i class="fa-solid fa-bus"></i></span>
+                            <div class="activity-body">
+                                <strong>{{ item.route }}</strong>
+                                <span>Seat {{ item.seat }} · {{ item.time }}</span>
+                            </div>
+                            <span class="badge {{ item.status|lower }}">{{ item.status }}</span>
+                        </div>
+                        {% empty %}
+                        <p class="empty">No transport tickets booked yet.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Meal coupons -->
+                <div class="card">
+                    <h2 class="section-title"><i class="fa-solid fa-utensils"></i> Meal Coupons</h2>
+                    <p class="section-subtitle">Your claimed cafeteria meal passes.</p>
+                    <div class="activity-list">
+                        {% for item in meal_coupons %}
+                        <div class="activity-item">
+                            <span class="activity-icon meals"><i class="fa-solid fa-utensils"></i></span>
+                            <div class="activity-body">
+                                <strong>{{ item.meal }}</strong>
+                                <span>{{ item.date }} · {{ item.token }}</span>
+                            </div>
+                            <span class="badge {{ item.status|lower }}">{{ item.status }}</span>
+                        </div>
+                        {% empty %}
+                        <p class="empty">No meal coupons claimed yet.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </div>
+
+    <script>
+        // ====================================================================
+        // Profile tabs
+        // ====================================================================
+        (function () {
+            const tabs = document.querySelectorAll('.profile-tab');
+            const panels = {
+                'id-card': document.getElementById('panel-id-card'),
+                'activity': document.getElementById('panel-activity'),
+            };
+
+            tabs.forEach((tab) => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach((t) => {
+                        t.classList.toggle('active', t === tab);
+                        t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+                    });
+                    Object.entries(panels).forEach(([key, panel]) => {
+                        panel.hidden = key !== tab.dataset.tab;
+                        panel.classList.toggle('active', key === tab.dataset.tab);
+                    });
+                });
+            });
+        })();
+
+        // ====================================================================
+        // Deterministic QR placeholder (same technique as the transport pass)
+        // ====================================================================
+        (function () {
+            function seeded(seedStr) {
+                let h = 2166136261;
+                for (let i = 0; i < seedStr.length; i++) {
+                    h ^= seedStr.charCodeAt(i);
+                    h = Math.imul(h, 16777619);
+                }
+                return function () {
+                    h = Math.imul(h ^ (h >>> 15), 2246822507);
+                    h = Math.imul(h ^ (h >>> 13), 3266489909);
+                    return ((h ^= h >>> 16) >>> 0) / 4294967296;
+                };
+            }
+
+            function makeQrSvg(seed) {
+                const N = 21, cell = 10, pad = 2, q = 7;
+                const rand = seeded('id-' + seed);
+                const g = Array.from({ length: N }, () => Array.from({ length: N }, () => rand() > 0.5));
+                const finder = (ox, oy) => {
+                    for (let dy = 0; dy < q; dy++) for (let dx = 0; dx < q; dx++) {
+                        const edge = dx === 0 || dx === q - 1 || dy === 0 || dy === q - 1;
+                        const core = dx >= 2 && dx <= q - 3 && dy >= 2 && dy <= q - 3;
+                        g[oy + dy][ox + dx] = edge || core;
+                    }
+                };
+                finder(0, 0); finder(N - q, 0); finder(0, N - q);
+                let rects = '';
+                for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+                    if (g[y][x]) rects += `<rect x="${pad + x * cell}" y="${pad + y * cell}" width="${cell}" height="${cell}"/>`;
+                }
+                const S = pad * 2 + N * cell;
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S} ${S}" shape-rendering="crispEdges" role="img" aria-label="Student ID QR code"><rect width="${S}" height="${S}" fill="#ffffff"/><g fill="#1f2937">${rects}</g></svg>`;
+            }
+
+            const seed = "{{ profile.student_id|default:user.username }}";
+            document.getElementById('id-qr').innerHTML = makeQrSvg(seed);
+        })();
+    </script>
+</body>
+</html>

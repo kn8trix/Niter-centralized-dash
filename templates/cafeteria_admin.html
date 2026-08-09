@@ -1,0 +1,232 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cafeteria Admin — Niter Hub</title>
+    <meta name="description" content="Cafeteria admin — daily meal slot capacity, kitchen inventory, and QR coupon redemption.">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Shared admin dashboard styles -->
+    <link rel="stylesheet" href="{% static 'css/admin.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="cafeteria-admin" data-app="campusdash-public">
+
+    <div class="shell">
+
+        {% include 'partials/topbar.html' with active='' %}
+
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <div class="intro">
+            <h1>Cafeteria Admin</h1>
+            <p>Meal slot capacity, kitchen inventory, and QR coupon redemption.</p>
+        </div>
+
+        <!-- ============================================================
+             Daily meal slot capacity
+        ============================================================ -->
+        <h2 class="section-title"><i class="fa-solid fa-utensils"></i> Daily Meal Slot Capacity</h2>
+        <p class="section-subtitle">Live claim counts for today's meal services.</p>
+
+        <div class="slot-grid">
+            {% for slot in slots %}
+            <div class="card slot-card">
+                <span class="slot-icon">
+                    {% if slot.meal == 'Breakfast' %}<i class="fa-solid fa-mug-saucer"></i>
+                    {% elif slot.meal == 'Lunch' %}<i class="fa-solid fa-sun"></i>
+                    {% else %}<i class="fa-solid fa-moon"></i>{% endif %}
+                </span>
+                <strong class="slot-name">{{ slot.meal }}</strong>
+                <div class="slot-bar" role="progressbar"
+                     aria-valuenow="{{ slot.claimed }}" aria-valuemin="0" aria-valuemax="{{ slot.capacity }}"
+                     aria-label="{{ slot.meal }} slot usage">
+                    <div class="slot-bar-fill" style="width: {% widthratio slot.claimed slot.capacity 100 %}%"></div>
+                </div>
+                <div class="slot-meta">
+                    <span><strong>{{ slot.claimed }}</strong> / {{ slot.capacity }} claimed</span>
+                    <span class="slot-remaining">{{ slot.capacity|add:"-"|add:slot.claimed }} remaining</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- ============================================================
+             Kitchen inventory
+        ============================================================ -->
+        <div class="card">
+            <h2 class="section-title"><i class="fa-solid fa-boxes-stacked"></i> Kitchen Inventory</h2>
+            <p class="section-subtitle">Current stock levels across the kitchen.</p>
+
+            <form class="inline-form" data-component="inventory-form">
+                {% csrf_token %}
+                <input type="text" name="item" placeholder="Item name…" aria-label="Item name">
+                <input type="number" name="stock" placeholder="Stock qty" aria-label="Stock quantity">
+                <select name="category" aria-label="Category">
+                    <option>Grains</option>
+                    <option>Protein</option>
+                    <option>Vegetables</option>
+                    <option>Dairy</option>
+                    <option>Staples</option>
+                </select>
+                <button type="submit" class="btn-primary"><i class="fa-solid fa-plus"></i> Add Stock</button>
+            </form>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Category</th>
+                            <th>Stock</th>
+                            <th>Unit</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in inventory %}
+                        <tr>
+                            <td>{{ row.item }}</td>
+                            <td>{{ row.category }}</td>
+                            <td class="mono">{{ row.stock }}</td>
+                            <td>{{ row.unit }}</td>
+                            <td>
+                                <span class="badge {{ row.status|lower|cut:" " }}">{{ row.status }}</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ============================================================
+             QR token / meal coupon redemption
+        ============================================================ -->
+        <div class="card">
+            <h2 class="section-title"><i class="fa-solid fa-qrcode"></i> QR Token / Meal Coupon Redemption</h2>
+            <p class="section-subtitle">Scan or type a coupon token to redeem it at the counter.</p>
+
+            <div class="redeem-box">
+                <form id="redeem-form" class="redeem-form">
+                    {% csrf_token %}
+                    <div class="redeem-input">
+                        <i class="fa-solid fa-ticket"></i>
+                        <input type="text" id="redeem-token" name="token" placeholder="e.g. #MEAL-8921" aria-label="Coupon token" autocomplete="off">
+                    </div>
+                    <button type="submit" class="btn-primary"><i class="fa-solid fa-check"></i> Redeem</button>
+                </form>
+                <div class="alert" id="redeem-result" role="status" hidden></div>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Token</th>
+                            <th>Student</th>
+                            <th>Meal</th>
+                            <th>Redeemed At</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="redemptions-body">
+                        {% for redemption in redemptions %}
+                        <tr>
+                            <td class="mono">{{ redemption.token }}</td>
+                            <td>{{ redemption.student }}</td>
+                            <td>{{ redemption.meal }}</td>
+                            <td class="mono">{{ redemption.time }}</td>
+                            <td><span class="badge {{ redemption.status|lower }}">{{ redemption.status }}</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="toast" id="admin-toast" role="status" hidden>
+        <i class="fa-solid fa-circle-check"></i> <span id="admin-toast-text">Saved</span>
+    </div>
+
+    <script>
+        // ====================================================================
+        // Mock toast helper
+        // ====================================================================
+        (function () {
+            const toast = document.getElementById('admin-toast');
+            const text = document.getElementById('admin-toast-text');
+            let timer;
+
+            function show(msg) {
+                text.textContent = msg;
+                toast.hidden = false;
+                toast.classList.add('show');
+                clearTimeout(timer);
+                timer = setTimeout(() => { toast.classList.remove('show'); toast.hidden = true; }, 2600);
+            }
+
+            document.querySelectorAll('form.inline-form').forEach((form) => {
+                form.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    show('Saved (demo — no backend changes yet).');
+                    form.reset();
+                });
+            });
+
+            // ================================================================
+            // QR coupon redemption (mock validation)
+            // ================================================================
+            const form = document.getElementById('redeem-form');
+            const input = document.getElementById('redeem-token');
+            const result = document.getElementById('redeem-result');
+            const body = document.getElementById('redemptions-body');
+
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const token = input.value.trim().toUpperCase();
+
+                if (!/^#MEAL-\d{4}$/.test(token)) {
+                    result.className = 'alert error';
+                    result.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>Invalid token — expected format #MEAL-XXXX.</span>';
+                    result.hidden = false;
+                    return;
+                }
+
+                const now = new Date();
+                const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                result.className = 'alert success';
+                result.innerHTML = '<i class="fa-solid fa-circle-check"></i><span>Coupon ' + token + ' redeemed successfully.</span>';
+                result.hidden = false;
+
+                const tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td class="mono">' + token + '</td>' +
+                    '<td>Walk-in</td>' +
+                    '<td>Lunch</td>' +
+                    '<td class="mono">' + time + '</td>' +
+                    '<td><span class="badge redeemed">Redeemed</span></td>';
+                body.prepend(tr);
+                input.value = '';
+            });
+        })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,326 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Club Management — Niter Hub</title>
+    <meta name="description" content="Club admin — member approvals, role assignments, event posts, and payment verification.">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Shared admin dashboard styles -->
+    <link rel="stylesheet" href="{% static 'css/admin.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="club-admin" data-app="campusdash-public">
+
+    <div class="shell">
+
+        {% include 'partials/topbar.html' with active='' %}
+
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <div class="intro">
+            <h1>Club Management</h1>
+            <p>Approve members, assign roles, publish events, and verify payments.</p>
+        </div>
+
+        <!-- ============================================================
+             Member approvals
+        ============================================================ -->
+        <div class="card">
+            <h2 class="section-title"><i class="fa-solid fa-user-check"></i> Member Approvals</h2>
+            <p class="section-subtitle">Students waiting for club membership approval.</p>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Student ID</th>
+                            <th>Club</th>
+                            <th>Applied</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="approvals-body">
+                        {% for member in pending_members %}
+                        <tr data-approval>
+                            <td>{{ member.name }}</td>
+                            <td class="mono">{{ member.student_id }}</td>
+                            <td>{{ member.club }}</td>
+                            <td class="mono">{{ member.applied }}</td>
+                            <td>
+                                <div class="action-btns">
+                                    <button type="button" class="btn-small approve" data-action="approve"><i class="fa-solid fa-check"></i> Approve</button>
+                                    <button type="button" class="btn-small reject" data-action="reject"><i class="fa-solid fa-xmark"></i> Reject</button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ============================================================
+             Role assignments
+        ============================================================ -->
+        <div class="card">
+            <h2 class="section-title"><i class="fa-solid fa-user-tag"></i> Role Assignments</h2>
+            <p class="section-subtitle">Set or change roles for club executives and members.</p>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Member</th>
+                            <th>Student ID</th>
+                            <th>Club</th>
+                            <th>Role</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for member in members %}
+                        <tr>
+                            <td>{{ member.name }}</td>
+                            <td class="mono">{{ member.student_id }}</td>
+                            <td>{{ member.club }}</td>
+                            <td>
+                                <select class="role-select" data-member="{{ member.name }}">
+                                    <option {% if member.role == 'Member' %}selected{% endif %}>Member</option>
+                                    <option {% if member.role == 'Executive' %}selected{% endif %}>Executive</option>
+                                    <option {% if member.role == 'President' %}selected{% endif %}>President</option>
+                                </select>
+                            </td>
+                            <td><button type="button" class="btn-small save" data-save-role><i class="fa-solid fa-floppy-disk"></i> Save</button></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ============================================================
+             Event post creator
+        ============================================================ -->
+        <div class="card">
+            <h2 class="section-title"><i class="fa-solid fa-calendar-plus"></i> Event Post Creator</h2>
+            <p class="section-subtitle">Publish a new club event to the student calendar.</p>
+            <form class="event-form" id="event-form">
+                {% csrf_token %}
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="ev-title" class="field-label">Event Title</label>
+                        <input type="text" id="ev-title" name="title" placeholder="e.g. Hackathon 2026" required>
+                    </div>
+                    <div class="field">
+                        <label for="ev-club" class="field-label">Club</label>
+                        <select id="ev-club" name="club">
+                            <option>Computer Club</option>
+                            <option>Electronics Club</option>
+                            <option>Cultural Society</option>
+                            <option>Sports Club</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="ev-date" class="field-label">Date</label>
+                        <input type="date" id="ev-date" name="date" required>
+                    </div>
+                    <div class="field">
+                        <label for="ev-location" class="field-label">Location</label>
+                        <input type="text" id="ev-location" name="location" placeholder="e.g. Auditorium" required>
+                    </div>
+                    <div class="field">
+                        <label for="ev-fee" class="field-label">Fee</label>
+                        <input type="text" id="ev-fee" name="fee" placeholder="Free or ৳200 BDT">
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="ev-desc" class="field-label">Description</label>
+                    <textarea id="ev-desc" name="description" rows="3" placeholder="Describe the event…"></textarea>
+                </div>
+                <button type="submit" class="btn-primary"><i class="fa-solid fa-paper-plane"></i> Publish Event</button>
+            </form>
+
+            <div class="table-wrap events-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Event</th>
+                            <th>Club</th>
+                            <th>Date</th>
+                            <th>Fee</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for event in events %}
+                        <tr>
+                            <td>{{ event.title }}</td>
+                            <td>{{ event.club }}</td>
+                            <td class="mono">{{ event.date }}</td>
+                            <td>{{ event.fee }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ============================================================
+             Transaction verifier
+        ============================================================ -->
+        <div class="card">
+            <h2 class="section-title"><i class="fa-solid fa-money-check-dollar"></i> Transaction Verifier</h2>
+            <p class="section-subtitle">Verify bKash / Nagad / Rocket payments for event registrations.</p>
+
+            <form class="verify-form" id="verify-form">
+                {% csrf_token %}
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="vf-method" class="field-label">Payment Method</label>
+                        <select id="vf-method" name="method">
+                            <option>bKash</option>
+                            <option>Nagad</option>
+                            <option>Rocket</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="vf-wallet" class="field-label">Sender Wallet Number</label>
+                        <input type="text" id="vf-wallet" name="wallet" placeholder="01XXXXXXXXX" required>
+                    </div>
+                    <div class="field">
+                        <label for="vf-trx" class="field-label">TrxID</label>
+                        <input type="text" id="vf-trx" name="trx" placeholder="e.g. 9J32X8KL" required>
+                    </div>
+                    <div class="field">
+                        <label for="vf-amount" class="field-label">Amount</label>
+                        <input type="text" id="vf-amount" name="amount" placeholder="e.g. ৳200" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary"><i class="fa-solid fa-shield-halved"></i> Verify Payment</button>
+            </form>
+
+            <div class="alert" id="verify-result" role="status" hidden></div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Student</th>
+                            <th>Method</th>
+                            <th>TrxID</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for tx in transactions %}
+                        <tr>
+                            <td>{{ tx.student }}</td>
+                            <td>{{ tx.method }}</td>
+                            <td class="mono">{{ tx.trx_id }}</td>
+                            <td>{{ tx.amount }}</td>
+                            <td><span class="badge {{ tx.status|lower|cut:" " }}">{{ tx.status }}</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="toast" id="admin-toast" role="status" hidden>
+        <i class="fa-solid fa-circle-check"></i> <span id="admin-toast-text">Saved</span>
+    </div>
+
+    <script>
+        // ====================================================================
+        // Mock toast helper
+        // ====================================================================
+        (function () {
+            const toast = document.getElementById('admin-toast');
+            const text = document.getElementById('admin-toast-text');
+            let timer;
+
+            function show(msg) {
+                text.textContent = msg;
+                toast.hidden = false;
+                toast.classList.add('show');
+                clearTimeout(timer);
+                timer = setTimeout(() => { toast.classList.remove('show'); toast.hidden = true; }, 2600);
+            }
+            window.__clubToast = show;
+
+            // Member approvals — approve/reject removes the row (mock)
+            document.querySelectorAll('[data-action]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const row = btn.closest('tr[data-approval]');
+                    const name = row ? row.children[0].textContent : 'Member';
+                    show(btn.dataset.action === 'approve' ? name + ' approved.' : name + ' rejected.');
+                    if (row) row.remove();
+                });
+            });
+
+            // Role assignment save
+            document.querySelectorAll('[data-save-role]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const select = btn.closest('tr').querySelector('.role-select');
+                    show('Role updated for ' + select.dataset.member + ' → ' + select.value);
+                });
+            });
+
+            // Event post creator
+            const eventForm = document.getElementById('event-form');
+            if (eventForm) {
+                eventForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    const title = document.getElementById('ev-title').value || 'New event';
+                    show('Event published: ' + title + ' (demo).');
+                    eventForm.reset();
+                });
+            }
+
+            // Transaction verifier — mock check
+            const verifyForm = document.getElementById('verify-form');
+            const result = document.getElementById('verify-result');
+            if (verifyForm) {
+                verifyForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    const method = document.getElementById('vf-method').value;
+                    const trx = document.getElementById('vf-trx').value.trim();
+                    const amount = document.getElementById('vf-amount').value.trim();
+                    const wallet = document.getElementById('vf-wallet').value.trim();
+
+                    const validWallet = /^01\d{9}$/.test(wallet);
+                    const validTrx = trx.length >= 6;
+
+                    if (!validWallet || !validTrx) {
+                        result.className = 'alert error';
+                        result.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>Could not verify — check the wallet number (01XXXXXXXXX) and TrxID.</span>';
+                        result.hidden = false;
+                        return;
+                    }
+
+                    result.className = 'alert success';
+                    result.innerHTML = '<i class="fa-solid fa-circle-check"></i><span>' + method + ' payment of ' + amount + ' (TrxID ' + trx + ') verified successfully.</span>';
+                    result.hidden = false;
+                    verifyForm.reset();
+                });
+            }
+        })();
+    </script>
+</body>
+</html>

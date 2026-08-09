@@ -1,0 +1,662 @@
+/* ============================================================================
+   CampusDash — Shared Admin Dashboard Styles (Warm Light Theme)
+   ----------------------------------------------------------------------------
+   Used by templates/sys_admin.html (body.sys-admin), cafeteria_admin.html
+   (body.cafeteria-admin) and club_admin.html (body.club-admin). Kept in one
+   file because the three admin surfaces share the same cards, tables, badges,
+   buttons and forms — page-specific blocks are scoped below.
+
+   Palette: bg #faf9f6 · card #ffffff · border #f0ebe1 · accent #e8e2d8
+            (hover #dfd7cb) · text #1f2937 · muted #6b7280
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   1. Tokens
+--------------------------------------------------------------------------- */
+:root {
+    --bg-main: #faf9f6;
+    --bg-card: #ffffff;
+    --bg-subtle: #f7f4ef;
+
+    --text-primary: #1f2937;
+    --text-muted: #6b7280;
+
+    --border-color: #f0ebe1;
+    --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.03);
+
+    --accent-primary: #e8e2d8;
+    --accent-primary-hover: #dfd7cb;
+    --accent-dark: #27272a;
+
+    --success: #166534;
+    --success-soft: #dcfce7;
+    --success-border: #bbf7d0;
+    --warning: #b45309;
+    --warning-soft: #fef3c7;
+    --warning-border: #fde68a;
+    --danger: #b91c1c;
+    --danger-soft: #fee2e2;
+    --danger-border: #fecaca;
+    --info: #1d4ed8;
+    --info-soft: #dbeafe;
+}
+
+/* ---------------------------------------------------------------------------
+   2. Base (scoped to the three admin pages)
+--------------------------------------------------------------------------- */
+body.sys-admin,
+body.cafeteria-admin,
+body.club-admin {
+    margin: 0;
+    min-height: 100vh;
+    font-family: var(--font-main, 'Inter', system-ui, sans-serif);
+    background:
+        radial-gradient(1000px 520px at 85% -10%, rgba(232, 226, 216, 0.55), transparent 60%),
+        radial-gradient(800px 420px at 5% 12%, rgba(240, 235, 225, 0.6), transparent 55%),
+        var(--bg-main);
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+}
+
+body.sys-admin *,
+body.sys-admin *::before,
+body.sys-admin *::after,
+body.cafeteria-admin *,
+body.cafeteria-admin *::before,
+body.cafeteria-admin *::after,
+body.club-admin *,
+body.club-admin *::before,
+body.club-admin *::after {
+    box-sizing: border-box;
+}
+
+body.sys-admin a,
+body.cafeteria-admin a,
+body.club-admin a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.shell {
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: 1.5rem clamp(1.1rem, 4vw, 2.5rem) 4rem;
+}
+
+.section-title {
+    margin: 0 0 0.2rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.section-title i {
+    margin-right: 0.45rem;
+    color: var(--text-muted);
+}
+
+.section-subtitle {
+    margin: 0 0 1.1rem;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+}
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+    padding: 1.4rem 1.5rem;
+    margin-bottom: 1.1rem;
+}
+
+/* ---------------------------------------------------------------------------
+   3. Tables
+--------------------------------------------------------------------------- */
+.table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 0.85rem;
+    background: var(--bg-card);
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+    min-width: 560px;
+}
+
+th {
+    text-align: left;
+    padding: 0.7rem 1rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    background: var(--bg-subtle);
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+td {
+    padding: 0.72rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+    vertical-align: middle;
+}
+
+tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+tbody tr:hover {
+    background: var(--bg-subtle);
+}
+
+.mono {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 0.8rem;
+}
+
+/* Permission matrix — centered check/x columns */
+table.matrix {
+    min-width: 460px;
+}
+
+table.matrix th:not(:first-child),
+table.matrix td:not(:first-child) {
+    text-align: center;
+}
+
+.perm-yes {
+    color: #16a34a;
+}
+
+.perm-no {
+    color: #d1d5db;
+}
+
+/* ---------------------------------------------------------------------------
+   4. Badges
+--------------------------------------------------------------------------- */
+.badge {
+    display: inline-block;
+    padding: 0.24rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+/* Green */
+.badge.active,
+.badge.published,
+.badge.confirmed,
+.badge.booked,
+.badge.boarded,
+.badge.valid,
+.badge.verified,
+.badge.instock,
+.badge.redeemed,
+.badge.ontime,
+.badge.success {
+    background: var(--success-soft);
+    color: var(--success);
+}
+
+/* Amber */
+.badge.pending,
+.badge.scheduled,
+.badge.low,
+.badge.pendingreview,
+.badge.unused,
+.badge.intransit,
+.badge.arrivingin10mins {
+    background: var(--warning-soft);
+    color: var(--warning);
+}
+
+/* Red */
+.badge.suspended,
+.badge.inactive,
+.badge.invalid,
+.badge.blocked,
+.badge.flagged,
+.badge.out,
+.badge.cancelled {
+    background: var(--danger-soft);
+    color: var(--danger);
+}
+
+/* Neutral / informational */
+.badge.draft,
+.badge.category,
+.badge.type {
+    background: var(--info-soft);
+    color: var(--info);
+}
+
+/* ---------------------------------------------------------------------------
+   5. Buttons & forms
+--------------------------------------------------------------------------- */
+.btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.68rem 1.3rem;
+    border: none;
+    border-radius: 999px;
+    background: var(--accent-primary);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.btn-primary:hover {
+    background: var(--accent-primary-hover);
+    transform: translateY(-1px);
+}
+
+.btn-small {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.38rem 0.8rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    font-family: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.btn-small.approve {
+    background: var(--success-soft);
+    border-color: var(--success-border);
+    color: var(--success);
+}
+
+.btn-small.reject {
+    background: var(--danger-soft);
+    border-color: var(--danger-border);
+    color: var(--danger);
+}
+
+.btn-small.save {
+    background: var(--info-soft);
+    border-color: var(--info-soft);
+    color: var(--info);
+}
+
+.action-btns {
+    display: flex;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+
+/* Inline (single-row) forms */
+.inline-form {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    border-radius: 0.85rem;
+}
+
+.inline-form input,
+.inline-form select {
+    padding: 0.6rem 0.85rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 0.6rem;
+    font-family: inherit;
+    font-size: 0.88rem;
+    color: var(--text-primary);
+    outline: none;
+    min-width: 0;
+}
+
+.inline-form input:focus,
+.inline-form select:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(232, 226, 216, 0.55);
+}
+
+/* Multi-field forms (club admin) */
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 0.9rem;
+    margin-bottom: 0.9rem;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.field-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.field input,
+.field select,
+.field textarea {
+    width: 100%;
+    padding: 0.62rem 0.85rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 0.65rem;
+    font-family: inherit;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    outline: none;
+    resize: vertical;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(232, 226, 216, 0.55);
+}
+
+.role-select {
+    padding: 0.4rem 0.7rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 0.55rem;
+    font-family: inherit;
+    font-size: 0.82rem;
+    color: var(--text-primary);
+}
+
+.events-table {
+    margin-top: 1.1rem;
+}
+
+/* ---------------------------------------------------------------------------
+   6. Alerts
+--------------------------------------------------------------------------- */
+.alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    border-radius: 0.75rem;
+    padding: 0.8rem 1rem;
+    font-size: 0.87rem;
+}
+
+.alert.success {
+    background: var(--success-soft);
+    border: 1px solid var(--success-border);
+    color: var(--success);
+}
+
+.alert.error {
+    background: var(--danger-soft);
+    border: 1px solid var(--danger-border);
+    color: var(--danger);
+}
+
+/* ---------------------------------------------------------------------------
+   7. Admin tabs (system admin)
+--------------------------------------------------------------------------- */
+.admin-tabs {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.4rem;
+}
+
+.admin-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.62rem 1.2rem;
+    border-radius: 999px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.admin-tab:hover {
+    background: var(--bg-subtle);
+    transform: translateY(-1px);
+}
+
+.admin-tab.active {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   8. Stat cards (system admin transport + vector DB)
+--------------------------------------------------------------------------- */
+.stat-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.1rem;
+}
+
+.stat-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+    padding: 1.2rem 1.3rem;
+}
+
+.stat-icon {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.stat-icon.transport {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+.stat-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+}
+
+.stat-sub {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.stat-card .badge {
+    margin-top: 0.4rem;
+}
+
+.stat-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.6rem;
+    width: 100%;
+    margin-top: 0.7rem;
+    padding-top: 0.7rem;
+    border-top: 1px dashed var(--border-color);
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------------
+   9. Meal slot capacity cards (cafeteria admin)
+--------------------------------------------------------------------------- */
+.slot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.1rem;
+}
+
+.slot-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.slot-icon {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 11px;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 1.05rem;
+}
+
+.slot-name {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.slot-bar {
+    height: 9px;
+    border-radius: 999px;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+    margin: 0.3rem 0 0.55rem;
+}
+
+.slot-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent-primary);
+}
+
+.slot-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+.slot-remaining {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   10. QR coupon redemption (cafeteria admin)
+--------------------------------------------------------------------------- */
+.redeem-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    margin-bottom: 1.1rem;
+}
+
+.redeem-form {
+    display: flex;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.redeem-input {
+    position: relative;
+    flex: 1;
+    min-width: 240px;
+}
+
+.redeem-input i {
+    position: absolute;
+    left: 0.95rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.redeem-input input {
+    width: 100%;
+    padding: 0.72rem 0.95rem 0.72rem 2.5rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
+    font-family: inherit;
+    font-size: 0.92rem;
+    color: var(--text-primary);
+    outline: none;
+}
+
+.redeem-input input:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(232, 226, 216, 0.55);
+}
+
+/* ---------------------------------------------------------------------------
+   11. Responsive & motion
+--------------------------------------------------------------------------- */
+@media (max-width: 640px) {
+    .inline-form {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .inline-form .btn-primary {
+        justify-content: center;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .admin-tab,
+    .btn-primary,
+    .btn-small {
+        transition: none;
+    }
+}
