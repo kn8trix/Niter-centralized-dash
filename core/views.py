@@ -48,6 +48,13 @@ def checkout_page(request):
     """
     return render(request, 'checkout.html')
 
+
+def research_ai_page(request):
+    """Academic Research & Thesis Assistant — frontend-only page driven by
+    mock JS data (canned assistant responses, no backend/AI calls).
+    """
+    return render(request, 'research_ai.html')
+
 def placeholder(request, page='settings'):
     """Minimal warm-beige placeholder pages (settings / signup) so the shared
     profile popover links resolve. Swap in real pages later."""

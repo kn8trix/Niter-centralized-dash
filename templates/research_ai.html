@@ -1,0 +1,668 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Research AI — Niter Hub</title>
+    <meta name="description" content="Academic Research & Thesis Assistant — literature reviews, methodology breakdowns, IEEE/APA citation checks, and draft editing.">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Research AI page styles -->
+    <link rel="stylesheet" href="{% static 'css/research_ai.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="research" data-app="campusdash-public">
+
+    <div class="shell">
+
+        <!-- ============================================================
+             Top bar (unified navigation)
+        ============================================================ -->
+        {% include 'partials/topbar.html' with active='research' %}
+
+        <!-- ============================================================
+             Centered hero header
+        ============================================================ -->
+        <div class="intro">
+            <h1>Academic Research &amp; Thesis Assistant</h1>
+            <p>Brainstorm literature reviews, summarize methodology papers, analyze IEEE-style citations, and edit your academic draft.</p>
+        </div>
+
+        <!-- ============================================================
+             Split layout — document workbench (left) + chat console (right)
+        ============================================================ -->
+        <div class="research-layout">
+
+            <!-- ============================================================
+                 Left sidebar / Document workbench
+            ============================================================ -->
+            <aside class="research-side">
+
+                <!-- Upload Paper / Abstract -->
+                <section class="card">
+                    <h2 class="section-title">Upload Paper / Abstract</h2>
+                    <p class="section-subtitle">Drop a PDF or DOCX to use as your active reference.</p>
+                    <label class="dropzone" id="dropzone" for="paper-input" role="button" tabindex="0" aria-label="Upload a paper or abstract">
+                        <input type="file" id="paper-input" accept=".pdf,.docx" hidden>
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <strong>Drop your paper here</strong>
+                        <span>or <u>browse files</u> — PDF / DOCX</span>
+                    </label>
+                </section>
+
+                <!-- Recent Research Threads -->
+                <section class="card">
+                    <h2 class="section-title">Recent Research Threads</h2>
+                    <p class="section-subtitle">Jump back into a previous conversation.</p>
+                    <div class="thread-list" id="thread-list">
+                        <button type="button" class="thread active" data-thread="superposition" aria-pressed="true">
+                            <i class="fa-solid fa-code-branch"></i>
+                            <span><strong>Superposition Circuit Analysis</strong><small>EE-2204 Lab · Feb 18</small></span>
+                        </button>
+                        <button type="button" class="thread" data-thread="textile-iot" aria-pressed="false">
+                            <i class="fa-solid fa-industry"></i>
+                            <span><strong>Textile IoT Automation Models</strong><small>TEX-4800 Proposal · Feb 12</small></span>
+                        </button>
+                        <button type="button" class="thread" data-thread="bangla-nlp" aria-pressed="false">
+                            <i class="fa-solid fa-language"></i>
+                            <span><strong>NLP for Bangla Text Mining</strong><small>Thesis Ch. 2 · Feb 05</small></span>
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Citation Style Selector -->
+                <section class="card">
+                    <h2 class="section-title">Citation Style</h2>
+                    <p class="section-subtitle">Used when generating references.</p>
+                    <select class="field-select" id="cite-select" aria-label="Citation style">
+                        <option value="IEEE">IEEE</option>
+                        <option value="APA 7">APA 7</option>
+                        <option value="Harvard">Harvard</option>
+                        <option value="Chicago">Chicago</option>
+                    </select>
+                    <p class="cite-preview" id="cite-preview">
+                        [1] M. H. Rahman and K. Ahmed, "IoT-based automated loom monitoring for textile manufacturing," <em>IEEE Access</em>, vol. 9, pp. 44210–44222, 2021.
+                    </p>
+                </section>
+
+                <!-- Quick Prompt Starters -->
+                <section class="card">
+                    <h2 class="section-title">Quick Prompt Starters</h2>
+                    <p class="section-subtitle">One-click prompts to kick off a task.</p>
+                    <div class="starter-list" id="starter-list">
+                        <button type="button" class="starter" data-prompt-key="literature">
+                            <i class="fa-solid fa-book-open"></i> Draft Literature Review
+                        </button>
+                        <button type="button" class="starter" data-prompt-key="methodology">
+                            <i class="fa-solid fa-flask"></i> Methodology Breakdown
+                        </button>
+                        <button type="button" class="starter" data-prompt-key="citation">
+                            <i class="fa-solid fa-quote-left"></i> Check Citation Formatting
+                        </button>
+                    </div>
+                </section>
+
+            </aside>
+
+            <!-- ============================================================
+                 Main chat window
+            ============================================================ -->
+            <section class="chat-panel" aria-label="Research assistant chat">
+
+                <!-- Chat header -->
+                <div class="chat-header">
+                    <div class="chat-status" id="chat-status">
+                        <span class="status-dot"></span> <b id="chat-status-label">Ready for Query</b>
+                    </div>
+                    <div class="chat-doc">
+                        <i class="fa-solid fa-file-lines"></i>
+                        <span>Current Reference: <b id="chat-doc-name">None</b></span>
+                    </div>
+                </div>
+
+                <!-- Message feed -->
+                <div class="chat-feed" id="chat-feed" aria-live="polite">
+                    <div class="bubble ai">
+                        <span class="bubble-avatar"><i class="fa-solid fa-robot"></i></span>
+                        <div class="bubble-body">
+                            <p>Hello! I am your <strong>Academic Research &amp; Thesis Assistant</strong>.</p>
+                            <p>I can help you draft literature reviews, break down methodology sections, check <strong>IEEE / APA 7 / Harvard / Chicago</strong> citations, and polish your draft.</p>
+                            <p>Try a prompt below, upload a paper, or just ask away.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interactive input -->
+                <div class="chat-input">
+                    <div class="chat-input-row">
+                        <button type="button" class="icon-btn" id="attach-btn" title="Attach a file" aria-label="Attach a file">
+                            <i class="fa-solid fa-paperclip"></i>
+                        </button>
+                        <div class="template-wrap">
+                            <button type="button" class="icon-btn" id="template-btn" title="Prompt templates" aria-label="Open prompt templates" aria-expanded="false">
+                                <i class="fa-solid fa-bolt"></i>
+                            </button>
+                            <div class="template-menu" id="template-menu">
+                                <button type="button" data-prompt-key="literature"><i class="fa-solid fa-book-open"></i> Draft Literature Review</button>
+                                <button type="button" data-prompt-key="methodology"><i class="fa-solid fa-flask"></i> Methodology Breakdown</button>
+                                <button type="button" data-prompt-key="citation"><i class="fa-solid fa-quote-left"></i> Check Citation Formatting</button>
+                                <button type="button" data-prompt-key="summarize"><i class="fa-solid fa-compress"></i> Summarize Abstract</button>
+                            </div>
+                        </div>
+                        <textarea class="chat-text" id="chat-text" rows="1"
+                                  placeholder="Ask a thesis question, paste an excerpt, or type /summarize..."></textarea>
+                        <button type="button" class="send-btn" id="send-btn">
+                            <i class="fa-solid fa-paper-plane"></i> <span>Send</span>
+                        </button>
+                    </div>
+                    <p class="chat-hint">Research AI is a frontend mock — responses are generated locally. Citation checker supports IEEE, APA 7, Harvard &amp; Chicago.</p>
+                </div>
+
+            </section>
+
+        </div>
+
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script>
+        // ====================================================================
+        // Mock assistant state (frontend-only — no backend involved)
+        // ====================================================================
+        const THREADS = {
+            superposition: {
+                title: 'Superposition Circuit Analysis',
+                doc: 'EE-2204_Lab_Report_Draft.docx',
+                note: 'Resumed thread — last discussion covered nodal analysis and the superposition theorem for the 3-source circuit.',
+            },
+            'textile-iot': {
+                title: 'Textile IoT Automation Models',
+                doc: 'TEX-4800_Proposal.pdf',
+                note: 'Resumed thread — last discussion compared edge-computing architectures for loom monitoring.',
+            },
+            'bangla-nlp': {
+                title: 'NLP for Bangla Text Mining',
+                doc: 'Thesis_Chapter2_Draft.docx',
+                note: 'Resumed thread — last discussion reviewed tokenization approaches for Bangla corpora.',
+            },
+        };
+
+        // Shared prompt bank — sidebar starters + template menu both read from
+        // here so the strings can never drift.
+        const PROMPTS = {
+            literature: 'Draft a literature review section on IoT applications in textile manufacturing.',
+            methodology: 'Break down the methodology section of my uploaded paper into clear steps.',
+            citation: 'Check the citation formatting in the pasted excerpt and convert it to IEEE style.',
+            summarize: '/summarize the abstract I just pasted.',
+        };
+
+        // Canned structured responses (markdown-lite + LaTeX code blocks)
+        const RESPONSES = {
+            literature:
+`## Literature Review Draft — IoT in Textile Manufacturing
+
+### 1. Industry context
+
+The textile sector is adopting **Industrial IoT (IIoT)** to digitize loom monitoring, quality inspection, and predictive maintenance. Recent surveys report that smart factories cut unplanned downtime by up to **30–40%** through real-time sensor telemetry.
+
+### 2. Key research themes
+
+- **Loom condition monitoring** — vibration and temperature sensors feed edge gateways that detect yarn breakage before it cascades.
+- **Predictive maintenance** — machine-learning classifiers (Random Forest, LSTM) on spindle sensor data reduce maintenance cost.
+- **Quality inspection** — computer-vision pipelines grade fabric defects at line speed using CNN backbones.
+
+### 3. Gap your thesis can address
+
+Most published work assumes centralized cloud processing; fewer studies evaluate **on-device inference latency** for low-power textile microcontrollers. Positioning your work against this gap strengthens the contribution statement.
+
+Paste a few references and I will format them into your selected citation style.`,
+
+            methodology:
+`## Methodology Breakdown
+
+Your paper's methodology can be restructured into four reproducible steps:
+
+### Step 1 — Data acquisition
+- Describe the sensor set, sampling frequency, and placement on the test rig.
+- State how many trials were recorded and any exclusion criteria.
+
+### Step 2 — Preprocessing
+- Apply a **moving-average filter** to remove electrical noise.
+- Normalize each channel to zero mean and unit variance.
+
+### Step 3 — Model development
+- Split data 70/20/10 into train, validation, and test sets.
+- Train a baseline (logistic regression) and your proposed model for comparison.
+
+### Step 4 — Evaluation
+- Report precision, recall, F1, and confusion matrices.
+- Include a runtime benchmark table for deployment feasibility.
+
+\`\`\`text
+Experiment design (summary)
+- Trials: 50 per condition
+- Sensors: 3 (vibration, temperature, current)
+- Train / val / test: 70 / 20 / 10 %
+- Metrics: accuracy, F1, latency (ms)
+\`\`\`
+
+Want me to generate a paragraph for any of these steps?`,
+
+            citation:
+`## Citation Formatting Check
+
+I checked the excerpt against **IEEE** style. Three fixes are needed:
+
+- The author initials should come **before** the surname: \`M. H. Rahman\`, not \`Rahman M. H.\`.
+- Journal names must be **italicized**; article titles stay in sentence case.
+- Page ranges use an en dash (\`44210–44222\`), not a hyphen.
+
+\`\`\`latex
+[1] M. H. Rahman and K. Ahmed, "IoT-based automated loom monitoring
+    for textile manufacturing," IEEE Access, vol. 9, pp. 44210–44222, 2021.
+\`\`\`
+
+### In-text checklist
+
+- Place the bracketed number before the period: \`... textile industry [1].\`
+- For three or more authors, use \`et al.\`: \`[1]\` → (Rahman et al., 2021).
+- Number references in the order they first appear.
+
+Switch the citation style dropdown to **APA 7** or **Harvard** and I will re-render this reference for you.`,
+
+            summary:
+`## Abstract Summary
+
+Here is a condensed summary of the pasted abstract:
+
+### Core contribution
+The work proposes a **low-cost IoT monitoring layer** for textile looms that streams vibration and current data to an on-premise edge server.
+
+### Main results
+
+- Detection of yarn-break events within **2.1 s** on average.
+- **94% F1** on the fault-classification task.
+- Deployment cost estimated at under **৳18,000 per loom bank**.
+
+### Suggested takeaways for your thesis
+
+- Emphasize the edge-vs-cloud latency trade-off as the differentiator.
+- Cite the dataset size honestly when comparing with prior benchmarks.
+
+Paste the full abstract if you want a one-paragraph version for your introduction.`,
+
+            superposition:
+`## Superposition Circuit Analysis
+
+For the **EE-2204** lab draft, apply the superposition theorem to the three-source circuit:
+
+### Procedure
+
+- **Zero all but one source** at a time (voltage sources → short, current sources → open).
+- Solve the partial response with series/parallel reduction and KVL.
+- **Sum the partial responses** with their algebraic signs.
+
+\`\`\`latex
+V_{out} = V_{out}|_{V_1} + V_{out}|_{V_2} + V_{out}|_{I_1}
+\`\`\`
+
+### Draft guidance
+
+- State that superposition applies because the circuit is **linear and bilateral**.
+- Show at least two solved partial circuits in the appendix.
+- Add a Multisim verification screenshot to satisfy the lab rubric.
+
+Want me to rewrite the theory section of your report?`,
+
+            iot:
+`## Textile IoT Automation Models
+
+Comparing architectures for your TEX-4800 proposal:
+
+### Model 1 — Centralized cloud
+- All loom data streams to the cloud; strongest analytics, highest latency (~400 ms) and bandwidth cost.
+
+### Model 2 — Edge gateway (recommended)
+- A Raspberry-Pi-class gateway runs local inference and uploads aggregated KPIs; latency under **50 ms**, works offline.
+
+### Model 3 — Hybrid
+- Edge handles alarms in real time; cloud retrains models weekly and hosts dashboards.
+
+\`\`\`text
+Selection criteria: latency < 100 ms · 50+ looms · budget ৳150k
+-> Edge gateway with hybrid reporting is the best fit
+\`\`\`
+
+I can draft the system-architecture subsection if you confirm the model choice.`,
+
+            fallback:
+`## Here is how I can help
+
+I can assist with:
+
+- **Literature reviews** — ask for a draft on any topic.
+- **Methodology breakdowns** — request a step-by-step plan.
+- **Citation checking** — paste an excerpt and name your style (IEEE / APA 7 / Harvard / Chicago).
+- **Draft editing** — paste a paragraph for polish.
+
+### Try one of these
+
+- \`Draft a literature review on IoT in textile manufacturing\`
+- \`Break down the methodology of my paper\`
+- \`Check this citation: ...\`
+
+Or upload a paper from the workbench and I will use it as your active reference.`,
+        };
+
+        // ====================================================================
+        // DOM refs
+        // ====================================================================
+        const feed = document.getElementById('chat-feed');
+        const textarea = document.getElementById('chat-text');
+        const sendBtn = document.getElementById('send-btn');
+        const statusEl = document.getElementById('chat-status');
+        const statusLabel = document.getElementById('chat-status-label');
+        const docName = document.getElementById('chat-doc-name');
+        const toastEl = document.getElementById('toast');
+        const templateBtn = document.getElementById('template-btn');
+        const templateMenu = document.getElementById('template-menu');
+        let busy = false;
+        let toastTimer;
+
+        function showToast(message) {
+            toastEl.textContent = message;
+            toastEl.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3800);
+        }
+
+        // ====================================================================
+        // Markdown-lite renderer (headings, bullets, inline styles, code blocks)
+        // ====================================================================
+        function escapeHtml(s) {
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function inlineFmt(s) {
+            return s
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+        }
+
+        function renderMarkdown(text) {
+            // Split off fenced code blocks first
+            const parts = text.split(/```/);
+            let html = '';
+            parts.forEach((part, i) => {
+                if (i % 2 === 1) {
+                    const code = part.trim();
+                    html += '<div class="code-block">'
+                        + '<div class="code-head"><span>code</span>'
+                        + '<button type="button" class="copy-code" data-code="' + encodeURIComponent(code) + '">'
+                        + '<i class="fa-regular fa-copy"></i> Copy</button></div>'
+                        + '<pre><code>' + escapeHtml(code) + '</code></pre></div>';
+                } else {
+                    html += renderBlocks(part);
+                }
+            });
+            return html;
+        }
+
+        function renderBlocks(text) {
+            const lines = escapeHtml(text).split('\n');
+            let html = '';
+            let inList = false;
+
+            function closeList() {
+                if (inList) { html += '</ul>'; inList = false; }
+            }
+
+            for (const raw of lines) {
+                const line = raw.trim();
+                if (/^### /.test(line)) { closeList(); html += '<h4>' + inlineFmt(line.slice(4)) + '</h4>'; }
+                else if (/^## /.test(line)) { closeList(); html += '<h3>' + inlineFmt(line.slice(3)) + '</h3>'; }
+                else if (/^- /.test(line)) {
+                    if (!inList) { html += '<ul>'; inList = true; }
+                    html += '<li>' + inlineFmt(line.slice(2)) + '</li>';
+                }
+                else if (line === '') { closeList(); }
+                else { closeList(); html += '<p>' + inlineFmt(line) + '</p>'; }
+            }
+            closeList();
+            return html;
+        }
+
+        // ====================================================================
+        // Message feed helpers
+        // ====================================================================
+        function appendUser(text) {
+            const div = document.createElement('div');
+            div.className = 'bubble user';
+            div.innerHTML = '<div class="bubble-body"></div>';
+            div.firstChild.textContent = text;
+            feed.appendChild(div);
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        function appendAI(markdown) {
+            const div = document.createElement('div');
+            div.className = 'bubble ai';
+            div.innerHTML = '<span class="bubble-avatar"><i class="fa-solid fa-robot"></i></span>'
+                + '<div class="bubble-body">' + renderMarkdown(markdown) + '</div>';
+            feed.appendChild(div);
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        function showTyping() {
+            const div = document.createElement('div');
+            div.className = 'bubble ai';
+            div.id = 'typing-bubble';
+            div.innerHTML = '<span class="bubble-avatar"><i class="fa-solid fa-robot"></i></span>'
+                + '<div class="bubble-body"><span class="typing-dots"><span></span><span></span><span></span></span></div>';
+            feed.appendChild(div);
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        function hideTyping() {
+            const el = document.getElementById('typing-bubble');
+            if (el) el.remove();
+        }
+
+        function setBusy(state) {
+            busy = state;
+            sendBtn.disabled = state;
+            statusEl.classList.toggle('thinking', state);
+            statusLabel.textContent = state ? 'Analyzing…' : 'Ready for Query';
+        }
+
+        function assistantReply(text) {
+            const q = text.toLowerCase();
+            if (q.includes('literature')) return RESPONSES.literature;
+            if (q.includes('method')) return RESPONSES.methodology;
+            if (q.includes('citation') || q.includes('cite') || q.includes('ieee') || q.includes('apa') || q.includes('harvard') || q.includes('chicago') || q.includes('reference')) return RESPONSES.citation;
+            if (text.trim().startsWith('/summarize') || q.includes('summarize') || q.includes('abstract')) return RESPONSES.summary;
+            if (q.includes('superposition')) return RESPONSES.superposition;
+            if (q.includes('iot') || q.includes('textile')) return RESPONSES.iot;
+            return RESPONSES.fallback;
+        }
+
+        function sendMessage() {
+            const text = textarea.value.trim();
+            if (!text || busy) return;
+
+            appendUser(text);
+            textarea.value = '';
+            autoResize();
+            setBusy(true);
+
+            showTyping();
+            setTimeout(() => {
+                hideTyping();
+                appendAI(assistantReply(text));
+                setBusy(false);
+            }, 950 + Math.random() * 700);
+        }
+
+        // ====================================================================
+        // Textarea auto-grow
+        // ====================================================================
+        function autoResize() {
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 140) + 'px';
+        }
+
+        textarea.addEventListener('input', autoResize);
+
+        // ====================================================================
+        // Send handlers
+        // ====================================================================
+        sendBtn.addEventListener('click', sendMessage);
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // ====================================================================
+        // Quick prompt starters (send immediately)
+        // ====================================================================
+        document.querySelectorAll('#starter-list .starter').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (busy) { showToast('Please wait for the current response…'); return; }
+                textarea.value = PROMPTS[btn.dataset.promptKey];
+                sendMessage();
+            });
+        });
+
+        // ====================================================================
+        // Prompt template menu (fill the input, let the user edit)
+        // ====================================================================
+        function setTemplateMenu(open) {
+            templateMenu.classList.toggle('open', open);
+            templateBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+
+        templateBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            setTemplateMenu(!templateMenu.classList.contains('open'));
+        });
+
+        document.querySelectorAll('#template-menu button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                textarea.value = PROMPTS[btn.dataset.promptKey];
+                autoResize();
+                textarea.focus();
+                setTemplateMenu(false);
+            });
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!templateMenu.classList.contains('open')) return;
+            if (templateMenu.contains(e.target) || templateBtn.contains(e.target)) return;
+            setTemplateMenu(false);
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') setTemplateMenu(false);
+        });
+
+        // ====================================================================
+        // File upload (mock) — dropzone + attach button
+        // ====================================================================
+        const dropzone = document.getElementById('dropzone');
+        const paperInput = document.getElementById('paper-input');
+
+        function handleFile(file) {
+            if (!file) return;
+            const ok = /\.(pdf|docx?)$/i.test(file.name);
+            if (!ok) { showToast('Please upload a PDF or DOCX file.'); return; }
+            docName.textContent = file.name;
+            showToast('Uploaded "' + file.name + '" — set as your active reference.');
+        }
+
+        paperInput.addEventListener('change', () => handleFile(paperInput.files[0]));
+        document.getElementById('attach-btn').addEventListener('click', () => paperInput.click());
+
+        ['dragover', 'dragenter'].forEach(ev => {
+            dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+        });
+        ['dragleave', 'drop'].forEach(ev => {
+            dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove('dragover'); });
+        });
+        dropzone.addEventListener('drop', (e) => handleFile(e.dataTransfer.files[0]));
+        dropzone.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); paperInput.click(); }
+        });
+
+        // ====================================================================
+        // Citation style selector (mock preview swap)
+        // ====================================================================
+        const citeSelect = document.getElementById('cite-select');
+        const citePreview = document.getElementById('cite-preview');
+        const CITATION_SAMPLES = {
+            'IEEE': '[1] M. H. Rahman and K. Ahmed, "IoT-based automated loom monitoring for textile manufacturing," <em>IEEE Access</em>, vol. 9, pp. 44210–44222, 2021.',
+            'APA 7': 'Rahman, M. H., &amp; Ahmed, K. (2021). IoT-based automated loom monitoring for textile manufacturing. <em>IEEE Access</em>, 9, 44210–44222. https://doi.org/10.1109/ACCESS.2021.0001',
+            'Harvard': 'Rahman, M.H. and Ahmed, K. (2021) \'IoT-based automated loom monitoring for textile manufacturing\', <em>IEEE Access</em>, 9, pp. 44210–44222.',
+            'Chicago': 'Rahman, M. H., and K. Ahmed. "IoT-Based Automated Loom Monitoring for Textile Manufacturing." <em>IEEE Access</em> 9 (2021): 44210–22.',
+        };
+        citeSelect.addEventListener('change', () => {
+            citePreview.innerHTML = CITATION_SAMPLES[citeSelect.value];
+            showToast('Citation style set to ' + citeSelect.value + '.');
+        });
+
+        // ====================================================================
+        // Research threads (mock resume)
+        // ====================================================================
+        document.querySelectorAll('#thread-list .thread').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('#thread-list .thread').forEach(t => {
+                    const on = t === btn;
+                    t.classList.toggle('active', on);
+                    t.setAttribute('aria-pressed', on ? 'true' : 'false');
+                });
+                const thread = THREADS[btn.dataset.thread];
+                if (!thread) return;
+                docName.textContent = thread.doc;
+                showToast('Opened "' + thread.title + '".');
+                if (!busy) {
+                    showTyping();
+                    setTimeout(() => {
+                        hideTyping();
+                        appendAI('## ' + thread.title + '\n\n' + thread.note);
+                    }, 700);
+                }
+            });
+        });
+
+        // ====================================================================
+        // Copy-code buttons (delegated)
+        // ====================================================================
+        feed.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.copy-code');
+            if (!btn) return;
+            const code = decodeURIComponent(btn.dataset.code);
+            try {
+                await navigator.clipboard.writeText(code);
+                showToast('Code copied to clipboard.');
+            } catch (err) {
+                showToast('Copy this block:\n' + code);
+            }
+        });
+    </script>
+</body>
+</html>

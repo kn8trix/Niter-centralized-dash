@@ -18,6 +18,7 @@ class StudentPagesSmokeTest(SimpleTestCase):
         'transport_dashboard',
         'meal_dashboard',
         'checkout',
+        'research_ai',
         'settings',
         'signup',
     ]
@@ -50,9 +51,10 @@ class UnifiedHeaderTest(SimpleTestCase):
         'medical',
         'notices',
         'academic_notes',
+        'research_ai',
     ]
 
-    NAV_LINKS = ['Dashboard', 'Academic Notes', 'Notices', 'Transport', 'Meals', 'Medical', 'Clubs']
+    NAV_LINKS = ['Dashboard', 'Academic Notes', 'Research AI', 'Notices', 'Transport', 'Meals', 'Medical', 'Clubs']
 
     def test_pages_render_shared_header(self):
         for name in self.PAGES:
@@ -79,6 +81,7 @@ class UnifiedHeaderTest(SimpleTestCase):
             'medical': '/medical/',
             'notices': '/notices/',
             'academic_notes': '/academic-notes/',
+            'research_ai': '/research-ai/',
         }
         for name, url in expected.items():
             with self.subTest(page=name):
@@ -150,6 +153,43 @@ class CheckoutPageTest(SimpleTestCase):
         self.assertIn('Monthly Meal Subscription', html)
         # Static banner text (rendered markup, not JS source)
         self.assertIn('Pay your monthly fee to claim tickets.', html)
+
+
+class ResearchAIPageTest(SimpleTestCase):
+    """Academic Research & Thesis Assistant page renders all core sections."""
+
+    def test_page_renders_core_sections(self):
+        response = self.client.get(reverse('research_ai'))
+        self.assertEqual(response.status_code, 200)
+        for needle in [
+            'Academic Research &amp; Thesis Assistant',
+            'Brainstorm literature reviews, summarize methodology papers, analyze IEEE-style citations, and edit your academic draft.',
+            'Upload Paper / Abstract',
+            'Recent Research Threads',
+            'Superposition Circuit Analysis',
+            'Textile IoT Automation Models',
+            'IEEE',
+            'APA 7',
+            'Quick Prompt Starters',
+            'Draft Literature Review',
+            'Methodology Breakdown',
+            'Check Citation Formatting',
+            'Ready for Query',
+            'Current Reference:',
+            'Ask a thesis question, paste an excerpt, or type /summarize...',
+            'Send',
+        ]:
+            self.assertContains(response, needle, msg_prefix=needle)
+
+    def test_upload_dropzone_present(self):
+        response = self.client.get(reverse('research_ai'))
+        self.assertContains(response, 'id="dropzone"')
+        self.assertContains(response, 'accept=".pdf,.docx"')
+
+    def test_citation_selector_offers_all_styles(self):
+        response = self.client.get(reverse('research_ai'))
+        for style in ['IEEE', 'APA 7', 'Harvard', 'Chicago']:
+            self.assertContains(response, 'value="' + style + '"', msg_prefix=style)
 
 
 class LoginFlowTests(TestCase):

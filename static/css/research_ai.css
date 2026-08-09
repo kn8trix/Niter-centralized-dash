@@ -1,0 +1,790 @@
+/* ============================================================================
+   CampusDash — Academic Research & Thesis Assistant (Warm Light Theme)
+   ----------------------------------------------------------------------------
+   Standalone styles for templates/research_ai.html — a frontend-only research
+   chat console: document workbench sidebar (upload, threads, citation style,
+   prompt starters) + AI chat window with structured markdown/LaTeX responses.
+
+   Palette: bg #faf9f6 · card #ffffff · border #f0ebe1 · accent #e8e2d8
+            (hover #dfd7cb) · text #1f2937 · muted #6b7280
+
+   Sections:
+     1. Tokens
+     2. Base
+     3. Split layout (sidebar + chat)
+     4. Sidebar / document workbench
+     5. Chat header
+     6. Message feed & bubbles
+     7. Structured response formatting (markdown + LaTeX code blocks)
+     8. Chat input bar
+     9. Responsive & motion
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   1. Tokens
+--------------------------------------------------------------------------- */
+:root {
+    --bg-main: #faf9f6;
+    --bg-card: #ffffff;
+    --bg-subtle: #f7f4ef;
+
+    --text-primary: #1f2937;
+    --text-muted: #6b7280;
+
+    --border-color: #f0ebe1;
+    --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.03);
+    --shadow-hover: 0 14px 36px rgba(0, 0, 0, 0.10);
+
+    --accent-primary: #e8e2d8;
+    --accent-primary-hover: #dfd7cb;
+    --accent-dark: #27272a;
+
+    --success: #166534;
+    --success-soft: #dcfce7;
+    --success-border: #bbf7d0;
+
+    --warning: #b45309;
+    --warning-soft: #fef3c7;
+    --warning-border: #fde68a;
+
+    --research-font: var(--font-main, 'Inter', system-ui, sans-serif);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ---------------------------------------------------------------------------
+   2. Base
+--------------------------------------------------------------------------- */
+body.research {
+    margin: 0;
+    min-height: 100vh;
+    font-family: var(--research-font);
+    background:
+        radial-gradient(1000px 520px at 85% -10%, rgba(232, 226, 216, 0.55), transparent 60%),
+        radial-gradient(800px 420px at 5% 12%, rgba(240, 235, 225, 0.6), transparent 55%),
+        var(--bg-main);
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+}
+
+body.research *,
+body.research *::before,
+body.research *::after {
+    box-sizing: border-box;
+}
+
+body.research a {
+    color: inherit;
+    text-decoration: none;
+}
+
+body.research button {
+    font-family: inherit;
+}
+
+.shell {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 1.5rem clamp(1.1rem, 4vw, 2.5rem) 4rem;
+}
+
+.section-title {
+    margin: 0 0 0.2rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.section-subtitle {
+    margin: 0 0 0.9rem;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+    padding: 1.25rem 1.3rem;
+}
+
+/* ---------------------------------------------------------------------------
+   3. Split layout (sidebar + chat)
+--------------------------------------------------------------------------- */
+.research-layout {
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: 1.1rem;
+    align-items: start;
+}
+
+.research-side {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+    position: sticky;
+    top: 1.2rem;
+}
+
+/* ---------------------------------------------------------------------------
+   4. Sidebar / document workbench
+--------------------------------------------------------------------------- */
+/* Upload dropzone */
+.dropzone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 1.5rem 1rem;
+    text-align: center;
+    background: var(--bg-subtle);
+    border: 2px dashed var(--accent-primary-hover);
+    border-radius: 0.9rem;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.dropzone:hover,
+.dropzone.dragover {
+    background: rgba(232, 226, 216, 0.3);
+    border-color: var(--accent-primary);
+    transform: translateY(-1px);
+}
+
+.dropzone i {
+    font-size: 1.6rem;
+    color: var(--accent-dark);
+    margin-bottom: 0.3rem;
+}
+
+.dropzone strong {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.dropzone span {
+    font-size: 0.78rem;
+}
+
+.dropzone u {
+    color: var(--accent-dark);
+    font-weight: 600;
+    text-decoration-thickness: 1px;
+}
+
+/* Recent threads */
+.thread-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.thread {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border-radius: 0.7rem;
+    background: none;
+    border: 1px solid transparent;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.thread:hover {
+    background: var(--bg-subtle);
+}
+
+.thread.active {
+    background: rgba(232, 226, 216, 0.32);
+    border-color: var(--accent-primary);
+}
+
+.thread > i {
+    color: var(--accent-dark);
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+
+.thread span {
+    min-width: 0;
+}
+
+.thread strong {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.thread small {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+/* Citation style */
+.field-select {
+    width: 100%;
+    padding: 0.65rem 0.9rem;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 0.65rem;
+    font-family: inherit;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.field-select:focus {
+    background: var(--bg-card);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(232, 226, 216, 0.55);
+}
+
+.cite-preview {
+    margin: 0.85rem 0 0;
+    padding: 0.7rem 0.85rem;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--accent-primary);
+    border-radius: 0.6rem;
+    font-size: 0.78rem;
+    line-height: 1.55;
+    color: var(--text-primary);
+}
+
+/* Quick prompt starters */
+.starter-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.starter {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 0.7rem;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.starter:hover {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    transform: translateX(2px);
+}
+
+.starter i {
+    color: var(--accent-dark);
+    flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   5. Chat header
+--------------------------------------------------------------------------- */
+.chat-panel {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+    height: clamp(500px, calc(100vh - 245px), 720px);
+    min-height: 480px;
+}
+
+.chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    padding: 0.85rem 1.3rem;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.chat-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    background: var(--success-soft);
+    border: 1px solid var(--success-border);
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--success);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: statusPulse 2s ease-in-out infinite;
+}
+
+.chat-status.thinking {
+    background: var(--warning-soft, #fef3c7);
+    border-color: var(--warning-border, #fde68a);
+    color: var(--warning, #b45309);
+}
+
+.chat-doc {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    max-width: 100%;
+}
+
+.chat-doc i {
+    color: var(--accent-dark);
+}
+
+.chat-doc b {
+    color: var(--text-primary);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 240px;
+    display: inline-block;
+    vertical-align: bottom;
+}
+
+/* ---------------------------------------------------------------------------
+   6. Message feed & bubbles
+--------------------------------------------------------------------------- */
+.chat-feed {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    scroll-behavior: smooth;
+}
+
+.bubble {
+    display: flex;
+    gap: 0.7rem;
+    max-width: 82%;
+}
+
+.bubble-avatar {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 0.9rem;
+    flex-shrink: 0;
+    margin-top: 0.2rem;
+}
+
+.bubble-body {
+    padding: 0.75rem 1rem;
+    border-radius: 1rem;
+    font-size: 0.9rem;
+    line-height: 1.65;
+    min-width: 0;
+}
+
+.bubble.user {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+}
+
+.bubble.user .bubble-body {
+    background: var(--accent-primary);
+    border: 1px solid var(--accent-primary);
+    color: var(--text-primary);
+    border-bottom-right-radius: 0.25rem;
+}
+
+.bubble.ai {
+    align-self: flex-start;
+}
+
+.bubble.ai .bubble-body {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-bottom-left-radius: 0.25rem;
+    box-shadow: var(--shadow-card);
+}
+
+.bubble.ai .bubble-body p {
+    margin: 0 0 0.55rem;
+}
+
+.bubble.ai .bubble-body p:last-child {
+    margin-bottom: 0;
+}
+
+/* Typing indicator */
+.typing-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0;
+}
+
+.typing-dots span {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    animation: typingBounce 1.2s ease-in-out infinite;
+}
+
+.typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+/* ---------------------------------------------------------------------------
+   7. Structured response formatting (markdown + LaTeX code blocks)
+--------------------------------------------------------------------------- */
+.bubble.ai .bubble-body h3,
+.bubble.ai .bubble-body h4 {
+    margin: 0.9rem 0 0.4rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1.3;
+}
+
+.bubble.ai .bubble-body h3 {
+    font-size: 1rem;
+}
+
+.bubble.ai .bubble-body h4 {
+    font-size: 0.92rem;
+}
+
+.bubble.ai .bubble-body ul {
+    margin: 0.4rem 0 0.6rem;
+    padding-left: 1.15rem;
+}
+
+.bubble.ai .bubble-body li {
+    margin-bottom: 0.3rem;
+}
+
+.bubble.ai .bubble-body strong {
+    font-weight: 700;
+}
+
+.bubble.ai .bubble-body .inline-code {
+    font-family: var(--mono);
+    font-size: 0.82em;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    border-radius: 0.3rem;
+    padding: 0.05rem 0.35rem;
+}
+
+/* LaTeX / code block with copy button */
+.code-block {
+    margin: 0.7rem 0;
+    border: 1px solid var(--border-color);
+    border-radius: 0.7rem;
+    overflow: hidden;
+    background: var(--bg-subtle);
+}
+
+.code-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.4rem 0.8rem;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.copy-code {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-subtle);
+    color: var(--text-primary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: 0;
+    transition: background 0.15s ease;
+}
+
+.copy-code:hover {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+}
+
+.code-block pre {
+    margin: 0;
+    padding: 0.8rem 0.95rem;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: var(--accent-dark);
+}
+
+/* ---------------------------------------------------------------------------
+   8. Chat input bar
+--------------------------------------------------------------------------- */
+.chat-input {
+    border-top: 1px solid var(--border-color);
+    padding: 0.85rem 1.1rem 0.9rem;
+    background: var(--bg-card);
+}
+
+.chat-input-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.55rem;
+}
+
+.icon-btn {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: 0.7rem;
+    border: 1px solid var(--border-color);
+    background: var(--bg-subtle);
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.icon-btn:hover {
+    color: var(--text-primary);
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+}
+
+.chat-text {
+    flex: 1;
+    min-height: 40px;
+    max-height: 140px;
+    resize: none;
+    padding: 0.6rem 0.9rem;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 0.7rem;
+    font-family: inherit;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.chat-text:focus {
+    background: var(--bg-card);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(232, 226, 216, 0.55);
+}
+
+.send-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.65rem 1.15rem;
+    border: none;
+    border-radius: 0.7rem;
+    background: var(--accent-primary);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.send-btn:hover:not(:disabled) {
+    background: var(--accent-primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.send-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+/* Prompt template dropdown */
+.template-wrap {
+    position: relative;
+}
+
+.template-menu {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    width: 250px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 0.8rem;
+    box-shadow: var(--shadow-hover);
+    padding: 0.4rem;
+    z-index: 50;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(6px);
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
+}
+
+.template-menu.open {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.template-menu button {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    padding: 0.55rem 0.7rem;
+    border-radius: 0.55rem;
+    border: none;
+    background: none;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.template-menu button:hover {
+    background: var(--bg-subtle);
+}
+
+.template-menu button i {
+    color: var(--accent-dark);
+    width: 1rem;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.chat-hint {
+    margin: 0.55rem 0 0;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+/* ---------------------------------------------------------------------------
+   9. Responsive & motion
+--------------------------------------------------------------------------- */
+@keyframes statusPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+
+@keyframes typingBounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+    30% { transform: translateY(-4px); opacity: 1; }
+}
+
+@media (max-width: 1100px) {
+    .research-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .research-side {
+        position: static;
+    }
+
+    .chat-panel {
+        height: min(640px, calc(100vh - 200px));
+    }
+}
+
+@media (max-width: 560px) {
+    .bubble {
+        max-width: 92%;
+    }
+
+    .chat-panel {
+        min-height: 420px;
+    }
+
+    .send-btn span {
+        display: none;
+    }
+
+    .chat-input {
+        padding: 0.7rem 0.8rem 0.8rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .status-dot,
+    .typing-dots span {
+        animation: none;
+    }
+
+    .dropzone,
+    .thread,
+    .starter,
+    .send-btn,
+    .icon-btn {
+        transition: none;
+    }
+}
+
+/* Visible keyboard focus for interactive controls */
+.dropzone:focus-visible,
+.thread:focus-visible,
+.starter:focus-visible,
+.field-select:focus-visible,
+.icon-btn:focus-visible,
+.chat-text:focus-visible,
+.send-btn:focus-visible,
+.copy-code:focus-visible,
+.template-menu button:focus-visible {
+    outline: 2px solid var(--accent-dark);
+    outline-offset: 2px;
+}

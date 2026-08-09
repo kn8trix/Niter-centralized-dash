@@ -917,3 +917,29 @@ Added a **frontend-only payment gateway** (`templates/checkout.html` + `static/c
 
 - `python manage.py check` ✔
 - `python manage.py test` ✔ (16 tests — added `CheckoutPageTest`: checkout page renders core sections, clubs/transport/meals pages all link to `/checkout/`, meals page shows the monthly subscription banner).
+
+---
+
+## 29. Academic Research & Thesis Assistant (`/research-ai/`)
+
+**Date:** 09 August 2026  
+**Branch:** main
+
+### Overview
+
+Added a **frontend-only AI research chat console** (`templates/research_ai.html` + `static/css/research_ai.css`) — "Research AI" — matching the unified top-header navigation and warm beige aesthetic. All assistant responses are canned mock JS (no backend/AI calls).
+
+### Completed Work
+
+1. **Route & View** — `path('research-ai/', views.research_ai_page, name='research_ai')` in `core/urls.py`; stub view in `core/views.py`; `research_ai` added to the `ENDPOINTS` registry and to the smoke-test `PAGES` list.
+2. **Navigation** — "Research AI" pill added to the shared topbar partial (`templates/partials/topbar.html`, desktop nav + mobile popover, robot icon) so every standalone page links to it; active pill `#e8e2d8` via `active='research'`.
+3. **Centered hero** — title "Academic Research & Thesis Assistant" + subtitle about literature reviews, methodology, IEEE-style citations, and draft editing.
+4. **Split layout (sidebar workbench + chat console)** — `grid-template-columns: 320px 1fr`, stacks to one column below 1100px:
+   - **Sidebar:** drag-and-drop upload dropzone (PDF/DOCX, sets the "Current Reference" indicator), Recent Research Threads list (Superposition Circuit Analysis / Textile IoT Automation Models / NLP for Bangla Text Mining — click to resume with a mock context message), Citation Style selector (IEEE / APA 7 / Harvard / Chicago with live sample preview), and Quick Prompt Starters (Draft Literature Review / Methodology Breakdown / Check Citation Formatting).
+   - **Chat console:** header with pulsing status badge ("Ready for Query" ↔ "Analyzing…" while typing) and active-document indicator; scrollable message feed with right-aligned `#e8e2d8` user bubbles and left-aligned white AI bubbles (`#f0ebe1` border); structured markdown-lite rendering (## / ### headings, bullets, inline code, **bold**) plus LaTeX/fenced code blocks with **Copy** buttons; animated typing indicator; multi-line auto-growing textarea with attach clip button, prompt-template dropdown (bolt icon), and a prominent "Send" button (Enter to send, Shift+Enter for newline).
+   - Mock assistant routes prompts by keyword (literature / methodology / citation / summarize / superposition / IoT) with canned structured responses; fallback help message otherwise.
+
+### Testing
+
+- `python manage.py check` ✔
+- `python manage.py test` ✔ (21 tests — `research_ai` added to smoke + unified-header + active-pill coverage; new `ResearchAIPageTest` asserts hero, dropzone, threads, citation styles, prompt starters, chat header, and input placeholder).

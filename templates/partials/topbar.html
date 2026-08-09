@@ -8,7 +8,7 @@ sync: brand, desktop nav pills (active pill highlighted #e8e2d8), and the
 mobile profile popover with user info, page links, and account actions.
 
 Usage:  {% include 'partials/topbar.html' with active='transport' %}
-active: dashboard | notes | notices | transport | meals | medical | clubs
+active: dashboard | notes | research | notices | transport | meals | medical | clubs
 ============================================================================
 {% endcomment %}
 <header class="topbar" data-component="topbar">
@@ -21,6 +21,7 @@ active: dashboard | notes | notices | transport | meals | medical | clubs
     <nav class="navlinks" aria-label="Primary navigation">
         <a href="{% url 'dashboard' %}" class="{% if active == 'dashboard' %}active{% endif %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
         <a href="{% url 'academic_notes' %}" class="{% if active == 'notes' %}active{% endif %}"><i class="fa-solid fa-book-open"></i> Academic Notes</a>
+        <a href="{% url 'research_ai' %}" class="{% if active == 'research' %}active{% endif %}"><i class="fa-solid fa-robot"></i> Research AI</a>
         <a href="{% url 'notices' %}" class="{% if active == 'notices' %}active{% endif %}"><i class="fa-solid fa-bullhorn"></i> Notices</a>
         <a href="{% url 'transport_dashboard' %}" class="{% if active == 'transport' %}active{% endif %}"><i class="fa-solid fa-bus"></i> Transport</a>
         <a href="{% url 'meal_dashboard' %}" class="{% if active == 'meals' %}active{% endif %}"><i class="fa-solid fa-utensils"></i> Meals</a>
@@ -52,6 +53,7 @@ active: dashboard | notes | notices | transport | meals | medical | clubs
             <nav class="profile-links" aria-label="Page links">
                 <a href="{% url 'dashboard' %}" class="{% if active == 'dashboard' %}active{% endif %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
                 <a href="{% url 'academic_notes' %}" class="{% if active == 'notes' %}active{% endif %}"><i class="fa-solid fa-book-open"></i> Academic Notes</a>
+                <a href="{% url 'research_ai' %}" class="{% if active == 'research' %}active{% endif %}"><i class="fa-solid fa-robot"></i> Research AI</a>
                 <a href="{% url 'notices' %}" class="{% if active == 'notices' %}active{% endif %}"><i class="fa-solid fa-bullhorn"></i> Notices</a>
                 <a href="{% url 'transport_dashboard' %}" class="{% if active == 'transport' %}active{% endif %}"><i class="fa-solid fa-bus"></i> Transport</a>
                 <a href="{% url 'meal_dashboard' %}" class="{% if active == 'meals' %}active{% endif %}"><i class="fa-solid fa-utensils"></i> Meals</a>
