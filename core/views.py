@@ -55,6 +55,20 @@ def research_ai_page(request):
     """
     return render(request, 'research_ai.html')
 
+
+def departments_directory(request):
+    """Department Directory — frontend-only page driven by mock JS data
+    (search filter, quick-jump pills, showcase cards with HOD/stats).
+    """
+    return render(request, 'departments.html')
+
+
+def department_detail(request, dept_slug):
+    """Single Department Hub — frontend-only page driven by mock JS data
+    keyed by ``dept_slug`` (tabs: overview, faculty, schedule, notes drive).
+    """
+    return render(request, 'department_detail.html', {'dept_slug': dept_slug})
+
 def placeholder(request, page='settings'):
     """Minimal warm-beige placeholder pages (settings / signup) so the shared
     profile popover links resolve. Swap in real pages later."""

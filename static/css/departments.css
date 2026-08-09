@@ -1,0 +1,1139 @@
+/* ============================================================================
+   CampusDash — Academic Departments (Warm Light Theme)
+   ----------------------------------------------------------------------------
+   Shared standalone styles for:
+     - templates/departments.html        (Department Directory,   /departments/)
+     - templates/department_detail.html  (Department Detail Hub,  /departments/<slug>/)
+   Frontend-only mock data: search + quick-jump filtering, department showcase
+   cards, and a 4-tab detail hub (Overview / Faculty / Schedule / Notes Drive).
+
+   Palette: bg #faf9f6 · card #ffffff · border #f0ebe1 · accent #e8e2d8
+            (hover #dfd7cb) · text #1f2937 · muted #6b7280
+
+   Sections:
+     1. Tokens
+     2. Base
+     3. Directory hero (title, search, quick-jump pills)
+     4. Department showcase cards
+     5. Detail header (centered department hub)
+     6. Tab bar & panels
+     7. Tab: Overview & announcements
+     8. Tab: Faculty directory
+     9. Tab: Class & lab schedule
+    10. Tab: Notes & PDF drive
+    11. Responsive & motion
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   1. Tokens
+--------------------------------------------------------------------------- */
+:root {
+    --bg-main: #faf9f6;
+    --bg-card: #ffffff;
+    --bg-subtle: #f7f4ef;
+
+    --text-primary: #1f2937;
+    --text-muted: #6b7280;
+
+    --border-color: #f0ebe1;
+    --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.03);
+    --shadow-hover: 0 14px 36px rgba(0, 0, 0, 0.10);
+
+    --accent-primary: #e8e2d8;
+    --accent-primary-hover: #dfd7cb;
+    --accent-dark: #27272a;
+
+    --success: #166534;
+    --success-soft: #dcfce7;
+    --success-border: #bbf7d0;
+
+    --info: #1e40af;
+    --info-soft: #dbeafe;
+    --info-border: #bfdbfe;
+
+    --warning: #b45309;
+    --warning-soft: #fef3c7;
+    --warning-border: #fde68a;
+
+    --dept-font: var(--font-main, 'Inter', system-ui, sans-serif);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ---------------------------------------------------------------------------
+   2. Base
+--------------------------------------------------------------------------- */
+body.departments,
+body.dept-detail {
+    margin: 0;
+    min-height: 100vh;
+    font-family: var(--dept-font);
+    background:
+        radial-gradient(1000px 520px at 85% -10%, rgba(232, 226, 216, 0.55), transparent 60%),
+        radial-gradient(800px 420px at 5% 12%, rgba(240, 235, 225, 0.6), transparent 55%),
+        var(--bg-main);
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+}
+
+body.departments *,
+body.dept-detail *,
+body.departments *::before,
+body.dept-detail *::before,
+body.departments *::after,
+body.dept-detail *::after {
+    box-sizing: border-box;
+}
+
+body.departments a,
+body.dept-detail a {
+    color: inherit;
+    text-decoration: none;
+}
+
+body.departments button,
+body.dept-detail button {
+    font-family: inherit;
+}
+
+.shell {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 1.5rem clamp(1.1rem, 4vw, 2.5rem) 4rem;
+}
+
+.section-title {
+    margin: 0 0 0.2rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.section-subtitle {
+    margin: 0 0 0.9rem;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+    padding: 1.25rem 1.3rem;
+}
+
+/* Small decorative icon chip */
+.chip-icon {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 0.8rem;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+/* Shared pill badge */
+.pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.22rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+}
+
+.pill.success {
+    background: var(--success-soft);
+    border-color: var(--success-border);
+    color: var(--success);
+}
+
+.pill.info {
+    background: var(--info-soft);
+    border-color: var(--info-border);
+    color: var(--info);
+}
+
+.pill.warning {
+    background: var(--warning-soft);
+    border-color: var(--warning-border);
+    color: var(--warning);
+}
+
+/* Primary / secondary buttons */
+.btn-primary,
+.btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.6rem 1.1rem;
+    border-radius: 0.7rem;
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.btn-primary {
+    background: var(--accent-primary);
+    border: 1px solid var(--accent-primary);
+    color: var(--text-primary);
+}
+
+.btn-primary:hover {
+    background: var(--accent-primary-hover);
+    border-color: var(--accent-primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.btn-secondary {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+.btn-secondary:hover {
+    background: var(--bg-subtle);
+    border-color: var(--accent-primary);
+    transform: translateY(-1px);
+}
+
+/* ---------------------------------------------------------------------------
+   3. Directory hero (title, search, quick-jump pills)
+--------------------------------------------------------------------------- */
+.dept-hero {
+    text-align: center;
+    margin-bottom: 2.2rem;
+}
+
+.dept-hero h1 {
+    margin: 0 0 0.4rem;
+    font-size: clamp(1.6rem, 4vw, 2.1rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+}
+
+.dept-hero > p {
+    margin: 0 auto 1.4rem;
+    max-width: 640px;
+    color: var(--text-muted);
+    font-size: 0.98rem;
+}
+
+/* Search bar */
+.dept-search-wrap {
+    position: relative;
+    max-width: 560px;
+    margin: 0 auto 1.1rem;
+}
+
+.dept-search {
+    width: 100%;
+    padding: 0.85rem 1.1rem 0.85rem 2.9rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    box-shadow: var(--shadow-card);
+    font-family: inherit;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dept-search::placeholder {
+    color: var(--text-muted);
+}
+
+.dept-search:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(232, 226, 216, 0.55);
+}
+
+.dept-search-icon {
+    position: absolute;
+    left: 1.1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    pointer-events: none;
+}
+
+.dept-search-clear {
+    position: absolute;
+    right: 0.6rem;
+    top: 50%;
+    transform: translateY(-50%);
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.dept-search-clear:hover {
+    background: var(--bg-subtle);
+    color: var(--text-primary);
+}
+
+/* The `hidden` attribute must win over the grid display above */
+.dept-search-clear[hidden] {
+    display: none;
+}
+
+/* Quick jump pills */
+.quick-jump {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.quick-jump-label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.quick-jump .jump-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.9rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.quick-jump .jump-btn:hover {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    transform: translateY(-1px);
+}
+
+.quick-jump .jump-btn.active {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   4. Department showcase cards
+--------------------------------------------------------------------------- */
+.dept-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.1rem;
+}
+
+.dept-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+    padding: 1.35rem 1.4rem;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.dept-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-hover);
+    border-color: var(--accent-primary);
+}
+
+.dept-card.is-hidden {
+    display: none;
+}
+
+.dept-card.is-jumped {
+    outline: 3px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
+.dept-card-head {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+}
+
+.dept-card-head h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1.3;
+}
+
+.dept-card-head h3 a:hover {
+    color: var(--accent-dark);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+}
+
+.dept-card .dept-blurb {
+    margin: 0;
+    font-size: 0.86rem;
+    color: var(--text-muted);
+}
+
+.dept-code {
+    display: inline-block;
+    margin-top: 0.3rem;
+    padding: 0.12rem 0.6rem;
+    border-radius: 999px;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+
+.dept-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.dept-card-meta .pill {
+    font-weight: 600;
+}
+
+.dept-card-meta .pill i {
+    font-size: 0.7rem;
+}
+
+.dept-card-actions {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-top: auto;
+    padding-top: 0.4rem;
+}
+
+.dept-card-actions .btn-primary,
+.dept-card-actions .btn-secondary {
+    flex: 1;
+    min-width: 130px;
+    padding: 0.55rem 0.9rem;
+    font-size: 0.82rem;
+}
+
+.dept-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 3rem 1.5rem;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    border: 1px dashed var(--accent-primary-hover);
+    border-radius: 1rem;
+}
+
+.dept-empty i {
+    font-size: 2rem;
+    color: var(--accent-primary-hover);
+    margin-bottom: 0.6rem;
+    display: block;
+}
+
+.dept-empty p {
+    margin: 0.3rem 0 0;
+    font-size: 0.85rem;
+}
+
+/* ---------------------------------------------------------------------------
+   5. Detail header (centered department hub)
+--------------------------------------------------------------------------- */
+.dept-detail-head {
+    text-align: center;
+    margin-bottom: 1.6rem;
+}
+
+.dept-detail-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 1.1rem;
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.dept-detail-back:hover {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+}
+
+.dept-detail-icon {
+    display: grid;
+    place-items: center;
+    width: 84px;
+    height: 84px;
+    margin: 0 auto 1rem;
+    border-radius: 1.4rem;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 2rem;
+    box-shadow: var(--shadow-card);
+}
+
+.dept-detail-head h1 {
+    margin: 0 0 0.5rem;
+    font-size: clamp(1.5rem, 3.6vw, 2rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+}
+
+.dept-detail-head .dept-code {
+    margin: 0 0 0.75rem;
+    font-size: 0.8rem;
+    padding: 0.2rem 0.8rem;
+}
+
+.dept-detail-tagline {
+    max-width: 620px;
+    margin: 0 auto 1.2rem;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+.dept-stat-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+}
+
+.dept-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.dept-stat i {
+    color: var(--accent-dark);
+    width: 1rem;
+    text-align: center;
+}
+
+/* ---------------------------------------------------------------------------
+   6. Tab bar & panels
+--------------------------------------------------------------------------- */
+.dept-tabs {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 1.5rem;
+}
+
+.dept-tabs .tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.55rem 1.05rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.dept-tabs .tab-btn:hover {
+    background: var(--bg-subtle);
+    transform: translateY(-1px);
+}
+
+.dept-tabs .tab-btn.active {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+}
+
+.dept-tabs .tab-btn i {
+    font-size: 0.82rem;
+}
+
+/* Visible keyboard focus for interactive tab + chip controls */
+.tab-btn:focus-visible,
+.sem-btn:focus-visible {
+    outline: 2px solid var(--accent-dark);
+    outline-offset: 2px;
+}
+
+.tab-panel {
+    display: none;
+    animation: fadeUp 0.3s ease both;
+}
+
+.tab-panel.active {
+    display: block;
+}
+
+/* ---------------------------------------------------------------------------
+   7. Tab: Overview & announcements
+--------------------------------------------------------------------------- */
+.welcome-card {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.1rem;
+    padding: 1.5rem;
+}
+
+.welcome-card .chip-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 1rem;
+    font-size: 1.3rem;
+}
+
+.welcome-card blockquote {
+    margin: 0;
+}
+
+.welcome-card blockquote p {
+    margin: 0 0 0.5rem;
+    font-size: 0.98rem;
+    color: var(--text-primary);
+}
+
+.welcome-card cite {
+    font-style: normal;
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+
+.welcome-card cite span {
+    display: block;
+    font-weight: 500;
+    font-size: 0.78rem;
+}
+
+.announce-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+}
+
+.announce-card {
+    display: flex;
+    gap: 0.85rem;
+    padding: 1.15rem 1.25rem;
+}
+
+.announce-icon {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 0.7rem;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
+
+.announce-card h3 {
+    margin: 0 0 0.3rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.announce-card p {
+    margin: 0 0 0.6rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.announce-card time {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+/* ---------------------------------------------------------------------------
+   8. Tab: Faculty directory
+--------------------------------------------------------------------------- */
+.faculty-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.faculty-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    padding: 1.35rem 1.4rem;
+}
+
+.faculty-top {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+}
+
+.faculty-avatar {
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 1.05rem;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+
+.faculty-top h3 {
+    margin: 0;
+    font-size: 0.98rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.3;
+}
+
+.faculty-top h3 span {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+}
+
+.faculty-focus {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.faculty-focus strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.faculty-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.faculty-meta a,
+.faculty-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+}
+
+.faculty-meta i {
+    color: var(--accent-dark);
+    width: 1rem;
+    text-align: center;
+}
+
+.faculty-meta a:hover {
+    color: var(--accent-dark);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+}
+
+.office-badge {
+    align-self: flex-start;
+}
+
+/* ---------------------------------------------------------------------------
+   9. Tab: Class & lab schedule
+--------------------------------------------------------------------------- */
+.schedule-note {
+    text-align: center;
+    margin: 0 0 1.1rem;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+.schedule-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+}
+
+.day-card {
+    padding: 1.15rem 1.25rem;
+}
+
+.day-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.8rem;
+}
+
+.day-head h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.day-head .pill {
+    font-size: 0.7rem;
+}
+
+.day-card.is-off {
+    opacity: 0.75;
+}
+
+.day-card.is-off .day-head h3 {
+    color: var(--text-muted);
+}
+
+.period-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+
+.period {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    border-radius: 0.7rem;
+}
+
+.period-type {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 0.5rem;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 0.78rem;
+    flex-shrink: 0;
+}
+
+.period-info {
+    min-width: 0;
+    flex: 1;
+}
+
+.period-info strong {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.period-info small {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+}
+
+.period-time {
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: var(--accent-dark);
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+/* ---------------------------------------------------------------------------
+   10. Tab: Notes & PDF drive
+--------------------------------------------------------------------------- */
+.notes-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.1rem;
+}
+
+.semester-chips {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+
+.semester-chips .sem-btn {
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.semester-chips .sem-btn:hover {
+    background: var(--bg-subtle);
+    color: var(--text-primary);
+}
+
+.semester-chips .sem-btn.active {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+}
+
+.notes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.note-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 1.1rem 1.2rem;
+}
+
+.note-card-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+}
+
+.note-file-icon {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 0.7rem;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    color: var(--accent-dark);
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+
+.note-card h3 {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.35;
+}
+
+.note-card-tags {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.note-card-tags .pill {
+    font-size: 0.68rem;
+    padding: 0.15rem 0.55rem;
+}
+
+.note-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    margin-top: auto;
+}
+
+.note-card-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.notes-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 2.5rem 1.5rem;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    border: 1px dashed var(--accent-primary-hover);
+    border-radius: 1rem;
+}
+
+.notes-empty i {
+    font-size: 1.8rem;
+    color: var(--accent-primary-hover);
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.notes-empty p {
+    margin: 0.3rem 0 0;
+    font-size: 0.85rem;
+}
+
+.upload-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Compact download action inside a note card (keeps the meta row aligned) */
+.note-dl {
+    margin-left: auto;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.74rem;
+}
+
+/* Unknown department fallback */
+.dept-missing {
+    max-width: 480px;
+    margin: 3rem auto;
+    text-align: center;
+    padding: 2.5rem 1.8rem;
+}
+
+.dept-missing i {
+    font-size: 2.2rem;
+    color: var(--accent-primary-hover);
+    margin-bottom: 0.8rem;
+}
+
+.dept-missing h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.dept-missing p {
+    margin: 0 0 1.2rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+/* ---------------------------------------------------------------------------
+   11. Responsive & motion
+--------------------------------------------------------------------------- */
+@media (max-width: 767px) {
+    .dept-card-actions .btn-primary,
+    .dept-card-actions .btn-secondary {
+        min-width: 100%;
+    }
+
+    .dept-tabs .tab-btn {
+        flex: 1 1 auto;
+        justify-content: center;
+    }
+
+    .dept-stat {
+        padding: 0.45rem 0.8rem;
+        font-size: 0.8rem;
+    }
+
+    .notes-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .upload-cta {
+        justify-content: center;
+    }
+
+    .welcome-card {
+        flex-direction: column;
+        text-align: center;
+        align-items: center;
+    }
+}
+
+@keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dept-card,
+    .tab-panel {
+        transition: none;
+        animation: none;
+    }
+}
+
+/* Visible keyboard focus */
+.dept-search:focus-visible,
+.dept-search-clear:focus-visible,
+.quick-jump .jump-btn:focus-visible,
+.dept-tabs .tab-btn:focus-visible,
+.semester-chips .sem-btn:focus-visible,
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.dept-detail-back:focus-visible {
+    outline: 2px solid var(--accent-dark);
+    outline-offset: 2px;
+}

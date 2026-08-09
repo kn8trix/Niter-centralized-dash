@@ -943,3 +943,39 @@ Added a **frontend-only AI research chat console** (`templates/research_ai.html`
 
 - `python manage.py check` ✔
 - `python manage.py test` ✔ (21 tests — `research_ai` added to smoke + unified-header + active-pill coverage; new `ResearchAIPageTest` asserts hero, dropzone, threads, citation styles, prompt starters, chat header, and input placeholder).
+
+---
+
+## 30. Department Directory & Detail Hub (`/departments/`)
+
+**Date:** 09 August 2026  
+**Branch:** main
+
+### Overview
+
+Added the **Department Directory** (`/departments/`) and **Department Detail Hub** (`/departments/<dept_slug>/`) as frontend-only standalone pages driven by mock JS data, matching the unified top navigation and warm beige palette. A new **Departments** pill was synced into the shared topbar (desktop nav + mobile popover).
+
+### Completed Work
+
+1. **Routes & Views** — `path('departments/', views.departments_directory, name='departments')` and `path('departments/<slug:dept_slug>/', views.department_detail, name='department_detail')` in `core/urls.py`; stub views in `core/views.py` (the detail view passes `dept_slug` to the template). Both added to the `ENDPOINTS` registry (`core/context_processors.py`; `department_detail` registered with a representative `fde` slug).
+2. **Navigation** — "Departments" pill (`fa-building-columns`) added to `templates/partials/topbar.html` in both the desktop nav pills and the mobile profile-popover page links (account-actions-on-desktop / full-nav-on-mobile behavior unchanged).
+3. **Department Directory (`templates/departments.html`)** — hero "Academic Departments & Faculties" with a live search bar (clear button hidden until typing) and quick-jump pills (All / FDAE / CSE / TE / EEE / IPE) that filter + scroll to the matching card; 5 showcase cards (FDAE, CSE, TE, EEE, IPE) each with HOD name, student count, and note-resource count, plus "Explore Department" (→ detail hub) and "Department Notes" (→ `/#tab-notes` deep link) buttons; mock-JS `DEPARTMENTS` array rendered client-side; empty state for no matches.
+4. **Department Detail Hub (`templates/department_detail.html`)** — centered header (dept icon, "Department of …", code chip, Established / Students / HOD / Notes stats) and **4 client-side tabs** (hash deep-linking, `#tab-overview|faculty|schedule|notes`):
+   - **Overview & Announcements** — HOD welcome card + announcement cards (Lab Update / Workshop / Circular badges).
+   - **Faculty Directory** — faculty cards with initials avatar, designation, research focus, contact email, office hours, and an "Office hours open" badge.
+   - **Class & Lab Schedule** — Sun–Thu routine cards with course codes, room numbers, timings, and Lecture/Lab icons.
+   - **Department Notes & PDF Drive** — semester filter chips, note cards (type badges, file size, mock Download), and an "Upload New Notes" button (mock toast).
+   - Unknown slugs render a graceful "Department not found" fallback card with a back link.
+5. **Styling** — `static/css/departments.css` scoped to `body.departments` / `body.dept-detail` with the exact warm palette (`#faf9f6` / `#ffffff` / `#f0ebe1` / `#e8e2d8`, hover `#dfd7cb`, text `#1f2937`, muted `#6b7280`); responsive grids (cards 1→2→3+ columns, tabs wrap, note toolbar stacks on mobile), `prefers-reduced-motion` support, keyboard focus rings.
+6. **Tests** — `departments` added to the smoke-test `PAGES` list, `UnifiedHeaderTest` pages + `NAV_LINKS` (now includes Departments) + active-pill mapping; new `DepartmentsPageTest` covers directory hero/search/quick-jump, all 5 slugs rendering the detail hub with all 4 tabs, mock content presence, shared header + active pill, and the unknown-slug fallback.
+
+### Files Added / Modified
+
+- **New:** `templates/departments.html`, `templates/department_detail.html`, `static/css/departments.css`
+- **Modified:** `templates/partials/topbar.html`, `core/urls.py`, `core/views.py`, `core/context_processors.py`, `core/tests.py`, `docs/HANDOVER.md`
+
+### Testing
+
+- `python manage.py check` ✔
+- `python manage.py test` ✔ (27 tests — added `DepartmentsPageTest`; smoke + unified-header + active-pill coverage extended to `departments`).
+- Verified over HTTP: `/departments/` and all 5 `/departments/<slug>/` pages return 200; unknown slug renders the fallback; all inline scripts pass `node --check`.

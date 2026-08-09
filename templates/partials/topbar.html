@@ -2,13 +2,14 @@
 ============================================================================
 CampusDash — Shared Top Navigation Header
 --------------------------------------------------------------------------
-Used by every standalone public page (transport, meals, clubs, medical,
-notices, notes). One source of truth for the header so all pages stay in
-sync: brand, desktop nav pills (active pill highlighted #e8e2d8), and the
-mobile profile popover with user info, page links, and account actions.
+Used by every standalone public page (dashboard, departments, transport,
+meals, clubs, medical, notices, notes, research ai). One source of truth
+for the header so all pages stay in sync: brand, desktop nav pills (active
+pill highlighted #e8e2d8), and the mobile profile popover with user info,
+page links, and account actions.
 
 Usage:  {% include 'partials/topbar.html' with active='transport' %}
-active: dashboard | notes | research | notices | transport | meals | medical | clubs
+active: dashboard | notes | departments | research | notices | transport | meals | medical | clubs
 ============================================================================
 {% endcomment %}
 <header class="topbar" data-component="topbar">
@@ -21,6 +22,7 @@ active: dashboard | notes | research | notices | transport | meals | medical | c
     <nav class="navlinks" aria-label="Primary navigation">
         <a href="{% url 'dashboard' %}" class="{% if active == 'dashboard' %}active{% endif %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
         <a href="{% url 'academic_notes' %}" class="{% if active == 'notes' %}active{% endif %}"><i class="fa-solid fa-book-open"></i> Academic Notes</a>
+        <a href="{% url 'departments' %}" class="{% if active == 'departments' %}active{% endif %}"><i class="fa-solid fa-building-columns"></i> Departments</a>
         <a href="{% url 'research_ai' %}" class="{% if active == 'research' %}active{% endif %}"><i class="fa-solid fa-robot"></i> Research AI</a>
         <a href="{% url 'notices' %}" class="{% if active == 'notices' %}active{% endif %}"><i class="fa-solid fa-bullhorn"></i> Notices</a>
         <a href="{% url 'transport_dashboard' %}" class="{% if active == 'transport' %}active{% endif %}"><i class="fa-solid fa-bus"></i> Transport</a>
@@ -53,6 +55,7 @@ active: dashboard | notes | research | notices | transport | meals | medical | c
             <nav class="profile-links" aria-label="Page links">
                 <a href="{% url 'dashboard' %}" class="{% if active == 'dashboard' %}active{% endif %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
                 <a href="{% url 'academic_notes' %}" class="{% if active == 'notes' %}active{% endif %}"><i class="fa-solid fa-book-open"></i> Academic Notes</a>
+                <a href="{% url 'departments' %}" class="{% if active == 'departments' %}active{% endif %}"><i class="fa-solid fa-building-columns"></i> Departments</a>
                 <a href="{% url 'research_ai' %}" class="{% if active == 'research' %}active{% endif %}"><i class="fa-solid fa-robot"></i> Research AI</a>
                 <a href="{% url 'notices' %}" class="{% if active == 'notices' %}active{% endif %}"><i class="fa-solid fa-bullhorn"></i> Notices</a>
                 <a href="{% url 'transport_dashboard' %}" class="{% if active == 'transport' %}active{% endif %}"><i class="fa-solid fa-bus"></i> Transport</a>

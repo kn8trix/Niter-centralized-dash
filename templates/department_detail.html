@@ -1,0 +1,503 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Department Hub — Niter Hub</title>
+    <meta name="description" content="Department hub with overview & announcements, faculty directory, class and lab schedules, and a semester-wise notes & PDF drive.">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Department pages styles -->
+    <link rel="stylesheet" href="{% static 'css/departments.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="dept-detail" data-app="campusdash-public" data-dept-slug="{{ dept_slug }}">
+
+    <div class="shell">
+
+        <!-- ============================================================
+             Top bar (unified navigation)
+        ============================================================ -->
+        {% include 'partials/topbar.html' with active='departments' %}
+
+        <div id="dept-app" data-base="{{ ENDPOINTS.departments }}">
+
+            <!-- Back to directory -->
+            <a class="dept-detail-back" href="{{ ENDPOINTS.departments }}"><i class="fa-solid fa-arrow-left"></i> All Departments</a>
+
+            <!-- ============================================================
+                 Centered department header (filled from mock JS data)
+            ============================================================ -->
+            <header class="dept-detail-head" id="dept-head" data-widget="dept-detail-header"></header>
+
+            <!-- ============================================================
+                 Interactive tab bar (client-side switching)
+            ============================================================ -->
+            <div class="dept-tabs" id="dept-tabs" role="tablist" aria-label="Department hub sections">
+                <button type="button" class="tab-btn active" role="tab" aria-selected="true" data-tab="overview">
+                    <i class="fa-solid fa-circle-info"></i> Overview &amp; Announcements
+                </button>
+                <button type="button" class="tab-btn" role="tab" aria-selected="false" data-tab="faculty">
+                    <i class="fa-solid fa-chalkboard-user"></i> Faculty Directory
+                </button>
+                <button type="button" class="tab-btn" role="tab" aria-selected="false" data-tab="schedule">
+                    <i class="fa-solid fa-calendar-days"></i> Class &amp; Lab Schedule
+                </button>
+                <button type="button" class="tab-btn" role="tab" aria-selected="false" data-tab="notes">
+                    <i class="fa-solid fa-file-lines"></i> Department Notes
+                </button>
+            </div>
+
+            <!-- Tab panels (rendered from mock JS data) -->
+            <section class="tab-panel active" id="tab-overview" role="tabpanel" aria-label="Overview & announcements"></section>
+            <section class="tab-panel" id="tab-faculty" role="tabpanel" aria-label="Faculty directory"></section>
+            <section class="tab-panel" id="tab-schedule" role="tabpanel" aria-label="Class and lab schedule"></section>
+            <section class="tab-panel" id="tab-notes" role="tabpanel" aria-label="Department notes and PDF drive"></section>
+
+        </div>
+
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script>
+        // ====================================================================
+        // Mock department hub data (frontend-only — no backend involved)
+        // ====================================================================
+        const DEPT_DATA = {
+            fde: {
+                code: 'FDAE',
+                name: 'Fashion Design & Apparel Engineering',
+                icon: 'fa-shirt',
+                established: '2006',
+                students: 240,
+                notes: 84,
+                tagline: 'Where design creativity meets apparel engineering — pattern drafting, garment construction, and product innovation.',
+                welcome: 'Welcome to the Department of Fashion Design & Apparel Engineering. This semester our pattern CAD lab is running two daily batches, and we encourage every student to treat the studio as a second classroom — creativity is sharpened by daily practice, not just deadlines.',
+                hodName: 'Prof. Dr. Farhana Yasmin',
+                hodRole: 'Professor & Head, FDAE',
+                announcements: [
+                    { icon: 'fa-desktop', badge: 'Lab Update', title: 'Pattern CAD Lab Now Operational', body: '20 AutoCAD-licensed workstations are open in Building B, Room B-204 for all FDAE batches (Semester 3+).', date: 'Aug 06, 2026' },
+                    { icon: 'fa-briefcase', badge: 'Workshop', title: 'Apparel Merchandising Workshop', body: 'A 2-day industry workshop on costing, sourcing and merchandising with Export Import Bank of Bangladesh (EIB).', date: 'Aug 02, 2026' },
+                    { icon: 'fa-scissors', badge: 'Circular', title: 'Garment Construction Submission Week', body: 'Final garment construction samples are due Aug 20. Submit to the FDAE studio between 10:00 AM and 4:00 PM.', date: 'Jul 30, 2026' },
+                ],
+                faculty: [
+                    { name: 'Prof. Dr. Farhana Yasmin', role: 'Professor & Head', focus: 'Apparel production systems, smart textiles, lean garment manufacturing', email: 'fde.hod@niter.edu.bd', office: 'Sun–Wed · 11:00 AM – 1:00 PM' },
+                    { name: 'Md. Shafiqul Islam', role: 'Associate Professor', focus: 'Pattern engineering, CAD/CAM for garments, sizing systems', email: 'shafiqul.islam@niter.edu.bd', office: 'Sat–Tue · 2:00 – 4:00 PM' },
+                    { name: 'Nusrat Jahan Mitu', role: 'Assistant Professor', focus: 'Fashion illustration, textile product design, design research', email: 'nusrat.mitu@niter.edu.bd', office: 'Sun & Mon · 10:00 AM – 12:00 PM' },
+                ],
+                schedule: {
+                    Sun: [ { code: 'FDE-201', room: 'Studio 1', time: '9:00 – 10:40 AM', type: 'Lecture' }, { code: 'FDE-203', room: 'Studio 2', time: '11:00 AM – 1:40 PM', type: 'Lab' } ],
+                    Mon: [ { code: 'FDE-207', room: 'CAD Lab B-204', time: '9:00 – 11:40 AM', type: 'Lab' }, { code: 'TEX-210', room: 'Room C-105', time: '2:00 – 3:40 PM', type: 'Lab' } ],
+                    Tue: [ { code: 'FDE-205', room: 'Room C-112', time: '11:00 AM – 12:40 PM', type: 'Lecture' }, { code: 'GED-102', room: 'Room A-101', time: '2:00 – 3:40 PM', type: 'Lecture' } ],
+                    Wed: [ { code: 'FDE-201', room: 'Studio 1', time: '9:00 – 10:40 AM', type: 'Lecture' }, { code: 'FDE-205', room: 'Room C-112', time: '11:00 AM – 1:40 PM', type: 'Lab' } ],
+                    Thu: [ { code: 'FDE-209', room: 'Textile Testing Lab', time: '9:00 – 11:40 AM', type: 'Lab' } ],
+                },
+                notes: [
+                    { title: 'Pattern Drafting — Lecture Slides (Week 1–4)', sem: 'Semester 3', type: 'Lecture Slides', size: '4.2 MB' },
+                    { title: 'Basic Block (Bodice) Drafting Guide', sem: 'Semester 3', type: 'Pattern Guide', size: '1.8 MB' },
+                    { title: 'Apparel Production Lab Manual', sem: 'Semester 4', type: 'Lab Manual', size: '6.5 MB' },
+                    { title: 'Fabric Science — Lecture Slides', sem: 'Semester 3', type: 'Lecture Slides', size: '5.1 MB' },
+                    { title: 'Sewing Machine Operation Guide', sem: 'Semester 1', type: 'Pattern Guide', size: '2.3 MB' },
+                    { title: 'Garment Construction Lab Manual', sem: 'Semester 4', type: 'Lab Manual', size: '7.9 MB' },
+                ],
+            },
+            cse: {
+                code: 'CSE',
+                name: 'Computer Science & Engineering',
+                icon: 'fa-laptop-code',
+                established: '2001',
+                students: 620,
+                notes: 156,
+                tagline: 'Programming, artificial intelligence, software engineering, and networks — NITER\u2019s largest undergraduate program.',
+                welcome: 'Welcome to CSE! We believe in learning by building. This semester our AI & ML lab runs on the upgraded GPU workstations, and every theory course has a companion project track so the classroom and the lab stay connected.',
+                hodName: 'Prof. Dr. Md. Ashraful Alam',
+                hodRole: 'Professor & Head, CSE',
+                announcements: [
+                    { icon: 'fa-microchip', badge: 'Lab Update', title: 'AI & ML Lab GPU Upgrade', body: '10 new RTX GPUs are now installed in the AI Lab (Room D-301). Priority slots for thesis students.', date: 'Aug 05, 2026' },
+                    { icon: 'fa-flag', badge: 'Event', title: 'CSE Fest 2026 — Hackathon Circular', body: 'Registration opens Aug 12 for the 24-hour campus hackathon. Teams of 3–4, all levels welcome.', date: 'Aug 01, 2026' },
+                    { icon: 'fa-file-pen', badge: 'Circular', title: 'Midterm Examination Schedule', body: 'CSE midterms run Sep 02–09. Seating plans will be published on the notice board by Aug 28.', date: 'Jul 29, 2026' },
+                ],
+                faculty: [
+                    { name: 'Prof. Dr. Md. Ashraful Alam', role: 'Professor & Head', focus: 'Software engineering, formal methods, SE education', email: 'cse.hod@niter.edu.bd', office: 'Sun–Wed · 10:00 AM – 12:00 PM' },
+                    { name: 'Dr. Tanvir Ahmed', role: 'Associate Professor', focus: 'Machine learning, natural language processing, Bangla text mining', email: 'tanvir.ahmed@niter.edu.bd', office: 'Sat–Tue · 1:00 – 3:00 PM' },
+                    { name: 'Sabrina Haque', role: 'Assistant Professor', focus: 'Computer networks, cybersecurity, distributed systems', email: 'sabrina.haque@niter.edu.bd', office: 'Sun & Tue · 11:00 AM – 1:00 PM' },
+                ],
+                schedule: {
+                    Sun: [ { code: 'CSE-101', room: 'Room D-205', time: '9:00 – 10:40 AM', type: 'Lecture' }, { code: 'CSE-101L', room: 'Lab D-302', time: '11:00 AM – 1:40 PM', type: 'Lab' } ],
+                    Mon: [ { code: 'CSE-201', room: 'Lab D-303', time: '9:00 – 11:40 AM', type: 'Lab' }, { code: 'MAT-201', room: 'Room A-108', time: '2:00 – 3:40 PM', type: 'Lecture' } ],
+                    Tue: [ { code: 'CSE-205', room: 'Lab D-304', time: '9:00 – 11:40 AM', type: 'Lab' }, { code: 'CSE-103', room: 'Room D-205', time: '2:00 – 3:40 PM', type: 'Lecture' } ],
+                    Wed: [ { code: 'CSE-207', room: 'Lab D-305', time: '9:00 – 11:40 AM', type: 'Lab' } ],
+                    Thu: [ { code: 'CSE-203', room: 'Room D-208', time: '11:00 AM – 12:40 PM', type: 'Lecture' } ],
+                },
+                notes: [
+                    { title: 'Programming Fundamentals — Lecture Slides', sem: 'Semester 1', type: 'Lecture Slides', size: '3.8 MB' },
+                    { title: 'Data Structures Lab Manual', sem: 'Semester 2', type: 'Lab Manual', size: '5.6 MB' },
+                    { title: 'Discrete Mathematics — Problem Sets', sem: 'Semester 1', type: 'Lecture Slides', size: '2.1 MB' },
+                    { title: 'Object Oriented Programming Lab Manual', sem: 'Semester 2', type: 'Lab Manual', size: '4.4 MB' },
+                    { title: 'Database Systems — Lecture Slides', sem: 'Semester 3', type: 'Lecture Slides', size: '6.0 MB' },
+                    { title: 'Machine Learning — Tutorial Notes', sem: 'Semester 4', type: 'Lecture Slides', size: '8.3 MB' },
+                ],
+            },
+            tex: {
+                code: 'TE',
+                name: 'Textile Engineering',
+                icon: 'fa-industry',
+                established: '2001',
+                students: 480,
+                notes: 132,
+                tagline: 'Fiber to fabric — yarn manufacturing, weaving, knitting, wet processing, and quality control across the value chain.',
+                welcome: 'The Department of Textile Engineering welcomes you. From spinning to finishing, our mills-scale laboratories give you hands-on exposure long before graduation — that is what makes a NITER textile engineer industry-ready.',
+                hodName: 'Prof. Dr. Kazi Abu Bakar Siddique',
+                hodRole: 'Professor & Head, Textile Engineering',
+                announcements: [
+                    { icon: 'fa-scale-balanced', badge: 'Lab Update', title: 'Yarn Testing Lab Calibration', body: 'UT-5 evenness testers are recalibrated. Students must follow the new sample-size sheet posted in Lab E-102.', date: 'Aug 04, 2026' },
+                    { icon: 'fa-circle-nodes', badge: 'Workshop', title: 'Knitting Technology Workshop', body: 'Hands-on circular knitting workshop with the Bangladesh Knitwear Manufacturers Association (BKMEA).', date: 'Jul 31, 2026' },
+                    { icon: 'fa-industry', badge: 'Circular', title: 'Industrial Attachment Applications', body: 'Semester 7 students must submit industrial attachment preferences by Aug 25 through the departmental office.', date: 'Jul 28, 2026' },
+                ],
+                faculty: [
+                    { name: 'Prof. Dr. Kazi Abu Bakar Siddique', role: 'Professor & Head', focus: 'Yarn manufacturing, process control, cotton spinning', email: 'tex.hod@niter.edu.bd', office: 'Sun–Wed · 10:00 AM – 1:00 PM' },
+                    { name: 'Prof. Dr. Selina Akter', role: 'Professor', focus: 'Wet processing, dyeing & finishing chemistry', email: 'selina.akter@niter.edu.bd', office: 'Sat–Tue · 2:00 – 4:00 PM' },
+                    { name: 'Engr. Rafiqul Islam', role: 'Associate Professor', focus: 'Weaving technology, fabric structure, jacquard design', email: 'rafiqul.islam@niter.edu.bd', office: 'Sun & Wed · 11:00 AM – 1:00 PM' },
+                ],
+                schedule: {
+                    Sun: [ { code: 'TEX-101', room: 'Room E-205', time: '9:00 – 10:40 AM', type: 'Lecture' }, { code: 'TEX-103L', room: 'Spinning Lab', time: '11:00 AM – 1:40 PM', type: 'Lab' } ],
+                    Mon: [ { code: 'TEX-201', room: 'Room E-210', time: '9:00 – 10:40 AM', type: 'Lecture' }, { code: 'TEX-203L', room: 'Weaving Lab', time: '11:00 AM – 1:40 PM', type: 'Lab' } ],
+                    Tue: [ { code: 'TEX-205', room: 'Wet Processing Lab', time: '9:00 – 11:40 AM', type: 'Lab' } ],
+                    Wed: [ { code: 'TEX-207L', room: 'Textile Testing Lab', time: '9:00 – 11:40 AM', type: 'Lab' }, { code: 'TEX-101', room: 'Room E-205', time: '2:00 – 3:40 PM', type: 'Lecture' } ],
+                    Thu: [ { code: 'TEX-209', room: 'Room E-212', time: '11:00 AM – 12:40 PM', type: 'Lecture' } ],
+                },
+                notes: [
+                    { title: 'Yarn Manufacturing — Lecture Slides', sem: 'Semester 2', type: 'Lecture Slides', size: '5.4 MB' },
+                    { title: 'Weaving Technology Lab Manual', sem: 'Semester 3', type: 'Lab Manual', size: '7.2 MB' },
+                    { title: 'Fabric Structure — Pattern Guides', sem: 'Semester 3', type: 'Pattern Guide', size: '2.9 MB' },
+                    { title: 'Wet Processing — Lecture Slides', sem: 'Semester 4', type: 'Lecture Slides', size: '6.8 MB' },
+                    { title: 'Knitting Technology Lab Manual', sem: 'Semester 4', type: 'Lab Manual', size: '5.1 MB' },
+                    { title: 'Textile Testing — Standard Charts', sem: 'Semester 2', type: 'Pattern Guide', size: '3.6 MB' },
+                ],
+            },
+            eee: {
+                code: 'EEE',
+                name: 'Electrical & Electronic Engineering',
+                icon: 'fa-bolt',
+                established: '2007',
+                students: 310,
+                notes: 98,
+                tagline: 'Circuits, power systems, control engineering, and renewable energy with hands-on laboratory practice from the first year.',
+                welcome: 'Welcome to EEE. Our laboratories are open for practice beyond scheduled hours — the Power Systems lab now hosts a live SCADA demo rig. Bring your curiosity, and the circuits will do the rest.',
+                hodName: 'Prof. Dr. Sultana Parvin',
+                hodRole: 'Professor & Head, EEE',
+                announcements: [
+                    { icon: 'fa-bolt', badge: 'Lab Update', title: 'Power Systems Lab Upgrade', body: 'New SCADA demo rig installed in Lab F-201 for machine and protection experiments.', date: 'Aug 03, 2026' },
+                    { icon: 'fa-robot', badge: 'Workshop', title: 'Embedded Systems & Robotics Workshop', body: 'Weekend workshop on Arduino & ESP32 for control applications. Register at the EEE office by Aug 15.', date: 'Jul 30, 2026' },
+                    { icon: 'fa-file-pen', badge: 'Circular', title: 'Circuit Lab — Viva Schedule', body: 'EE-102 circuit lab vivas run Aug 18–21. Slot lists are posted outside Lab F-202.', date: 'Jul 27, 2026' },
+                ],
+                faculty: [
+                    { name: 'Prof. Dr. Sultana Parvin', role: 'Professor & Head', focus: 'Power systems, protection, smart grid', email: 'eee.hod@niter.edu.bd', office: 'Sun–Wed · 11:00 AM – 1:00 PM' },
+                    { name: 'Dr. M. Kamruzzaman', role: 'Professor', focus: 'Control systems, instrumentation, industrial automation', email: 'kamruzzaman@niter.edu.bd', office: 'Sat–Tue · 10:00 AM – 12:00 PM' },
+                    { name: 'Ayesha Siddiqua', role: 'Assistant Professor', focus: 'Renewable energy systems, power electronics', email: 'ayesha.siddiqua@niter.edu.bd', office: 'Sun & Tue · 2:00 – 4:00 PM' },
+                ],
+                schedule: {
+                    Sun: [ { code: 'EEE-101', room: 'Room F-205', time: '9:00 – 10:40 AM', type: 'Lecture' }, { code: 'EEE-103L', room: 'Circuit Lab F-202', time: '11:00 AM – 1:40 PM', type: 'Lab' } ],
+                    Mon: [ { code: 'EEE-201', room: 'Room F-208', time: '9:00 – 10:40 AM', type: 'Lecture' } ],
+                    Tue: [ { code: 'EEE-205L', room: 'Digital Lab F-204', time: '9:00 – 11:40 AM', type: 'Lab' }, { code: 'EEE-207', room: 'Room F-210', time: '2:00 – 3:40 PM', type: 'Lecture' } ],
+                    Wed: [ { code: 'EEE-103L', room: 'Circuit Lab F-202', time: '9:00 – 11:40 AM', type: 'Lab' } ],
+                    Thu: [ { code: 'EEE-201', room: 'Room F-208', time: '11:00 AM – 12:40 PM', type: 'Lecture' } ],
+                },
+                notes: [
+                    { title: 'Circuit Analysis — Lecture Slides', sem: 'Semester 1', type: 'Lecture Slides', size: '4.6 MB' },
+                    { title: 'Electrical Machines Lab Manual', sem: 'Semester 3', type: 'Lab Manual', size: '6.9 MB' },
+                    { title: 'Digital Logic Design Lab Manual', sem: 'Semester 2', type: 'Lab Manual', size: '5.3 MB' },
+                    { title: 'Power Systems — Lecture Slides', sem: 'Semester 4', type: 'Lecture Slides', size: '7.1 MB' },
+                    { title: 'Electronics — Problem Bank', sem: 'Semester 2', type: 'Lecture Slides', size: '2.4 MB' },
+                    { title: 'Renewable Energy — Reference Notes', sem: 'Semester 4', type: 'Pattern Guide', size: '3.2 MB' },
+                ],
+            },
+            ipe: {
+                code: 'IPE',
+                name: 'Industrial & Production Engineering',
+                icon: 'fa-gears',
+                established: '2009',
+                students: 265,
+                notes: 76,
+                tagline: 'Operations research, lean manufacturing, supply chain management, and ergonomics for efficient industrial systems.',
+                welcome: 'Welcome to IPE — the department that optimizes everything else. Our simulation lab now has Arena and FlexSim licenses for every workstation, so production planning is no longer just a theory course.',
+                hodName: 'Prof. Dr. Mahmudul Hasan',
+                hodRole: 'Professor & Head, IPE',
+                announcements: [
+                    { icon: 'fa-chart-line', badge: 'Event', title: 'Operations Research Seminar', body: 'Guest seminar on supply chain analytics with a leading RMG consultancy — Room G-105, Aug 14.', date: 'Aug 05, 2026' },
+                    { icon: 'fa-warehouse', badge: 'Workshop', title: 'Lean Manufacturing Workshop', body: '5S and Kaizen simulation workshop in the Industrial Engineering lab for Semester 3 students.', date: 'Aug 01, 2026' },
+                    { icon: 'fa-person', badge: 'Lab Update', title: 'Ergonomics Lab — New Measuring Rigs', body: 'Two new anthropometric measuring rigs installed for workstation ergonomics experiments.', date: 'Jul 29, 2026' },
+                ],
+                faculty: [
+                    { name: 'Prof. Dr. Mahmudul Hasan', role: 'Professor & Head', focus: 'Operations research, mathematical modeling, scheduling', email: 'ipe.hod@niter.edu.bd', office: 'Sun–Wed · 10:00 AM – 1:00 PM' },
+                    { name: 'Dr. Fahmida Rahman', role: 'Associate Professor', focus: 'Supply chain management, logistics, inventory systems', email: 'fahmida.rahman@niter.edu.bd', office: 'Sat–Tue · 1:00 – 3:00 PM' },
+                    { name: 'Tanvir Chowdhury', role: 'Assistant Professor', focus: 'Lean manufacturing, Six Sigma, quality engineering', email: 'tanvir.chowdhury@niter.edu.bd', office: 'Sun & Wed · 11:00 AM – 1:00 PM' },
+                ],
+                schedule: {
+                    Sun: [ { code: 'IPE-101', room: 'Room G-205', time: '9:00 – 10:40 AM', type: 'Lecture' }, { code: 'IPE-103L', room: 'Workshop Lab', time: '11:00 AM – 1:40 PM', type: 'Lab' } ],
+                    Mon: [ { code: 'IPE-201', room: 'Room G-210', time: '9:00 – 10:40 AM', type: 'Lecture' } ],
+                    Tue: [ { code: 'IPE-205L', room: 'Simulation Lab G-203', time: '9:00 – 11:40 AM', type: 'Lab' } ],
+                    Wed: [ { code: 'IPE-207', room: 'Room G-212', time: '11:00 AM – 12:40 PM', type: 'Lecture' }, { code: 'IPE-207L', room: 'Ergonomics Lab', time: '2:00 – 3:40 PM', type: 'Lab' } ],
+                    Thu: [ { code: 'IPE-103L', room: 'Workshop Lab', time: '9:00 – 11:40 AM', type: 'Lab' } ],
+                },
+                notes: [
+                    { title: 'Engineering Materials — Lecture Slides', sem: 'Semester 1', type: 'Lecture Slides', size: '3.9 MB' },
+                    { title: 'Manufacturing Processes Lab Manual', sem: 'Semester 2', type: 'Lab Manual', size: '6.2 MB' },
+                    { title: 'Operations Research — Problem Sets', sem: 'Semester 3', type: 'Lecture Slides', size: '2.8 MB' },
+                    { title: 'Production Planning Lab Manual', sem: 'Semester 3', type: 'Lab Manual', size: '4.7 MB' },
+                    { title: 'Lean Manufacturing — Case Studies', sem: 'Semester 4', type: 'Pattern Guide', size: '3.4 MB' },
+                    { title: 'Ergonomics & Safety — Reference Notes', sem: 'Semester 4', type: 'Lecture Slides', size: '2.6 MB' },
+                ],
+            },
+        };
+
+        // ====================================================================
+        // DOM refs
+        // ====================================================================
+        const slug = document.body.dataset.deptSlug;
+        const dept = DEPT_DATA[slug];
+        const app = document.getElementById('dept-app');
+        const headEl = document.getElementById('dept-head');
+        const toastEl = document.getElementById('toast');
+        const panels = {
+            overview: document.getElementById('tab-overview'),
+            faculty: document.getElementById('tab-faculty'),
+            schedule: document.getElementById('tab-schedule'),
+            notes: document.getElementById('tab-notes'),
+        };
+
+        function escapeHtml(s) {
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function showToast(message) {
+            toastEl.textContent = message;
+            toastEl.classList.add('show');
+            clearTimeout(showToast._t);
+            showToast._t = setTimeout(() => toastEl.classList.remove('show'), 3200);
+        }
+
+        // ====================================================================
+        // Render helpers
+        // ====================================================================
+        function renderHeader(d) {
+            headEl.innerHTML = `
+                <span class="dept-detail-icon"><i class="fa-solid ${d.icon}"></i></span>
+                <h1>Department of ${escapeHtml(d.name)} <span class="dept-code">${d.code}</span></h1>
+                <p class="dept-detail-tagline">${escapeHtml(d.tagline)}</p>
+                <div class="dept-stat-row">
+                    <span class="dept-stat"><i class="fa-solid fa-calendar-check"></i> Est. ${d.established}</span>
+                    <span class="dept-stat"><i class="fa-solid fa-user-group"></i> ${d.students} Students</span>
+                    <span class="dept-stat"><i class="fa-solid fa-user-tie"></i> ${escapeHtml(d.hodName)}</span>
+                    <span class="dept-stat"><i class="fa-solid fa-file-lines"></i> ${d.notes} Notes</span>
+                </div>`;
+        }
+
+        function renderOverview(d) {
+            const ann = d.announcements.map(a => `
+                <article class="card announce-card" data-widget="dept-announcement">
+                    <span class="announce-icon"><i class="fa-solid ${a.icon}"></i></span>
+                    <div>
+                        <span class="pill info">${a.badge}</span>
+                        <h3>${escapeHtml(a.title)}</h3>
+                        <p>${escapeHtml(a.body)}</p>
+                        <time><i class="fa-regular fa-calendar"></i> ${a.date}</time>
+                    </div>
+                </article>`).join('');
+
+            panels.overview.innerHTML = `
+                <div class="card welcome-card" data-widget="dept-welcome">
+                    <span class="chip-icon"><i class="fa-solid fa-hand-sparkles"></i></span>
+                    <blockquote>
+                        <p>“${escapeHtml(d.welcome)}”</p>
+                        <cite>${escapeHtml(d.hodName)} <span>${escapeHtml(d.hodRole)}</span></cite>
+                    </blockquote>
+                </div>
+                <div class="announce-list">${ann}</div>`;
+        }
+
+        function renderFaculty(d) {
+            const cards = d.faculty.map(f => {
+                const initials = f.name.replace(/^(Prof\.|Dr\.|Engr\.)\s*/, '').split(' ').map(w => w[0]).slice(0, 2).join('');
+                return `
+                    <article class="card faculty-card" data-widget="dept-faculty">
+                        <div class="faculty-top">
+                            <span class="faculty-avatar">${initials}</span>
+                            <h3>${escapeHtml(f.name)}<span>${escapeHtml(f.role)}</span></h3>
+                        </div>
+                        <p class="faculty-focus"><strong>Research focus:</strong> ${escapeHtml(f.focus)}</p>
+                        <div class="faculty-meta">
+                            <a href="mailto:${f.email}"><i class="fa-solid fa-envelope"></i> ${f.email}</a>
+                            <span><i class="fa-regular fa-clock"></i> ${escapeHtml(f.office)}</span>
+                            <span class="pill success office-badge"><i class="fa-regular fa-circle-check"></i> Office hours open</span>
+                        </div>
+                    </article>`;
+            }).join('');
+            panels.faculty.innerHTML = `<div class="faculty-grid">${cards}</div>`;
+        }
+
+        function renderSchedule(d) {
+            const dayOrder = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'];
+            const cards = dayOrder.map(day => {
+                const periods = d.schedule[day] || [];
+                if (!periods.length) return '';
+                const labs = periods.filter(p => p.type === 'Lab').length;
+                const lectures = periods.length - labs;
+                const tag = labs && lectures ? `${lectures} L · ${labs} Lab` : (labs ? `${labs} Lab` : `${lectures} Lecture`);
+                const rows = periods.map(p => `
+                    <div class="period">
+                        <span class="period-type" title="${p.type}"><i class="fa-solid ${p.type === 'Lab' ? 'fa-flask' : 'fa-chalkboard'}"></i></span>
+                        <div class="period-info">
+                            <strong>${p.code}</strong>
+                            <small><i class="fa-solid fa-location-dot"></i> ${escapeHtml(p.room)}</small>
+                        </div>
+                        <span class="period-time"><i class="fa-regular fa-clock"></i> ${p.time}</span>
+                    </div>`).join('');
+                return `
+                    <div class="card day-card" data-widget="dept-routine">
+                        <div class="day-head">
+                            <h3>${day}day</h3>
+                            <span class="pill">${tag}</span>
+                        </div>
+                        <div class="period-list">${rows}</div>
+                    </div>`;
+            }).join('');
+
+            panels.schedule.innerHTML = `
+                <p class="schedule-note">Weekly routine — ${d.code} sample for the current semester. Friday is a weekly holiday; timings are subject to change.</p>
+                <div class="schedule-grid">${cards}</div>`;
+        }
+
+        function renderNotes(d) {
+            const sems = [...new Set(d.notes.map(n => n.sem))];
+            const chips = sems.map((s, i) => `
+                <button type="button" class="sem-btn ${i === 0 ? 'active' : ''}" data-sem="${escapeHtml(s)}">${escapeHtml(s)}</button>
+            `).join('');
+
+            panels.notes.innerHTML = `
+                <div class="notes-toolbar">
+                    <div class="semester-chips" id="sem-chips">${chips}</div>
+                    <button type="button" class="btn-secondary upload-cta" id="upload-notes-btn">
+                        <i class="fa-solid fa-cloud-arrow-up"></i> Upload New Notes
+                    </button>
+                </div>
+                <div class="notes-grid" id="notes-grid"></div>
+                <div class="notes-empty" id="notes-empty" hidden role="status">
+                    <i class="fa-solid fa-folder-open"></i>
+                    <strong>No notes in this semester yet</strong>
+                    <p>Use “Upload New Notes” to add materials for this semester.</p>
+                </div>`;
+
+            const grid = document.getElementById('notes-grid');
+            const empty = document.getElementById('notes-empty');
+            const chipsEl = document.getElementById('sem-chips');
+            let activeSem = sems[0] || null;
+
+            function applySem() {
+                const list = d.notes.filter(n => !activeSem || n.sem === activeSem);
+                grid.innerHTML = list.map(n => `
+                    <article class="card note-card" data-widget="dept-note">
+                        <div class="note-card-head">
+                            <span class="note-file-icon"><i class="fa-solid fa-file-pdf"></i></span>
+                            <h3>${escapeHtml(n.title)}</h3>
+                        </div>
+                        <div class="note-card-tags">
+                            <span class="pill info">${n.sem}</span>
+                            <span class="pill success">${n.type}</span>
+                        </div>
+                        <div class="note-card-meta">
+                            <span><i class="fa-solid fa-weight-hanging"></i> ${n.size}</span>
+                            <button type="button" class="btn-secondary note-dl">
+                                <i class="fa-solid fa-download"></i> Download
+                            </button>
+                        </div>
+                    </article>`).join('');
+                empty.hidden = list.length > 0;
+            }
+
+            chipsEl.addEventListener('click', (e) => {
+                const btn = e.target.closest('.sem-btn');
+                if (!btn) return;
+                chipsEl.querySelectorAll('.sem-btn').forEach(b => b.classList.toggle('active', b === btn));
+                activeSem = btn.dataset.sem;
+                applySem();
+            });
+
+            grid.addEventListener('click', (e) => {
+                if (e.target.closest('.note-dl')) showToast('Download started — this is a mock link (no file served yet).');
+            });
+
+            document.getElementById('upload-notes-btn').addEventListener('click', () => {
+                showToast('Notes upload is a frontend mock — the upload form will be wired to the backend soon.');
+            });
+
+            applySem();
+        }
+
+        // ====================================================================
+        // Tab switching (client-side) + hash deep-linking
+        // ====================================================================
+        const tabButtons = document.querySelectorAll('#dept-tabs .tab-btn');
+        const TAB_MAP = {
+            '#tab-overview': 'overview',
+            '#tab-faculty': 'faculty',
+            '#tab-schedule': 'schedule',
+            '#tab-notes': 'notes',
+        };
+
+        function activateTab(key) {
+            tabButtons.forEach(btn => {
+                const on = btn.dataset.tab === key;
+                btn.classList.toggle('active', on);
+                btn.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            Object.entries(panels).forEach(([k, el]) => el.classList.toggle('active', k === key));
+        }
+
+        tabButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                activateTab(btn.dataset.tab);
+                history.replaceState(null, '', '#tab-' + btn.dataset.tab);
+            });
+        });
+
+        // ====================================================================
+        // Bootstrap
+        // ====================================================================
+        if (!dept) {
+            // Unknown slug — graceful frontend fallback (mock)
+            app.innerHTML = `
+                <div class="card dept-missing" role="status">
+                    <i class="fa-solid fa-building-circle-exclamation"></i>
+                    <h2>Department not found</h2>
+                    <p>“${escapeHtml(slug)}” is not in the mock department registry. Try one of the departments from the directory.</p>
+                    <a class="btn-primary" href="${app.dataset.base}"><i class="fa-solid fa-arrow-left"></i> Back to Departments</a>
+                </div>`;
+        } else {
+            renderHeader(dept);
+            renderOverview(dept);
+            renderFaculty(dept);
+            renderSchedule(dept);
+            renderNotes(dept);
+
+            // Deep-link support: /departments/<slug>/#tab-notes opens the notes tab
+            const initial = TAB_MAP[location.hash] || 'overview';
+            activateTab(initial);
+        }
+    </script>
+</body>
+</html>

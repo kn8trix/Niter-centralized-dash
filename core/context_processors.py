@@ -29,6 +29,9 @@ def endpoints(request):
             'meal_dashboard': reverse('meal_dashboard'),
             'checkout': reverse('checkout'),
             'research_ai': reverse('research_ai'),
+            'departments': reverse('departments'),
+            # Representative department hub URL (any slug resolves; mock data is client-side)
+            'department_detail': reverse('department_detail', args=['fde']),
 
             # Form submission endpoints (placeholders)
             'claim_meal_ticket': reverse('claim_meal_ticket'),

@@ -19,6 +19,7 @@ class StudentPagesSmokeTest(SimpleTestCase):
         'meal_dashboard',
         'checkout',
         'research_ai',
+        'departments',
         'settings',
         'signup',
     ]
@@ -52,9 +53,10 @@ class UnifiedHeaderTest(SimpleTestCase):
         'notices',
         'academic_notes',
         'research_ai',
+        'departments',
     ]
 
-    NAV_LINKS = ['Dashboard', 'Academic Notes', 'Research AI', 'Notices', 'Transport', 'Meals', 'Medical', 'Clubs']
+    NAV_LINKS = ['Dashboard', 'Academic Notes', 'Departments', 'Research AI', 'Notices', 'Transport', 'Meals', 'Medical', 'Clubs']
 
     def test_pages_render_shared_header(self):
         for name in self.PAGES:
@@ -82,6 +84,7 @@ class UnifiedHeaderTest(SimpleTestCase):
             'notices': '/notices/',
             'academic_notes': '/academic-notes/',
             'research_ai': '/research-ai/',
+            'departments': '/departments/',
         }
         for name, url in expected.items():
             with self.subTest(page=name):
@@ -190,6 +193,74 @@ class ResearchAIPageTest(SimpleTestCase):
         response = self.client.get(reverse('research_ai'))
         for style in ['IEEE', 'APA 7', 'Harvard', 'Chicago']:
             self.assertContains(response, 'value="' + style + '"', msg_prefix=style)
+
+
+class DepartmentsPageTest(SimpleTestCase):
+    """Department Directory (/departments/) and Detail Hub (/departments/<slug>/)."""
+
+    SLUGS = ['fde', 'cse', 'tex', 'eee', 'ipe']
+
+    def test_directory_renders_hero_search_and_quick_jump(self):
+        response = self.client.get(reverse('departments'))
+        self.assertEqual(response.status_code, 200)
+        for needle in [
+            'Academic Departments &amp; Faculties',
+            'id="dept-search"',
+            'Search departments',
+            'Jump to',
+            'id="dept-grid"',
+            'Explore Department',
+            'Department Notes',
+        ]:
+            self.assertContains(response, needle, msg_prefix=needle)
+
+    def test_directory_data_covers_all_departments(self):
+        html = self.client.get(reverse('departments')).content.decode()
+        for slug in self.SLUGS:
+            self.assertIn("slug: '" + slug + "'", html)
+            self.assertIn(slug, html)
+        # Cards build their detail links from the resolved directory base URL
+        self.assertIn('data-base="/departments/"', html)
+
+    def test_every_slug_renders_detail_hub(self):
+        for slug in self.SLUGS:
+            with self.subTest(slug=slug):
+                response = self.client.get(reverse('department_detail', args=[slug]))
+                self.assertEqual(response.status_code, 200)
+                for needle in [
+                    'data-dept-slug="' + slug + '"',
+                    'id="dept-head"',
+                    'id="dept-tabs"',
+                    'Overview &amp; Announcements',
+                    'Faculty Directory',
+                    'Class &amp; Lab Schedule',
+                    'Department Notes',
+                    'Upload New Notes',
+                    'data-base="/departments/"',
+                ]:
+                    self.assertContains(response, needle, msg_prefix=slug + ':' + needle)
+
+    def test_detail_hub_shows_mock_department_content(self):
+        html = self.client.get(reverse('department_detail', args=['cse'])).content.decode()
+        # Mock JS data carries the full department name, head, and hub sections
+        self.assertIn('Computer Science & Engineering', html)
+        self.assertIn('Prof. Dr. Md. Ashraful Alam', html)
+        self.assertIn('hodName:', html)
+        self.assertIn('schedule:', html)
+        self.assertIn('faculty:', html)
+        self.assertIn('announcements:', html)
+
+    def test_detail_hub_uses_shared_header(self):
+        html = self.client.get(reverse('department_detail', args=['fde'])).content.decode()
+        self.assertIn('CampusDash', html)
+        self.assertIn('id="avatar-btn"', html)
+        self.assertIn('id="profile-popover"', html)
+        self.assertIn('href="/departments/" class="active"', html)  # active Departments pill
+
+    def test_unknown_slug_renders_fallback(self):
+        response = self.client.get(reverse('department_detail', args=['unknown-dept']))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Department not found')
 
 
 class LoginFlowTests(TestCase):
