@@ -17,6 +17,7 @@ class StudentPagesSmokeTest(SimpleTestCase):
         'clubs_dashboard',
         'transport_dashboard',
         'meal_dashboard',
+        'checkout',
         'settings',
         'signup',
     ]
@@ -45,6 +46,7 @@ class UnifiedHeaderTest(SimpleTestCase):
         'transport_dashboard',
         'meal_dashboard',
         'clubs_dashboard',
+        'checkout',
         'medical',
         'notices',
         'academic_notes',
@@ -108,6 +110,46 @@ class ProfilePopoverAuthTest(TestCase):
         self.assertIn('> Sign Up</a>', html)
         self.assertIn('href="' + reverse('settings') + '"', html)
         self.assertIn('href="' + reverse('signup') + '"', html)
+
+
+class CheckoutPageTest(SimpleTestCase):
+    """Payment gateway & checkout page renders and is wired from clubs/transport/meals."""
+
+    def test_checkout_page_renders_core_sections(self):
+        response = self.client.get(reverse('checkout'))
+        self.assertEqual(response.status_code, 200)
+        for needle in [
+            'Order Summary',
+            'Student Verification',
+            'bKash',
+            'Nagad',
+            'Rocket / Card',
+            'Transaction ID (TrxID)',
+            '9J32X8KL',
+            '01712-345678',
+            'Confirm &amp; Pay',
+            'Payments are verified by the event coordinator or automated system.',
+        ]:
+            self.assertContains(response, needle, msg_prefix=needle)
+
+    def test_clubs_page_links_to_checkout(self):
+        html = self.client.get(reverse('clubs_dashboard')).content.decode()
+        self.assertIn(reverse('checkout'), html)
+
+    def test_transport_page_links_to_checkout(self):
+        html = self.client.get(reverse('transport_dashboard')).content.decode()
+        self.assertIn(reverse('checkout'), html)
+
+    def test_meals_page_links_to_checkout(self):
+        html = self.client.get(reverse('meal_dashboard')).content.decode()
+        self.assertIn(reverse('checkout'), html)
+
+    def test_meals_page_shows_monthly_subscription(self):
+        html = self.client.get(reverse('meal_dashboard')).content.decode()
+        self.assertIn('meal-sub', html)
+        self.assertIn('Monthly Meal Subscription', html)
+        # Static banner text (rendered markup, not JS source)
+        self.assertIn('Pay your monthly fee to claim tickets.', html)
 
 
 class LoginFlowTests(TestCase):

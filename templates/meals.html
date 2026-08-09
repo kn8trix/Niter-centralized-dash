@@ -67,7 +67,16 @@
             <!-- Meal booking & claim -->
             <div class="card">
                 <h2 class="section-title">Claim a Meal Ticket</h2>
-                <p class="section-subtitle">Pick a meal type and date, then claim your slot.</p>
+                <p class="section-subtitle">Meal claims are covered by your monthly cafeteria subscription.</p>
+
+                <!-- Monthly subscription status (paid via /checkout/) -->
+                <div class="meal-sub inactive" id="meal-sub" role="status">
+                    <i class="fa-solid fa-circle-exclamation" id="meal-sub-icon"></i>
+                    <div>
+                        <strong id="meal-sub-title">Monthly Meal Subscription</strong>
+                        <span id="meal-sub-text">Pay your monthly fee to claim tickets.</span>
+                    </div>
+                </div>
 
                 <div class="field">
                     <span class="field-label">Meal Type</span>
@@ -83,7 +92,8 @@
                 </div>
 
                 <button type="button" class="claim-btn" id="claim-btn">
-                    <i class="fa-solid fa-ticket"></i> Claim Meal Ticket
+                    <i class="fa-solid fa-ticket" id="claim-icon"></i>
+                    <span id="claim-label">Claim Meal Ticket</span>
                 </button>
             </div>
 
@@ -174,6 +184,13 @@
             token: 8921,
         };
 
+        // Payment gateway — meal claims require an active monthly subscription
+        // paid through /checkout/ (bKash / Nagad / Rocket).
+        const CHECKOUT_URL = '{% url "checkout" %}';
+        const MEAL_MONTHLY_FEE = 2000; // ৳/month — mock cafeteria fee (adjust here)
+
+        let subscribed = sessionStorage.getItem('meal_subscribed') === '1';
+
         const ringBar = document.getElementById('ring-bar');
         const R = 88;
         const CIRC = 2 * Math.PI * R;
@@ -222,22 +239,20 @@
         // ====================================================================
         // Interactions
         // ====================================================================
-        document.querySelectorAll('.meal-chip').forEach(chip => {
-            chip.addEventListener('click', () => {
-                state.mealType = chip.dataset.meal;
-                document.querySelectorAll('.meal-chip').forEach(c => {
-                    const on = c === chip;
-                    c.classList.toggle('selected', on);
-                    c.setAttribute('aria-pressed', on ? 'true' : 'false');
-                });
+        function selectMeal(meal) {
+            state.mealType = meal;
+            document.querySelectorAll('.meal-chip').forEach(c => {
+                const on = c.dataset.meal === meal;
+                c.classList.toggle('selected', on);
+                c.setAttribute('aria-pressed', on ? 'true' : 'false');
             });
+        }
+
+        document.querySelectorAll('.meal-chip').forEach(chip => {
+            chip.addEventListener('click', () => selectMeal(chip.dataset.meal));
         });
 
-        document.getElementById('claim-btn').addEventListener('click', () => {
-            if (state.claimed >= state.total) {
-                showToast('All ' + state.total + ' slots are claimed for today.');
-                return;
-            }
+        function claimTicket(message) {
             state.claimed += 1;
             state.token += 1;
 
@@ -248,7 +263,57 @@
             resetPass();
 
             updateRing();
-            showToast(state.mealType + ' ticket claimed — #MEAL-' + state.token + ' is ready to use.');
+            showToast(message || (state.mealType + ' ticket claimed — #MEAL-' + state.token + ' is ready to use.'));
+        }
+
+        function renderSubscription() {
+            const sub = document.getElementById('meal-sub');
+            const icon = document.getElementById('meal-sub-icon');
+            const title = document.getElementById('meal-sub-title');
+            const text = document.getElementById('meal-sub-text');
+            const label = document.getElementById('claim-label');
+
+            if (subscribed) {
+                sub.classList.remove('inactive');
+                sub.classList.add('active');
+                icon.className = 'fa-solid fa-circle-check';
+                title.textContent = 'Monthly subscription active';
+                const now = new Date();
+                text.textContent = 'Paid ৳' + MEAL_MONTHLY_FEE + ' — valid through ' + now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+                label.textContent = 'Claim Meal Ticket';
+            } else {
+                sub.classList.remove('active');
+                sub.classList.add('inactive');
+                icon.className = 'fa-solid fa-circle-exclamation';
+                title.textContent = 'Monthly subscription inactive';
+                text.textContent = 'Pay ৳' + MEAL_MONTHLY_FEE + ' via bKash / Nagad / Rocket to claim tickets this month.';
+                label.textContent = 'Pay Monthly Fee & Claim';
+            }
+        }
+
+        document.getElementById('claim-btn').addEventListener('click', () => {
+            if (state.claimed >= state.total) {
+                showToast('All ' + state.total + ' slots are claimed for today.');
+                return;
+            }
+
+            if (!subscribed) {
+                // Not subscribed yet — route through the payment gateway first.
+                const qs = new URLSearchParams({
+                    type: 'meal',
+                    item: 'Monthly Meal Subscription',
+                    issuer: 'NITER Cafeteria',
+                    fee: String(MEAL_MONTHLY_FEE),
+                    meta: state.mealType + ' · ' + fmtDate(dateInput.value),
+                    meal: state.mealType,
+                    date: dateInput.value,
+                    name: 'Rifat Hasan',
+                });
+                window.location.href = CHECKOUT_URL + '?' + qs.toString();
+                return;
+            }
+
+            claimTicket();
         });
 
         document.getElementById('redeem-btn').addEventListener('click', () => {
@@ -264,6 +329,35 @@
         // ====================================================================
         updateRing();
         document.getElementById('pass-date').textContent = fmtDate(dateInput.value);
+        renderSubscription();
+
+        // If the user just paid on /checkout/, land back with the subscription
+        // active and the chosen meal pass already generated (frontend-only mock).
+        (function resumeFromCheckout() {
+            const q = new URLSearchParams(window.location.search);
+            if (q.get('claimed') !== '1') return;
+
+            // Idempotent: only claim once per return URL, so refreshing the
+            // success page never claims a duplicate ticket (mirrors the
+            // transport flow's booked-seat guard).
+            if (sessionStorage.getItem('meal_last_return') === window.location.search) return;
+            sessionStorage.setItem('meal_last_return', window.location.search);
+
+            subscribed = true;
+            sessionStorage.setItem('meal_subscribed', '1');
+
+            const meal = q.get('meal');
+            if (meal === 'Lunch' || meal === 'Dinner') selectMeal(meal);
+            const d = q.get('date');
+            if (d) dateInput.value = d;
+
+            renderSubscription();
+            if (state.claimed >= state.total) {
+                showToast('Payment verified — but all ' + state.total + ' slots are claimed for today.');
+            } else {
+                claimTicket('Payment verified — monthly subscription active. ' + state.mealType + ' ticket claimed.');
+            }
+        })();
     </script>
 </body>
 </html>

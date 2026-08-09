@@ -17,6 +17,7 @@ urlpatterns = [
     path('clubs/', views.clubs_dashboard, name='clubs_dashboard'),
     path('transport/', views.transport_dashboard, name='transport_dashboard'),
     path('meals/', views.meal_dashboard, name='meal_dashboard'),
+    path('checkout/', views.checkout_page, name='checkout'),
     
     # Form submission placeholders
     path('claim-meal/', views.claim_meal_ticket, name='claim_meal_ticket'),

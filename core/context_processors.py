@@ -27,6 +27,7 @@ def endpoints(request):
             'clubs_dashboard': reverse('clubs_dashboard'),
             'transport_dashboard': reverse('transport_dashboard'),
             'meal_dashboard': reverse('meal_dashboard'),
+            'checkout': reverse('checkout'),
 
             # Form submission endpoints (placeholders)
             'claim_meal_ticket': reverse('claim_meal_ticket'),

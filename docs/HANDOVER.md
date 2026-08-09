@@ -888,3 +888,32 @@ The shared profile popover now adjusts its menu contents by screen size (pure CS
 
 - `python manage.py check` ✔
 - `python manage.py test` ✔ (13 tests — including smoke renders + endpoint-registry coverage for `settings`/`signup`).
+
+---
+
+## 28. Payment Gateway & Checkout (`/checkout/`)
+
+**Date:** 09 August 2026  
+**Branch:** main
+
+### Overview
+
+Added a **frontend-only payment gateway** (`templates/checkout.html` + `static/css/checkout.css`) for local mobile wallets (bKash / Nagad / Rocket / Card). All three purchase flows now route through it — **club event registration**, **transport seat booking**, and **monthly meal subscription** — and land back on their origin page with the pass/ticket already generated.
+
+### Completed Work
+
+1. **Route & View** — `path('checkout/', views.checkout_page, name='checkout')` in `core/urls.py`; stub view in `core/views.py`; `checkout` added to the `ENDPOINTS` registry (`core/context_processors.py`) and to the smoke-test `PAGES` list.
+2. **Checkout page (`templates/checkout.html`)** — standalone page (theme.css + topbar.css + checkout.css) reading order data from query params (`type` = `event` | `transport` | `meal`, `item`, `issuer`, `fee`, `meta`):
+   - Payment method selector (bKash / Nagad / Rocket-Card radio cards, brand-colored logos, per-channel merchant numbers that update the banner).
+   - Payment details form: merchant account banner, wallet number + TrxID fields with client-side validation (`01XXXXXXXXX`, `[A-Za-z0-9-]{6,}`).
+   - Order summary sidebar (item, issuer, meta line, subtotal/total) + Student Verification badge (real `user` via auth context processor, fallback mock).
+   - "Confirm & Pay" simulates gateway processing (1.4s), then shows a success modal with a receipt (item, method, amount, TrxID, generated `NTR-…` reference with copy button) and a context-aware CTA.
+   - Context-aware back link + success CTA: transport → `/transport/?booked=1&…`, meal → `/meals/?claimed=1&…`, event → dashboard.
+3. **Clubs wiring (`templates/clubs.html`)** — "Register Now" buttons on paid events are now links to `/checkout/?type=event&item=…&issuer=…&fee=…` (fee parsed from the event's `fee_label`); the old in-page registration modal was removed. Free events still register via toast mock.
+4. **Transport wiring (`templates/transport.html`)** — "Book Seat & Pay" validates seat/route/time, then routes to `/checkout/?type=transport&…` with route/seat/time/name; returning via the success CTA (`?booked=1`) resumes the page, marks the seat booked, and regenerates the boarding pass automatically. Button label updated to "Book Seat & Pay".
+5. **Meals wiring (`templates/meals.html`)** — meals are **paid monthly**: a subscription status banner sits in the claim card. While inactive, "Pay Monthly Fee & Claim" routes to `/checkout/?type=meal&…` (fee `MEAL_MONTHLY_FEE = 2000` ৳/mo mock, adjustable constant); returning via the success CTA (`?claimed=1&meal=…&date=…`) marks the subscription active for the session (`sessionStorage`), claims the chosen meal, and regenerates the meal pass. Subscribed students claim directly.
+
+### Testing
+
+- `python manage.py check` ✔
+- `python manage.py test` ✔ (16 tests — added `CheckoutPageTest`: checkout page renders core sections, clubs/transport/meals pages all link to `/checkout/`, meals page shows the monthly subscription banner).

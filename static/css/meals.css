@@ -284,6 +284,47 @@ body.meals a {
     cursor: not-allowed;
 }
 
+/* Monthly subscription status banner (paid via /checkout/) */
+.meal-sub {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+    padding: 0.85rem 1rem;
+    border-radius: 0.8rem;
+    font-size: 0.85rem;
+    margin-bottom: 1.15rem;
+}
+
+.meal-sub i {
+    margin-top: 0.2rem;
+    flex-shrink: 0;
+}
+
+.meal-sub strong {
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.meal-sub span {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.meal-sub.active {
+    background: var(--success-soft);
+    border: 1px solid var(--success-border);
+    color: var(--success);
+}
+
+.meal-sub.inactive {
+    background: var(--warning-soft);
+    border: 1px solid var(--warning-border);
+    color: var(--warning);
+}
+
 /* ---------------------------------------------------------------------------
    5. Digital meal pass
 --------------------------------------------------------------------------- */

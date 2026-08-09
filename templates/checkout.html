@@ -1,0 +1,437 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Checkout — Niter Hub</title>
+    <meta name="description" content="Pay securely via bKash, Nagad, or Rocket for club events, transport tickets, and meal tokens.">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Checkout page styles -->
+    <link rel="stylesheet" href="{% static 'css/checkout.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="checkout" data-app="campusdash-public">
+
+    <div class="shell">
+
+        <!-- ============================================================
+             Top bar
+        ============================================================ -->
+        {% include 'partials/topbar.html' with active='' %}
+
+        <!-- ============================================================
+             Intro + back link
+        ============================================================ -->
+        <div class="intro">
+            <a class="back-link" id="back-link" href="{% url 'clubs_dashboard' %}">
+                <i class="fa-solid fa-arrow-left"></i> <span id="back-label">Back to Clubs &amp; Events</span>
+            </a>
+            <h1>Secure Checkout</h1>
+            <p>Complete your payment through a local mobile wallet to confirm your booking instantly.</p>
+        </div>
+
+        <!-- ============================================================
+             Checkout layout — form (left) + order summary (right)
+        ============================================================ -->
+        <div class="checkout-layout">
+
+            <!-- Main column: payment method + payment details -->
+            <div class="checkout-main">
+
+                <!-- ============================================================
+                     Payment gateway selector
+                ============================================================ -->
+                <section class="card">
+                    <h2 class="section-title">Choose Payment Method</h2>
+                    <p class="section-subtitle">Popular Bangladeshi digital payment channels.</p>
+
+                    <div class="pay-methods" id="pay-methods">
+                        <label class="pay-method selected">
+                            <input type="radio" name="pay-method" value="bKash" checked>
+                            <span class="pay-logo pay-bkash"><i class="fa-solid fa-mobile-screen-button"></i></span>
+                            <span class="pay-info"><strong>bKash</strong><small>Mobile Financial Service</small></span>
+                            <span class="pay-check"><i class="fa-solid fa-circle-check"></i></span>
+                        </label>
+
+                        <label class="pay-method">
+                            <input type="radio" name="pay-method" value="Nagad">
+                            <span class="pay-logo pay-nagad"><i class="fa-solid fa-mobile-screen-button"></i></span>
+                            <span class="pay-info"><strong>Nagad</strong><small>Mobile Financial Service</small></span>
+                            <span class="pay-check"><i class="fa-solid fa-circle-check"></i></span>
+                        </label>
+
+                        <label class="pay-method">
+                            <input type="radio" name="pay-method" value="Rocket">
+                            <span class="pay-logo pay-rocket"><i class="fa-solid fa-credit-card"></i></span>
+                            <span class="pay-info"><strong>Rocket / Card</strong><small>Rocket wallet or card</small></span>
+                            <span class="pay-check"><i class="fa-solid fa-circle-check"></i></span>
+                        </label>
+                    </div>
+                </section>
+
+                <!-- ============================================================
+                     Payment details & transaction verification
+                ============================================================ -->
+                <section class="card">
+                    <h2 class="section-title">Payment Details</h2>
+                    <p class="section-subtitle">Send the exact amount, then enter your wallet number and TrxID below.</p>
+
+                    <div class="merchant-banner">
+                        <i class="fa-solid fa-building-columns"></i>
+                        <div>
+                            <strong>Send money to the CampusDash merchant account</strong>
+                            <span>Merchant Account Number: <b class="merchant-no" id="merchant-no">01712-345678</b></span>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label for="wallet-no" class="field-label">Your Mobile Wallet Account Number</label>
+                        <input type="tel" id="wallet-no" class="field-input" inputmode="numeric" autocomplete="tel"
+                               placeholder="e.g. 017XXXXXXXX">
+                    </div>
+
+                    <div class="field">
+                        <label for="trx-id" class="field-label">Transaction ID (TrxID)</label>
+                        <input type="text" id="trx-id" class="field-input" autocomplete="off" spellcheck="false"
+                               placeholder="e.g. 9J32X8KL">
+                    </div>
+
+                    <div class="security-note">
+                        <i class="fa-solid fa-shield-halved"></i>
+                        <span>Payments are verified by the event coordinator or automated system.</span>
+                    </div>
+
+                    <button type="button" class="confirm-btn" id="confirm-btn">
+                        <i class="fa-solid fa-lock" id="confirm-icon"></i>
+                        <span id="confirm-label">Confirm &amp; Pay ৳200</span>
+                    </button>
+                </section>
+            </div>
+
+            <!-- Sidebar: order summary + student verification -->
+            <aside class="checkout-side">
+
+                <!-- ============================================================
+                     Order summary
+                ============================================================ -->
+                <section class="card">
+                    <h2 class="section-title">Order Summary</h2>
+                    <div class="order-item">
+                        <span class="order-item-icon" id="order-item-icon"><i class="fa-solid fa-ticket"></i></span>
+                        <div>
+                            <strong id="order-item-name">Annual Hackathon 2026 Ticket</strong>
+                            <span class="order-item-issuer" id="order-item-issuer">NITER Computer Club</span>
+                            <span class="order-item-meta" id="order-item-meta" style="display:none;"></span>
+                        </div>
+                    </div>
+                    <div class="price-rows">
+                        <div class="price-row"><span>Subtotal</span><b id="price-subtotal">৳200</b></div>
+                        <div class="price-row"><span>Convenience Fee</span><b>৳0</b></div>
+                        <div class="price-row price-total"><span>Total (BDT)</span><b id="price-total">৳200</b></div>
+                    </div>
+                </section>
+
+                <!-- ============================================================
+                     Student info verification badge
+                ============================================================ -->
+                <section class="card">
+                    <h2 class="section-title">Student Verification</h2>
+                    <div class="verify-badge">
+                        <span class="verify-avatar"><i class="fa-solid fa-user"></i></span>
+                        <div class="verify-fields">
+                            <div>
+                                <span class="verify-k">Name</span>
+                                <span class="verify-v" id="verify-name">{{ user.get_full_name|default:"Rifat Hasan" }}</span>
+                            </div>
+                            <div>
+                                <span class="verify-k">Student ID</span>
+                                <span class="verify-v">CSE-22014</span>
+                            </div>
+                            <div>
+                                <span class="verify-k">Email</span>
+                                <span class="verify-v" id="verify-email">{{ user.email|default:"rifat.hasan@niter.edu.bd" }}</span>
+                            </div>
+                        </div>
+                        <span class="verify-stamp"><i class="fa-solid fa-circle-check"></i> Verified</span>
+                    </div>
+                </section>
+
+                <p class="side-help">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <span>Need help? Contact the issuing club, the transport cell, or the cafeteria before paying.</span>
+                </p>
+            </aside>
+
+        </div>
+
+    </div>
+
+    <!-- ============================================================
+         Payment success modal
+    ============================================================ -->
+    <div class="modal-backdrop" id="success-modal" role="presentation">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="success-title">
+            <button type="button" class="modal-close" id="modal-close" aria-label="Close payment confirmation">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <div class="success-check"><i class="fa-solid fa-check"></i></div>
+            <h3 id="success-title">Payment Successful</h3>
+            <p class="success-sub">Your payment has been received and is now being verified.</p>
+
+            <div class="receipt">
+                <div class="receipt-row"><span class="receipt-k">Item</span><b id="receipt-item">—</b></div>
+                <div class="receipt-row"><span class="receipt-k">Payment Method</span><b id="receipt-method">—</b></div>
+                <div class="receipt-row"><span class="receipt-k">Amount Paid</span><b id="receipt-amount">—</b></div>
+                <div class="receipt-row"><span class="receipt-k">Trx ID</span><b id="receipt-trx">—</b></div>
+                <div class="receipt-row divider">
+                    <span class="receipt-k">Reference No.</span>
+                    <span class="ref-box" id="receipt-ref"><span id="receipt-ref-no">—</span>
+                        <button type="button" id="copy-ref" aria-label="Copy reference number"><i class="fa-regular fa-copy"></i></button>
+                    </span>
+                </div>
+            </div>
+
+            <a class="success-cta" id="success-cta" href="{% url 'dashboard' %}">
+                <i class="fa-solid fa-ticket"></i> <span id="success-cta-label">Go to Dashboard</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script>
+        // ====================================================================
+        // Mock checkout state (frontend-only — no backend/database involved)
+        // ====================================================================
+        const params = new URLSearchParams(window.location.search);
+
+        const ORDER = (function () {
+            const type = params.get('type') || 'event';
+            const defaults = {
+                event:     { item: 'Annual Hackathon 2026 Ticket', issuer: 'NITER Computer Club', fee: 200 },
+                transport: { item: 'Monthly Bus Pass', issuer: 'NITER Transport Cell', fee: 30 },
+                meal:      { item: 'Monthly Meal Subscription', issuer: 'NITER Cafeteria', fee: 2000 },
+            };
+            const def = defaults[type] || defaults.event;
+            const feeRaw = parseInt(params.get('fee'), 10);
+            const fee = Number.isFinite(feeRaw) && feeRaw >= 0 ? feeRaw : def.fee;
+
+            const back = {
+                transport: { href: '{% url "transport_dashboard" %}', label: 'Back to Transport Booking' },
+                meal:      { href: '{% url "meal_dashboard" %}', label: 'Back to Meal System' },
+                event:     { href: '{% url "clubs_dashboard" %}', label: 'Back to Clubs & Events' },
+            }[type] || { href: '{% url "clubs_dashboard" %}', label: 'Back to Clubs & Events' };
+
+            return {
+                type,
+                item: params.get('item') || def.item,
+                issuer: params.get('issuer') || def.issuer,
+                fee,
+                meta: params.get('meta') || '',
+                back,
+            };
+        })();
+
+        const BACK_TRANSPORT = '{% url "transport_dashboard" %}';
+        const BACK_MEALS = '{% url "meal_dashboard" %}';
+        const BACK_CLUBS = '{% url "clubs_dashboard" %}';
+        const BACK_DASHBOARD = '{% url "dashboard" %}';
+
+        // Merchant numbers per payment channel (mock)
+        const METHODS = {
+            bKash:  { merchant: '01712-345678' },
+            Nagad:  { merchant: '01712-345679' },
+            Rocket: { merchant: '01712-345680' },
+        };
+
+        // ====================================================================
+        // DOM refs
+        // ====================================================================
+        const toastEl = document.getElementById('toast');
+        const merchantNo = document.getElementById('merchant-no');
+        const walletNo = document.getElementById('wallet-no');
+        const trxId = document.getElementById('trx-id');
+        const confirmBtn = document.getElementById('confirm-btn');
+        const confirmIcon = document.getElementById('confirm-icon');
+        const confirmLabel = document.getElementById('confirm-label');
+        const successModal = document.getElementById('success-modal');
+        const modalClose = document.getElementById('modal-close');
+        let toastTimer;
+
+        function showToast(message) {
+            toastEl.textContent = message;
+            toastEl.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3800);
+        }
+
+        function selectedMethod() {
+            return document.querySelector('input[name="pay-method"]:checked').value;
+        }
+
+        // ====================================================================
+        // Render order summary from query params
+        // ====================================================================
+        function renderOrder() {
+            const icon = {
+                transport: 'fa-bus-simple',
+                meal: 'fa-utensils',
+                event: 'fa-ticket',
+            }[ORDER.type] || 'fa-ticket';
+
+            document.getElementById('back-link').href = ORDER.back.href;
+            document.getElementById('back-label').textContent = ORDER.back.label;
+            document.getElementById('order-item-icon').innerHTML = '<i class="fa-solid ' + icon + '"></i>';
+            document.getElementById('order-item-name').textContent = ORDER.item;
+            document.getElementById('order-item-issuer').textContent = ORDER.issuer;
+
+            const meta = document.getElementById('order-item-meta');
+            if (ORDER.meta) {
+                meta.textContent = ORDER.meta;
+                meta.style.display = 'block';
+            } else {
+                meta.style.display = 'none';
+            }
+
+            document.getElementById('price-subtotal').textContent = '৳' + ORDER.fee;
+            document.getElementById('price-total').textContent = '৳' + ORDER.fee;
+            confirmLabel.textContent = 'Confirm & Pay ৳' + ORDER.fee;
+        }
+
+        // ====================================================================
+        // Payment method selector
+        // ====================================================================
+        function updateMerchant() {
+            const method = selectedMethod();
+            const m = METHODS[method];
+            if (!m) return;
+            merchantNo.textContent = m.merchant;
+            walletNo.placeholder = 'e.g. ' + m.merchant;
+        }
+
+        document.querySelectorAll('.pay-method input').forEach(radio => {
+            radio.addEventListener('change', () => {
+                document.querySelectorAll('.pay-method').forEach(label => {
+                    label.classList.toggle('selected', label.querySelector('input').checked);
+                });
+                updateMerchant();
+            });
+        });
+
+        // ====================================================================
+        // Confirm & Pay (mock processing + success receipt)
+        // ====================================================================
+        confirmBtn.addEventListener('click', () => {
+            const wallet = walletNo.value.trim();
+            const trx = trxId.value.trim();
+
+            if (!/^01\d{9}$/.test(wallet)) {
+                showToast('Please enter a valid 11-digit wallet number (e.g. 017XXXXXXXX).');
+                walletNo.focus();
+                return;
+            }
+            if (!/^[A-Za-z0-9-]{6,}$/.test(trx)) {
+                showToast('Please enter the TrxID shown in your payment confirmation.');
+                trxId.focus();
+                return;
+            }
+
+            // Simulate gateway processing
+            confirmBtn.disabled = true;
+            confirmIcon.className = 'fa-solid fa-circle-notch fa-spin';
+            confirmLabel.textContent = 'Processing payment…';
+
+            setTimeout(() => {
+                // Generated Transaction Reference Number
+                const reference = 'NTR-' + Date.now().toString(36).toUpperCase().slice(-6)
+                    + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+
+                document.getElementById('receipt-item').textContent = ORDER.item;
+                document.getElementById('receipt-method').textContent = selectedMethod();
+                document.getElementById('receipt-amount').textContent = '৳' + ORDER.fee;
+                document.getElementById('receipt-trx').textContent = trx;
+                document.getElementById('receipt-ref-no').textContent = reference;
+
+                // "View My Ticket / Dashboard" — land back with the ticket ready
+                const returnQuery = new URLSearchParams();
+                if (ORDER.type === 'transport') {
+                    returnQuery.set('booked', '1');
+                    ['route', 'seat', 'time', 'name'].forEach(k => {
+                        const v = params.get(k);
+                        if (v) returnQuery.set(k, v);
+                    });
+                } else if (ORDER.type === 'meal') {
+                    returnQuery.set('claimed', '1');
+                    ['meal', 'date', 'name'].forEach(k => {
+                        const v = params.get(k);
+                        if (v) returnQuery.set(k, v);
+                    });
+                }
+                const qs = returnQuery.toString();
+                const cta = document.getElementById('success-cta');
+                if (ORDER.type === 'transport') {
+                    cta.href = BACK_TRANSPORT + (qs ? '?' + qs : '');
+                    document.getElementById('success-cta-label').textContent = 'View My Ticket';
+                } else if (ORDER.type === 'meal') {
+                    cta.href = BACK_MEALS + (qs ? '?' + qs : '');
+                    document.getElementById('success-cta-label').textContent = 'View My Meal Pass';
+                } else {
+                    cta.href = BACK_DASHBOARD;
+                    document.getElementById('success-cta-label').textContent = 'Go to Dashboard';
+                }
+
+                // Reset the button to its resting state
+                confirmBtn.disabled = false;
+                confirmIcon.className = 'fa-solid fa-lock';
+                confirmLabel.textContent = 'Confirm & Pay ৳' + ORDER.fee;
+
+                successModal.classList.add('open');
+            }, 1400);
+        });
+
+        // Copy the reference number
+        document.getElementById('copy-ref').addEventListener('click', async () => {
+            const ref = document.getElementById('receipt-ref-no').textContent;
+            try {
+                await navigator.clipboard.writeText(ref);
+                showToast('Reference number copied.');
+            } catch (err) {
+                showToast('Reference: ' + ref);
+            }
+        });
+
+        // ====================================================================
+        // Success modal open/close
+        // ====================================================================
+        modalClose.addEventListener('click', () => successModal.classList.remove('open'));
+        successModal.addEventListener('click', (e) => {
+            if (e.target === successModal) successModal.classList.remove('open');
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && successModal.classList.contains('open')) {
+                successModal.classList.remove('open');
+            }
+        });
+
+        // ====================================================================
+        // Init
+        // ====================================================================
+        renderOrder();
+        updateMerchant();
+    </script>
+</body>
+</html>

@@ -37,7 +37,7 @@
         ============================================================ -->
         <div class="intro">
             <h1>Transport Online Ticket System</h1>
-            <p>Pick a route, choose your seat, and board with a digital pass.</p>
+            <p>Pick a route, choose your seat, pay via bKash / Nagad, and board with a digital pass.</p>
         </div>
 
         <!-- ============================================================
@@ -63,7 +63,7 @@
             <!-- Booking form -->
             <div class="card">
                 <h2 class="section-title">Book a Seat</h2>
-                <p class="section-subtitle">Select a route, trip time, and seat from the grid.</p>
+                <p class="section-subtitle">Select a route, trip time, and seat — then pay securely to confirm.</p>
 
                 <div class="field">
                     <label for="route-select" class="field-label">Route</label>
@@ -91,7 +91,7 @@
                 </div>
 
                 <button type="button" class="book-btn" id="book-btn">
-                    <i class="fa-solid fa-ticket"></i> Book Seat
+                    <i class="fa-solid fa-ticket"></i> Book Seat &amp; Pay
                 </button>
             </div>
 
@@ -142,6 +142,9 @@
         // ====================================================================
         // Mock JavaScript data (frontend-only)
         // ====================================================================
+        // Payment gateway — seat booking routes through /checkout/ first.
+        const CHECKOUT_URL = '{% url "checkout" %}';
+
         const ROUTES = [
             {
                 id: 1, name: 'Route 1: Campus → Town Center', dest: 'Campus Main Gate → Town Center Bus Stand',
@@ -336,29 +339,49 @@
             renderSeats();
         });
 
-        bookBtn.addEventListener('click', () => {
-            const route = currentRoute();
-            if (selectedSeat === null) { showToast('Please select a seat first.'); return; }
-            if (seatsLeft(route) <= 0) { showToast('This bus is fully booked.'); return; }
-
-            const seatNo = selectedSeat + 1;
+        function completeBooking(route, seatNo, time, name) {
             const token = 'TRP-' + route.id + '-' + String(seatNo).padStart(2, '0') + '-' + (route.booked + 1);
-            const name = document.getElementById('passenger-name').value.trim() || 'Rifat Hasan';
 
             updatePass({
                 token, name,
                 route: route.name,
                 seat: 'Seat ' + seatNo,
-                time: selectedTime,
+                time: time,
             });
 
             // Update live seats (cache the newly booked seat in the route's set)
-            route.booked += 1;
-            route.bookedSet.add(selectedSeat);
+            const idx = seatNo - 1;
+            if (!route.bookedSet.has(idx)) {
+                route.booked += 1;
+                route.bookedSet.add(idx);
+            }
             renderRoutes();
             renderSeats();
 
-            showToast('Seat ' + seatNo + ' booked on Route ' + route.id + ' — boarding pass generated.');
+            showToast('Seat ' + seatNo + ' booked on Route ' + route.id + ' — payment verified, boarding pass generated.');
+        }
+
+        // Book Seat → pay on /checkout/ → return here with the pass ready.
+        bookBtn.addEventListener('click', () => {
+            if (selectedSeat === null) { showToast('Please select a seat first.'); return; }
+            if (seatsLeft(currentRoute()) <= 0) { showToast('This bus is fully booked.'); return; }
+
+            const route = currentRoute();
+            const seatNo = selectedSeat + 1;
+            const name = document.getElementById('passenger-name').value.trim() || 'Rifat Hasan';
+
+            const qs = new URLSearchParams({
+                type: 'transport',
+                item: route.name,
+                issuer: 'NITER Transport Cell',
+                fee: '30',
+                meta: selectedTime + ' · Seat ' + seatNo,
+                route: String(route.id),
+                seat: String(seatNo),
+                time: selectedTime,
+                name: name,
+            });
+            window.location.href = CHECKOUT_URL + '?' + qs.toString();
         });
 
         // ====================================================================
@@ -369,6 +392,30 @@
         renderRouteSelect();
         renderTimeChips();
         renderSeats();
+
+        // If the user just paid on /checkout/, land back with the pass already
+        // generated for the seat they selected (frontend-only mock flow).
+        (function resumeFromCheckout() {
+            const q = new URLSearchParams(window.location.search);
+            if (q.get('booked') !== '1') return;
+
+            const routeId = Number(q.get('route')) || 1;
+            const route = ROUTES.find(r => r.id === routeId) || ROUTES[0];
+            const seatNo = Math.min(Number(q.get('seat')) || 1, route.total);
+            let time = q.get('time') || route.departures[0];
+            if (!route.departures.includes(time)) time = route.departures[0];
+            const name = q.get('name') || 'Rifat Hasan';
+
+            selectedRouteId = route.id;
+            selectedTime = time;
+            selectedSeat = seatNo - 1;
+            document.getElementById('passenger-name').value = name;
+
+            renderRouteSelect();
+            renderTimeChips();
+            renderSeats();
+            completeBooking(route, seatNo, time, name);
+        })();
     </script>
 </body>
 </html>

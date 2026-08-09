@@ -39,6 +39,15 @@ def meal_dashboard(request):
     """Online meal ticket system — frontend-only page driven by mock JS data."""
     return render(request, 'meals.html')
 
+
+def checkout_page(request):
+    """Payment Gateway & Checkout — frontend-only page driven by mock JS data.
+
+    Handles payments for club event registrations, transport ticket bookings,
+    and meal tokens via local mobile wallets (bKash / Nagad / Rocket / Card).
+    """
+    return render(request, 'checkout.html')
+
 def placeholder(request, page='settings'):
     """Minimal warm-beige placeholder pages (settings / signup) so the shared
     profile popover links resolve. Swap in real pages later."""
