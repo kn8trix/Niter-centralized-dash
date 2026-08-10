@@ -1837,12 +1837,12 @@ endpoint lets students disconnect their Google account.
 ## 45. Unified Application Layout — Left Sidebar Navigation Across All Templates
 
 **Date:** 10 August 2026  
-**Branch:** main — committed & pushed as `b2404c3`
+**Branch:** main (committed & pushed)
 
 ### Overview
 
 Enforced the standard **left sidebar navigation** across every student
-subpage. All nine previously-standalone templates now extend
+subpage. All eight previously-standalone templates now extend
 `templates/base.html` and render inside the "Niter Hub" sidebar shell
 (Dashboard, Academic & Notes, Official Notices, Transport, Meals, Medical,
 Clubs & Events, **Settings**) instead of the old top-pill "CampusDash"
@@ -1877,8 +1877,8 @@ Each one now sets `title` / `header` / `body_class` and keeps its own
 stylesheet via `extra_head`; the page body markup (`.shell` / `.clubs-shell`
 content, toasts, scripts) moved unchanged into `{% block content %}`.
 Pages that still use the standalone topbar (homepage, login/signup,
-departments, checkout, profile, admin dashboards, editable pages) are
-untouched.
+departments, academic notes list, checkout, profile, admin dashboards,
+editable pages) are untouched.
 
 **Tests:**
 - `core/tests.py` → **`core/tests/` package** (`__init__.py` holds the
@@ -1900,9 +1900,3 @@ untouched.
 - `python manage.py check` — no issues
 - `python manage.py test core.tests.test_navigation` — OK (sidebar contract)
 - Full suite — **378 tests, OK** (navigation tests included)
-- Verified live via the dev server: every converted page serves 200 with the
-  sidebar shell, the page stylesheet, and **no** topbar markers
-  (`data-component="topbar"` / `avatar-btn` absent).
-- Demo logins re-verified against the dev DB (`db.sqlite3`):
-  **`admin` / `admin123`** (superuser/staff) and **`student` / `student123`**
-  (regular student) — log in with the username at `/login/`.
