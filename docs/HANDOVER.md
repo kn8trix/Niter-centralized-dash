@@ -1881,3 +1881,49 @@ more, and `core/tests/test_navigation.py` was removed.
 - `python manage.py test core.tests.UnifiedHeaderTest` — 2 tests, OK
 - Full suite — **377 tests, OK** (376 + the new topbar assertion)
 - Live check of `/notes/`: topbar renders, sidebar absent, workspace present.
+
+---
+
+## 46. Settings View & Top-Left Gear Icon (Top-Pill Layout)
+
+**Date:** 10 August 2026  
+**Branch:** main (committed & pushed)
+
+### Overview
+
+Verified the Settings feature inside the CampusDash top-pill layout. The
+tabbed settings page and the always-visible top-left gear icon shipped in the
+Settings Overhaul (section 44 / `91992cb`) and survive the sidebar-refactor
+reverts unchanged — no code changes were needed; this section records their
+presence in the current top-pill architecture and confirms the checks pass.
+
+### Topbar (`templates/partials/topbar.html` + `static/css/topbar.css`)
+
+- Gear icon (`.settings-link`, `<i class="fa-solid fa-gear"></i>`) sits
+  top-left next to the "CampusDash" brand on every top-pill page and links to
+  `/settings/`; styled as a 32px circular button with hover lift.
+
+### Settings page (`templates/settings.html`)
+
+- Renders inside the top-pill shell (`{% include 'partials/topbar.html' %}`)
+  with the `.intro` header — no left sidebar required.
+- Three tabs (client-side switch, `?tab=` deep link):
+  1. **Notification Preferences** — category toggles (Meals, Transport,
+     Medical, Notices) + channel toggles (Email, SMS, Push), persisted via
+     JSON POST to `/settings/`.
+  2. **Account & Google** — password change form + Google OAuth status card
+     (connected email / not connected) with **Unlink** (`POST
+     /api/settings/google-unlink/`) and Connect buttons.
+  3. **Display** — Warm Light / Dark theme toggle + timezone selector.
+
+### Backend (`core/views.py`, `core/urls.py`)
+
+- `settings_view` (login-gated), `_save_settings_prefs` (form + JSON, partial
+  updates only), `google_unlink` (deletes `SocialAccount` + `GoogleUserToken`).
+- Routes: `/settings/`, `api/settings/google-unlink/`.
+
+### Verification
+
+- `python manage.py check` — no issues
+- `python manage.py test core.tests.SettingsPreferencesTest
+  core.tests.AccountAndAdminPagesTest` — 22 tests, OK
