@@ -308,6 +308,26 @@ body.auth a {
     gap: 0.65rem;
 }
 
+/* New-account switch — direct link from the login page to /signup/ */
+.auth-switch {
+    margin-top: 1.1rem;
+    text-align: center;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+}
+
+.auth-switch a {
+    color: var(--accent-dark);
+    font-weight: 700;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.auth-switch a:hover {
+    color: var(--text-primary);
+    text-decoration: underline;
+}
+
 /* ---------------------------------------------------------------------------
    9. Responsive & motion
 --------------------------------------------------------------------------- */

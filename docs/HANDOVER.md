@@ -1978,3 +1978,53 @@ brand, and the desktop nav pills sit on a second row beneath the header.
 - Live checks on `/dashboard/`, `/transport/`, `/medical/`, `/clubs/`,
   `/notes/` all serve the two-row header (`topbar-row` + `topbar-left`
   present, `settings-link` count 0, `avatar-btn` present).
+
+## 48. User Registration & Authentication Flow (Sign-Up Form)
+
+Self-registration already existed; this pass extracted the inline view
+validation into a clean, reusable form and added the missing cross-links.
+
+### `core/forms.py` (new)
+
+- `SignUpForm` — fields: `student_id` (max 30), `full_name`, `department`
+  (from `StudentProfile.DEPARTMENT_CHOICES`), `email`, `password`
+  (`min_length=8`), `confirm_password`.
+- Validation: duplicate **Student ID** (checks `User.username` and
+  `StudentProfile.student_id`) and duplicate **email** (case-insensitive),
+  password/confirm match (`Passwords do not match.`), short password
+  (`Ensure this value has at least 8 characters.`), invalid department.
+- `save()` — `User.objects.create_user(...)` (pbkdf2-hashed password) +
+  `StudentProfile`, splitting full name into first/last.
+
+### `core/views.py` — `signup_view` refactored
+
+- POST → `SignUpForm(request.POST)`; on valid, `form.save()` then
+  `auth_login(request, user)` and `redirect('dashboard')` (auto-login).
+- Form errors are flattened into the simple list `signup.html` renders.
+- GET renders the empty form; template contract (`errors`, `departments`,
+  `form_data`) unchanged.
+
+### Login (`config/urls.py`)
+
+- `/login/` uses Django's built-in `auth_views.LoginView` (which authenticates
+  against stored users via `authenticate()` + `login()`), `template_name='login.html'`,
+  `redirect_authenticated_user=True`. `/logout/` uses `LogoutView`.
+- `templates/login.html` gained a **"New to Niter Hub? Create an account"**
+  link to `/signup/` (styled `.auth-switch` in `auth.css`).
+
+### Tests (`core/tests.py`)
+
+- New `SignUpFormTest` (6 tests): valid save + hashed password + profile,
+  duplicate ID / duplicate email, password mismatch, short password, invalid
+  department. Existing `LoginFlowTests` + `AccountAndAdminPagesTest` cover the
+  view flow (redirect to dashboard, auto-login, `authenticate()` login).
+
+### Verification
+
+- `python manage.py check` — no issues
+- `python manage.py test core.tests.LoginFlowTests core.tests.AccountAndAdminPagesTest
+  core.tests.SignUpFormTest core.tests.ProfilePopoverAuthTest` — 26 tests, OK
+- Full suite — **383 tests, OK**
+- Live E2E (curl): POST `/signup/` → 302 to `/dashboard/`; user persisted with
+  `pbkdf2_sha256`; `authenticate()` returns the user; duplicate-ID POST rejected
+  (CSRF token rotates on login — Django security default).

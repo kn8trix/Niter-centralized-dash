@@ -26,6 +26,7 @@ from google.auth.exceptions import RefreshError
 
 from .consumers import notify_user, send_chat_push
 from .decorators import superuser_required
+from .forms import SignUpForm
 from .templatetags.builder_tags import render_block_html
 from .google_service import (
     GoogleAccountNotConnected,
@@ -1001,59 +1002,34 @@ def book_appointment(request):
 # ============================================================================
 
 def signup_view(request):
-    """Self-registration — creates a User + StudentProfile and signs the
-    student in. Departments come from the StudentProfile choices so the
-    dropdown and the stored value can never drift apart.
+    """Self-registration — ``SignUpForm`` validates the fields (duplicate
+    Student ID / email, password confirmation), creates the User + StudentProfile
+    with a securely hashed password, and signs the student in. Departments come
+    from the StudentProfile choices so the dropdown and stored value can never
+    drift apart.
     """
     if request.user.is_authenticated:
         return redirect('dashboard')
 
-    errors = []
     if request.method == 'POST':
-        student_id = request.POST.get('student_id', '').strip()
-        full_name = request.POST.get('full_name', '').strip()
-        department = request.POST.get('department', '').strip()
-        email = request.POST.get('email', '').strip()
-        password = request.POST.get('password', '')
-        confirm_password = request.POST.get('confirm_password', '')
-
-        if not student_id:
-            errors.append('Student ID is required.')
-        elif User.objects.filter(username=student_id).exists() or StudentProfile.objects.filter(student_id=student_id).exists():
-            errors.append('An account with this Student ID already exists.')
-
-        if not full_name:
-            errors.append('Full name is required.')
-
-        if department not in dict(StudentProfile.DEPARTMENT_CHOICES):
-            errors.append('Please choose a valid department.')
-
-        if not email:
-            errors.append('Email is required.')
-
-        if len(password) < 8:
-            errors.append('Password must be at least 8 characters.')
-
-        if password != confirm_password:
-            errors.append('Passwords do not match.')
-
-        if not errors:
-            name_parts = full_name.split(' ', 1)
-            user = User.objects.create_user(
-                username=student_id,
-                email=email,
-                password=password,
-                first_name=name_parts[0],
-                last_name=name_parts[1] if len(name_parts) > 1 else '',
-            )
-            StudentProfile.objects.create(user=user, student_id=student_id, department=department)
+        form = SignUpForm(request.POST)
+        if form.is_valid():
+            user = form.save()
             auth_login(request, user)
             return redirect('dashboard')
+    else:
+        form = SignUpForm()
+
+    # Flatten form errors into the simple list the signup template renders.
+    errors = []
+    for field_errors in form.errors.values():
+        errors.extend(field_errors)
 
     return render(request, 'signup.html', {
         'errors': errors,
         'departments': StudentProfile.DEPARTMENT_CHOICES,
         'form_data': request.POST if request.method == 'POST' else None,
+        'form': form,
     })
 
 

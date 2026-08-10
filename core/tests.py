@@ -13,6 +13,7 @@ from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_
 from django.urls import reverse, resolve
 from django.utils import timezone
 
+from core.forms import SignUpForm
 from core.models import (
     BusSchedule,
     ClassRoutine,
@@ -534,6 +535,63 @@ class AccountAndAdminPagesTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'at least 8 characters')
         self.assertFalse(User.objects.filter(username='S2002').exists())
+
+
+class SignUpFormTest(TestCase):
+    """SignUpForm validation + persistence (duplicate checks, password rules)."""
+
+    def _data(self, **overrides):
+        data = {
+            'student_id': 'S3001',
+            'full_name': 'Rifat Hasan',
+            'department': 'CSE',
+            'email': 'rifat@niter.edu.bd',
+            'password': 'secretpass1',
+            'confirm_password': 'secretpass1',
+        }
+        data.update(overrides)
+        return data
+
+    def test_valid_form_creates_user_and_profile(self):
+        form = SignUpForm(self._data())
+        self.assertTrue(form.is_valid(), form.errors)
+        user = form.save()
+        self.assertEqual(user.username, 'S3001')
+        self.assertEqual(user.first_name, 'Rifat')
+        self.assertEqual(user.last_name, 'Hasan')
+        # Password is hashed with Django's standard auth hashing
+        self.assertTrue(user.check_password('secretpass1'))
+        self.assertNotEqual(user.password, 'secretpass1')
+        profile = StudentProfile.objects.get(student_id='S3001')
+        self.assertEqual(profile.user, user)
+        self.assertEqual(profile.department, 'CSE')
+
+    def test_duplicate_student_id_rejected(self):
+        User.objects.create_user(username='S3001', password='x12345678')
+        form = SignUpForm(self._data())
+        self.assertFalse(form.is_valid())
+        self.assertIn('already exists', form.errors['student_id'][0])
+
+    def test_duplicate_email_rejected(self):
+        User.objects.create_user(username='someone', email='rifat@niter.edu.bd', password='x12345678')
+        form = SignUpForm(self._data())
+        self.assertFalse(form.is_valid())
+        self.assertIn('already exists', form.errors['email'][0])
+
+    def test_password_confirmation_mismatch_rejected(self):
+        form = SignUpForm(self._data(confirm_password='different1'))
+        self.assertFalse(form.is_valid())
+        self.assertIn('Passwords do not match.', form.errors['confirm_password'][0])
+
+    def test_short_password_rejected(self):
+        form = SignUpForm(self._data(password='short', confirm_password='short'))
+        self.assertFalse(form.is_valid())
+        self.assertIn('at least 8 characters', form.errors['password'][0])
+
+    def test_invalid_department_rejected(self):
+        form = SignUpForm(self._data(department='BOGUS'))
+        self.assertFalse(form.is_valid())
+        self.assertIn('department', form.errors)
 
 
 class StaffAdminBackendTest(TestCase):
