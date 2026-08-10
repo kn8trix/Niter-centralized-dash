@@ -267,7 +267,7 @@ python manage.py check --deploy
 | **Meal System** | [http://127.0.0.1:8000/meals/](http://127.0.0.1:8000/meals/) | Meal slot ratio, claim, supply stats |
 | **Login** | [http://127.0.0.1:8000/login/](http://127.0.0.1:8000/login/) | Student/staff sign-in page |
 | **Logout** | [http://127.0.0.1:8000/logout/](http://127.0.0.1:8000/logout/) | Sign out (POST) |
-| **Settings** | [http://127.0.0.1:8000/settings/](http://127.0.0.1:8000/settings/) | Account settings (password change, toggles, theme) |
+| **Settings** | [http://127.0.0.1:8000/settings/](http://127.0.0.1:8000/settings/) | Tabbed settings dashboard: notifications, account/Google OAuth, display (theme + timezone) |
 | **Sign Up** | [http://127.0.0.1:8000/signup/](http://127.0.0.1:8000/signup/) | Student sign-up (creates account + profile) |
 | **Profile** | [http://127.0.0.1:8000/profile/](http://127.0.0.1:8000/profile/) | Virtual student ID card + booking history |
 | **System Admin** | [http://127.0.0.1:8000/admin-dashboard/](http://127.0.0.1:8000/admin-dashboard/) | Staff-only dashboard (users, notices, transport, security) |
@@ -453,6 +453,7 @@ CSRF_COOKIE_SECURE=True
 | POST | `/checkout/` | Student: validate wallet payment, persist a `PaymentTransaction` with a unique `NTR-` id; meal purpose activates the `MealSubscription` (`_process_checkout`) |
 | GET | `/api/notes/<id>/` | Student: fetch one `UserNote` to load into the editor (owner-scoped 404) |
 | POST | `/api/notes/save/` | Student: create/update a `UserNote` (owner-scoped; `note_id` updates instead of duplicating) |
+| POST | `/api/settings/google-unlink/` | Student: disconnect Google account (deletes `SocialAccount` + `GoogleUserToken`) |
 | POST | `/api/notes/summarize/` | Student: server-side extractive TF summarization of note content |
 | POST | `/api/notes/keywords/` | Student: TF keyword ranking for note content |
 | POST/GET | `/api/notes/export/` | Student: export a `UserNote` as `.txt` or a dependency-free generated PDF |
@@ -482,7 +483,7 @@ CSRF_COOKIE_SECURE=True
 ### Backend Status Summary
 
 **Backend live (as of section 37):** everything below is implemented, tested (320 tests), and verified end-to-end:
-- auth + accounts (login/signup/settings/profile) — settings preferences persist to `UserNotificationPreference` (DB, not localStorage)
+- auth + accounts (login/signup/settings/profile) — `/settings/` tabbed dashboard (preferences, account/Google, display) with per-category notification toggles, Google OAuth connection status, and timezone — §44
 - campus-service models & handlers (meal/transport/medical, sections 34–35) + real-time notification engine (section 33)
 - Website Builder backend (section 30+), Google Drive/Sheets layer, staff/admin/host dashboards (section 36)
 - **Profile booking & activity history** — real per-user `MealTicket`/`TransportBooking`/`MedicalAppointment` rows (section 37 pass 1)
@@ -1762,3 +1763,71 @@ through automatically.
   cleanly (`PyJWT` 2.x + `cryptography` present) → `python manage.py check` —
   no issues.
 - **Full test suite:** `python manage.py test` — 367 tests, OK.
+
+---
+
+## 44. Settings Overhaul — Tabbed Dashboard, Google OAuth Integration, Topbar Fix
+
+**Date:** 10 August 2026  
+**Branch:** main (working tree, uncommitted)
+
+### Overview
+
+The settings page was redesigned from a single-column layout into a **tabbed
+dashboard** with three tabs (Notifications, Account & Google, Display). The
+topbar gained a **Settings gear icon** next to the CampusDash brand so the
+settings link is always one click away regardless of which page the user is
+on. On the backend, the `UserNotificationPreference` model was extended with
+per-category notification toggles and a timezone selector, and a new API
+endpoint lets students disconnect their Google account.
+
+### Changes
+
+**Topbar (`templates/partials/topbar.html` + `static/css/topbar.css`):**
+- Added a `.settings-link` gear icon (``<i class="fa-solid fa-gear"></i>``)
+  right after the brand, linking to `/settings/`. Always visible, keyboard-
+  focusable, styled consistently (hover rotates + lifts).
+
+**Settings page (`templates/settings.html`):**
+- Tabbed navigation with three panels (client-side switch, no page reload):
+  - **Notifications** — per-category toggles (Meals, Transport, Medical,
+    Notices) and channel-level toggles (Email, SMS, Push), all persisted
+    to the database via JSON POST.
+  - **Account & Google** — password change form (Django `PasswordChangeForm`)
+    + Google integration card showing connection status (connected email,
+    Drive/Sheets scope summary) with an "Unlink" button.
+  - **Display** — Warm Light / Dark theme picker + timezone selector
+    (Asia/Dhaka, UTC, US Eastern, Europe/London, etc.).
+
+**View (`core/views.py`):**
+- `settings_view` now passes `google_social` (allauth `SocialAccount`),
+  `has_google_token`, and `active_tab` (from `?tab=` query param).
+- `_save_settings_prefs` persists the new `notify_*` fields and `timezone`;
+  only fields explicitly present in the payload are updated (partial toggle
+  saves no longer reset other preferences to defaults).
+- New `google_unlink` endpoint (`POST /api/settings/google-unlink/`) deletes
+  the user's allauth `SocialAccount` and `GoogleUserToken` rows.
+
+**Model (`core/models.py`):**
+- `UserNotificationPreference` — five new fields:
+  - `notify_meals`, `notify_transport`, `notify_medical`, `notify_notices`
+    (BooleanField, default `True`)
+  - `timezone` (CharField, choices from `TIMEZONE_CHOICES`, default
+    `'Asia/Dhaka'`)
+
+**Migration:** `core/migrations/0016_…` (applied).
+
+**URLs (`core/urls.py`):**
+- `api/settings/google-unlink/` → `google_unlink`.
+
+**Tests (`core/tests.py`):**
+- `SettingsPreferencesTest` — updated for new fields + `force_login`;
+  new test for JSON update of category/timezone fields.
+- `test_google_unlink_removes_token` — HTTP 200 + token deletion.
+- `test_google_unlink_requires_login` — HTTP 401 for unauthenticated users.
+
+### Verification
+
+- `python manage.py check` — no issues
+- `python manage.py test core.tests.SettingsPreferencesTest` — 9 tests, OK
+- Full suite — **376 tests, OK** (3 new)

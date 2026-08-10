@@ -18,6 +18,11 @@ active: dashboard | notes | departments | research | notices | transport | meals
         <span>CampusDash</span>
     </a>
 
+    <!-- Settings gear — always visible next to the brand -->
+    <a href="{% url 'settings' %}" class="settings-link" data-component="settings-link" aria-label="Settings">
+        <i class="fa-solid fa-gear"></i>
+    </a>
+
     <!-- Desktop navigation pills (hidden on mobile, see topbar.css) -->
     <nav class="navlinks" aria-label="Primary navigation">
         <a href="{% url 'dashboard' %}" class="{% if active == 'dashboard' %}active{% endif %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>

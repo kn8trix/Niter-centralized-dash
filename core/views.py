@@ -46,6 +46,7 @@ from .models import (
     CourseMaterial,
     Department,
     EditablePage,
+    GoogleUserToken,
     MedicalAppointment,
     MedicalChatMessage,
     MedicalChatThread,
@@ -1058,14 +1059,19 @@ def signup_view(request):
 
 @login_required
 def settings_view(request):
-    """Account settings — password change (Django PasswordChangeForm) plus
-    notification & theme preferences persisted to ``UserNotificationPreference``.
+    """Account settings — tabbed dashboard: notification preferences, account
+    (password + Google OAuth integration), and display (theme + timezone).
 
     POST requests are disambiguated by payload: ``old_password`` means the
-    password form, anything else (form-encoded or JSON from the preference
-    toggles) updates the user's preferences in the database.
+    password form, ``tab=preferences`` or JSON means preference toggles.
     """
     prefs, _ = UserNotificationPreference.objects.get_or_create(user=request.user)
+
+    # Google OAuth connection status (allauth SocialAccount + GoogleUserToken).
+    google_social = _get_google_social_account(request.user)
+    has_google_token = hasattr(request.user, 'google_token') and bool(
+        request.user.google_token.access_token
+    )
 
     password_updated = False
     if request.method == 'POST':
@@ -1076,20 +1082,47 @@ def settings_view(request):
                 update_session_auth_hash(request, password_form.user)
                 password_updated = True
                 password_form = PasswordChangeForm(request.user)
+            else:
+                return render(request, 'settings.html', {
+                    'password_form': password_form,
+                    'password_updated': password_updated,
+                    'prefs': prefs,
+                    'google_social': google_social,
+                    'has_google_token': has_google_token,
+                    'active_tab': 'account',
+                })
         else:
             return _save_settings_prefs(request, prefs)
     else:
         password_form = PasswordChangeForm(request.user)
 
+    active_tab = request.GET.get('tab', 'notifications')
     return render(request, 'settings.html', {
         'password_form': password_form,
         'password_updated': password_updated,
         'prefs': prefs,
+        'google_social': google_social,
+        'has_google_token': has_google_token,
+        'active_tab': active_tab,
     })
 
 
+def _get_google_social_account(user):
+    """Return the user's ``SocialAccount`` for Google, or None."""
+    try:
+        from allauth.socialaccount.models import SocialAccount
+        return SocialAccount.objects.filter(user=user, provider='google').first()
+    except Exception:
+        return None
+
+
 def _save_settings_prefs(request, prefs):
-    """Persist preference toggles (form-encoded or JSON) and answer accordingly."""
+    """Persist preference toggles (form-encoded or JSON) and answer accordingly.
+
+    Only fields explicitly present in the payload are updated — missing booleans
+    keep their existing value so a partial toggle update never resets other
+    prefs to their defaults.
+    """
     data = request.POST
     if request.content_type == 'application/json':
         parsed, error = _parse_json_body(request)
@@ -1098,17 +1131,39 @@ def _save_settings_prefs(request, prefs):
         data = parsed
 
     # Checkbox semantics: present + truthy → True, everything else → False.
+    # Returns None when the key is missing (caller decides to skip).
     def enabled(*keys):
         for key in keys:
-            value = data.get(key)
-            if value in (True, 'true', 'on', '1', 1):
-                return True
-        return False
+            if key in data:
+                value = data[key]
+                if value in (True, 'true', 'on', '1', 1):
+                    return True
+                return False
+        return None
 
-    prefs.email_alerts = enabled('email_alerts', 'email')
-    prefs.sms_alerts = enabled('sms_alerts', 'sms')
-    prefs.push_notifications = enabled('push_notifications', 'push')
-    prefs.dark_mode = enabled('dark_mode')
+    # Map request keys → preference attribute names.
+    _BOOL_MAP = [
+        ('email_alerts', 'email_alerts'), ('email', 'email_alerts'),
+        ('sms_alerts', 'sms_alerts'), ('sms', 'sms_alerts'),
+        ('push_notifications', 'push_notifications'), ('push', 'push_notifications'),
+        ('dark_mode', 'dark_mode'),
+        ('notify_meals', 'notify_meals'),
+        ('notify_transport', 'notify_transport'),
+        ('notify_medical', 'notify_medical'),
+        ('notify_notices', 'notify_notices'),
+    ]
+    for key, attr in _BOOL_MAP:
+        val = enabled(key)
+        if val is not None:
+            setattr(prefs, attr, val)
+
+    # Timezone — only accept values from the model choices.
+    if 'timezone' in data:
+        tz = data['timezone'].strip()
+        valid_tzs = {code for code, _label in UserNotificationPreference.TIMEZONE_CHOICES}
+        if tz in valid_tzs:
+            prefs.timezone = tz
+
     prefs.save()
 
     if request.content_type == 'application/json' or request.headers.get('x-requested-with') == 'XMLHttpRequest':
@@ -1118,6 +1173,11 @@ def _save_settings_prefs(request, prefs):
             'sms_alerts': prefs.sms_alerts,
             'push_notifications': prefs.push_notifications,
             'dark_mode': prefs.dark_mode,
+            'notify_meals': prefs.notify_meals,
+            'notify_transport': prefs.notify_transport,
+            'notify_medical': prefs.notify_medical,
+            'notify_notices': prefs.notify_notices,
+            'timezone': prefs.timezone,
         })
     messages.success(request, 'Preferences saved.')
     return redirect('settings')
@@ -2131,6 +2191,29 @@ def _note_pdf_bytes(title, content):
         len(objects) + 1, xref_pos,
     )
     return b'%PDF-1.4\n' + bytes(body)
+
+
+def google_unlink(request):
+    """Disconnect the signed-in user's Google account (Drive/sheets backends).
+
+    Deletes both the allauth ``SocialAccount`` row (so the Google OAuth
+    connection is gone) and the stored ``GoogleUserToken`` credentials. Used by
+    the Settings → Account tab's "Unlink Google Account" action. Always
+    answers JSON — this endpoint is consumed via fetch from the settings page.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({'status': 'error', 'message': 'Login required'}, status=401)
+
+    try:
+        from allauth.socialaccount.models import SocialAccount
+        SocialAccount.objects.filter(user=request.user, provider='google').delete()
+    except Exception:
+        pass
+    GoogleUserToken.objects.filter(user=request.user).delete()
+
+    return JsonResponse({'status': 'success'})
 
 
 # Timestamp format shared by the notes fetch/save API responses.

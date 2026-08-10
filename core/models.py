@@ -919,6 +919,14 @@ class UserNotificationPreference(models.Model):
     at the bottom of this module, so ``/settings/`` always has a row to load.
     """
 
+    TIMEZONE_CHOICES = [
+        ('Asia/Dhaka', 'Bangladesh (BST, UTC+6)'),
+        ('Asia/Kolkata', 'India (IST, UTC+5:30)'),
+        ('UTC', 'Coordinated Universal Time'),
+        ('America/New_York', 'Eastern Time (US & Canada)'),
+        ('Europe/London', 'London (GMT/BST)'),
+    ]
+
     user = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
@@ -930,6 +938,30 @@ class UserNotificationPreference(models.Model):
     dark_mode = models.BooleanField(
         default=False,
         help_text='Apply the dark portal theme across pages',
+    )
+    # Per-category notification toggles (default all on — checked in addition
+    # to the channel-level toggles above).
+    notify_meals = models.BooleanField(
+        default=True,
+        help_text='Receive meal ticket notifications',
+    )
+    notify_transport = models.BooleanField(
+        default=True,
+        help_text='Receive transport booking notifications',
+    )
+    notify_medical = models.BooleanField(
+        default=True,
+        help_text='Receive medical appointment notifications',
+    )
+    notify_notices = models.BooleanField(
+        default=True,
+        help_text='Receive official notice alerts',
+    )
+    timezone = models.CharField(
+        max_length=50,
+        choices=TIMEZONE_CHOICES,
+        default='Asia/Dhaka',
+        help_text='Display timezone for timestamps',
     )
 
     def __str__(self):

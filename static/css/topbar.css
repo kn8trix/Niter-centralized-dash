@@ -18,7 +18,7 @@
    ========================================================================== */
 
 /* ---------------------------------------------------------------------------
-   1. Top bar (brand + nav pills)
+   1. Top bar (brand + nav pills + settings gear)
 --------------------------------------------------------------------------- */
 .topbar {
     display: flex;
@@ -48,6 +48,24 @@
     border: 1px solid var(--border-color);
     color: var(--accent-dark);
     font-size: 1.05rem;
+}
+
+/* Settings gear — always visible, sits between the brand and nav pills */
+.settings-link {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    color: var(--text-muted);
+    font-size: 1rem;
+    transition: color 0.2s ease, transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.settings-link:hover {
+    color: var(--text-primary);
+    transform: translateY(-1px);
 }
 
 .navlinks {
@@ -539,6 +557,7 @@
 
 /* Visible keyboard focus for header controls */
 .navlinks a:focus-visible,
+.settings-link:focus-visible,
 .avatar-btn:focus-visible,
 .bell-btn:focus-visible,
 .bell-item:focus-visible,

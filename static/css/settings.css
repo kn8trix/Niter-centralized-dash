@@ -359,11 +359,236 @@ body.settings a {
 }
 
 /* ---------------------------------------------------------------------------
-   8. Responsive
+   8. Tab navigation
+--------------------------------------------------------------------------- */
+.tabs-nav {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 1.2rem;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.1rem;
+    overflow-x: auto;
+}
+
+.tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.1rem;
+    border: none;
+    border-radius: 0.5rem 0.5rem 0 0;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.2s ease, background 0.2s ease;
+    white-space: nowrap;
+}
+
+.tab-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-subtle);
+}
+
+.tab-btn.active {
+    color: var(--text-primary);
+    background: var(--bg-card);
+    border-bottom: 2px solid var(--accent-dark);
+}
+
+.tab-btn:focus-visible {
+    outline: 2px solid var(--accent-dark);
+    outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   9. Settings sections inside a tab panel
+--------------------------------------------------------------------------- */
+.settings-section {
+    margin-top: 1.4rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.settings-section:first-of-type {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+
+.sub-section-title {
+    margin: 0 0 0.2rem;
+    font-size: 0.98rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.sub-section-title i {
+    margin-right: 0.4rem;
+    color: var(--text-muted);
+}
+
+/* Toggle group label (Categories / Delivery Channels) */
+.toggle-group-label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-muted);
+    padding: 0.9rem 0 0.3rem;
+    margin-top: 0.3rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.toggle-group-label:first-of-type {
+    border-top: none;
+}
+
+/* ---------------------------------------------------------------------------
+   10. Google integration card
+--------------------------------------------------------------------------- */
+.google-card {
+    margin-top: 0.6rem;
+}
+
+.google-status {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.9rem;
+    padding: 1rem 1.1rem;
+    border-radius: 0.9rem;
+    border: 1px solid var(--border-color);
+    background: var(--bg-subtle);
+}
+
+.google-status-icon {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: #ea4335;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.google-status-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.google-status-body strong {
+    display: block;
+    font-size: 0.93rem;
+    color: var(--text-primary);
+}
+
+.google-status-body span {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+}
+
+.google-status-body small {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.2rem;
+}
+
+.btn-unlink {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.9rem;
+    border: 1px solid var(--danger-border);
+    border-radius: 999px;
+    background: var(--danger-soft);
+    color: var(--danger);
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.btn-unlink:hover {
+    background: var(--danger);
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+.btn-connect {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.2s ease, transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.btn-connect:hover {
+    background: var(--accent-primary);
+    transform: translateY(-1px);
+}
+
+/* ---------------------------------------------------------------------------
+   11. Timezone picker
+--------------------------------------------------------------------------- */
+.timezone-picker {
+    max-width: 360px;
+}
+
+.tz-select {
+    width: 100%;
+    padding: 0.7rem 0.9rem;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
+    font-family: inherit;
+    font-size: 0.93rem;
+    color: var(--text-primary);
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tz-select:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(232, 226, 216, 0.55);
+}
+
+/* ---------------------------------------------------------------------------
+   12. Responsive
 --------------------------------------------------------------------------- */
 @media (max-width: 520px) {
     .theme-grid {
         grid-template-columns: 1fr;
+    }
+
+    .google-status {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .btn-unlink,
+    .btn-connect {
+        align-self: flex-start;
     }
 }
 
@@ -371,7 +596,10 @@ body.settings a {
     .theme-option,
     .toggle-switch,
     .toggle-switch::after,
-    .btn-primary {
+    .btn-primary,
+    .btn-unlink,
+    .btn-connect,
+    .tab-btn {
         transition: none;
     }
 }

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Account Settings — Niter Hub</title>
-    <meta name="description" content="Manage your Niter Hub password, notification preferences, and theme.">
+    <meta name="description" content="Manage your Niter Hub notification preferences, Google account, and display settings.">
 
     <!-- Global design tokens -->
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
@@ -34,74 +34,76 @@
         ============================================================ -->
         <div class="intro">
             <h1>Account Settings</h1>
-            <p>Manage your password, notifications, and appearance.</p>
+            <p>Manage your notification preferences, Google account, and display settings.</p>
+        </div>
+
+        <!-- ============================================================
+             Tab navigation
+        ============================================================ -->
+        <div class="tabs-nav" role="tablist" aria-label="Settings tabs">
+            <button type="button" class="tab-btn" data-tab="notifications" role="tab" aria-selected="{% if active_tab == 'notifications' %}true{% else %}false{% endif %}" aria-controls="tab-notifications">
+                <i class="fa-solid fa-bell"></i> Notifications
+            </button>
+            <button type="button" class="tab-btn" data-tab="account" role="tab" aria-selected="{% if active_tab == 'account' %}true{% else %}false{% endif %}" aria-controls="tab-account">
+                <i class="fa-solid fa-user"></i> Account &amp; Google
+            </button>
+            <button type="button" class="tab-btn" data-tab="display" role="tab" aria-selected="{% if active_tab == 'display' %}true{% else %}false{% endif %}" aria-controls="tab-display">
+                <i class="fa-solid fa-palette"></i> Display
+            </button>
         </div>
 
         <div class="settings-layout">
 
             <!-- ============================================================
-                 Password reset
+                 Tab 1: Notification Preferences
             ============================================================ -->
-            <section class="card" data-component="password-reset">
-                <h2 class="section-title"><i class="fa-solid fa-key"></i> Password Reset</h2>
-                <p class="section-subtitle">Change the password you use to sign in to Niter Hub.</p>
-
-                {% if password_updated %}
-                <div class="alert success" role="status">
-                    <i class="fa-solid fa-circle-check"></i>
-                    <span>Your password has been updated successfully.</span>
-                </div>
-                {% endif %}
-
-                {% if password_form.errors %}
-                <div class="alert error" role="alert">
-                    <i class="fa-solid fa-circle-exclamation"></i>
-                    <div>
-                        {% for field in password_form %}
-                            {% for error in field.errors %}<p>{{ error }}</p>{% endfor %}
-                        {% endfor %}
-                        {% for error in password_form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
-                    </div>
-                </div>
-                {% endif %}
-
-                <form method="post" action="{% url 'settings' %}" class="settings-form" novalidate>
-                    {% csrf_token %}
-                    <div class="field">
-                        <label for="{{ password_form.old_password.id_for_label }}" class="field-label">Current Password</label>
-                        <div class="field-input">
-                            <i class="fa-solid fa-lock"></i>
-                            {{ password_form.old_password }}
-                        </div>
-                    </div>
-                    <div class="field">
-                        <label for="{{ password_form.new_password1.id_for_label }}" class="field-label">New Password</label>
-                        <div class="field-input">
-                            <i class="fa-solid fa-lock"></i>
-                            {{ password_form.new_password1 }}
-                        </div>
-                    </div>
-                    <div class="field">
-                        <label for="{{ password_form.new_password2.id_for_label }}" class="field-label">Confirm New Password</label>
-                        <div class="field-input">
-                            <i class="fa-solid fa-lock"></i>
-                            {{ password_form.new_password2 }}
-                        </div>
-                    </div>
-                    <button type="submit" class="btn-primary">
-                        <i class="fa-solid fa-rotate"></i> Update Password
-                    </button>
-                </form>
-            </section>
-
-            <!-- ============================================================
-                 Notification preferences
-            ============================================================ -->
-            <section class="card" data-component="notification-preferences">
-                <h2 class="section-title"><i class="fa-solid fa-bell"></i> Notification Preferences</h2>
-                <p class="section-subtitle">Choose which updates you want to receive.</p>
+            <section class="card tab-panel" id="tab-notifications" role="tabpanel" aria-labelledby="tab-notifications-label" {% if active_tab != 'notifications' %}hidden{% endif %}>
+                <h2 id="tab-notifications-label" class="section-title"><i class="fa-solid fa-bell"></i> Notification Preferences</h2>
+                <p class="section-subtitle">Choose which updates you want to receive and how they are delivered.</p>
 
                 <div class="toggle-list">
+                    <!-- Per-category toggles -->
+                    <div class="toggle-group-label">Categories</div>
+
+                    <label class="toggle-row">
+                        <div>
+                            <strong>Meal ticket updates</strong>
+                            <span>Daily meal claim confirmations, subscription reminders.</span>
+                        </div>
+                        <input type="checkbox" class="toggle-input" data-pref="notify_meals" {% if prefs.notify_meals %}checked{% endif %}>
+                        <span class="toggle-switch" aria-hidden="true"></span>
+                    </label>
+
+                    <label class="toggle-row">
+                        <div>
+                            <strong>Transport updates</strong>
+                            <span>Seat confirmations, route changes, QR pass notifications.</span>
+                        </div>
+                        <input type="checkbox" class="toggle-input" data-pref="notify_transport" {% if prefs.notify_transport %}checked{% endif %}>
+                        <span class="toggle-switch" aria-hidden="true"></span>
+                    </label>
+
+                    <label class="toggle-row">
+                        <div>
+                            <strong>Medical updates</strong>
+                            <span>Appointment confirmations, status changes, chat messages.</span>
+                        </div>
+                        <input type="checkbox" class="toggle-input" data-pref="notify_medical" {% if prefs.notify_medical %}checked{% endif %}>
+                        <span class="toggle-switch" aria-hidden="true"></span>
+                    </label>
+
+                    <label class="toggle-row">
+                        <div>
+                            <strong>Official notices</strong>
+                            <span>Institutional announcements, urgent alerts, events.</span>
+                        </div>
+                        <input type="checkbox" class="toggle-input" data-pref="notify_notices" {% if prefs.notify_notices %}checked{% endif %}>
+                        <span class="toggle-switch" aria-hidden="true"></span>
+                    </label>
+
+                    <!-- Channel toggles -->
+                    <div class="toggle-group-label">Delivery Channels</div>
+
                     <label class="toggle-row">
                         <div>
                             <strong>Email notifications</strong>
@@ -136,23 +138,136 @@
             </section>
 
             <!-- ============================================================
-                 Theme preferences
+                 Tab 2: Account & Google Integration
             ============================================================ -->
-            <section class="card" data-component="theme-preferences">
-                <h2 class="section-title"><i class="fa-solid fa-palette"></i> Theme</h2>
-                <p class="section-subtitle">Pick how the portal looks for you.</p>
+            <section class="card tab-panel" id="tab-account" role="tabpanel" aria-labelledby="tab-account-label" {% if active_tab != 'account' %}hidden{% endif %}>
+                <h2 id="tab-account-label" class="section-title"><i class="fa-solid fa-user"></i> Account &amp; Google Integration</h2>
 
-                <div class="theme-grid">
-                    <button type="button" class="theme-option" data-theme="light" data-pref="dark_mode" data-value="0" aria-pressed="{% if not prefs.dark_mode %}true{% else %}false{% endif %}">
-                        <span class="theme-swatch light"><i class="fa-solid fa-sun"></i></span>
-                        <strong>Warm Light</strong>
-                        <span>Paper-like, easy on the eyes.</span>
-                    </button>
-                    <button type="button" class="theme-option" data-theme="dark" data-pref="dark_mode" data-value="1" aria-pressed="{% if prefs.dark_mode %}true{% else %}false{% endif %}">
-                        <span class="theme-swatch dark"><i class="fa-solid fa-moon"></i></span>
-                        <strong>Dark</strong>
-                        <span>Low-glare for late-night work.</span>
-                    </button>
+                <!-- Password Reset -->
+                <div class="settings-section">
+                    <h3 class="sub-section-title"><i class="fa-solid fa-key"></i> Password Reset</h3>
+                    <p class="section-subtitle">Change the password you use to sign in to Niter Hub.</p>
+
+                    {% if password_updated %}
+                    <div class="alert success" role="status">
+                        <i class="fa-solid fa-circle-check"></i>
+                        <span>Your password has been updated successfully.</span>
+                    </div>
+                    {% endif %}
+
+                    {% if password_form.errors %}
+                    <div class="alert error" role="alert">
+                        <i class="fa-solid fa-circle-exclamation"></i>
+                        <div>
+                            {% for field in password_form %}
+                                {% for error in field.errors %}<p>{{ error }}</p>{% endfor %}
+                            {% endfor %}
+                            {% for error in password_form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <form method="post" action="{% url 'settings' %}" class="settings-form" novalidate>
+                        {% csrf_token %}
+                        <div class="field">
+                            <label for="{{ password_form.old_password.id_for_label }}" class="field-label">Current Password</label>
+                            <div class="field-input">
+                                <i class="fa-solid fa-lock"></i>
+                                {{ password_form.old_password }}
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label for="{{ password_form.new_password1.id_for_label }}" class="field-label">New Password</label>
+                            <div class="field-input">
+                                <i class="fa-solid fa-lock"></i>
+                                {{ password_form.new_password1 }}
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label for="{{ password_form.new_password2.id_for_label }}" class="field-label">Confirm New Password</label>
+                            <div class="field-input">
+                                <i class="fa-solid fa-lock"></i>
+                                {{ password_form.new_password2 }}
+                            </div>
+                        </div>
+                        <button type="submit" class="btn-primary">
+                            <i class="fa-solid fa-rotate"></i> Update Password
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Google OAuth Integration -->
+                <div class="settings-section">
+                    <h3 class="sub-section-title"><i class="fa-brands fa-google"></i> Google Account</h3>
+                    <p class="section-subtitle">Connect your Google account for Drive notes uploads, sheets integration, and exports.</p>
+
+                    <div class="google-card">
+                        {% if google_social or has_google_token %}
+                        <div class="google-status connected">
+                            <div class="google-status-icon"><i class="fa-brands fa-google"></i></div>
+                            <div class="google-status-body">
+                                <strong>Connected</strong>
+                                <span>{{ google_social.extra_data.email|default:google_social.uid|default:"Google account" }}</span>
+                                <small>Drive export &amp; sheets integration are active.</small>
+                            </div>
+                            <button type="button" class="btn-unlink" id="google-unlink-btn" data-url="{% url 'api_google_unlink' %}">
+                                <i class="fa-solid fa-link-slash"></i> Unlink
+                            </button>
+                        </div>
+                        {% else %}
+                        <div class="google-status disconnected">
+                            <div class="google-status-icon"><i class="fa-brands fa-google"></i></div>
+                            <div class="google-status-body">
+                                <strong>Not connected</strong>
+                                <span>Connect your Google account to enable Drive uploads and sheets integration.</span>
+                            </div>
+                            <a href="{% url 'google_login' %}" class="btn-connect" target="_blank" rel="noopener">
+                                <i class="fa-brands fa-google"></i> Connect Google Account
+                            </a>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================================================
+                 Tab 3: Display Preferences
+            ============================================================ -->
+            <section class="card tab-panel" id="tab-display" role="tabpanel" aria-labelledby="tab-display-label" {% if active_tab != 'display' %}hidden{% endif %}>
+                <h2 id="tab-display-label" class="section-title"><i class="fa-solid fa-palette"></i> Display Preferences</h2>
+                <p class="section-subtitle">Customise the portal appearance and timezone.</p>
+
+                <!-- Theme -->
+                <div class="settings-section">
+                    <h3 class="sub-section-title"><i class="fa-solid fa-brush"></i> Theme</h3>
+                    <p class="section-subtitle">Pick how the portal looks for you.</p>
+
+                    <div class="theme-grid">
+                        <button type="button" class="theme-option" data-theme="light" data-pref="dark_mode" data-value="0" aria-pressed="{% if not prefs.dark_mode %}true{% else %}false{% endif %}">
+                            <span class="theme-swatch light"><i class="fa-solid fa-sun"></i></span>
+                            <strong>Warm Light</strong>
+                            <span>Paper-like, easy on the eyes.</span>
+                        </button>
+                        <button type="button" class="theme-option" data-theme="dark" data-pref="dark_mode" data-value="1" aria-pressed="{% if prefs.dark_mode %}true{% else %}false{% endif %}">
+                            <span class="theme-swatch dark"><i class="fa-solid fa-moon"></i></span>
+                            <strong>Dark</strong>
+                            <span>Low-glare for late-night work.</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Timezone -->
+                <div class="settings-section">
+                    <h3 class="sub-section-title"><i class="fa-solid fa-globe"></i> Timezone</h3>
+                    <p class="section-subtitle">Set your local timezone for event and notification timestamps.</p>
+
+                    <div class="timezone-picker">
+                        <select id="timezone-select" class="tz-select" data-pref="timezone">
+                            {% for code, label in prefs.TIMEZONE_CHOICES %}
+                            <option value="{{ code }}" {% if prefs.timezone == code %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
                 </div>
             </section>
 
@@ -161,14 +276,44 @@
 
     <script>
         // ====================================================================
-        // Notification + theme preferences — persisted to the database via
-        // POST /settings/ (UserNotificationPreference), not localStorage.
+        // Settings — tab navigation, preference persistence, Google unlink
         // ====================================================================
         (function () {
             const SETTINGS_URL = '{% url "settings" %}';
             const note = document.getElementById('pref-note');
-            const options = document.querySelectorAll('.theme-option');
             const inputs = document.querySelectorAll('.toggle-input');
+            const options = document.querySelectorAll('.theme-option');
+            const tzSelect = document.getElementById('timezone-select');
+
+            // ---- Tab navigation ----
+            (function () {
+                const tabs = document.querySelectorAll('.tab-btn');
+                const panels = document.querySelectorAll('.tab-panel');
+
+                function activateTab(tabId) {
+                    tabs.forEach((btn) => {
+                        const isActive = btn.dataset.tab === tabId;
+                        btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                        btn.classList.toggle('active', isActive);
+                    });
+                    panels.forEach((panel) => {
+                        panel.hidden = panel.id !== 'tab-' + tabId;
+                    });
+                    // Update URL hash without triggering scroll.
+                    history.replaceState(null, '', '?tab=' + tabId);
+                }
+
+                tabs.forEach((btn) => {
+                    btn.addEventListener('click', () => activateTab(btn.dataset.tab));
+                });
+
+                // Restore tab from URL hash on load.
+                const params = new URLSearchParams(location.search);
+                const tabParam = params.get('tab');
+                if (tabParam && document.querySelector('.tab-btn[data-tab="' + tabParam + '"]')) {
+                    activateTab(tabParam);
+                }
+            })();
 
             function getCookie(name) {
                 const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
@@ -176,6 +321,7 @@
             }
 
             function showSaved() {
+                if (!note) return;
                 note.hidden = false;
                 clearTimeout(showSaved._t);
                 showSaved._t = setTimeout(() => { note.hidden = true; }, 2000);
@@ -198,18 +344,18 @@
                 }
             }
 
-            // Notification toggles → DB
+            // ---- Notification toggles → DB ----
             inputs.forEach((input) => {
                 input.addEventListener('change', async () => {
                     const payload = {};
                     inputs.forEach((el) => { payload[el.dataset.pref] = el.checked; });
+                    if (tzSelect) payload.timezone = tzSelect.value;
                     const data = await savePrefs(payload);
                     if (data.status === 'success') showSaved();
                 });
             });
 
-            // Theme grid → dark_mode in DB; theme.css maps tokens under
-            // [data-theme="dark"] so the portal reflects the saved choice.
+            // ---- Theme grid → dark_mode ----
             function applyTheme(theme) {
                 document.documentElement.dataset.theme = theme;
                 options.forEach((opt) => {
@@ -219,7 +365,6 @@
                 });
             }
 
-            // Initial theme comes from the user's saved preference.
             applyTheme({{ prefs.dark_mode|yesno:"'dark','light'" }});
 
             options.forEach((opt) => {
@@ -229,6 +374,36 @@
                     if (data.status === 'success') showSaved();
                 });
             });
+
+            // ---- Timezone selector → DB ----
+            if (tzSelect) {
+                tzSelect.addEventListener('change', async () => {
+                    const data = await savePrefs({ timezone: tzSelect.value });
+                    if (data.status === 'success') showSaved();
+                });
+            }
+
+            // ---- Google unlink (AJAX) ----
+            const unlinkBtn = document.getElementById('google-unlink-btn');
+            if (unlinkBtn) {
+                unlinkBtn.addEventListener('click', async () => {
+                    if (!confirm('Disconnect your Google account? Drive notes upload and sheets integration will stop working.')) return;
+                    try {
+                        const response = await fetch(unlinkBtn.dataset.url, {
+                            method: 'POST',
+                            headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                        });
+                        const data = await response.json().catch(() => ({}));
+                        if (data.status === 'success') {
+                            location.reload();
+                        } else {
+                            alert('Failed to unlink Google account. Please try again.');
+                        }
+                    } catch (err) {
+                        alert('Failed to unlink Google account. Please try again.');
+                    }
+                });
+            }
         })();
     </script>
 </body>

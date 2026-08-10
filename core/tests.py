@@ -3010,7 +3010,7 @@ class SettingsPreferencesTest(TestCase):
 
     def setUp(self):
         self.user = User.objects.create_user(username='prefs_user', password='x12345678')
-        self.client.login(username='prefs_user', password='x12345678')
+        self.client.force_login(self.user)
 
     def test_signal_auto_creates_default_prefs(self):
         self.assertTrue(UserNotificationPreference.objects.filter(user=self.user).exists())
@@ -3019,6 +3019,11 @@ class SettingsPreferencesTest(TestCase):
         self.assertFalse(prefs.sms_alerts)
         self.assertTrue(prefs.push_notifications)
         self.assertFalse(prefs.dark_mode)
+        self.assertTrue(prefs.notify_meals)
+        self.assertTrue(prefs.notify_transport)
+        self.assertTrue(prefs.notify_medical)
+        self.assertTrue(prefs.notify_notices)
+        self.assertEqual(prefs.timezone, 'Asia/Dhaka')
 
     def test_settings_get_renders_saved_state(self):
         prefs = self.user.notification_prefs
@@ -3026,10 +3031,14 @@ class SettingsPreferencesTest(TestCase):
         prefs.dark_mode = True
         prefs.save()
         html = self.client.get(reverse('settings')).content.decode()
-        # The sms toggle + dark theme option render as selected
+        # The sms toggle + dark theme option render as selected.
         self.assertIn('data-pref="sms_alerts" checked', html)
         self.assertIn('data-theme="dark" data-pref="dark_mode" data-value="1" aria-pressed="true"', html)
         self.assertIn('data-pref="email_alerts" checked', html)
+        # New per-category toggles render with default checked.
+        self.assertIn('data-pref="notify_meals" checked', html)
+        self.assertIn('data-pref="notify_notices" checked', html)
+        self.assertIn('data-pref="timezone"', html)  # data-pref on the select element
 
     def test_settings_post_saves_prefs_to_database(self):
         response = self.client.post(reverse('settings'), {
@@ -3038,12 +3047,15 @@ class SettingsPreferencesTest(TestCase):
             'push_notifications': '',
             'dark_mode': 'on',
         })
-        self.assertEqual(response.status_code, 302)  # form POST redirects
+        self.assertEqual(response.status_code, 302)
         self.user.notification_prefs.refresh_from_db()
         self.assertTrue(self.user.notification_prefs.email_alerts)
         self.assertFalse(self.user.notification_prefs.sms_alerts)
         self.assertFalse(self.user.notification_prefs.push_notifications)
         self.assertTrue(self.user.notification_prefs.dark_mode)
+        # Default category toggles should be unchanged.
+        self.assertTrue(self.user.notification_prefs.notify_meals)
+        self.assertTrue(self.user.notification_prefs.notify_notices)
 
     def test_settings_json_post_updates_prefs(self):
         response = self.client.post(
@@ -3052,11 +3064,38 @@ class SettingsPreferencesTest(TestCase):
             content_type='application/json',
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['status'], 'success')
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertFalse(data['email_alerts'])
+        self.assertTrue(data['sms_alerts'])
+        self.assertTrue(data['dark_mode'])
+        # The JSON response now includes the new fields.
+        self.assertTrue(data['notify_meals'])
+        self.assertEqual(data['timezone'], 'Asia/Dhaka')
         self.user.notification_prefs.refresh_from_db()
         self.assertFalse(self.user.notification_prefs.email_alerts)
         self.assertTrue(self.user.notification_prefs.sms_alerts)
         self.assertTrue(self.user.notification_prefs.dark_mode)
+
+    def test_settings_json_updates_new_fields(self):
+        response = self.client.post(
+            reverse('settings'),
+            data=json.dumps({
+                'notify_meals': False,
+                'notify_transport': False,
+                'notify_medical': False,
+                'notify_notices': False,
+                'timezone': 'UTC',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.user.notification_prefs.refresh_from_db()
+        self.assertFalse(self.user.notification_prefs.notify_meals)
+        self.assertFalse(self.user.notification_prefs.notify_transport)
+        self.assertFalse(self.user.notification_prefs.notify_medical)
+        self.assertFalse(self.user.notification_prefs.notify_notices)
+        self.assertEqual(self.user.notification_prefs.timezone, 'UTC')
 
     def test_settings_requires_login(self):
         self.client.logout()
@@ -3074,6 +3113,25 @@ class SettingsPreferencesTest(TestCase):
         self.client.login(username='prefs_user', password='x12345678')
         html = self.client.get(reverse('settings')).content.decode()
         self.assertIn('data-theme="dark" data-pref="dark_mode" data-value="1" aria-pressed="true"', html)
+
+    def test_google_unlink_removes_token(self):
+        """POST /api/settings/google-unlink/ deletes the user's GoogleUserToken."""
+        self.client.force_login(self.user)
+        GoogleUserToken.objects.create(
+            user=self.user,
+            access_token='abc', refresh_token='def',
+            token_uri='https://oauth2.googleapis.com/token',
+            client_id='x', client_secret='y',
+            expiry=timezone.now() + timedelta(days=1),
+        )
+        response = self.client.post(reverse('api_google_unlink'))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(GoogleUserToken.objects.filter(user=self.user).exists())
+
+    def test_google_unlink_requires_login(self):
+        self.client.logout()
+        response = self.client.post(reverse('api_google_unlink'))
+        self.assertEqual(response.status_code, 401)
 
 
 class NotesEngineApiTest(TestCase):

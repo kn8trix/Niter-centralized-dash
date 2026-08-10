@@ -46,6 +46,9 @@ urlpatterns = [
     path('api/clubs/sheet/', views.fetch_club_sheet_view, name='api_club_sheet_fetch'),
     path('api/clubs/sheet/append/', views.append_club_sheet_view, name='api_club_sheet_append'),
 
+    # Settings — Google OAuth account unlinking
+    path('api/settings/google-unlink/', views.google_unlink, name='api_google_unlink'),
+
     # Notes Engine — server-side actions (fetch one / save / summarize / keywords / export)
     path('api/notes/<int:note_id>/', views.get_note, name='api_note_get'),
     path('api/notes/save/', views.save_note, name='api_note_save'),
