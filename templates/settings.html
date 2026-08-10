@@ -1,17 +1,33 @@
-{% extends "base.html" %}
 {% load static %}
-
-{% block title %}Account Settings{% endblock %}
-{% block header %}Account Settings{% endblock %}
-{% block body_class %} settings{% endblock %}
-
-{% block extra_head %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Settings — Niter Hub</title>
     <meta name="description" content="Manage your Niter Hub notification preferences, Google account, and display settings.">
-    <link rel="stylesheet" href="{% static 'css/settings.css' %}">
-{% endblock %}
 
-{% block content %}
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Settings page styles -->
+    <link rel="stylesheet" href="{% static 'css/settings.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="settings" data-app="campusdash-public">
+
     <div class="shell">
+
+        {% include 'partials/topbar.html' with active='' %}
 
         <!-- ============================================================
              Intro
@@ -390,4 +406,5 @@
             }
         })();
     </script>
-{% endblock %}
+</body>
+</html>

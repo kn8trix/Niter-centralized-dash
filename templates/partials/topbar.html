@@ -2,14 +2,11 @@
 ============================================================================
 CampusDash — Shared Top Navigation Header
 --------------------------------------------------------------------------
-Used by the pages that keep a standalone header (homepage, login/signup,
-/checkout/, /departments/, /academic-notes/, /profile/, admin dashboards,
-editable pages). The main student subpages (dashboard, transport, meals,
-medical, clubs, notices, research AI, settings) render inside the Niter Hub
-left sidebar (base.html) instead — see `core/tests/test_navigation.py`.
-One source of truth for the header so all pages stay in sync: brand,
-desktop nav pills (active pill highlighted #e8e2d8), and the mobile profile
-popover with user info, page links, and account actions.
+Used by every standalone public page (dashboard, departments, transport,
+meals, clubs, medical, notices, notes, research ai). One source of truth
+for the header so all pages stay in sync: brand, desktop nav pills (active
+pill highlighted #e8e2d8), and the mobile profile popover with user info,
+page links, and account actions.
 
 Usage:  {% include 'partials/topbar.html' with active='transport' %}
 active: dashboard | notes | departments | research | notices | transport | meals | medical | clubs

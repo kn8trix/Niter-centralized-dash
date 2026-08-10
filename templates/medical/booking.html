@@ -1,17 +1,33 @@
-{% extends "base.html" %}
 {% load static %}
-
-{% block title %}Medical Booking{% endblock %}
-{% block header %}Medical Booking{% endblock %}
-{% block body_class %} medical{% endblock %}
-
-{% block extra_head %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medical Booking — Niter Hub</title>
     <meta name="description" content="Book campus medical appointments online — doctors, time slots, and live availability.">
-    <link rel="stylesheet" href="{% static 'css/medical.css' %}">
-{% endblock %}
 
-{% block content %}
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Medical booking page styles -->
+    <link rel="stylesheet" href="{% static 'css/medical.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="medical" data-app="campusdash-public">
+
     <div class="shell">
+
+        {% include 'partials/topbar.html' with active='medical' %}
 
         <!-- ============================================================
              Intro
@@ -454,4 +470,5 @@
             });
         })();
     </script>
-{% endblock %}
+</body>
+</html>
