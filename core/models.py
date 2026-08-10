@@ -96,7 +96,64 @@ class EditablePage(models.Model):
 
 
 class ContentBlock(models.Model):
-    """A single editable region on a page, keyed by its ``element_id``."""
+    """A single editable region on a page, keyed by its ``element_id``.
+
+    ``block_type`` selects the rendering strategy:
+
+      * ``html`` — the original mode: ``content_html`` is rendered as-is
+        (sanitized on save through the builder API).
+      * ``faq`` / ``stats`` / ``testimonials`` / ``cta`` — structured blocks
+        whose data lives in ``content_json`` (see ``BLOCK_SCHEMAS``) and is
+        rendered through the matching partial in ``templates/builder/blocks/``
+        by ``render_block`` / ``editable_page_view``.
+
+    ``style_json`` keeps the per-block visual overrides in both modes; it is
+    flattened into an inline style attribute on the block's container.
+    """
+
+    # Structured block type → template partial basename. The ``render_block``
+    # tag and the editable-page renderer share this map, so a new type only
+    # needs a partial in templates/builder/blocks/ and a row here.
+    BLOCK_TYPE_CHOICES = [
+        ('html', 'Rich Text / HTML'),
+        ('faq', 'FAQ Accordion'),
+        ('stats', 'Stats Counter Grid'),
+        ('testimonials', 'Testimonial Slider'),
+        ('cta', 'CTA Section'),
+    ]
+
+    # Documented JSON shape of ``content_json`` per structured block type.
+    # These are the canonical schemas the block partials consume.
+    BLOCK_SCHEMAS = {
+        'faq': {
+            'title': 'Optional heading',
+            'subtitle': 'Optional intro line',
+            'items': [
+                {'question': 'What are the admission requirements?', 'answer': '…'},
+            ],
+        },
+        'stats': {
+            'title': 'Optional heading',
+            'subtitle': 'Optional intro line',
+            'items': [
+                {'value': '4,500+', 'label': 'Active Students', 'icon': 'fa-user-graduate', 'highlight': True},
+            ],
+        },
+        'testimonials': {
+            'title': 'Optional heading',
+            'items': [
+                {'quote': '…', 'author': 'Jane Doe', 'title': 'CSE Alumna', 'avatar': 'https://…'},
+            ],
+        },
+        'cta': {
+            'headline': 'Ready to join NITER?',
+            'subtext': 'Optional supporting line',
+            'primary_label': 'Apply Now',
+            'primary_url': '/signup/',
+            'secondary_label': 'Learn More',
+            'secondary_url': '/departments/',
+        },
+    }
 
     page = models.ForeignKey(
         EditablePage,
@@ -104,7 +161,19 @@ class ContentBlock(models.Model):
         related_name='content_blocks',
     )
     element_id = models.CharField(max_length=100)
+    block_type = models.CharField(
+        max_length=20,
+        choices=BLOCK_TYPE_CHOICES,
+        default='html',
+        db_index=True,
+        help_text="Rendering strategy: raw HTML or a structured component",
+    )
     content_html = models.TextField(blank=True)
+    content_json = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Structured data for faq / stats / testimonials / cta blocks — see BLOCK_SCHEMAS',
+    )
     style_json = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 

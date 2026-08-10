@@ -202,9 +202,9 @@ To create a new page, extend the base template:
 ## 6. Technical Stack
 - **Backend:** Django 4.2 (`requirements.txt` pins `django>=4.2,<5.0`)
 - **Config:** `django-environ` — all secrets/settings from environment / `.env`
-- **Real-time:** Django Channels 4 + Daphne (ASGI — WebSockets for live notifications); `channels-redis` in production with in-memory fallback
+- **Real-time:** Django Channels 4 + Daphne (ASGI — WebSockets for live notifications); `channels-redis` in production with in-memory fallback. channels/daphne implicit deps (`asgiref`, `autobahn`, `twisted[tls]`) are pinned explicitly in `requirements.txt` (see §42)
 - **Static:** WhiteNoise (`CompressedStaticFilesStorage`) — production static serving + `collectstatic`
-- **Auth:** django-allauth (Google OAuth) + Django sessions
+- **Auth:** django-allauth (Google OAuth) + Django sessions; Google ID-token verification via `PyJWT[crypto]` (allauth's `socialaccount` extra — pinned in `requirements.txt`, see §42)
 - **Google APIs:** `google-api-python-client`, `gspread` (Drive notes upload, club sheets)
 - **Frontend Styling:** Tailwind CSS (via CDN for rapid development)
 - **Icons:** Heroicons (SVG) for a consistent, clean look.
@@ -281,6 +281,7 @@ python manage.py check --deploy
 ### Troubleshooting
 - **Port already in use:** Use `python manage.py runserver 8080` to run on a different port.
 - **ModuleNotFoundError:** Ensure virtual environment is activated (`source venv/bin/activate`).
+- **`ModuleNotFoundError: No module named 'jwt'` (allauth Google provider):** stale venv or pre-§42 `requirements.txt` — the Google provider needs `PyJWT[crypto]`. Re-run `pip install -r requirements.txt` (adds the pin; see §42).
 - **Template errors:** Check that all templates are in the `templates/` directory.
 
 ## 8. File Structure
@@ -1450,14 +1451,38 @@ The app is packaged for one-click deployment on **Render** via a Blueprint (`ren
 ```bash
 #!/usr/bin/env bash
 set -o errexit
-python -m pip install -r requirements.txt
-python manage.py collectstatic --noinput
-python manage.py migrate
+set -o pipefail
+
+# Render's build image provides `python`; a local checkout may only expose
+# `python3` or a venv — prefer an existing venv so ./build.sh also runs locally.
+if [ -x "venv/bin/python" ]; then PYTHON="venv/bin/python"
+elif command -v python >/dev/null 2>&1; then PYTHON="python"
+else PYTHON="python3"; fi
+
+"$PYTHON" -m pip install -r requirements.txt
+RENDER_BUILD=true "$PYTHON" manage.py collectstatic --noinput
+RENDER_BUILD=true "$PYTHON" manage.py migrate
 ```
+
+**Hardening** (`chmod +x build.sh`): `errexit` + `pipefail` abort the build on
+any failing step; `RENDER_BUILD=true` tells settings.py this is the **build
+phase**, so `collectstatic`/`migrate` succeed even before Render injects the
+service's generated `SECRET_KEY` (see below). Verified locally: `./build.sh`
+installs (no-op when satisfied), collects 147 static files, applies migrations,
+and exits `Build complete`.
 
 ### Settings Changes (`config/settings.py`)
 
 Render injects `RENDER=true` for every service. When present, the app **appends** the platform host `.onrender.com`, the production custom domain `niter.edu.bd` (+ `www.`), and `localhost`/`127.0.0.1` to `ALLOWED_HOSTS`; `CSRF_TRUSTED_ORIGINS` gets `https://*.onrender.com` plus `https://niter.edu.bd` / `https://www.niter.edu.bd`. The block only ever **appends** — env-provided hosts still pass through untouched. Non-Render environments (local dev/tests) are unaffected. Verified: `RENDER=true` → `ALLOWED_HOSTS=['.onrender.com','niter.edu.bd','www.niter.edu.bd','localhost','127.0.0.1']`, `CSRF_TRUSTED_ORIGINS=['https://*.onrender.com','https://niter.edu.bd','https://www.niter.edu.bd']`; without `RENDER` → unchanged.
+
+**Build-time SECRET_KEY fallback.** `SECRET_KEY` still **fails closed** at
+runtime (`ImproperlyConfigured` when `DEBUG=false` and no secret), but when
+`RENDER_BUILD=true` (set only by `build.sh`, never by the start command) a
+throwaway placeholder key is used so the build's `collectstatic`/`migrate`
+run cleanly even if the env var hasn't loaded yet. Probes (`.env` moved aside):
+`DEBUG=false RENDER_BUILD=true` → check OK; `DEBUG=false` alone →
+`ImproperlyConfigured`; `DEBUG=true` → dev fallback key. This is defense-in-depth
+— Render's `generateValue` secret is normally injected before the build runs.
 
 WhiteNoise (`CompressedStaticFilesStorage`, middleware) already serves collected static in production — no changes needed; `build.sh` runs `collectstatic` so `staticfiles/` is fresh on every deploy.
 
@@ -1556,3 +1581,136 @@ One work session covering: the **Render Blueprint production deployment** (with 
 - **`python manage.py test` — 349 tests, OK** (29 new)  
 - `RENDER=true` probe: `ALLOWED_HOSTS = ['.onrender.com', 'niter.edu.bd', 'www.niter.edu.bd', 'localhost', '127.0.0.1']`, `CSRF_TRUSTED_ORIGINS` includes `https://*.onrender.com` + `https://niter.edu.bd`  
 - `render.yaml` validated (no duplicate keys; correct commands/domains/datastores)
+---
+
+## 41. Website Builder — Structured Block Component Library
+
+Expanded the Website Builder from raw-HTML ``ContentBlock``s into a structured
+component library. The ``render_block`` template tag and the public page
+renderer now dispatch on a new ``ContentBlock.block_type`` field.
+
+### 41.1 Block types & JSON schemas
+
+``ContentBlock.block_type`` (default ``html``, migration **0015**) selects the
+rendering strategy. Structured types keep their data in ``content_json`` — the
+canonical schemas are documented in ``ContentBlock.BLOCK_SCHEMAS``:
+
+| type | partial | ``content_json`` shape |
+|------|---------|------------------------|
+| ``html`` | — (raw ``content_html``) | — |
+| ``faq`` | ``builder/blocks/faq_accordion.html`` | ``{title?, subtitle?, items: [{question, answer}]}`` |
+| ``stats`` | ``builder/blocks/stats_grid.html`` | ``{title?, subtitle?, items: [{value, label, icon?, highlight?}]}`` |
+| ``testimonials`` | ``builder/blocks/testimonial_slider.html`` | ``{title?, items: [{quote, author, title?, avatar?}]}`` |
+| ``cta`` | ``builder/blocks/cta_section.html`` | ``{headline?, subtext?, primary_label?, primary_url?, secondary_label?, secondary_url?}`` |
+
+### 41.2 Rendering & fallback behavior
+
+- ``core/templatetags/builder_tags.py`` — ``render_block`` now loads the
+  partial for the block's type via ``render_block_html`` (shared with
+  ``core/views.editable_page_view`` so the tag and the live page never
+  diverge). Fallbacks, in order: partial render failure / missing partial →
+  ``content_html`` → ``default_text``. A broken block never 500s a page.
+- Structured blocks with **empty** ``content_json`` render the default/empty
+  state; ``data.items`` is normalized so a missing ``items`` key safely hits
+  the ``{% empty %}`` branch instead of resolving to the dict's bound method.
+- ``editable_page.html`` renders ``block.rendered_html`` (partial output for
+  structured types, raw HTML otherwise); the visual editor gains a
+  ``block-type-badge`` in the inspector and shows ``block_type``/``content_json``
+  in its block payloads.
+- ``save_content_block`` accepts optional ``block_type`` / ``content_json``
+  (invalid types are coerced to ``html``); a plain HTML save preserves an
+  existing structured block's type and data.
+- ``safe_url`` template filter guards CTA ``href`` values (only http(s)/
+  mailto/tel/ftp, relative and ``#`` links pass; ``javascript:`` is neutralized)
+  so ``content_json`` URLs get the same scheme allow-list as the HTML sanitizer.
+- ``render_block_html`` treats a non-dict ``content_json`` (hand-edited in the
+  admin) as malformed and falls back — a broken block never 500s a page.
+
+### 41.3 Client-side behaviour (dependency-free)
+
+- FAQ accordion — native ``<details>/<summary>``, no JS required, CSS chevron
+  rotation on ``[open]``.
+- Stats grid — ``IntersectionObserver`` count-up animation for the leading
+  digits of each value (suffixes like ``+``/``%`` preserved); ``highlight``
+  cards use the dark accent.
+- Testimonial slider — vanilla-JS track slider: prev/next arrows, dot
+  navigation, 7s auto-advance, hover pause, touch swipe. Static list without JS.
+- CTA section — gradient banner with primary + secondary pill buttons; each
+  button renders only when both its label and URL are set.
+
+All component styles live in ``static/css/editable_page.css`` (§7), matching
+ the warm-light theme tokens. A local demo page (``/page/component-demo/``)
+ exercises all four components.
+
+### 41.4 Verification
+
+- `python manage.py check` — no issues · `makemigrations --check` — no changes
+- Builder tests: `python manage.py test core.tests.BuilderBlockLibraryTest`
+  (18 tests: model defaults, partial dispatch, fallbacks incl. non-dict JSON,
+  ``safe_url`` filter, save-API structured fields, live-page rendering, editor
+  badge). Note: the spec's literal `core.tests.test_builder` label does not
+  resolve — builder tests live in `core/tests.py`.
+- **`python manage.py test` — 367 tests, OK** (18 new, 349 prior)
+- Browser smoke test of ``/page/component-demo/`` — all four components render,
+  no console errors.
+
+---
+
+## 42. Dependency Hardening — PyJWT / Cryptography for allauth Google OAuth
+
+**Date:** 10 August 2026  
+**Branch:** main (working tree, uncommitted)
+
+### Overview
+
+`django-allauth` only declares its Google/OIDC JWT requirements
+(`pyjwt[crypto]>=1.7`, `requests`) under the optional **`socialaccount`** extra,
+so a plain `pip install -r requirements.txt` never installed them. On a fresh
+environment (CI, Render build, new local clone) Django crashed during startup
+when the Google provider module loaded:
+
+```
+File ".../allauth/socialaccount/providers/google/provider.py", line 7, in <module>
+    from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
+File ".../allauth/socialaccount/providers/google/views.py", line 13, in <module>
+    from allauth.socialaccount.internal import jwtkit
+File ".../allauth/socialaccount/internal/jwtkit.py", line 3, in <module>
+    import jwt
+ModuleNotFoundError: No module named 'jwt'
+```
+
+**Verified end-to-end:** installing the previous `requirements.txt` into a
+clean venv and running `manage.py check` reproduced exactly that traceback
+(and showed `cryptography` already arriving transitively via
+`twisted[tls]`→pyOpenSSL while `PyJWT` was missing). The system-wide Python
+happened to have PyJWT installed, which masked the problem locally.
+
+### Changes (`requirements.txt`)
+
+- **Added `PyJWT[crypto]>=2.8,<3.0`** — the `[crypto]` extra installs
+  `cryptography` for the RS256 key handling. Without it the Google provider's
+  `jwtkit` import fails at startup with `ModuleNotFoundError: No module named
+  'jwt'`.
+- **Pinned channels/daphne implicit dependencies explicitly** so fresh
+  installs never rely on transitive resolution order:
+  - `asgiref>=3.9,<4.0` — required by channels (>=3.9.0) and daphne (>=3.5.2)
+  - `autobahn>=22.4.2,<27` — daphne's WebSocket protocol library
+  - `twisted[tls]>=22.4,<27` — daphne's ASGI server engine (TLS extra pulls
+    pyOpenSSL + service-identity + cryptography)
+- `requests` / `requests-oauthlib` are the remaining `socialaccount` extra
+  requirements — `requests` was already pinned; `requests-oauthlib` is now
+  explicit too (previously only arriving transitively via `google-auth-oauthlib`).
+
+No `config/settings.py` change was needed — the Google provider was already
+correctly in `INSTALLED_APPS`; the failure was purely a missing install-time
+dependency. CI (`ci.yml`) installs from `requirements.txt`, so the fix flows
+through automatically.
+
+### Verification
+
+- **Repro:** clean venv + old `requirements.txt` → `python manage.py check`
+  fails with `ModuleNotFoundError: No module named 'jwt'`.
+- **Fix:** clean venv + updated `requirements.txt` → `pip install` resolves
+  cleanly (`PyJWT` 2.x + `cryptography` present) → `python manage.py check` —
+  no issues.
+- **Full test suite:** `python manage.py test` — 367 tests, OK.

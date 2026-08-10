@@ -26,6 +26,7 @@ from google.auth.exceptions import RefreshError
 
 from .consumers import notify_user, send_chat_push
 from .decorators import superuser_required
+from .templatetags.builder_tags import render_block_html
 from .google_service import (
     GoogleAccountNotConnected,
     GoogleReauthRequired,
@@ -2380,13 +2381,19 @@ def editable_page_view(request, slug):
 
     Serves the page at ``/page/<slug>/``. Unknown or unpublished pages 404
     so drafts are never exposed to visitors. Blocks are ordered by their
-    creation order (stable pk order).
+    creation order (stable pk order). Structured blocks (faq / stats /
+    testimonials / cta) are rendered through their partials with the shared
+    ``render_block_html`` helper, so the live page and the ``render_block``
+    tag never drift apart.
     """
     page = get_object_or_404(EditablePage, slug=slug, is_published=True)
     blocks = [
         {
             'element_id': block.element_id,
-            'content_html': block.content_html,
+            'block_type': block.block_type,
+            # rendered_html is what the live page displays (partial output for
+            # structured blocks, raw content_html otherwise).
+            'rendered_html': render_block_html(block),
             'style_attr': _style_attr(block.style_json),
         }
         for block in page.content_blocks.all()
@@ -2574,7 +2581,9 @@ def visual_editor(request, page_slug):
     blocks = [
         {
             'element_id': block.element_id,
+            'block_type': block.block_type,
             'content_html': block.content_html,
+            'content_json': block.content_json or {},
             'style': block.style_json or {},
         }
         for block in page.content_blocks.all()
@@ -2661,11 +2670,29 @@ def save_content_block(request):
     if not isinstance(style_json, dict):
         style_json = {}
 
+    # Structured-block fields are only written when the payload explicitly
+    # sends them; a plain HTML edit must never silently convert a structured
+    # block back to ``html`` or wipe its ``content_json``.
+    existing = ContentBlock.objects.filter(page=page, element_id=element_id).first()
+    valid_types = {code for code, _label in ContentBlock.BLOCK_TYPE_CHOICES}
+    block_type = data.get('block_type')
+    if block_type is not None:
+        block_type = block_type if block_type in valid_types else 'html'
+    else:
+        block_type = existing.block_type if existing else 'html'
+    content_json = data.get('content_json')
+    if content_json is not None and not isinstance(content_json, dict):
+        content_json = {}
+    elif content_json is None:
+        content_json = existing.content_json if existing else {}
+
     ContentBlock.objects.update_or_create(
         page=page,
         element_id=element_id,
         defaults={
+            'block_type': block_type,
             'content_html': sanitize_html(data.get('content_html', '')),
+            'content_json': content_json,
             'style_json': style_json,
         },
     )

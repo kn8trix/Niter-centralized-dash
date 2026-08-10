@@ -52,7 +52,7 @@
         <main class="blocks" id="page-blocks">
             {% for block in blocks %}
             <section class="content-block" id="{{ block.element_id }}" data-block="{{ block.element_id }}" data-editable-id="{{ block.element_id }}"{% if block.style_attr %} style="{{ block.style_attr }}"{% endif %}>
-                {{ block.content_html|safe }}
+                {{ block.rendered_html|safe }}
             </section>
             {% empty %}
             <div class="blocks-empty">

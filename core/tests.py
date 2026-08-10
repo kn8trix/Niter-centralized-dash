@@ -3596,3 +3596,236 @@ class MedicalQueueApiTest(TestCase):
         notice = Notification.objects.get(user=other_staff, category='medical')
         self.assertIn('now Confirmed', notice.message)
         self.assertTrue(mock_push.called)
+
+
+# ============================================================================
+# Structured block library (FAQ / Stats / Testimonials / CTA) — section 40
+# ============================================================================
+
+class BuilderBlockLibraryTest(TestCase):
+    """Structured ContentBlock types: model defaults, partial rendering via
+    ``render_block`` and the live editable page, and fallback handling."""
+
+    def setUp(self):
+        self.page = EditablePage.objects.create(title='Landing', slug='landing')
+
+    def _block(self, element_id='hero', block_type='html', content_html='', content_json=None):
+        return ContentBlock.objects.create(
+            page=self.page,
+            element_id=element_id,
+            block_type=block_type,
+            content_html=content_html,
+            content_json=content_json or {},
+        )
+
+    def _render_tag(self, element_id='hero', default='fallback text'):
+        tpl = Template("{% load builder_tags %}{% render_block '" + self.page.slug + "' '" + element_id + "' '" + default + "' %}")
+        return tpl.render(Context({}))
+
+    # ------------------------------------------------------------------
+    # Model: block_type defaults & schema documentation
+    # ------------------------------------------------------------------
+    def test_block_type_defaults_to_html(self):
+        block = self._block()
+        self.assertEqual(block.block_type, 'html')
+        self.assertEqual(block.content_json, {})
+
+    def test_block_type_choices_include_structured_types(self):
+        codes = {code for code, _label in ContentBlock.BLOCK_TYPE_CHOICES}
+        self.assertIn('faq', codes)
+        self.assertIn('stats', codes)
+        self.assertIn('testimonials', codes)
+        self.assertIn('cta', codes)
+
+    def test_block_schemas_document_each_structured_type(self):
+        for block_type in ('faq', 'stats', 'testimonials', 'cta'):
+            self.assertIn(block_type, ContentBlock.BLOCK_SCHEMAS)
+
+    # ------------------------------------------------------------------
+    # render_block → partial dispatch
+    # ------------------------------------------------------------------
+    def test_render_faq_partial(self):
+        self._block(
+            block_type='faq',
+            content_json={'title': 'FAQs', 'items': [
+                {'question': 'What are the admission requirements?', 'answer': 'Pass the admission test.'},
+                {'question': 'When do classes start?', 'answer': 'January.'},
+            ]},
+        )
+        html = self._render_tag()
+        self.assertIn('data-builder-block="faq"', html)
+        self.assertIn('What are the admission requirements?', html)
+        self.assertIn('Pass the admission test.', html)
+        self.assertIn('<details', html)
+
+    def test_render_stats_partial(self):
+        self._block(
+            block_type='stats',
+            content_json={'title': 'At a glance', 'items': [
+                {'value': '4,500+', 'label': 'Students', 'icon': 'fa-user-graduate', 'highlight': True},
+                {'value': '98%', 'label': 'Placement'},
+            ]},
+        )
+        html = self._render_tag()
+        self.assertIn('data-builder-block="stats"', html)
+        self.assertIn('4,500+', html)
+        self.assertIn('stat-card--highlight', html)
+        self.assertIn('fa-user-graduate', html)
+
+    def test_render_testimonials_partial(self):
+        self._block(
+            block_type='testimonials',
+            content_json={'items': [
+                {'quote': 'A transformative experience.', 'author': 'Jane Doe', 'title': 'CSE Alumna', 'avatar': 'https://example.com/jane.jpg'},
+            ]},
+        )
+        html = self._render_tag()
+        self.assertIn('data-builder-block="testimonials"', html)
+        self.assertIn('A transformative experience.', html)
+        self.assertIn('Jane Doe', html)
+        self.assertIn('https://example.com/jane.jpg', html)
+
+    def test_render_cta_partial(self):
+        self._block(
+            block_type='cta',
+            content_json={
+                'headline': 'Ready to join NITER?',
+                'subtext': 'Applications open now.',
+                'primary_label': 'Apply Now',
+                'primary_url': '/signup/',
+                'secondary_label': 'Learn More',
+                'secondary_url': '/departments/',
+            },
+        )
+        html = self._render_tag()
+        self.assertIn('data-builder-block="cta"', html)
+        self.assertIn('Ready to join NITER?', html)
+        self.assertIn('href="/signup/"', html)
+        self.assertIn('Apply Now', html)
+        self.assertIn('Learn More', html)
+
+    # ------------------------------------------------------------------
+    # Fallback error handling
+    # ------------------------------------------------------------------
+    def test_unknown_block_type_falls_back_to_content_html(self):
+        block = self._block(block_type='html', content_html='<p>plain fallback</p>')
+        block.block_type = 'carousel'  # not a registered type
+        block.save()
+        self.assertEqual(self._render_tag(), '<p>plain fallback</p>')
+
+    def test_structured_block_with_blank_json_falls_back_to_default(self):
+        self._block(block_type='stats', content_json={})
+        self.assertEqual(self._render_tag(), 'fallback text')
+
+    def test_structured_block_with_non_dict_json_falls_back_to_default(self):
+        # A hand-edited JSONField row that is not a dict must not crash.
+        block = self._block(block_type='stats', content_json={'items': []})
+        block.content_json = ['not', 'a', 'dict']
+        block.save(update_fields=['content_json'])
+        self.assertEqual(self._render_tag(), 'fallback text')
+
+    def test_safe_url_filter_allows_relative_and_blocks_javascript(self):
+        from django.template import Template, Context
+        tpl = Template("{% load builder_tags %}{{ value|safe_url }}")
+        render = lambda v: tpl.render(Context({'value': v}))
+        self.assertEqual(render('/signup/'), '/signup/')
+        self.assertEqual(render('https://niter.edu.bd'), 'https://niter.edu.bd')
+        self.assertEqual(render('#top'), '#top')
+        self.assertEqual(render('javascript:alert(1)'), '#')
+        self.assertEqual(render('data:text/html,x'), '#')
+
+    def test_structured_block_without_items_renders_empty_state(self):
+        self._block(block_type='faq', content_json={'title': 'Empty FAQ'})
+        html = self._render_tag()
+        self.assertIn('No FAQ items have been added yet.', html)
+
+    # ------------------------------------------------------------------
+    # Live page rendering (editable_page_view uses the same helper)
+    # ------------------------------------------------------------------
+    def test_editable_page_renders_structured_blocks(self):
+        self._block(
+            block_type='cta',
+            content_json={'headline': 'Live CTA', 'primary_label': 'Go', 'primary_url': '/signup/'},
+        )
+        response = self.client.get(reverse('editable_page', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Live CTA')
+        self.assertContains(response, 'data-builder-block="cta"')
+
+    def test_editable_page_html_blocks_still_render_raw(self):
+        self._block(content_html='<h2>Raw HTML block</h2>')
+        response = self.client.get(reverse('editable_page', args=[self.page.slug]))
+        self.assertContains(response, '<h2>Raw HTML block</h2>')
+
+    # ------------------------------------------------------------------
+    # save_content_block API — structured fields
+    # ------------------------------------------------------------------
+    def test_save_block_accepts_block_type_and_content_json(self):
+        self.client.force_login(User.objects.create_superuser(
+            username='root2', email='r@niter.edu.bd', password='rootpass123',
+        ))
+        response = self.client.post(
+            reverse('save_content_block'),
+            data=json.dumps({
+                'page_slug': 'landing',
+                'element_id': 'faq-1',
+                'block_type': 'faq',
+                'content_json': {'title': 'T', 'items': [{'question': 'Q', 'answer': 'A'}]},
+                'content_html': '',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        block = ContentBlock.objects.get(page=self.page, element_id='faq-1')
+        self.assertEqual(block.block_type, 'faq')
+        self.assertEqual(block.content_json['items'][0]['question'], 'Q')
+
+    def test_save_block_rejects_invalid_block_type(self):
+        self.client.force_login(User.objects.create_superuser(
+            username='root3', email='r3@niter.edu.bd', password='rootpass123',
+        ))
+        response = self.client.post(
+            reverse('save_content_block'),
+            data=json.dumps({
+                'page_slug': 'landing', 'element_id': 'x', 'block_type': 'nope', 'content_html': '',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        block = ContentBlock.objects.get(page=self.page, element_id='x')
+        self.assertEqual(block.block_type, 'html')
+
+    def test_save_block_preserves_existing_structured_type_on_plain_html_save(self):
+        self._block(
+            element_id='keep', block_type='stats',
+            content_json={'items': [{'value': '1', 'label': 'One'}]},
+        )
+        self.client.force_login(User.objects.create_superuser(
+            username='root4', email='r4@niter.edu.bd', password='rootpass123',
+        ))
+        # Editor sends only content_html — must NOT reset block_type/json.
+        response = self.client.post(
+            reverse('save_content_block'),
+            data=json.dumps({'page_slug': 'landing', 'element_id': 'keep', 'content_html': '<p>edit</p>'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        block = ContentBlock.objects.get(page=self.page, element_id='keep')
+        self.assertEqual(block.block_type, 'stats')
+        self.assertEqual(block.content_json['items'][0]['label'], 'One')
+
+    # ------------------------------------------------------------------
+    # visual_editor exposes block_type for the inspector badge
+    # ------------------------------------------------------------------
+    def test_visual_editor_shows_block_type_badge(self):
+        self._block(
+            block_type='testimonials',
+            content_json={'items': [{'quote': 'q', 'author': 'a'}]},
+        )
+        self.client.force_login(User.objects.create_superuser(
+            username='root5', email='r5@niter.edu.bd', password='rootpass123',
+        ))
+        response = self.client.get(reverse('visual_editor', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'block-type-badge')
+        self.assertContains(response, 'testimonials')

@@ -11,11 +11,14 @@ production deployments can inject secrets via their process manager without
 touching the repository.
 """
 
+import logging
 import os
 from pathlib import Path
 
 import environ
 from django.core.exceptions import ImproperlyConfigured
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -40,11 +43,24 @@ if DEBUG:
     # key is dev-only and never used in production.
     SECRET_KEY = SECRET_KEY or 'django-insecure-niter-centralized-dash-dev-key'
 elif not SECRET_KEY:
-    # Fail closed: a production deploy without a secret must not silently run
-    # with a known, published key.
-    raise ImproperlyConfigured(
-        'SECRET_KEY must be set (via environment or .env) when DEBUG is False.'
-    )
+    if env.bool('RENDER_BUILD', default=False):
+        # Build phase only: ``build.sh`` runs ``collectstatic`` and ``migrate``
+        # before the service's generated SECRET_KEY is injected, so those
+        # steps must not crash on a not-yet-loaded env var. The throwaway
+        # placeholder is used solely here — the runtime start command never
+        # sets RENDER_BUILD, so a genuinely missing secret still fails closed
+        # below when the app actually boots.
+        logger.warning(
+            'SECRET_KEY not set during build — using a throwaway build-only '
+            'placeholder for collectstatic/migrate.'
+        )
+        SECRET_KEY = 'django-insecure-render-build-only-placeholder'
+    else:
+        # Fail closed: a production deploy without a secret must not silently
+        # run with a known, published key.
+        raise ImproperlyConfigured(
+            'SECRET_KEY must be set (via environment or .env) when DEBUG is False.'
+        )
 
 # Comma-separated in .env, e.g. "niter.edu.bd,www.niter.edu.bd"
 ALLOWED_HOSTS = env('ALLOWED_HOSTS')

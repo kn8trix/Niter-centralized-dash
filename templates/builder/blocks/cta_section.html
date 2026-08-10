@@ -1,0 +1,31 @@
+{% load builder_tags %}
+{% comment %}
+    CTA Section block — headline, subtext, and two action buttons.
+    Data schema (ContentBlock.content_json), see ContentBlock.BLOCK_SCHEMAS['cta']:
+        { "headline": "…", "subtext": "…",
+          "primary_label": "Apply Now",   "primary_url": "/signup/",
+          "secondary_label": "Learn More", "secondary_url": "/departments/" }
+    A button is only rendered when both its label and URL are set. URLs are
+    run through the ``safe_url`` filter so only http(s)/mailto/tel/ftp and
+    relative/# links ever reach an ``href``.
+{% endcomment %}
+<section class="builder-block cta-block" data-builder-block="cta">
+    <div class="cta-inner">
+        {% if data.headline %}
+        <h2 class="cta-headline">{{ data.headline }}</h2>
+        {% endif %}
+        {% if data.subtext %}
+        <p class="cta-subtext">{{ data.subtext }}</p>
+        {% endif %}
+        {% if data.primary_label or data.secondary_label %}
+        <div class="cta-actions">
+            {% if data.primary_label and data.primary_url %}
+            <a class="bb-btn bb-btn--primary" href="{{ data.primary_url|safe_url }}">{{ data.primary_label }}</a>
+            {% endif %}
+            {% if data.secondary_label and data.secondary_url %}
+            <a class="bb-btn bb-btn--secondary" href="{{ data.secondary_url|safe_url }}">{{ data.secondary_label }}</a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</section>

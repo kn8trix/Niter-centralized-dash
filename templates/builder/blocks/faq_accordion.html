@@ -1,0 +1,30 @@
+{% comment %}
+    FAQ Accordion block — expandable Q&A items.
+    Data schema (ContentBlock.content_json), see ContentBlock.BLOCK_SCHEMAS['faq']:
+        { "title": "…", "subtitle": "…", "items": [{"question": "…", "answer": "…"}] }
+    Native <details>/<summary> — works without JS, chevron rotates via CSS.
+{% endcomment %}
+<section class="builder-block faq-block" data-builder-block="faq">
+    {% if data.title %}
+    <header class="bb-head">
+        <h2 class="bb-title">{{ data.title }}</h2>
+        {% if data.subtitle %}<p class="bb-subtitle">{{ data.subtitle }}</p>{% endif %}
+    </header>
+    {% endif %}
+
+    <div class="faq-list">
+        {% for item in data.items %}
+        {% if item.question or item.answer %}
+        <details class="faq-item"{% if forloop.first %} open{% endif %}>
+            <summary class="faq-question">
+                <span class="faq-q-text">{{ item.question }}</span>
+                <i class="fa-solid fa-chevron-down faq-chevron" aria-hidden="true"></i>
+            </summary>
+            <div class="faq-answer">{{ item.answer|linebreaksbr }}</div>
+        </details>
+        {% endif %}
+        {% empty %}
+        <p class="bb-empty">No FAQ items have been added yet.</p>
+        {% endfor %}
+    </div>
+</section>

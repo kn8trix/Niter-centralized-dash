@@ -1,0 +1,79 @@
+{% comment %}
+    Stats Counter Grid block — numeric metric cards with optional icon.
+    Data schema (ContentBlock.content_json), see ContentBlock.BLOCK_SCHEMAS['stats']:
+        { "title": "…", "subtitle": "…",
+          "items": [{"value": "4,500+", "label": "Students", "icon": "fa-user-graduate", "highlight": true}] }
+    The inline script animates the leading digits of each value once the grid
+    scrolls into view (IntersectionObserver); formatted suffixes ("+", "%", …)
+    are preserved.
+{% endcomment %}
+<section class="builder-block stats-block" data-builder-block="stats">
+    {% if data.title %}
+    <header class="bb-head">
+        <h2 class="bb-title">{{ data.title }}</h2>
+        {% if data.subtitle %}<p class="bb-subtitle">{{ data.subtitle }}</p>{% endif %}
+    </header>
+    {% endif %}
+
+    <div class="stats-grid">
+        {% for item in data.items %}
+        {% if item.value or item.label %}
+        <div class="stat-card{% if item.highlight %} stat-card--highlight{% endif %}">
+            {% if item.icon %}<i class="fa-solid {{ item.icon }} stat-icon" aria-hidden="true"></i>{% endif %}
+            <span class="stat-value">{{ item.value }}</span>
+            {% if item.label %}<span class="stat-label">{{ item.label }}</span>{% endif %}
+        </div>
+        {% endif %}
+        {% empty %}
+        <p class="bb-empty">No stats have been added yet.</p>
+        {% endfor %}
+    </div>
+</section>
+
+<script>
+(function () {
+    'use strict';
+    var block = document.currentScript.parentElement;
+    var values = block.querySelectorAll('.stat-value');
+    if (!values.length || !('IntersectionObserver' in window)) return;
+
+    var prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReduced) return; // values stay as authored
+
+    // Animate the leading number of a value (e.g. "4,500+" → 0→4500 then "+").
+    // The element always ends on its EXACT authored text, so an author's own
+    // formatting ("4500" vs "4,500", "98%", "120+") is never rewritten.
+    function animate(el) {
+        var original = el.textContent.trim();
+        var match = original.match(/^([\d][\d,]*(?:\.[\d]+)?)(.*)$/);
+        if (!match) return;
+        var target = parseFloat(match[1].replace(/,/g, ''));
+        if (isNaN(target) || target <= 0) return;
+        var duration = 1100;
+        var start = null;
+        function frame(ts) {
+            if (!start) start = ts;
+            var progress = Math.min((ts - start) / duration, 1);
+            var eased = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+            if (progress < 1) {
+                var current = Math.round(target * eased);
+                el.textContent = String(current);
+                requestAnimationFrame(frame);
+            } else {
+                el.textContent = original; // restore the author's formatting
+            }
+        }
+        requestAnimationFrame(frame);
+    }
+
+    var observer = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+                animate(entry.target);
+                observer.unobserve(entry.target);
+            }
+        });
+    }, { threshold: 0.4 });
+    values.forEach(function (el) { observer.observe(el); });
+})();
+</script>

@@ -1,0 +1,118 @@
+{% comment %}
+    Testimonial Slider block — quote cards with author, title, and avatar.
+    Data schema (ContentBlock.content_json), see ContentBlock.BLOCK_SCHEMAS['testimonials']:
+        { "title": "…",
+          "items": [{"quote": "…", "author": "Jane Doe", "title": "CSE Alumna", "avatar": "https://…"}] }
+    Vanilla-JS slider: prev/next arrows + dot navigation, auto-advances every
+    7s and pauses on hover. Falls back to a static list when JS is disabled.
+{% endcomment %}
+<section class="builder-block testimonials-block" data-builder-block="testimonials">
+    {% if data.title %}
+    <header class="bb-head">
+        <h2 class="bb-title">{{ data.title }}</h2>
+    </header>
+    {% endif %}
+
+    <div class="tsl-viewport">
+        <div class="tsl-track">
+            {% for item in data.items %}
+            {% if item.quote %}
+            <figure class="tsl-slide">
+                <blockquote class="tsl-quote">“{{ item.quote }}”</blockquote>
+                <figcaption class="tsl-author">
+                    {% if item.avatar %}
+                    <img class="tsl-avatar" src="{{ item.avatar }}" alt="{{ item.author|default:'Testimonial author' }}" loading="lazy">
+                    {% else %}
+                    <span class="tsl-avatar tsl-avatar--initials" aria-hidden="true">{{ item.author|default:'?'|slice:":1" }}</span>
+                    {% endif %}
+                    <span class="tsl-author-meta">
+                        <strong class="tsl-name">{{ item.author }}</strong>
+                        {% if item.title %}<span class="tsl-role">{{ item.title }}</span>{% endif %}
+                    </span>
+                </figcaption>
+            </figure>
+            {% endif %}
+            {% empty %}
+            <p class="bb-empty">No testimonials have been added yet.</p>
+            {% endfor %}
+        </div>
+
+        {% if show_controls %}
+        <div class="tsl-controls">
+            <button type="button" class="tsl-btn tsl-prev" aria-label="Previous testimonial">
+                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+            </button>
+            <div class="tsl-dots" role="tablist" aria-label="Testimonial navigation"></div>
+            <button type="button" class="tsl-btn tsl-next" aria-label="Next testimonial">
+                <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+{% if show_controls %}
+<script>
+(function () {
+    'use strict';
+    var block = document.currentScript.parentElement;
+    var viewport = block.querySelector('.tsl-viewport');
+    var track = block.querySelector('.tsl-track');
+    var slides = track.querySelectorAll('.tsl-slide');
+    if (!slides.length) return;
+
+    var index = 0;
+    var timer = null;
+    var prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function goTo(i) {
+        index = (i + slides.length) % slides.length;
+        track.style.transform = 'translateX(' + (-index * 100) + '%)';
+        block.querySelectorAll('.tsl-dot').forEach(function (dot, di) {
+            dot.classList.toggle('is-active', di === index);
+            dot.setAttribute('aria-selected', di === index ? 'true' : 'false');
+        });
+    }
+
+    function restart() {
+        clearInterval(timer);
+        timer = setInterval(function () { goTo(index + 1); }, 7000);
+    }
+
+    // Build dot navigation.
+    var dotsEl = block.querySelector('.tsl-dots');
+    slides.forEach(function (_s, i) {
+        var dot = document.createElement('button');
+        dot.type = 'button';
+        dot.className = 'tsl-dot';
+        dot.setAttribute('role', 'tab');
+        dot.setAttribute('aria-label', 'Go to testimonial ' + (i + 1));
+        dot.addEventListener('click', function () { goTo(i); restart(); });
+        dotsEl.appendChild(dot);
+    });
+
+    block.querySelector('.tsl-prev').addEventListener('click', function () { goTo(index - 1); restart(); });
+    block.querySelector('.tsl-next').addEventListener('click', function () { goTo(index + 1); restart(); });
+
+    // Pause on hover, resume on leave (auto-advance only when motion is OK).
+    if (!prefersReduced) {
+        block.addEventListener('mouseenter', function () { clearInterval(timer); });
+        block.addEventListener('mouseleave', restart);
+    }
+
+    // Touch swipe support.
+    var startX = null;
+    viewport.addEventListener('touchstart', function (e) { startX = e.touches[0].clientX; }, { passive: true });
+    viewport.addEventListener('touchend', function (e) {
+        if (startX === null) return;
+        var dx = e.changedTouches[0].clientX - startX;
+        if (Math.abs(dx) > 40) goTo(index + (dx < 0 ? 1 : -1));
+        startX = null;
+        restart();
+    }, { passive: true });
+
+    goTo(0);
+    if (!prefersReduced) restart();
+})();
+</script>
+{% endif %}

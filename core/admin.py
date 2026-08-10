@@ -54,7 +54,8 @@ class EditablePageAdmin(admin.ModelAdmin):
 
 @admin.register(ContentBlock)
 class ContentBlockAdmin(admin.ModelAdmin):
-    list_display = ('element_id', 'page', 'updated_at')
+    list_display = ('element_id', 'page', 'block_type', 'updated_at')
+    list_filter = ('block_type',)
     list_select_related = ('page',)
     search_fields = ('element_id', 'page__title')
 

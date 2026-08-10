@@ -115,6 +115,9 @@
                         <article class="inspector-block" data-block-id="{{ block.element_id }}">
                             <div class="inspector-block-head">
                                 <span class="block-id">#{{ block.element_id }}</span>
+                                {% if block.block_type != 'html' %}
+                                <span class="block-type-badge">{{ block.block_type }}</span>
+                                {% endif %}
                             </div>
 
                             <label class="inspector-field">
