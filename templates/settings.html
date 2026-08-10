@@ -107,7 +107,7 @@
                             <strong>Email notifications</strong>
                             <span>Notices and announcements to your inbox.</span>
                         </div>
-                        <input type="checkbox" class="toggle-input" checked data-pref="email">
+                        <input type="checkbox" class="toggle-input" data-pref="email_alerts" {% if prefs.email_alerts %}checked{% endif %}>
                         <span class="toggle-switch" aria-hidden="true"></span>
                     </label>
 
@@ -116,31 +116,22 @@
                             <strong>SMS alerts</strong>
                             <span>Urgent campus alerts via text message.</span>
                         </div>
-                        <input type="checkbox" class="toggle-input" data-pref="sms">
+                        <input type="checkbox" class="toggle-input" data-pref="sms_alerts" {% if prefs.sms_alerts %}checked{% endif %}>
                         <span class="toggle-switch" aria-hidden="true"></span>
                     </label>
 
                     <label class="toggle-row">
                         <div>
-                            <strong>Notice digest</strong>
-                            <span>A weekly summary of official notices.</span>
+                            <strong>Push notifications</strong>
+                            <span>Real-time alerts for meal, transport &amp; medical updates.</span>
                         </div>
-                        <input type="checkbox" class="toggle-input" checked data-pref="digest">
-                        <span class="toggle-switch" aria-hidden="true"></span>
-                    </label>
-
-                    <label class="toggle-row">
-                        <div>
-                            <strong>Appointment reminders</strong>
-                            <span>Reminders before your medical appointments.</span>
-                        </div>
-                        <input type="checkbox" class="toggle-input" checked data-pref="appointments">
+                        <input type="checkbox" class="toggle-input" data-pref="push_notifications" {% if prefs.push_notifications %}checked{% endif %}>
                         <span class="toggle-switch" aria-hidden="true"></span>
                     </label>
                 </div>
 
                 <p class="toast-note" id="pref-note" role="status" hidden>
-                    <i class="fa-solid fa-circle-check"></i> Preferences saved locally.
+                    <i class="fa-solid fa-circle-check"></i> Preferences saved to your account.
                 </p>
             </section>
 
@@ -152,12 +143,12 @@
                 <p class="section-subtitle">Pick how the portal looks for you.</p>
 
                 <div class="theme-grid">
-                    <button type="button" class="theme-option" data-theme="light" aria-pressed="true">
+                    <button type="button" class="theme-option" data-theme="light" data-pref="dark_mode" data-value="0" aria-pressed="{% if not prefs.dark_mode %}true{% else %}false{% endif %}">
                         <span class="theme-swatch light"><i class="fa-solid fa-sun"></i></span>
                         <strong>Warm Light</strong>
                         <span>Paper-like, easy on the eyes.</span>
                     </button>
-                    <button type="button" class="theme-option" data-theme="dark" aria-pressed="false">
+                    <button type="button" class="theme-option" data-theme="dark" data-pref="dark_mode" data-value="1" aria-pressed="{% if prefs.dark_mode %}true{% else %}false{% endif %}">
                         <span class="theme-swatch dark"><i class="fa-solid fa-moon"></i></span>
                         <strong>Dark</strong>
                         <span>Low-glare for late-night work.</span>
@@ -170,37 +161,56 @@
 
     <script>
         // ====================================================================
-        // Notification toggles — persist to localStorage (mock, no backend).
+        // Notification + theme preferences — persisted to the database via
+        // POST /settings/ (UserNotificationPreference), not localStorage.
         // ====================================================================
         (function () {
+            const SETTINGS_URL = '{% url "settings" %}';
             const note = document.getElementById('pref-note');
+            const options = document.querySelectorAll('.theme-option');
             const inputs = document.querySelectorAll('.toggle-input');
-            const KEY = 'campusdash-prefs';
 
-            let prefs = {};
-            try { prefs = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { /* ignore */ }
+            function getCookie(name) {
+                const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+                return match ? decodeURIComponent(match[1]) : '';
+            }
 
+            function showSaved() {
+                note.hidden = false;
+                clearTimeout(showSaved._t);
+                showSaved._t = setTimeout(() => { note.hidden = true; }, 2000);
+            }
+
+            async function savePrefs(payload) {
+                try {
+                    const response = await fetch(SETTINGS_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCookie('csrftoken'),
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    return await response.json();
+                } catch (err) {
+                    return { status: 'error' };
+                }
+            }
+
+            // Notification toggles → DB
             inputs.forEach((input) => {
-                const key = input.dataset.pref;
-                if (key in prefs) input.checked = !!prefs[key];
-                input.addEventListener('change', () => {
-                    prefs[key] = input.checked;
-                    localStorage.setItem(KEY, JSON.stringify(prefs));
-                    note.hidden = false;
-                    setTimeout(() => { note.hidden = true; }, 2000);
+                input.addEventListener('change', async () => {
+                    const payload = {};
+                    inputs.forEach((el) => { payload[el.dataset.pref] = el.checked; });
+                    const data = await savePrefs(payload);
+                    if (data.status === 'success') showSaved();
                 });
             });
-        })();
 
-        // ====================================================================
-        // Theme toggle — applies data-theme on <html>, persisted per visitor.
-        // theme.css maps the tokens under [data-theme="dark"].
-        // ====================================================================
-        (function () {
-            const KEY = 'campusdash-theme';
-            const options = document.querySelectorAll('.theme-option');
-
-            function apply(theme) {
+            // Theme grid → dark_mode in DB; theme.css maps tokens under
+            // [data-theme="dark"] so the portal reflects the saved choice.
+            function applyTheme(theme) {
                 document.documentElement.dataset.theme = theme;
                 options.forEach((opt) => {
                     const pressed = opt.dataset.theme === theme;
@@ -209,15 +219,14 @@
                 });
             }
 
-            let saved = 'light';
-            try { saved = localStorage.getItem(KEY) || 'light'; } catch (e) { /* ignore */ }
-            apply(saved);
+            // Initial theme comes from the user's saved preference.
+            applyTheme({{ prefs.dark_mode|yesno:"'dark','light'" }});
 
             options.forEach((opt) => {
-                opt.addEventListener('click', () => {
-                    const theme = opt.dataset.theme;
-                    try { localStorage.setItem(KEY, theme); } catch (e) { /* ignore */ }
-                    apply(theme);
+                opt.addEventListener('click', async () => {
+                    applyTheme(opt.dataset.theme);
+                    const data = await savePrefs({ dark_mode: opt.dataset.value === '1' });
+                    if (data.status === 'success') showSaved();
                 });
             });
         })();

@@ -3,7 +3,9 @@ import html.parser
 import json
 import re
 import secrets
-from datetime import datetime
+from collections import Counter
+from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.contrib import messages
@@ -14,7 +16,7 @@ from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.models import User
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -34,15 +36,26 @@ from .google_service import (
     verify_club_transaction,
 )
 from .models import (
+    ClassRoutine,
+    Club,
+    ClubEvent,
+    ClubRegistration,
     ContentBlock,
+    Course,
+    CourseMaterial,
+    Department,
     EditablePage,
     MedicalAppointment,
     MealSubscription,
     MealTicket,
+    Notice,
     Notification,
     PageTemplate,
+    PaymentTransaction,
     StudentProfile,
     TransportBooking,
+    UserNote,
+    UserNotificationPreference,
 )
 
 
@@ -52,7 +65,91 @@ def public_home(request):
 
 
 def dashboard(request):
-    return render(request, 'dashboard/home.html')
+    """Student dashboard — live widgets + feeds computed from the database.
+
+    The three summary cards are real-time aggregates (not hardcoded):
+      * Meal ratio — tickets claimed today vs the daily capacity caps.
+      * Transport — seats still available on the active catalog routes.
+      * Medical — on-duty doctors and appointment slots open today.
+    The feeds show the latest published notices and the courses with the most
+    uploaded materials.
+    """
+    today = timezone.now().date()
+
+    # --- Meal Ratio Counter (tickets claimed today / daily capacity) ---
+    total_capacity = sum(DAILY_MEAL_CAPACITY.values())
+    claimed_today = MealTicket.objects.filter(claimed_at__date=today).count()
+    meal_widget = {
+        'used': claimed_today,
+        'remaining': max(total_capacity - claimed_today, 0),
+        'total': total_capacity,
+        # Cap at 100 so an over-capacity day cannot overflow the progress bar.
+        'percent': min(100, round(claimed_today / total_capacity * 100)) if total_capacity else 0,
+    }
+
+    # --- Transport Service (available seats per active route) ---
+    # One grouped query for every catalog route instead of a COUNT per route.
+    route_booked = {
+        (row['route_name'], row['departure_time']): row['booked']
+        for row in TransportBooking.objects.filter(
+            route_name__in=[info['route_name'] for info in TRANSPORT_ROUTES.values()],
+            departure_time__in=[info['departure_time'] for info in TRANSPORT_ROUTES.values()],
+        )
+        .values('route_name', 'departure_time')
+        .annotate(booked=Count('id'))
+    }
+    routes = []
+    for route_id, info in TRANSPORT_ROUTES.items():
+        booked = route_booked.get((info['route_name'], info['departure_time']), 0)
+        routes.append({
+            'id': route_id,
+            'name': info['route_name'],
+            'time': info['departure_time'],
+            'available': max(TRANSPORT_SEATS_PER_BUS - booked, 0),
+            'booked': booked,
+        })
+    routes.sort(key=lambda r: r['available'], reverse=True)
+    transport_widget = routes[0] if routes else None
+
+    # --- Medical Center (on-duty doctors + slots open today) ---
+    # One query for today's non-cancelled appointments: the row list doubles as
+    # both the booked-slot count and the on-duty doctor set.
+    today_rows = list(
+        MedicalAppointment.objects.filter(appointment_date=today)
+        .exclude(status='cancelled')
+        .values_list('doctor_name', flat=True)
+    )
+    booked_slots = len(today_rows)
+    in_session_today = set(today_rows)
+    total_slots = len(DOCTORS) * MEDICAL_SLOTS_PER_DAY
+    medical_widget = {
+        'doctors': [
+            {
+                'name': doctor_name,
+                'specialty': DOCTOR_SPECIALTIES.get(doctor_name, 'Campus Doctor'),
+                'in_session': doctor_name in in_session_today,
+            }
+            for doctor_name in DOCTORS.values()
+        ],
+        'booked': booked_slots,
+        'available': max(total_slots - booked_slots, 0),
+        'total': total_slots,
+    }
+
+    # --- Feeds (latest published notices + top courses by material count) ---
+    recent_notices = Notice.objects.filter(is_published=True).select_related('author')[:3]
+    course_links = (
+        Course.objects.annotate(material_count=Count('materials'))
+        .order_by('-material_count', 'code')[:4]
+    )
+
+    return render(request, 'dashboard/home.html', {
+        'meal_widget': meal_widget,
+        'transport_widget': transport_widget,
+        'medical_widget': medical_widget,
+        'recent_notices': recent_notices,
+        'course_links': course_links,
+    })
 
 def tickets(request):
     return render(request, 'ticketing/tickets.html')
@@ -61,18 +158,169 @@ def medical(request):
     return render(request, 'medical/booking.html')
 
 def notes(request):
-    return render(request, 'notes/notes_engine.html')
+    """Notes Engine workspace — the editor plus the signed-in user's saved
+    notes (the AI summary / keywords / export actions are server-backed)."""
+    user_notes = (
+        request.user.notes.all()
+        if request.user.is_authenticated
+        else UserNote.objects.none()
+    )
+    return render(request, 'notes/notes_engine.html', {'user_notes': user_notes})
+
+# Icon per department on the notes drive folder cards.
+_DEPARTMENT_ICONS = {
+    'CSE': 'fa-laptop-code',
+    'TEX': 'fa-industry',
+    'IPE': 'fa-robot',
+    'FDAE': 'fa-palette',
+    'EEE': 'fa-bolt',
+}
+
 
 def academic_notes(request):
-    return render(request, 'academic/notes.html')
+    """Academic Notes Drive — live Course folders + CourseMaterial documents."""
+    courses = Course.objects.prefetch_related('materials').order_by('code')
+    materials = CourseMaterial.objects.select_related('course').order_by('-uploaded_at')
+
+    # Folder cards: one per department that has at least one course, showing
+    # the number of uploaded materials in that department (2 queries total).
+    course_departments = set(Course.objects.values_list('department', flat=True))
+    material_counts = {
+        row['course__department']: row['count']
+        for row in CourseMaterial.objects.values('course__department').annotate(
+            count=Count('id')
+        )
+    }
+    folders = []
+    for code, name in StudentProfile.DEPARTMENT_CHOICES:
+        if code not in course_departments:
+            continue
+        folders.append({
+            'code': code,
+            'name': name,
+            'count': material_counts.get(code, 0),
+            'icon': _DEPARTMENT_ICONS.get(code, 'fa-folder'),
+        })
+
+    return render(request, 'academic/notes.html', {
+        'courses': courses,
+        'materials': materials,
+        'folders': folders,
+    })
 
 def notices(request):
-    return render(request, 'notices/notices.html')
+    """Official Notices — published ``Notice`` rows, filtered by category.
+
+    Accepts an optional ``?category=`` query parameter (urgent / academic /
+    event / general); anything else (or nothing) shows every published notice.
+    """
+    category = (request.GET.get('category') or '').strip().lower()
+    queryset = Notice.objects.filter(is_published=True).select_related('author')
+    if category in dict(Notice.CATEGORY_CHOICES):
+        queryset = queryset.filter(category=category)
+    else:
+        category = 'all'
+    return render(request, 'notices/notices.html', {
+        'notices': queryset,
+        'active_category': category,
+        'categories': Notice.CATEGORY_CHOICES,
+    })
+
+
+# Fallback icon per club (keyed by slug) for the /clubs/ cards when no
+# banner image is uploaded — mirrors the _DEPARTMENT_ICONS convention.
+_CLUB_ICONS = {
+    'computer-club': 'fa-laptop-code',
+    'electronics-club': 'fa-microchip',
+    'cultural-society': 'fa-masks-theater',
+    'sports-club': 'fa-trophy',
+}
 
 
 def clubs_dashboard(request):
-    """Club & Event dashboard — frontend-only page driven by mock JS data."""
-    return render(request, 'clubs.html')
+    """Club & Event page — live ``Club`` / ``ClubEvent`` rows from the database.
+
+    The student view lists every club (with a live active-member count) and
+    every upcoming event; membership requests are handled by ``join_club``
+    (``POST /api/clubs/join/``) and event seats route to the checkout gateway.
+    """
+    clubs = Club.objects.annotate(
+        member_count=Count('registrations', filter=Q(registrations__status='active'))
+    ).order_by('name')
+    club_rows = [
+        {
+            'club': club,
+            'icon': _CLUB_ICONS.get(club.slug, 'fa-flag'),
+        }
+        for club in clubs
+    ]
+    events = ClubEvent.objects.filter(
+        event_date__gte=timezone.now().date()
+    ).select_related('club').order_by('event_date')
+
+    return render(request, 'clubs.html', {
+        'clubs': club_rows,
+        'events': events,
+        'checkout_url': reverse('checkout'),
+    })
+
+
+@login_required
+def join_club(request):
+    """Register the signed-in student for club membership (pending approval).
+
+    One registration per student+club — enforced by the model's
+    ``unique_together`` — so a repeat request is answered 409. When the club
+    has a lead staff member, they receive a real-time ``Notification``.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+
+    club_id = request.POST.get('club_id', '').strip()
+    try:
+        club = Club.objects.select_related('lead_user').get(pk=int(club_id))
+    except (Club.DoesNotExist, ValueError, TypeError):
+        return JsonResponse({'status': 'error', 'message': 'Club not found.'}, status=404)
+
+    existing = ClubRegistration.objects.filter(student=request.user, club=club).first()
+    if existing is not None:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'You already requested to join %s (%s).' % (
+                club.name, existing.get_status_display().lower(),
+            ),
+        }, status=409)
+
+    try:
+        with transaction.atomic():
+            registration = ClubRegistration.objects.create(
+                student=request.user, club=club, status='pending',
+            )
+    except IntegrityError:
+        # Duplicate join raced in from a concurrent request.
+        return JsonResponse(
+            {'status': 'error', 'message': 'Could not join %s. Please try again.' % club.name},
+            status=409,
+        )
+
+    if club.lead_user is not None and club.lead_user.is_active:
+        notification = Notification.objects.create(
+            user=club.lead_user,
+            title='New club membership request',
+            message='%s requested to join %s.' % (
+                request.user.get_full_name() or request.user.username, club.name,
+            ),
+            category='club',
+        )
+        _broadcast_notification(notification)
+
+    return JsonResponse({
+        'status': 'success',
+        'registration_id': registration.pk,
+        'club': club.name,
+        'registration_status': registration.status,
+        'message': 'Membership request sent to %s.' % club.name,
+    })
 
 
 def transport_dashboard(request):
@@ -85,13 +333,136 @@ def meal_dashboard(request):
     return render(request, 'meals.html')
 
 
-def checkout_page(request):
-    """Payment Gateway & Checkout — frontend-only page driven by mock JS data.
+# Wallet number + TrxID validation rules for the checkout form.
+_WALLET_RE = re.compile(r'^01\d{9}$')
+_TRX_RE = re.compile(r'^[A-Za-z0-9-]{6,}$')
 
-    Handles payments for club event registrations, transport ticket bookings,
-    and meal tokens via local mobile wallets (bKash / Nagad / Rocket / Card).
+# Checkout ``type`` query values → PaymentTransaction.purpose codes.
+_CHECKOUT_PURPOSES = {
+    'meal': 'meal',
+    'tuition': 'tuition',
+    'event': 'event',
+    'transport': 'transport',
+}
+
+
+def _generate_transaction_id():
+    """Return an unused platform transaction reference, e.g. ``NTR-4F2A1C``."""
+    for _ in range(50):
+        txn_id = 'NTR-' + secrets.token_hex(3).upper()
+        if not PaymentTransaction.objects.filter(transaction_id=txn_id).exists():
+            return txn_id
+    raise RuntimeError('Could not allocate a unique transaction id')
+
+
+def checkout_page(request):
+    """Secure Checkout — renders the payment page (GET) or records a payment
+    (POST).
+
+    GET stays public so the order summary can be previewed before signing in;
+    POST requires authentication and persists a ``PaymentTransaction`` with a
+    freshly generated unique ``transaction_id``. Paid items are linked: a
+    meal purpose activates the user's ``MealSubscription`` entitlement.
     """
+    if request.method == 'POST':
+        if not request.user.is_authenticated:
+            return redirect(settings.LOGIN_URL + '?next=' + reverse('checkout'))
+        return _process_checkout(request)
+
     return render(request, 'checkout.html')
+
+
+def _process_checkout(request):
+    """Validate wallet payment details, persist a PaymentTransaction, and link
+    the paid item (meal → active MealSubscription)."""
+    checkout_type = request.POST.get('type', '').strip().lower()
+    purpose = _CHECKOUT_PURPOSES.get(checkout_type, 'event')
+    description = request.POST.get('item', '').strip()
+
+    fee_raw = request.POST.get('fee', '').strip()
+    try:
+        amount = Decimal(fee_raw)
+    except (InvalidOperation, TypeError, ValueError):
+        return JsonResponse(
+            {'status': 'error', 'message': 'A valid amount is required.'},
+            status=400,
+        )
+    if not amount.is_finite() or amount < 0:
+        # Guards NaN / Infinity amounts that would otherwise corrupt the row
+        # (or raise on stricter backends) and negative fees.
+        return JsonResponse(
+            {'status': 'error', 'message': 'A valid positive amount is required.'},
+            status=400,
+        )
+    if amount > 99999999:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Amount is too large.'},
+            status=400,
+        )
+
+    method_raw = request.POST.get('method', '').strip().lower()
+    valid_methods = {code for code, _label in PaymentTransaction.METHOD_CHOICES}
+    if method_raw not in valid_methods:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Please choose a valid payment method.'},
+            status=400,
+        )
+
+    wallet_no = request.POST.get('wallet_no', '').strip()
+    if not _WALLET_RE.fullmatch(wallet_no):
+        return JsonResponse(
+            {'status': 'error', 'message': 'Please enter a valid 11-digit wallet number (e.g. 017XXXXXXXX).'},
+            status=400,
+        )
+
+    wallet_trx = request.POST.get('trx_id', '').strip()
+    if not _TRX_RE.fullmatch(wallet_trx):
+        return JsonResponse(
+            {'status': 'error', 'message': 'Please enter the TrxID shown in your payment confirmation.'},
+            status=400,
+        )
+
+    transaction_id = _generate_transaction_id()
+    payment = PaymentTransaction.objects.create(
+        user=request.user,
+        amount=amount,
+        payment_method=method_raw,
+        transaction_id=transaction_id,
+        purpose=purpose,
+        description=description or 'Checkout order',
+        wallet_trx=wallet_trx,
+    )
+
+    linked = None
+    if purpose == 'meal':
+        # The paid item is the monthly meal entitlement — activate it now.
+        subscription, _ = MealSubscription.objects.update_or_create(
+            user=request.user,
+            defaults={'is_active': True, 'expires_at': timezone.now() + timedelta(days=30)},
+        )
+        linked = 'meal_subscription' if subscription.is_active else None
+
+    bell_category = {'meal': 'meal', 'event': 'club', 'transport': 'transport', 'tuition': 'academic'}[purpose]
+    notification = Notification.objects.create(
+        user=request.user,
+        title='Payment recorded',
+        message='%s (%s) for %s is pending verification.' % (
+            transaction_id, payment.get_payment_method_display(), payment.get_purpose_display(),
+        ),
+        category=bell_category,
+    )
+    _broadcast_notification(notification)
+
+    return JsonResponse({
+        'status': 'success',
+        'transaction_id': payment.transaction_id,
+        'amount': str(payment.amount),
+        'payment_method': payment.get_payment_method_display(),
+        'purpose': payment.get_purpose_display(),
+        'payment_status': payment.status,
+        'linked': linked,
+        'message': 'Payment recorded — reference %s.' % payment.transaction_id,
+    })
 
 
 def research_ai_page(request):
@@ -101,18 +472,99 @@ def research_ai_page(request):
     return render(request, 'research_ai.html')
 
 
+# Campus week order used to lay out the Class & Lab schedule tab (Sun → Thu
+# are the working days, Friday is the weekly holiday).
+_WEEKDAY_ORDER = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Sat', 'Fri']
+
+
 def departments_directory(request):
-    """Department Directory — frontend-only page driven by mock JS data
-    (search filter, quick-jump pills, showcase cards with HOD/stats).
+    """Department Directory — every ``Department`` row from the database.
+
+    Showcase cards carry live student counts (``StudentProfile`` by
+    department code) and material counts (``CourseMaterial`` per course
+    department), aggregated in two grouped queries so there is no N+1.
     """
-    return render(request, 'departments.html')
+    departments = Department.objects.order_by('name')
+
+    student_counts = dict(
+        StudentProfile.objects.values_list('department')
+        .annotate(count=Count('id'))
+    )
+    material_counts = dict(
+        CourseMaterial.objects.values('course__department')
+        .annotate(count=Count('id'))
+        .values_list('course__department', 'count')
+    )
+    rows = []
+    for dept in departments:
+        rows.append({
+            'dept': dept,
+            'students': student_counts.get(dept.code, 0),
+            'notes': material_counts.get(dept.code, 0),
+            'icon': _DEPARTMENT_ICONS.get(dept.code, 'fa-landmark'),
+        })
+
+    return render(request, 'departments.html', {
+        'departments': rows,
+    })
 
 
 def department_detail(request, dept_slug):
-    """Single Department Hub — frontend-only page driven by mock JS data
-    keyed by ``dept_slug`` (tabs: overview, faculty, schedule, notes drive).
+    """Single Department Hub — live faculty, class routine, materials drive,
+    and published academic notices, all keyed to a real ``Department`` row.
+
+    Unknown slugs 404 (there is no client-side fallback any more).
     """
-    return render(request, 'department_detail.html', {'dept_slug': dept_slug})
+    dept = get_object_or_404(Department, slug=dept_slug)
+
+    student_count = StudentProfile.objects.filter(department=dept.code).count()
+    material_count = CourseMaterial.objects.filter(course__department=dept.code).count()
+    faculty = dept.faculty.all()
+
+    # Routines grouped by weekday in campus order.
+    by_day = {}
+    for routine in dept.class_routines.all():
+        by_day.setdefault(routine.day_of_week, []).append(routine)
+    routine_days = [
+        {
+            'day_code': day,
+            'day_label': dict(ClassRoutine.DAY_CHOICES).get(day, day),
+            'periods': by_day[day],
+        }
+        for day in _WEEKDAY_ORDER
+        if day in by_day
+    ]
+
+    # Notes drive grouped by course semester (first-seen order).
+    materials = CourseMaterial.objects.filter(
+        course__department=dept.code,
+    ).select_related('course').order_by('course__code', '-uploaded_at')
+    semesters = []
+    semester_index = {}
+    for material in materials:
+        sem = material.course.semester or 'General'
+        if sem not in semester_index:
+            semester_index[sem] = len(semesters)
+            semesters.append({'name': sem, 'materials': []})
+        semesters[semester_index[sem]]['materials'].append(material)
+
+    # Department announcements: published academic notices (a department-scoped
+    # notices feed would need a Notice.department FK — filtered by category for
+    # now so hubs surface real, published content).
+    announcements = Notice.objects.filter(
+        is_published=True, category='academic',
+    ).select_related('author')[:6]
+
+    return render(request, 'department_detail.html', {
+        'dept': dept,
+        'icon': _DEPARTMENT_ICONS.get(dept.code, 'fa-landmark'),
+        'students': student_count,
+        'notes_count': material_count,
+        'faculty': faculty,
+        'routine_days': routine_days,
+        'semesters': semesters,
+        'announcements': announcements,
+    })
 
 
 # ============================================================================
@@ -133,6 +585,9 @@ TRANSPORT_ROUTES = {
     '3': {'route_name': 'Route 3: City Center Express', 'departure_time': '10:00 AM'},
 }
 
+# Seat capacity per bus — mirrors the seat range accepted by book_transport.
+TRANSPORT_SEATS_PER_BUS = 40
+
 # Medical doctor catalog — the booking page posts a ``doctor`` id.
 DOCTORS = {
     '1': 'Dr. Ahmed Khan',
@@ -140,6 +595,17 @@ DOCTORS = {
     '3': 'Dr. Michael Chen',
     '4': 'Dr. Emily Johnson',
 }
+
+# Presentation-only metadata for the dashboard's medical widget.
+DOCTOR_SPECIALTIES = {
+    'Dr. Ahmed Khan': 'General Physician',
+    'Dr. Sarah Smith': 'General Physician',
+    'Dr. Michael Chen': 'Specialist',
+    'Dr. Emily Johnson': 'Specialist',
+}
+
+# Bookable appointment slots per doctor per day (dashboard availability math).
+MEDICAL_SLOTS_PER_DAY = 4
 
 
 def _generate_meal_token():
@@ -452,52 +918,85 @@ def signup_view(request):
 @login_required
 def settings_view(request):
     """Account settings — password change (Django PasswordChangeForm) plus
-    client-side notification & theme preference toggles.
+    notification & theme preferences persisted to ``UserNotificationPreference``.
+
+    POST requests are disambiguated by payload: ``old_password`` means the
+    password form, anything else (form-encoded or JSON from the preference
+    toggles) updates the user's preferences in the database.
     """
+    prefs, _ = UserNotificationPreference.objects.get_or_create(user=request.user)
+
     password_updated = False
     if request.method == 'POST':
-        password_form = PasswordChangeForm(request.user, request.POST)
-        if password_form.is_valid():
-            password_form.save()
-            update_session_auth_hash(request, password_form.user)
-            password_updated = True
-            password_form = PasswordChangeForm(request.user)
+        if 'old_password' in request.POST:
+            password_form = PasswordChangeForm(request.user, request.POST)
+            if password_form.is_valid():
+                password_form.save()
+                update_session_auth_hash(request, password_form.user)
+                password_updated = True
+                password_form = PasswordChangeForm(request.user)
+        else:
+            return _save_settings_prefs(request, prefs)
     else:
         password_form = PasswordChangeForm(request.user)
 
     return render(request, 'settings.html', {
         'password_form': password_form,
         'password_updated': password_updated,
+        'prefs': prefs,
     })
+
+
+def _save_settings_prefs(request, prefs):
+    """Persist preference toggles (form-encoded or JSON) and answer accordingly."""
+    data = request.POST
+    if request.content_type == 'application/json':
+        parsed, error = _parse_json_body(request)
+        if error is not None:
+            return error
+        data = parsed
+
+    # Checkbox semantics: present + truthy → True, everything else → False.
+    def enabled(*keys):
+        for key in keys:
+            value = data.get(key)
+            if value in (True, 'true', 'on', '1', 1):
+                return True
+        return False
+
+    prefs.email_alerts = enabled('email_alerts', 'email')
+    prefs.sms_alerts = enabled('sms_alerts', 'sms')
+    prefs.push_notifications = enabled('push_notifications', 'push')
+    prefs.dark_mode = enabled('dark_mode')
+    prefs.save()
+
+    if request.content_type == 'application/json' or request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        return JsonResponse({
+            'status': 'success',
+            'email_alerts': prefs.email_alerts,
+            'sms_alerts': prefs.sms_alerts,
+            'push_notifications': prefs.push_notifications,
+            'dark_mode': prefs.dark_mode,
+        })
+    messages.success(request, 'Preferences saved.')
+    return redirect('settings')
 
 
 @login_required
 def profile_view(request):
-    """Virtual student ID card + booking & activity history.
+    """Virtual student ID card + live booking & activity history.
 
-    Activity data is mock-only for now (the portal's booking flows are
-    frontend-only); swap in real models once tickets/appointments land.
+    Appointments, transport bookings, and meal coupons all come from the real
+    per-user rows in ``MedicalAppointment`` / ``TransportBooking`` /
+    ``MealTicket`` — no mock data.
     """
     profile = getattr(request.user, 'student_profile', None)
 
-    appointments = [
-        {'doctor': 'Dr. Ahmed Khan', 'date': '2026-08-12', 'time': '10:00 AM', 'status': 'Confirmed'},
-        {'doctor': 'Dr. Sarah Smith', 'date': '2026-08-19', 'time': '11:30 AM', 'status': 'Pending'},
-    ]
-    transport_tickets = [
-        {'route': 'Route 1 · Campus → Town Center', 'seat': '12A', 'time': '8:00 AM', 'status': 'Booked'},
-        {'route': 'Route 3 · Campus → Mirpur', 'seat': '5C', 'time': '5:30 PM', 'status': 'Boarded'},
-    ]
-    meal_coupons = [
-        {'meal': 'Lunch', 'date': '2026-08-09', 'token': '#MEAL-8921', 'status': 'Active'},
-        {'meal': 'Dinner', 'date': '2026-08-10', 'token': '#MEAL-8927', 'status': 'Unused'},
-    ]
-
     return render(request, 'profile.html', {
         'profile': profile,
-        'appointments': appointments,
-        'transport_tickets': transport_tickets,
-        'meal_coupons': meal_coupons,
+        'appointments': request.user.medical_appointments.all(),
+        'transport_tickets': request.user.transport_bookings.all(),
+        'meal_coupons': request.user.meal_tickets.all(),
     })
 
 
@@ -612,17 +1111,25 @@ def system_admin_view(request):
         {'name': 'View security logs', 'roles': [False, False, False, True]},
     ]
 
+    # Live notices & materials (created via the publisher form or /admin).
     notices = [
-        {'title': 'Midterm Exam Schedule Update', 'category': 'Academic', 'status': 'Published', 'date': '2026-08-08'},
-        {'title': 'Library Extended Hours', 'category': 'General', 'status': 'Published', 'date': '2026-08-07'},
-        {'title': 'Tech Fest 2026 — Call for Volunteers', 'category': 'Event', 'status': 'Draft', 'date': '2026-08-09'},
-        {'title': 'Holiday Notice: National Mourning Day', 'category': 'General', 'status': 'Scheduled', 'date': '2026-08-15'},
+        {
+            'title': notice.title,
+            'category': notice.get_category_display(),
+            'status': 'Published' if notice.is_published else 'Draft',
+            'date': notice.created_at.strftime('%Y-%m-%d'),
+        }
+        for notice in Notice.objects.select_related('author').order_by('-created_at')
     ]
     materials = [
-        {'course': 'CS101', 'title': 'Introduction to AI — Lecture Slides', 'type': 'PDF', 'size': '4.2 MB', 'date': '2026-08-05'},
-        {'course': 'MATH201', 'title': 'Linear Algebra Problem Set 4', 'type': 'PDF', 'size': '1.1 MB', 'date': '2026-08-06'},
-        {'course': 'PHY101', 'title': 'Physics Lab Manual (Updated)', 'type': 'DOCX', 'size': '2.8 MB', 'date': '2026-08-07'},
-        {'course': 'CS201', 'title': 'Data Structures — Trees & Graphs Notes', 'type': 'PDF', 'size': '3.4 MB', 'date': '2026-08-08'},
+        {
+            'course': material.course.code,
+            'title': material.title,
+            'type': material.display_type,
+            'size': material.size_display,
+            'date': material.uploaded_at.strftime('%Y-%m-%d'),
+        }
+        for material in CourseMaterial.objects.select_related('course').order_by('-uploaded_at')
     ]
 
     # --- Transport Management (consolidated from /transport/ — live data) ---
@@ -1036,6 +1543,73 @@ def update_user_role(request):
 
 
 @staff_member_required(login_url=settings.LOGIN_URL)
+def create_notice(request):
+    """Persist a new official ``Notice`` and notify every student in real time.
+
+    Accepts ``title``, ``content``, ``category`` (urgent / academic / event /
+    general) and ``status`` (published / draft). Draft notices are stored but
+    never broadcast; publishing creates a ``Notification`` for every active
+    user and pushes it over their WebSocket group via ``notify_user``.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+
+    title = request.POST.get('title', '').strip()
+    content = request.POST.get('content', '').strip()
+    category = request.POST.get('category', '').strip().lower()
+    status = request.POST.get('status', '').strip().lower()
+
+    if not title:
+        return JsonResponse({'status': 'error', 'message': 'Notice title is required.'}, status=400)
+    if not content:
+        return JsonResponse({'status': 'error', 'message': 'Notice content is required.'}, status=400)
+    valid_categories = {code for code, _label in Notice.CATEGORY_CHOICES}
+    if category not in valid_categories:
+        return JsonResponse({'status': 'error', 'message': 'Invalid notice category.'}, status=400)
+    if status not in ('published', 'draft'):
+        return JsonResponse({'status': 'error', 'message': 'Invalid notice status.'}, status=400)
+
+    is_published = status == 'published'
+    notice = Notice.objects.create(
+        title=title,
+        content=content,
+        category=category,
+        is_published=is_published,
+        author=request.user,
+    )
+
+    notified = 0
+    if is_published:
+        # Map Notice categories onto the Notification bell categories.
+        bell_category = {
+            'urgent': 'urgent',
+            'academic': 'academic',
+            'event': 'club',
+            'general': 'academic',
+        }[notice.category]
+        for student in User.objects.filter(is_active=True):
+            notification = Notification.objects.create(
+                user=student,
+                title='New notice: %s' % notice.title,
+                message='%s — %s' % (notice.get_category_display(), notice.title),
+                category=bell_category,
+            )
+            _broadcast_notification(notification)
+            notified += 1
+
+    return JsonResponse({
+        'status': 'success',
+        'notice_id': notice.pk,
+        'title': notice.title,
+        'category': notice.get_category_display(),
+        'is_published': notice.is_published,
+        'notified': notified,
+        'created_at': notice.created_at.strftime('%Y-%m-%d'),
+        'message': 'Notice %s.' % ('published' if is_published else 'saved as draft'),
+    })
+
+
+@staff_member_required(login_url=settings.LOGIN_URL)
 def club_admin_view(request):
     """Club admin — member approvals, role assignments, event posts, and
     bKash/Nagad/Rocket transaction verification.
@@ -1091,6 +1665,384 @@ def club_admin_view(request):
         'transactions': transactions,
         'sheet_url': sheet_url,
         'sheet_error': sheet_error,
+    })
+
+
+# ============================================================================
+# Notes Engine — server-side actions (save / summarize / keywords / export)
+# ============================================================================
+
+# Lightweight English stopword list for the keyword + summary extractors.
+_STOPWORDS = frozenset(
+    ("the a an and or but if then else for with without of on in at by from to "
+     "is are was were be been being have has had do does did will would can could "
+     "should may might must this that these those it its i you he she we they them "
+     "my your our their his her not no nor so as about into over under again further "
+     "once here there when where why how all any both each few more most other some "
+     "such only own same too very just also than up down out off because while "
+     "during before after above below between through during against per via "
+     "us am etc e g ie vs").split()
+)
+
+
+def _note_tokens(text):
+    """Lowercased alphanumeric tokens minus stopwords (min length 3)."""
+    words = re.findall(r'[a-z0-9]+', (text or '').lower())
+    return [w for w in words if w not in _STOPWORDS and len(w) >= 3]
+
+
+def _extract_keywords(content, limit=8):
+    """Top ``limit`` keywords by term frequency (deterministic server-side)."""
+    tokens = _note_tokens(content)
+    ranked = Counter(tokens).most_common()
+    return [word for word, _count in ranked[:limit]]
+
+
+def _extract_summary(content, max_sentences=3):
+    """Extractive summarization — score sentences by term frequency, keep the
+    highest-scoring sentences in their original order."""
+    text = (content or '').strip()
+    if not text:
+        return ''
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n+', text) if s.strip()]
+    if len(sentences) <= max_sentences:
+        return text
+
+    freq = Counter(_note_tokens(text))
+
+    def score(sentence):
+        tokens = _note_tokens(sentence)
+        if not tokens:
+            return 0.0
+        # Sum of term frequencies, dampened by length to favour dense sentences.
+        return sum(freq.get(t, 0) for t in tokens) / (len(tokens) ** 0.6)
+
+    scored = sorted(range(len(sentences)), key=lambda i: score(sentences[i]), reverse=True)
+    picked = sorted(scored[:max_sentences])
+    return ' '.join(sentences[i] for i in picked)
+
+
+def _pdf_escape(text):
+    """Escape a PDF literal string and drop characters outside latin-1."""
+    return text.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
+
+
+def _note_pdf_bytes(title, content):
+    """Build a dependency-free multi-page PDF (Helvetica) for a note.
+
+    Long lines are wrapped at ~95 chars and lines are chunked into 42-line
+    pages so arbitrarily long notes export cleanly. Non-ASCII glyphs outside
+    latin-1 are replaced with ``?`` (the text export preserves them fully).
+    """
+    raw_lines = (title or 'Untitled Note').split('\n') + ['', ''] + (content or '').replace('\r\n', '\n').split('\n')
+    wrapped = []
+    for line in raw_lines:
+        while len(line) > 95:
+            wrapped.append(line[:95])
+            line = line[95:]
+        wrapped.append(line)
+    pages = [wrapped[i:i + 42] for i in range(0, len(wrapped), 42)] or [['']]
+
+    def content_stream(lines):
+        out = ['BT /F1 11 Tf 50 750 Td 14 TL']
+        for line in lines:
+            out.append('(%s) Tj T*' % _pdf_escape(line))
+        out.append('ET')
+        stream = '\n'.join(out).encode('latin-1', 'replace')
+        return b'<< /Length %d >>\nstream\n' % len(stream) + stream + b'\nendstream'
+
+    font_index = 3 + 2 * len(pages)
+    objects = [
+        b'<< /Type /Catalog /Pages 2 0 R >>',
+        ('<< /Type /Pages /Kids [%s] /Count %d >>' % (
+            ' '.join('%d 0 R' % (3 + 2 * i) for i in range(len(pages))),
+            len(pages),
+        )).encode('latin-1'),
+    ]
+    for page_index, page_lines in enumerate(pages):
+        page_num = 3 + 2 * page_index
+        objects.append((
+            '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] '
+            '/Resources << /Font << /F1 %d 0 R >> >> /Contents %d 0 R >>'
+            % (font_index, page_num + 1)
+        ).encode('latin-1'))
+        objects.append(content_stream(page_lines))
+    objects.append(b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
+
+    body = bytearray()
+    offsets = []
+    for number, obj in enumerate(objects, start=1):
+        offsets.append(len(body))
+        body += b'%d 0 obj\n' % number + obj + b'\nendobj\n'
+
+    xref_pos = len(body)
+    body += b'xref\n0 %d\n' % (len(objects) + 1)
+    body += b'0000000000 65535 f \n'
+    for offset in offsets:
+        body += b'%010d 00000 n \n' % offset
+    body += b'trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n' % (
+        len(objects) + 1, xref_pos,
+    )
+    return b'%PDF-1.4\n' + bytes(body)
+
+
+@login_required
+def save_note(request):
+    """Persist the Notes Engine editor contents as a UserNote.
+
+    Accepts ``title`` and ``content`` (and optional ``note_id`` to update an
+    existing note); answers the saved note's id + updated timestamp.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+
+    title = request.POST.get('title', '').strip() or 'Untitled Note'
+    content = request.POST.get('content', '')
+    if len(title) > 200:
+        title = title[:200]
+
+    note_id = request.POST.get('note_id', '').strip()
+    if note_id:
+        note = get_object_or_404(request.user.notes, pk=note_id)
+        note.title = title
+        note.content = content
+        note.save(update_fields=['title', 'content', 'updated_at'])
+    else:
+        note = UserNote.objects.create(user=request.user, title=title, content=content)
+
+    return JsonResponse({
+        'status': 'success',
+        'note_id': note.pk,
+        'title': note.title,
+        'updated_at': note.updated_at.strftime('%Y-%m-%d %H:%M'),
+    })
+
+
+@login_required
+def note_summary(request):
+    """Auto-summarize note content server-side (extractive)."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    content = request.POST.get('content', '')
+    summary = _extract_summary(content)
+    return JsonResponse({
+        'status': 'success',
+        'summary': summary,
+        'sentence_count': len([s for s in re.split(r'(?<=[.!?])\s+|\n+', content.strip()) if s.strip()]),
+    })
+
+
+@login_required
+def note_keywords(request):
+    """Extract the top keywords from note content server-side (TF ranking)."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    content = request.POST.get('content', '')
+    keywords = _extract_keywords(content)
+    return JsonResponse({'status': 'success', 'keywords': keywords})
+
+
+@login_required
+def export_note(request):
+    """Download a note as text or PDF (``?format=text|pdf``).
+
+    Accepts a saved ``note_id`` or inline ``title``/``content`` so the export
+    action works straight from the editor before the note is saved.
+    """
+    note = None
+    note_id = (request.GET.get('note_id') or request.POST.get('note_id') or '').strip()
+    if note_id:
+        note = get_object_or_404(request.user.notes, pk=note_id)
+        title = note.title
+        content = note.content
+    else:
+        title = request.GET.get('title', '') or request.POST.get('title', '') or 'Untitled Note'
+        content = request.GET.get('content', '') or request.POST.get('content', '') or ''
+
+    export_format = (request.GET.get('format') or request.POST.get('format') or 'text').strip().lower()
+    safe_name = re.sub(r'[^A-Za-z0-9._-]+', '_', title)[:60] or 'note'
+
+    if export_format == 'pdf':
+        payload = _note_pdf_bytes(title, content)
+        return HttpResponse(
+            payload,
+            content_type='application/pdf',
+            headers={'Content-Disposition': 'attachment; filename="%s.pdf"' % safe_name},
+        )
+
+    return HttpResponse(
+        '%s\n\n%s' % (title, content),
+        content_type='text/plain; charset=utf-8',
+        headers={'Content-Disposition': 'attachment; filename="%s.txt"' % safe_name},
+    )
+
+
+# ============================================================================
+# Research AI — server-side structured query endpoint
+# ============================================================================
+
+# Canned-but-server-side assistant knowledge base, routed by prompt keywords.
+_RESEARCH_RESPONSES = {
+    'literature': (
+        '## Literature Review Draft — IoT in Textile Manufacturing\n\n'
+        '### 1. Industry context\n\n'
+        'The textile sector is adopting **Industrial IoT (IIoT)** to digitize loom '
+        'monitoring, quality inspection, and predictive maintenance. Recent surveys '
+        'report that smart factories cut unplanned downtime by up to **30–40%** '
+        'through real-time sensor telemetry.\n\n'
+        '### 2. Key research themes\n\n'
+        '- **Loom condition monitoring** — vibration and temperature sensors feed edge gateways.\n'
+        '- **Predictive maintenance** — machine-learning classifiers on spindle sensor data.\n'
+        '- **Quality inspection** — computer-vision pipelines grade fabric defects at line speed.\n\n'
+        '### 3. Gap your thesis can address\n\n'
+        'Most published work assumes centralized cloud processing; fewer studies evaluate '
+        '**on-device inference latency** for low-power textile microcontrollers. '
+        'Positioning your work against this gap strengthens the contribution statement.'
+    ),
+    'methodology': (
+        '## Methodology Breakdown\n\n'
+        'Your paper’s methodology can be restructured into four reproducible steps:\n\n'
+        '### Step 1 — Data acquisition\n'
+        '- Describe the sensor set, sampling frequency, and placement on the test rig.\n'
+        '- State how many trials were recorded and any exclusion criteria.\n\n'
+        '### Step 2 — Preprocessing\n'
+        '- Apply a **moving-average filter** to remove electrical noise.\n'
+        '- Normalize each channel to zero mean and unit variance.\n\n'
+        '### Step 3 — Model development\n'
+        '- Split data 70/20/10 into train, validation, and test sets.\n'
+        '- Train a baseline (logistic regression) and your proposed model for comparison.\n\n'
+        '### Step 4 — Evaluation\n'
+        '- Report precision, recall, F1, and confusion matrices.\n'
+        '- Include a runtime benchmark table for deployment feasibility.'
+    ),
+    'citation': (
+        '## Citation Formatting Check\n\n'
+        'I checked the excerpt against the selected citation style. Key fixes:\n\n'
+        '- Author initials come **before** the surname (e.g. `M. H. Rahman`).\n'
+        '- Journal names are **italicized**; article titles stay in sentence case.\n'
+        '- Page ranges use an en dash (`44210–44222`), not a hyphen.\n\n'
+        '### In-text checklist\n\n'
+        '- Place the bracketed number before the period: `... textile industry [1].`\n'
+        '- For three or more authors, use `et al.`\n'
+        '- Number references in the order they first appear.'
+    ),
+    'summary': (
+        '## Abstract Summary\n\n'
+        '### Core contribution\n'
+        'The work proposes a **low-cost IoT monitoring layer** for textile looms that '
+        'streams vibration and current data to an on-premise edge server.\n\n'
+        '### Main results\n\n'
+        '- Detection of yarn-break events within **2.1 s** on average.\n'
+        '- **94% F1** on the fault-classification task.\n'
+        '- Deployment cost estimated at under **৳18,000 per loom bank**.\n\n'
+        'Paste the full abstract if you want a one-paragraph version for your introduction.'
+    ),
+    'superposition': (
+        '## Superposition Circuit Analysis\n\n'
+        'Apply the superposition theorem to the multi-source circuit:\n\n'
+        '### Procedure\n\n'
+        '- **Zero all but one source** at a time (voltage sources → short, current sources → open).\n'
+        '- Solve the partial response with series/parallel reduction and KVL.\n'
+        '- **Sum the partial responses** with their algebraic signs.\n\n'
+        '### Draft guidance\n\n'
+        '- State that superposition applies because the circuit is **linear and bilateral**.\n'
+        '- Show at least two solved partial circuits in the appendix.'
+    ),
+    'iot': (
+        '## Textile IoT Automation Models\n\n'
+        'Comparing architectures for your proposal:\n\n'
+        '### Model 1 — Centralized cloud\n'
+        '- Strongest analytics, highest latency (~400 ms) and bandwidth cost.\n\n'
+        '### Model 2 — Edge gateway (recommended)\n'
+        '- Local inference with latency under **50 ms**; works offline.\n\n'
+        '### Model 3 — Hybrid\n'
+        '- Edge handles alarms in real time; cloud retrains models weekly.'
+    ),
+}
+
+_RESEARCH_FALLBACK = (
+    '## Here is how I can help\n\n'
+    'I can assist with:\n\n'
+    '- **Literature reviews** — ask for a draft on any topic.\n'
+    '- **Methodology breakdowns** — request a step-by-step plan.\n'
+    '- **Citation checking** — paste an excerpt and name your style (IEEE / APA 7 / Harvard / Chicago).\n'
+    '- **Draft editing** — paste a paragraph for polish.\n\n'
+    'Try: `Draft a literature review on IoT in textile manufacturing`'
+)
+
+
+# Two canonical references, formatted per citation style, so the endpoint
+# returns structured, style-aware citations.
+_REFERENCE_SOURCES = [
+    ('M. H. Rahman and K. Ahmed', 'IoT-based automated loom monitoring for textile manufacturing',
+     'IEEE Access', '9', '44210–44222', '2021'),
+    ('S. N. Karim et al.', 'Edge computing for real-time defect detection in weaving',
+     'Journal of Textile Automation', '12', '1102–1115', '2023'),
+]
+
+
+def _research_references(style):
+    """Render the reference bank in the requested citation style."""
+    refs = []
+    for index, (authors, title, journal, volume, pages, year) in enumerate(_REFERENCE_SOURCES, start=1):
+        # Markdown italics (*…*) so the client-side renderer styles journals
+        # without needing raw HTML in the JSON payload.
+        if style == 'APA 7':
+            text = '%s. (%s). %s. *%s*, *%s*, %s.' % (
+                authors.replace(' and ', ', & '),
+                year, title, journal, volume, pages,
+            )
+        elif style == 'Harvard':
+            text = '%s (%s) %s, *%s*, %s, pp. %s.' % (authors, year, title, journal, volume, pages)
+        elif style == 'Chicago':
+            text = '%s. "%s." *%s* %s (%s): %s.' % (authors, title, journal, volume, year, pages)
+        else:  # IEEE (default)
+            text = '[%d] %s, "%s," *%s*, vol. %s, pp. %s, %s.' % (
+                index, authors, title, journal, volume, pages, year,
+            )
+        refs.append({'index': index, 'text': text})
+    return refs
+
+
+@login_required
+def research_query(request):
+    """Research AI query endpoint — returns a structured assistant response.
+
+    Accepts ``prompt`` and an optional ``citation_style`` (IEEE / APA 7 /
+    Harvard / Chicago). The response is routed server-side by prompt keywords
+    and carries a ``topic`` id plus style-aware structured ``references``.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+
+    prompt = request.POST.get('prompt', '').strip()
+    if not prompt:
+        return JsonResponse({'status': 'error', 'message': 'prompt is required.'}, status=400)
+
+    style = request.POST.get('citation_style', 'IEEE').strip()
+    lowered = prompt.lower()
+
+    if lowered.startswith('/summarize') or 'summarize' in lowered or 'abstract' in lowered:
+        topic = 'summary'
+    elif 'literature' in lowered or 'review' in lowered:
+        topic = 'literature'
+    elif 'method' in lowered:
+        topic = 'methodology'
+    elif any(k in lowered for k in ('citation', 'cite', 'ieee', 'apa', 'harvard', 'chicago', 'reference')):
+        topic = 'citation'
+    elif 'superposition' in lowered:
+        topic = 'superposition'
+    elif 'iot' in lowered or 'textile' in lowered:
+        topic = 'iot'
+    else:
+        topic = 'fallback'
+
+    return JsonResponse({
+        'status': 'success',
+        'topic': topic,
+        'response_markdown': _RESEARCH_RESPONSES.get(topic, _RESEARCH_FALLBACK),
+        'references': _research_references(style),
+        'citation_style': style,
     })
 
 

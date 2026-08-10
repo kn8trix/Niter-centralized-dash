@@ -131,10 +131,10 @@
                         <div class="activity-item">
                             <span class="activity-icon medical"><i class="fa-solid fa-user-doctor"></i></span>
                             <div class="activity-body">
-                                <strong>{{ item.doctor }}</strong>
-                                <span>{{ item.date }} · {{ item.time }}</span>
+                                <strong>{{ item.doctor_name }}</strong>
+                                <span>{{ item.appointment_date|date:"M d, Y" }} · {{ item.time_slot }}</span>
                             </div>
-                            <span class="badge {{ item.status|lower }}">{{ item.status }}</span>
+                            <span class="badge {{ item.status }}">{{ item.get_status_display }}</span>
                         </div>
                         {% empty %}
                         <p class="empty">No medical appointments booked yet.</p>
@@ -151,10 +151,10 @@
                         <div class="activity-item">
                             <span class="activity-icon transport"><i class="fa-solid fa-bus"></i></span>
                             <div class="activity-body">
-                                <strong>{{ item.route }}</strong>
-                                <span>Seat {{ item.seat }} · {{ item.time }}</span>
+                                <strong>{{ item.route_name }}</strong>
+                                <span>Seat {{ item.seat_number }} · {{ item.departure_time }}</span>
                             </div>
-                            <span class="badge {{ item.status|lower }}">{{ item.status }}</span>
+                            <span class="badge booked">Booked</span>
                         </div>
                         {% empty %}
                         <p class="empty">No transport tickets booked yet.</p>
@@ -171,10 +171,14 @@
                         <div class="activity-item">
                             <span class="activity-icon meals"><i class="fa-solid fa-utensils"></i></span>
                             <div class="activity-body">
-                                <strong>{{ item.meal }}</strong>
-                                <span>{{ item.date }} · {{ item.token }}</span>
+                                <strong>{{ item.get_meal_type_display }}</strong>
+                                <span>{{ item.claimed_at|date:"M d, Y" }} · {{ item.ticket_token }}</span>
                             </div>
-                            <span class="badge {{ item.status|lower }}">{{ item.status }}</span>
+                            {% if item.is_redeemed %}
+                            <span class="badge redeemed">Redeemed</span>
+                            {% else %}
+                            <span class="badge unused">Unused</span>
+                            {% endif %}
                         </div>
                         {% empty %}
                         <p class="empty">No meal coupons claimed yet.</p>

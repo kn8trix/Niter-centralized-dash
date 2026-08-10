@@ -137,10 +137,10 @@ body.notices a {
     box-shadow: var(--shadow-hover);
 }
 
-.notice-card.cat-exams   { border-left-color: #3b82f6; }
-.notice-card.cat-routine { border-left-color: #22c55e; }
-.notice-card.cat-holidays{ border-left-color: #f59e0b; }
-.notice-card.cat-urgent  { border-left-color: #ef4444; }
+.notice-card.cat-academic { border-left-color: #3b82f6; }
+.notice-card.cat-event    { border-left-color: #8b5cf6; }
+.notice-card.cat-general  { border-left-color: #22c55e; }
+.notice-card.cat-urgent   { border-left-color: #ef4444; }
 
 .notice-head {
     display: flex;
@@ -159,9 +159,9 @@ body.notices a {
     letter-spacing: 0.02em;
 }
 
-.cat-exams .notice-cat    { background: #dbeafe; border: 1px solid #bfdbfe; color: #1d4ed8; }
-.cat-routine .notice-cat  { background: #dcfce7; border: 1px solid #bbf7d0; color: #166534; }
-.cat-holidays .notice-cat { background: #fef3c7; border: 1px solid #fde68a; color: #b45309; }
+.cat-academic .notice-cat { background: #dbeafe; border: 1px solid #bfdbfe; color: #1d4ed8; }
+.cat-event .notice-cat    { background: #ede9fe; border: 1px solid #ddd6fe; color: #6d28d9; }
+.cat-general .notice-cat  { background: #dcfce7; border: 1px solid #bbf7d0; color: #166534; }
 .cat-urgent .notice-cat   { background: #fee2e2; border: 1px solid #fecaca; color: #b91c1c; }
 
 .notice-date {
@@ -235,6 +235,37 @@ body.notices a {
 .view-btn:focus-visible {
     outline: 2px solid var(--accent-dark);
     outline-offset: 2px;
+}
+
+.notice-full {
+    margin-top: 0.9rem;
+    padding: 1rem 1.2rem;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    border-radius: 0.85rem;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    line-height: 1.7;
+    animation: noticeExpand 0.25s ease both;
+}
+
+.notice-full p {
+    margin: 0 0 0.6rem;
+}
+
+.notice-full p:last-child {
+    margin-bottom: 0;
+}
+
+@keyframes noticeExpand {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .empty-feed {

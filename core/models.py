@@ -189,15 +189,140 @@ class Notification(models.Model):
         User,
         on_delete=models.CASCADE,
         related_name='notifications',
+        db_index=True,
     )
     title = models.CharField(max_length=255)
     message = models.TextField()
     category = models.CharField(max_length=50, choices=CATEGORY_CHOICES)
-    is_read = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         ordering = ['-created_at', '-id']
+        # Fast path for the topbar bell: a user's unread notifications, newest first.
+        indexes = [
+            models.Index(fields=['user', 'is_read']),
+            models.Index(fields=['user', '-created_at']),
+        ]
+
+    def __str__(self):
+        return self.title
+
+
+class Notice(models.Model):
+    """An official institutional announcement published on the /notices/ feed.
+
+    ``is_published`` gates visibility: drafts are stored for admins but never
+    shown to students, and only published rows trigger student notifications.
+    """
+
+    CATEGORY_CHOICES = [
+        ('urgent', 'Urgent'),
+        ('academic', 'Academic'),
+        ('event', 'Event'),
+        ('general', 'General'),
+    ]
+
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    is_published = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text='Drafts are stored but never shown to students',
+    )
+    author = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='notices',
+        help_text='Staff member who authored this notice',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        # The /notices/ feed always filters published rows, newest first.
+        indexes = [
+            models.Index(fields=['is_published', '-created_at']),
+        ]
+
+    def __str__(self):
+        return self.title
+
+
+class Course(models.Model):
+    """A course catalog entry grouping uploaded course materials."""
+
+    code = models.CharField(
+        max_length=20,
+        unique=True,
+        help_text='Course code, e.g. CS101',
+    )
+    title = models.CharField(max_length=200)
+    department = models.CharField(
+        max_length=10,
+        choices=StudentProfile.DEPARTMENT_CHOICES,
+    )
+    semester = models.CharField(max_length=50, blank=True, default='')
+
+    class Meta:
+        ordering = ['code']
+
+    def __str__(self):
+        return '%s — %s' % (self.code, self.title)
+
+
+class CourseMaterial(models.Model):
+    """A single uploaded document (lecture slides, manual, problem set) for a
+    course, served to students on the Academic Notes drive."""
+
+    course = models.ForeignKey(
+        Course,
+        on_delete=models.CASCADE,
+        related_name='materials',
+        db_index=True,
+    )
+    title = models.CharField(max_length=200)
+    file = models.FileField(upload_to='course_materials/')
+    file_type = models.CharField(
+        max_length=20,
+        blank=True,
+        default='',
+        help_text='Optional override; falls back to the file extension',
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-uploaded_at', '-id']
+
+    @property
+    def display_type(self):
+        """Return the file type label, derived from the extension when blank."""
+        if self.file_type:
+            return self.file_type
+        name = self.file.name or ''
+        if '.' in name:
+            return name.rsplit('.', 1)[1].upper()
+        return 'FILE'
+
+    @property
+    def size_display(self):
+        """Human-readable file size (e.g. '1.2 MB'), or '—' if unavailable."""
+        try:
+            size = self.file.size
+        except (OSError, ValueError, AttributeError):
+            return '—'
+        if size is None:
+            return '—'
+        units = ('B', 'KB', 'MB', 'GB')
+        value = float(size)
+        for unit in units:
+            if value < 1024 or unit == units[-1]:
+                if unit == 'B':
+                    return '%d B' % size
+                return '%.1f %s' % (value, unit)
+            value /= 1024.0
 
     def __str__(self):
         return self.title
@@ -243,6 +368,7 @@ class MealTicket(models.Model):
         User,
         on_delete=models.CASCADE,
         related_name='meal_tickets',
+        db_index=True,
     )
     meal_type = models.CharField(max_length=20, choices=MEAL_TYPE_CHOICES)
     ticket_token = models.CharField(
@@ -250,8 +376,8 @@ class MealTicket(models.Model):
         unique=True,
         help_text='Format e.g. #MEAL-XXXX',
     )
-    is_redeemed = models.BooleanField(default=False)
-    claimed_at = models.DateTimeField(auto_now_add=True)
+    is_redeemed = models.BooleanField(default=False, db_index=True)
+    claimed_at = models.DateTimeField(auto_now_add=True, db_index=True)
     redeemed_at = models.DateTimeField(
         null=True,
         blank=True,
@@ -276,12 +402,13 @@ class TransportBooking(models.Model):
         User,
         on_delete=models.CASCADE,
         related_name='transport_bookings',
+        db_index=True,
     )
-    route_name = models.CharField(max_length=100)
+    route_name = models.CharField(max_length=100, db_index=True)
     departure_time = models.CharField(max_length=50)
     seat_number = models.IntegerField(help_text='Seats 1 to 40')
     qr_token = models.CharField(max_length=50, unique=True)
-    booked_at = models.DateTimeField(auto_now_add=True)
+    booked_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         # One seat per route + departure time — prevents duplicate assignments.
@@ -290,6 +417,177 @@ class TransportBooking(models.Model):
 
     def __str__(self):
         return '%s · seat %s' % (self.route_name, self.seat_number)
+
+
+class Department(models.Model):
+    """An academic department whose directory card + detail hub are rendered
+    live from the database (no mock data).
+
+    The ``code`` mirrors ``StudentProfile.department`` so student counts and
+    the department's course materials can be aggregated across the portal.
+    """
+
+    name = models.CharField(max_length=200)
+    code = models.CharField(max_length=10, unique=True)
+    slug = models.SlugField(unique=True)
+    head_of_dept = models.CharField(max_length=120, blank=True, default='')
+    description = models.TextField(blank=True, default='')
+    office_location = models.CharField(max_length=200, blank=True, default='')
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class FacultyMember(models.Model):
+    """A faculty member listed on a department hub's Faculty Directory tab."""
+
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.CASCADE,
+        related_name='faculty',
+    )
+    name = models.CharField(max_length=120)
+    designation = models.CharField(max_length=120, blank=True, default='')
+    email = models.EmailField(blank=True, default='')
+    office_hours = models.CharField(max_length=120, blank=True, default='')
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class ClassRoutine(models.Model):
+    """One weekly class/lab period on a department hub's schedule tab.
+
+    ``day_of_week`` stores the weekday abbreviation ('Sun', 'Mon', …) so the
+    hub can order periods by the campus week (Sunday → Thursday).
+    """
+
+    DAY_CHOICES = [
+        ('Sat', 'Saturday'),
+        ('Sun', 'Sunday'),
+        ('Mon', 'Monday'),
+        ('Tue', 'Tuesday'),
+        ('Wed', 'Wednesday'),
+        ('Thu', 'Thursday'),
+        ('Fri', 'Friday'),
+    ]
+
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.CASCADE,
+        related_name='class_routines',
+    )
+    semester = models.CharField(max_length=50, default='Semester 1')
+    day_of_week = models.CharField(max_length=3, choices=DAY_CHOICES)
+    subject = models.CharField(max_length=120)
+    time_slot = models.CharField(max_length=50)
+    room = models.CharField(max_length=100, blank=True, default='')
+
+    class Meta:
+        ordering = ['semester', 'day_of_week', 'time_slot']
+
+    def __str__(self):
+        return '%s · %s %s' % (self.subject, self.get_day_of_week_display(), self.time_slot)
+
+
+class Club(models.Model):
+    """A student club shown on the /clubs/ page.
+
+    ``lead_user`` is the staff member who owns the club (receives membership
+    request notifications); it may be unset while a club is being set up.
+    """
+
+    name = models.CharField(max_length=120)
+    slug = models.SlugField(unique=True)
+    description = models.TextField(blank=True, default='')
+    lead_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='led_clubs',
+    )
+    banner_image = models.FileField(
+        upload_to='club_banners/',
+        blank=True,
+        help_text='Optional banner image (served from MEDIA_ROOT)',
+    )
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class ClubEvent(models.Model):
+    """An upcoming club event listed on the /clubs/ page (registration routes
+    through the existing payment-gateway checkout flow)."""
+
+    club = models.ForeignKey(
+        Club,
+        on_delete=models.CASCADE,
+        related_name='events',
+    )
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default='')
+    event_date = models.DateField(db_index=True)
+    location = models.CharField(max_length=200, blank=True, default='')
+    capacity = models.PositiveIntegerField(
+        default=100,
+        help_text='Maximum number of participants',
+    )
+
+    class Meta:
+        ordering = ['event_date']
+
+    def __str__(self):
+        return self.title
+
+
+class ClubRegistration(models.Model):
+    """A student's club membership request.
+
+    ``unique_together`` on (student, club) means a student can hold only one
+    registration per club — the DB is the duplicate-join arbiter.
+    """
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('active', 'Active'),
+    ]
+
+    student = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='club_registrations',
+        db_index=True,
+    )
+    club = models.ForeignKey(
+        Club,
+        on_delete=models.CASCADE,
+        related_name='registrations',
+    )
+    joined_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        db_index=True,
+    )
+
+    class Meta:
+        unique_together = ('student', 'club')
+        ordering = ['-joined_at']
+
+    def __str__(self):
+        return '%s → %s' % (self.student.username, self.club.name)
 
 
 class MedicalAppointment(models.Model):
@@ -310,6 +608,7 @@ class MedicalAppointment(models.Model):
         User,
         on_delete=models.CASCADE,
         related_name='medical_appointments',
+        db_index=True,
     )
     doctor_name = models.CharField(max_length=100)
     appointment_date = models.DateField()
@@ -319,8 +618,9 @@ class MedicalAppointment(models.Model):
         max_length=20,
         choices=STATUS_CHOICES,
         default='pending',
+        db_index=True,
     )
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         # One patient per doctor slot — prevents double-booking.
@@ -329,3 +629,141 @@ class MedicalAppointment(models.Model):
 
     def __str__(self):
         return '%s · %s %s' % (self.doctor_name, self.appointment_date, self.time_slot)
+
+
+class PaymentTransaction(models.Model):
+    """A server-recorded payment for a checkout order (bKash / Nagad / Card).
+
+    ``transaction_id`` is the platform-generated reference returned to the
+    student (e.g. ``NTR-4F2A1C``); ``wallet_trx`` stores the TrxID the user
+    entered from their wallet app. Status starts ``pending`` until a staff
+    member verifies the wallet payment, at which point the linked item is
+    fulfilled (e.g. a paid ``MealSubscription`` entitlement).
+    """
+
+    PURPOSE_CHOICES = [
+        ('meal', 'Meal Ticket'),
+        ('tuition', 'Tuition'),
+        ('event', 'Event'),
+        ('transport', 'Transport'),
+    ]
+
+    METHOD_CHOICES = [
+        ('bkash', 'bKash'),
+        ('nagad', 'Nagad'),
+        ('card', 'Card'),
+        ('rocket', 'Rocket'),
+    ]
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    ]
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='payment_transactions',
+        db_index=True,
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_method = models.CharField(max_length=20, choices=METHOD_CHOICES)
+    transaction_id = models.CharField(max_length=32, unique=True)
+    purpose = models.CharField(max_length=20, choices=PURPOSE_CHOICES)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        db_index=True,
+    )
+    description = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text='Label of the paid item, e.g. "Monthly Meal Subscription"',
+    )
+    wallet_trx = models.CharField(
+        max_length=50,
+        blank=True,
+        default='',
+        help_text='TrxID the student entered from their wallet app',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        # Profile/payment history always filters by user, then status.
+        indexes = [
+            models.Index(fields=['user', 'status']),
+        ]
+
+    def __str__(self):
+        return '%s · %s' % (self.transaction_id, self.get_purpose_display())
+
+
+class UserNotificationPreference(models.Model):
+    """Per-user alert + appearance preferences persisted in the database.
+
+    A row is auto-created for every new ``User`` via the ``post_save`` signal
+    at the bottom of this module, so ``/settings/`` always has a row to load.
+    """
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='notification_prefs',
+    )
+    email_alerts = models.BooleanField(default=True)
+    sms_alerts = models.BooleanField(default=False)
+    push_notifications = models.BooleanField(default=True)
+    dark_mode = models.BooleanField(
+        default=False,
+        help_text='Apply the dark portal theme across pages',
+    )
+
+    def __str__(self):
+        return 'Preferences - %s' % self.user.username
+
+
+class UserNote(models.Model):
+    """A student's personal note (title + Markdown-ish content).
+
+    Backs the Notes Engine workspace so the AI summary / keyword extraction /
+    exporter actions operate on real saved note objects.
+    """
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='notes',
+        db_index=True,
+    )
+    title = models.CharField(max_length=200, default='Untitled Note')
+    content = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        # Notes sidebar is always scoped to one user, most recently edited first.
+        indexes = [
+            models.Index(fields=['user', '-updated_at']),
+        ]
+
+    def __str__(self):
+        return self.title
+
+
+# ----------------------------------------------------------------------------
+# Signal: auto-create default notification preferences for every new user
+# ----------------------------------------------------------------------------
+from django.db.models.signals import post_save  # noqa: E402
+from django.dispatch import receiver  # noqa: E402
+
+
+@receiver(post_save, sender=User)
+def create_default_notification_prefs(sender, instance, created, **kwargs):
+    """Give every new user a default UserNotificationPreference row."""
+    if created:
+        UserNotificationPreference.objects.get_or_create(user=instance)

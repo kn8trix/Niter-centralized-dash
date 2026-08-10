@@ -38,159 +38,62 @@
         </div>
 
         <!-- ============================================================
-             Category filter pills
+             Category filter pills (server-filtered via ?category=)
         ============================================================ -->
         <div class="filter-bar" role="tablist" aria-label="Notice categories">
-            <button type="button" class="filter-pill active" data-filter="all" aria-pressed="true">All</button>
-            <button type="button" class="filter-pill" data-filter="exams" aria-pressed="false">Exams</button>
-            <button type="button" class="filter-pill" data-filter="holidays" aria-pressed="false">Holidays</button>
-            <button type="button" class="filter-pill" data-filter="routine" aria-pressed="false">Routine</button>
-            <button type="button" class="filter-pill" data-filter="urgent" aria-pressed="false">Urgent</button>
+            <a href="{% url 'notices' %}" class="filter-pill {% if active_category == 'all' %}active{% endif %}" role="tab" aria-selected="{% if active_category == 'all' %}true{% else %}false{% endif %}">All</a>
+            {% for code, label in categories %}
+            <a href="{% url 'notices' %}?category={{ code }}" class="filter-pill {% if active_category == code %}active{% endif %}" role="tab" aria-selected="{% if active_category == code %}true{% else %}false{% endif %}">{{ label }}</a>
+            {% endfor %}
         </div>
 
         <!-- ============================================================
-             Notice feed (JS-rendered)
+             Notice feed (live from the Notice table)
         ============================================================ -->
-        <div class="feed" id="notice-feed" data-component="notice-feed"><!-- JS-rendered notice cards --></div>
+        <div class="feed" id="notice-feed" data-component="notice-feed">
+            {% for notice in notices %}
+            <article class="notice-card cat-{{ notice.category }}">
+                <div class="notice-head">
+                    <span class="notice-cat">{{ notice.get_category_display }}</span>
+                    <span class="notice-date"><i class="fa-regular fa-clock"></i> {{ notice.created_at|date:"M d, Y · h:i A" }}</span>
+                </div>
+                <h3 class="notice-title">{{ notice.title }}</h3>
+                <p class="notice-summary">{{ notice.content|truncatewords:45 }}</p>
+                <div class="notice-footer">
+                    <span class="notice-dept"><i class="fa-solid fa-building-columns"></i> {{ notice.author.get_full_name|default:notice.author.username }}</span>
+                    <button type="button" class="view-btn" data-notice="{{ notice.pk }}">
+                        <i class="fa-solid fa-file-lines"></i> Read More
+                    </button>
+                </div>
+                <div class="notice-full" id="notice-full-{{ notice.pk }}" hidden>{{ notice.content|linebreaks }}</div>
+            </article>
+            {% empty %}
+            <p class="empty-feed">No published notices right now — check back soon.</p>
+            {% endfor %}
+        </div>
 
     </div>
 
-    <!-- Toast -->
-    <div class="toast" id="toast" role="status" aria-live="polite"></div>
-
     <script>
         // ====================================================================
-        // Mock notice data (frontend-only)
+        // Read More — expand/collapse the full notice content
         // ====================================================================
-        const NOTICES = [
-            {
-                category: 'exams',
-                title: 'Mid-term Examination Schedule Update',
-                date: 'Today, 10:30 AM',
-                department: 'Office of the Registrar',
-                summary: 'Due to unforeseen circumstances, mid-term examinations originally scheduled for next week have been rescheduled. Please check the updated timetable on the student portal.',
-                views: 245,
-            },
-            {
-                category: 'exams',
-                title: 'Mid-term Results Published — Fall Semester',
-                date: 'Yesterday',
-                department: 'Controller of Examinations',
-                summary: 'Results for all mid-term examinations are now available. Students can view their grade sheets on the student portal and apply for re-evaluation by Dec 28.',
-                views: 412,
-            },
-            {
-                category: 'routine',
-                title: 'Class Routine for New Semester (Spring 2026)',
-                date: '2 days ago',
-                department: 'Department of CSE',
-                summary: 'The updated class routine for the upcoming semester has been finalized. Sections 1 and 2 begin at 8:00 AM — download the PDF for your full weekly schedule.',
-                views: 189,
-            },
-            {
-                category: 'routine',
-                title: 'Campus Library Hours Extended During Exam Season',
-                date: '2 days ago',
-                department: 'Library Administration',
-                summary: 'The central library will remain open until 10 PM during the exam period (Dec 15 – Jan 5). Additional study rooms are available on the 3rd floor.',
-                views: 156,
-            },
-            {
-                category: 'holidays',
-                title: 'Holiday Break Schedule — Campus Operations',
-                date: '3 days ago',
-                department: 'Administration',
-                summary: 'Campus operations will be modified during the holiday break (Dec 23 – Jan 1). The cafeteria and shuttle services will run on reduced hours.',
-                views: 132,
-            },
-            {
-                category: 'urgent',
-                title: 'Scheduled Power Maintenance — Building A',
-                date: 'Today, 8:00 AM',
-                department: 'Facilities & Maintenance',
-                summary: 'Power supply to Building A will be interrupted this Friday (9:00 AM – 12:00 PM) for transformer maintenance. Labs and elevators will be affected.',
-                views: 98,
-            },
-        ];
+        (function () {
+            const feedEl = document.getElementById('notice-feed');
+            if (!feedEl) return;
 
-        // ====================================================================
-        // Render
-        // ====================================================================
-        const feedEl = document.getElementById('notice-feed');
-        const toastEl = document.getElementById('toast');
-        let toastTimer;
-
-        const CATEGORY_LABEL = {
-            exams: 'Exams',
-            holidays: 'Holidays',
-            routine: 'Routine',
-            urgent: 'Urgent',
-        };
-
-        const CATEGORY_CLASS = {
-            exams: 'cat-exams',
-            holidays: 'cat-holidays',
-            routine: 'cat-routine',
-            urgent: 'cat-urgent',
-        };
-
-        function showToast(message) {
-            toastEl.textContent = message;
-            toastEl.classList.add('show');
-            clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3800);
-        }
-
-        function renderFeed(filter) {
-            const list = NOTICES.filter(n => filter === 'all' || n.category === filter);
-            feedEl.innerHTML = list.length
-                ? list.map(n => `
-                    <article class="notice-card ${CATEGORY_CLASS[n.category]}">
-                        <div class="notice-head">
-                            <span class="notice-cat">${CATEGORY_LABEL[n.category]}</span>
-                            <span class="notice-date"><i class="fa-regular fa-clock"></i> ${n.date}</span>
-                        </div>
-                        <h3 class="notice-title">${n.title}</h3>
-                        <p class="notice-summary">${n.summary}</p>
-                        <div class="notice-footer">
-                            <span class="notice-dept"><i class="fa-solid fa-building-columns"></i> ${n.department}</span>
-                            <span class="notice-views"><i class="fa-regular fa-eye"></i> ${n.views} views</span>
-                            <button type="button" class="view-btn" data-title="${n.title}">
-                                <i class="fa-solid fa-file-lines"></i> View Document
-                            </button>
-                        </div>
-                    </article>
-                `).join('')
-                : '<p class="empty-feed">No notices in this category right now.</p>';
-        }
-
-        // ====================================================================
-        // Filter pills
-        // ====================================================================
-        document.querySelectorAll('.filter-pill').forEach(pill => {
-            pill.addEventListener('click', () => {
-                document.querySelectorAll('.filter-pill').forEach(p => {
-                    const on = p === pill;
-                    p.classList.toggle('active', on);
-                    p.setAttribute('aria-pressed', on ? 'true' : 'false');
-                });
-                renderFeed(pill.dataset.filter);
+            feedEl.addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-notice]');
+                if (!btn) return;
+                const body = document.getElementById('notice-full-' + btn.dataset.notice);
+                if (!body) return;
+                const expanded = body.hidden;
+                body.hidden = !expanded;
+                btn.innerHTML = expanded
+                    ? '<i class="fa-solid fa-chevron-up"></i> Show Less'
+                    : '<i class="fa-solid fa-file-lines"></i> Read More';
             });
-        });
-
-        // ====================================================================
-        // View Document (mock)
-        // ====================================================================
-        feedEl.addEventListener('click', (e) => {
-            const btn = e.target.closest('[data-title]');
-            if (!btn) return;
-            showToast('Opening "' + btn.dataset.title + '" — document viewer coming soon.');
-        });
-
-        // ====================================================================
-        // Init
-        // ====================================================================
-        renderFeed('all');
+        })();
     </script>
 </body>
 </html>

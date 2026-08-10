@@ -1,15 +1,27 @@
 from django.contrib import admin
 
 from .models import (
+    ClassRoutine,
+    Club,
+    ClubEvent,
+    ClubRegistration,
     ContentBlock,
+    Course,
+    CourseMaterial,
+    Department,
     EditablePage,
+    FacultyMember,
     GoogleUserToken,
     MedicalAppointment,
     MealSubscription,
     MealTicket,
+    Notice,
     Notification,
     PageTemplate,
+    PaymentTransaction,
     TransportBooking,
+    UserNote,
+    UserNotificationPreference,
 )
 
 
@@ -40,6 +52,39 @@ class ContentBlockAdmin(admin.ModelAdmin):
     list_display = ('element_id', 'page', 'updated_at')
     list_select_related = ('page',)
     search_fields = ('element_id', 'page__title')
+
+
+@admin.register(Notice)
+class NoticeAdmin(admin.ModelAdmin):
+    """Publish/manage official institutional announcements."""
+
+    list_display = ('title', 'category', 'author', 'is_published', 'created_at')
+    list_filter = ('category', 'is_published', 'created_at')
+    search_fields = ('title', 'content', 'author__username')
+    list_select_related = ('author',)
+    date_hierarchy = 'created_at'
+    readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(Course)
+class CourseAdmin(admin.ModelAdmin):
+    """Course catalog entries grouping uploaded materials."""
+
+    list_display = ('code', 'title', 'department', 'semester')
+    list_filter = ('department', 'semester')
+    search_fields = ('code', 'title')
+
+
+@admin.register(CourseMaterial)
+class CourseMaterialAdmin(admin.ModelAdmin):
+    """Uploaded documents served on the Academic Notes drive."""
+
+    list_display = ('title', 'course', 'display_type', 'file', 'uploaded_at')
+    list_filter = ('uploaded_at', 'course__department')
+    search_fields = ('title', 'course__code', 'course__title')
+    list_select_related = ('course',)
+    date_hierarchy = 'uploaded_at'
+    readonly_fields = ('uploaded_at',)
 
 
 @admin.register(Notification)
@@ -91,6 +136,106 @@ class MedicalAppointmentAdmin(admin.ModelAdmin):
     list_display = ('doctor_name', 'user', 'appointment_date', 'time_slot', 'status', 'created_at')
     list_filter = ('status', 'doctor_name', 'appointment_date')
     search_fields = ('doctor_name', 'user__username', 'reason')
+    list_select_related = ('user',)
+
+
+@admin.register(Department)
+class DepartmentAdmin(admin.ModelAdmin):
+    """Academic departments powering the directory + detail hubs."""
+
+    list_display = ('name', 'code', 'slug', 'head_of_dept', 'office_location')
+    list_filter = ('code',)
+    search_fields = ('name', 'code', 'head_of_dept')
+    prepopulated_fields = {'slug': ('name',)}
+
+
+@admin.register(FacultyMember)
+class FacultyMemberAdmin(admin.ModelAdmin):
+    """Faculty listings on each department hub."""
+
+    list_display = ('name', 'department', 'designation', 'email')
+    list_filter = ('department',)
+    search_fields = ('name', 'designation', 'email', 'department__name')
+    list_select_related = ('department',)
+
+
+@admin.register(ClassRoutine)
+class ClassRoutineAdmin(admin.ModelAdmin):
+    """Weekly class/lab periods per department and semester."""
+
+    list_display = ('department', 'semester', 'day_of_week', 'subject', 'time_slot', 'room')
+    list_filter = ('department', 'semester', 'day_of_week')
+    search_fields = ('subject', 'room', 'department__name')
+    list_select_related = ('department',)
+
+
+@admin.register(Club)
+class ClubAdmin(admin.ModelAdmin):
+    """Student clubs — lead staff member and banner image."""
+
+    list_display = ('name', 'slug', 'lead_user')
+    search_fields = ('name', 'slug', 'description')
+    prepopulated_fields = {'slug': ('name',)}
+    list_select_related = ('lead_user',)
+
+
+@admin.register(ClubEvent)
+class ClubEventAdmin(admin.ModelAdmin):
+    """Upcoming club events shown on the /clubs/ page."""
+
+    list_display = ('title', 'club', 'event_date', 'location', 'capacity')
+    list_filter = ('event_date', 'club')
+    search_fields = ('title', 'club__name', 'location')
+    list_select_related = ('club',)
+    date_hierarchy = 'event_date'
+
+
+@admin.register(ClubRegistration)
+class ClubRegistrationAdmin(admin.ModelAdmin):
+    """Approve club membership requests from the admin."""
+
+    list_display = ('student', 'club', 'status', 'joined_at')
+    list_filter = ('status', 'club', 'joined_at')
+    search_fields = ('student__username', 'student__email', 'club__name')
+    list_select_related = ('student', 'club')
+
+
+@admin.register(PaymentTransaction)
+class PaymentTransactionAdmin(admin.ModelAdmin):
+    """Recorded checkout payments — mark pending wallet payments completed."""
+
+    list_display = ('transaction_id', 'user', 'amount', 'payment_method', 'purpose', 'status', 'created_at')
+    list_filter = ('status', 'payment_method', 'purpose', 'created_at')
+    search_fields = ('transaction_id', 'wallet_trx', 'user__username', 'description')
+    list_select_related = ('user',)
+    date_hierarchy = 'created_at'
+    readonly_fields = ('created_at',)
+
+    @admin.display(description='Mark completed')
+    def mark_completed(self, request, queryset):
+        updated = queryset.update(status='completed')
+        self.message_user(request, '%d payment(s) marked completed.' % updated)
+
+    actions = ['mark_completed']
+
+
+@admin.register(UserNotificationPreference)
+class UserNotificationPreferenceAdmin(admin.ModelAdmin):
+    """Per-user alert + theme preferences."""
+
+    list_display = ('user', 'email_alerts', 'sms_alerts', 'push_notifications', 'dark_mode')
+    list_filter = ('email_alerts', 'sms_alerts', 'push_notifications', 'dark_mode')
+    search_fields = ('user__username', 'user__email')
+    list_select_related = ('user',)
+
+
+@admin.register(UserNote)
+class UserNoteAdmin(admin.ModelAdmin):
+    """Student notes backing the Notes Engine workspace."""
+
+    list_display = ('title', 'user', 'updated_at')
+    search_fields = ('title', 'content', 'user__username')
+    list_filter = ('updated_at',)
     list_select_related = ('user',)
 
 

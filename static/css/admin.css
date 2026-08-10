@@ -319,7 +319,8 @@ table.matrix td:not(:first-child) {
 }
 
 .inline-form input,
-.inline-form select {
+.inline-form select,
+.inline-form textarea {
     padding: 0.6rem 0.85rem;
     background: var(--bg-card);
     border: 1px solid var(--border-color);
@@ -331,8 +332,14 @@ table.matrix td:not(:first-child) {
     min-width: 0;
 }
 
+.inline-form textarea {
+    resize: vertical;
+    min-height: 2.6rem;
+}
+
 .inline-form input:focus,
-.inline-form select:focus {
+.inline-form select:focus,
+.inline-form textarea:focus {
     border-color: var(--accent-primary);
     box-shadow: 0 0 0 3px rgba(232, 226, 216, 0.55);
 }

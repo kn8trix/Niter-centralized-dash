@@ -210,6 +210,9 @@
         </div>
     </div>
 
+    <!-- Hidden CSRF token so the csrftoken cookie is set for the payment POST -->
+    <div class="hidden">{% csrf_token %}</div>
+
     <!-- Toast -->
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -333,9 +336,19 @@
         });
 
         // ====================================================================
-        // Confirm & Pay (mock processing + success receipt)
+        // CSRF helper for the payment POST
         // ====================================================================
-        confirmBtn.addEventListener('click', () => {
+        function getCookie(name) {
+            const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+            return match ? decodeURIComponent(match[1]) : '';
+        }
+
+        const CHECKOUT_URL = window.location.pathname;
+
+        // ====================================================================
+        // Confirm & Pay — server-backed transaction (POST /checkout/)
+        // ====================================================================
+        confirmBtn.addEventListener('click', async () => {
             const wallet = walletNo.value.trim();
             const trx = trxId.value.trim();
 
@@ -350,23 +363,46 @@
                 return;
             }
 
-            // Simulate gateway processing
             confirmBtn.disabled = true;
             confirmIcon.className = 'fa-solid fa-circle-notch fa-spin';
             confirmLabel.textContent = 'Processing payment…';
 
-            setTimeout(() => {
-                // Generated Transaction Reference Number
-                const reference = 'NTR-' + Date.now().toString(36).toUpperCase().slice(-6)
-                    + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+            const body = new URLSearchParams({
+                type: ORDER.type,
+                item: ORDER.item,
+                issuer: ORDER.issuer,
+                fee: String(ORDER.fee),
+                method: selectedMethod().toLowerCase(),
+                wallet_no: wallet,
+                trx_id: trx,
+            });
 
+            try {
+                const response = await fetch(CHECKOUT_URL, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                    body: body,
+                });
+
+                if (response.status === 302) {
+                    // Not signed in — send them to the login page and come back.
+                    window.location.href = response.url || '{% url "login" %}?next=' + encodeURIComponent(CHECKOUT_URL);
+                    return;
+                }
+
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || data.status !== 'success') {
+                    throw new Error(data.message || 'Payment could not be recorded (HTTP ' + response.status + ').');
+                }
+
+                // Server-persisted receipt — real transaction reference.
                 document.getElementById('receipt-item').textContent = ORDER.item;
-                document.getElementById('receipt-method').textContent = selectedMethod();
-                document.getElementById('receipt-amount').textContent = '৳' + ORDER.fee;
+                document.getElementById('receipt-method').textContent = data.payment_method || selectedMethod();
+                document.getElementById('receipt-amount').textContent = '৳' + data.amount;
                 document.getElementById('receipt-trx').textContent = trx;
-                document.getElementById('receipt-ref-no').textContent = reference;
+                document.getElementById('receipt-ref-no').textContent = data.transaction_id;
 
-                // "View My Ticket / Dashboard" — land back with the ticket ready
+                // "View My Ticket / Dashboard" — land back with the item ready
                 const returnQuery = new URLSearchParams();
                 if (ORDER.type === 'transport') {
                     returnQuery.set('booked', '1');
@@ -394,13 +430,14 @@
                     document.getElementById('success-cta-label').textContent = 'Go to Dashboard';
                 }
 
-                // Reset the button to its resting state
+                successModal.classList.add('open');
+            } catch (err) {
+                showToast(err.message || 'Payment failed — please try again.');
+            } finally {
                 confirmBtn.disabled = false;
                 confirmIcon.className = 'fa-solid fa-lock';
                 confirmLabel.textContent = 'Confirm & Pay ৳' + ORDER.fee;
-
-                successModal.classList.add('open');
-            }, 1400);
+            }
         });
 
         // Copy the reference number

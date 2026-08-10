@@ -51,151 +51,116 @@
         </div>
 
         <!-- ============================================================
-             Course folders
+             Course folders (live from the Course table)
         ============================================================ -->
         <h2 class="section-title">Course Folders</h2>
         <p class="section-subtitle">Browse study material by department folder.</p>
-        <div class="folders-grid" id="folders-grid"><!-- JS-rendered folder cards --></div>
+        <div class="folders-grid" id="folders-grid">
+            {% for folder in folders %}
+            <article class="folder-card" data-folder="{{ folder.code }}" tabindex="0">
+                <div class="folder-card-top">
+                    <span class="folder-icon"><i class="fa-solid {{ folder.icon }}"></i></span>
+                    <span class="folder-count">{{ folder.count }} file{{ folder.count|pluralize }}</span>
+                </div>
+                <h3 class="folder-name">{{ folder.name }}</h3>
+                <p class="folder-code">{{ folder.code }}</p>
+            </article>
+            {% empty %}
+            <p class="empty-docs">No courses in the catalog yet.</p>
+            {% endfor %}
+        </div>
 
         <!-- ============================================================
-             Document previews
+             Document previews (live from the CourseMaterial table)
         ============================================================ -->
         <h2 class="section-title">Recent Documents</h2>
-        <p class="section-subtitle">Latest uploads with file size, tags, and summaries.</p>
-        <div class="docs-grid" id="docs-grid"><!-- JS-rendered document cards --></div>
+        <p class="section-subtitle">Latest uploads with file size and course details.</p>
+        <div class="docs-grid" id="docs-grid">
+            {% for material in materials %}
+            <article class="doc-card" data-dept="{{ material.course.department }}"
+                     data-search="{{ material.title|lower }} {{ material.course.code|lower }} {{ material.course.title|lower }}">
+                <div class="doc-card-head">
+                    <span class="doc-icon"><i class="fa-solid fa-file-lines"></i></span>
+                    <span class="doc-course">{{ material.course.code }}</span>
+                </div>
+                <h3 class="doc-title">{{ material.title }}</h3>
+                <p class="doc-snippet">{{ material.course.title }}</p>
+                <div class="doc-tags"><span class="doc-tag">{{ material.course.get_department_display }}</span></div>
+                <div class="doc-meta">
+                    <span><i class="fa-regular fa-file"></i> {{ material.size_display }}</span>
+                    <span><i class="fa-regular fa-calendar"></i> {{ material.uploaded_at|date:"M d, Y" }}</span>
+                    <a href="{{ material.file.url }}" class="doc-view" target="_blank" rel="noopener">Open</a>
+                </div>
+            </article>
+            {% endfor %}
+            <p class="empty-docs" id="docs-empty" {% if materials %}hidden{% endif %}>
+                {% if materials %}No documents match your search.{% else %}No course materials uploaded yet — check back soon.{% endif %}
+            </p>
+        </div>
 
     </div>
 
-    <!-- Toast -->
-    <div class="toast" id="toast" role="status" aria-live="polite"></div>
-
     <script>
         // ====================================================================
-        // Mock data (frontend-only)
+        // Search + folder filtering over the server-rendered document cards
         // ====================================================================
-        const FOLDERS = [
-            { name: 'Computer Science', code: 'CSE', count: 42, icon: 'fa-laptop-code' },
-            { name: 'Electrical Engineering', code: 'EEE', count: 28, icon: 'fa-bolt' },
-            { name: 'Mathematics', code: 'MATH', count: 19, icon: 'fa-square-root-variable' },
-            { name: 'Textile Engineering', code: 'TEX', count: 35, icon: 'fa-industry' },
-            { name: 'Physics', code: 'PHY', count: 12, icon: 'fa-flask' },
-            { name: 'Industrial & Production Eng.', code: 'IPE', count: 17, icon: 'fa-robot' },
-        ];
+        (function () {
+            const foldersGrid = document.getElementById('folders-grid');
+            const docsGrid = document.getElementById('docs-grid');
+            const searchInput = document.getElementById('notes-search');
+            const emptyEl = document.getElementById('docs-empty');
+            const uploadBtn = document.getElementById('upload-btn');
+            const toastEl = document.getElementById('toast');
+            let toastTimer;
+            let folderFilter = null;
 
-        const DOCS = [
-            { title: 'Lecture 5 — Divide & Conquer', course: 'CSE-2201', size: '2.4 MB', date: 'Dec 18', tags: ['Algorithms', 'Big-O'], snippet: 'Covers merge sort, recurrence relations, and the Master Theorem for analyzing recursive algorithms.' },
-            { title: 'Data Structures Mid-Term Review', course: 'CSE-2204', size: '1.8 MB', date: 'Dec 16', tags: ['Arrays', 'Trees', 'Graphs'], snippet: 'A condensed review of arrays, linked lists, trees, and graph traversals with exam-style practice problems.' },
-            { title: 'Circuit Analysis Lab Manual', course: 'EEE-2102', size: '3.1 MB', date: 'Dec 15', tags: ['Circuits', 'Ohm\u2019s Law'], snippet: 'Step-by-step lab procedures for Ohm\u2019s law, Kirchhoff\u2019s rules, and AC circuit measurements.' },
-            { title: 'Linear Algebra Problem Set 5', course: 'MATH-2201', size: '900 KB', date: 'Dec 14', tags: ['Eigenvalues', 'Matrices'], snippet: 'Problems on eigenvalues, eigenvectors, and diagonalization with full worked solutions.' },
-            { title: 'Textile Fibre Science Notes', course: 'TEX-1101', size: '2.2 MB', date: 'Dec 12', tags: ['Fibres', 'Yarns'], snippet: 'Natural and synthetic fibre properties, yarn numbering systems, and spinning basics.' },
-            { title: 'Thermodynamics Formula Sheet', course: 'PHY-1102', size: '480 KB', date: 'Dec 10', tags: ['Thermo', 'Formulas'], snippet: 'One-page formula sheet covering the laws of thermodynamics, entropy, and heat engines.' },
-            { title: 'Machine Learning Basics', course: 'CSE-3301', size: '5.6 MB', date: 'Dec 08', tags: ['ML', 'Neural Nets'], snippet: 'Intro to supervised learning, gradient descent, and a first look at neural network architectures.' },
-            { title: 'Fluid Mechanics — Chapter 3', course: 'IPE-2103', size: '2.9 MB', date: 'Dec 06', tags: ['Fluids', 'Bernoulli'], snippet: 'Hydrostatics, continuity equation, and Bernoulli\u2019s principle with solved examples.' },
-        ];
+            function showToast(message) {
+                toastEl.textContent = message;
+                toastEl.classList.add('show');
+                clearTimeout(toastTimer);
+                toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3800);
+            }
 
-        // ====================================================================
-        // Render
-        // ====================================================================
-        const foldersGrid = document.getElementById('folders-grid');
-        const docsGrid = document.getElementById('docs-grid');
-        const searchInput = document.getElementById('notes-search');
-        const uploadBtn = document.getElementById('upload-btn');
-        const toastEl = document.getElementById('toast');
-        let toastTimer;
+            function applyFilters() {
+                const q = (searchInput.value || '').trim().toLowerCase();
+                let visible = 0;
+                docsGrid.querySelectorAll('.doc-card').forEach((card) => {
+                    const matchesFolder = !folderFilter || card.dataset.dept === folderFilter;
+                    const haystack = (card.dataset.search || '').toLowerCase();
+                    const matchesQuery = !q || haystack.includes(q);
+                    const show = matchesFolder && matchesQuery;
+                    card.hidden = !show;
+                    if (show) visible++;
+                });
+                if (emptyEl) emptyEl.hidden = visible > 0;
+            }
 
-        function showToast(message) {
-            toastEl.textContent = message;
-            toastEl.classList.add('show');
-            clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3800);
-        }
+            searchInput.addEventListener('input', applyFilters);
 
-        function renderFolders() {
-            foldersGrid.innerHTML = FOLDERS.map(f => `
-                <article class="folder-card" data-folder="${f.name}" tabindex="0">
-                    <div class="folder-card-top">
-                        <span class="folder-icon"><i class="fa-solid ${f.icon}"></i></span>
-                        <span class="folder-count">${f.count} files</span>
-                    </div>
-                    <h3 class="folder-name">${f.name}</h3>
-                    <p class="folder-code">${f.code}</p>
-                </article>
-            `).join('');
-        }
-
-        function renderDocs(list) {
-            docsGrid.innerHTML = list.length
-                ? list.map(d => `
-                    <article class="doc-card">
-                        <div class="doc-card-head">
-                            <span class="doc-icon"><i class="fa-solid fa-file-pdf"></i></span>
-                            <span class="doc-course">${d.course}</span>
-                        </div>
-                        <h3 class="doc-title">${d.title}</h3>
-                        <p class="doc-snippet">${d.snippet}</p>
-                        <div class="doc-tags">${d.tags.map(t => `<span class="doc-tag">${t}</span>`).join('')}</div>
-                        <div class="doc-meta">
-                            <span><i class="fa-regular fa-file"></i> ${d.size}</span>
-                            <span><i class="fa-regular fa-calendar"></i> ${d.date}</span>
-                            <button type="button" class="doc-view" data-title="${d.title}">View</button>
-                        </div>
-                    </article>
-                `).join('')
-                : '<p class="empty-docs">No documents match your search.</p>';
-        }
-
-        // ====================================================================
-        // Interactions
-        // ====================================================================
-        let folderFilter = null;
-
-        function applyFilters() {
-            const q = searchInput.value.trim().toLowerCase();
-            const list = DOCS.filter(d => {
-                const matchesFolder = !folderFilter || d.course.startsWith(folderFilter);
-                const matchesQuery = !q ||
-                    d.title.toLowerCase().includes(q) ||
-                    d.course.toLowerCase().includes(q) ||
-                    d.tags.some(t => t.toLowerCase().includes(q));
-                return matchesFolder && matchesQuery;
+            foldersGrid.addEventListener('click', (e) => {
+                const card = e.target.closest('[data-folder]');
+                if (!card) return;
+                const code = card.dataset.folder;
+                folderFilter = folderFilter === code ? null : code;
+                foldersGrid.querySelectorAll('.folder-card').forEach((c) =>
+                    c.classList.toggle('selected', c === card && folderFilter === code));
+                applyFilters();
             });
-            renderDocs(list);
-        }
 
-        searchInput.addEventListener('input', applyFilters);
+            // Folder cards are keyboard-accessible (Enter / Space)
+            foldersGrid.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                const card = e.target.closest('[data-folder]');
+                if (card) card.click();
+            });
 
-        foldersGrid.addEventListener('click', (e) => {
-            const card = e.target.closest('[data-folder]');
-            if (!card) return;
-            const code = FOLDERS.find(f => f.name === card.dataset.folder).code;
-            folderFilter = folderFilter === code ? null : code;
-            document.querySelectorAll('.folder-card').forEach(c =>
-                c.classList.toggle('selected', c === card && folderFilter === code));
+            uploadBtn.addEventListener('click', () => {
+                showToast('Upload is ready — drag a PDF or connect Google Drive to continue.');
+            });
+
             applyFilters();
-        });
-
-        // Folder cards are keyboard-accessible (Enter / Space)
-        foldersGrid.addEventListener('keydown', (e) => {
-            if (e.key !== 'Enter' && e.key !== ' ') return;
-            e.preventDefault();
-            e.target.closest('[data-folder]') && e.target.click();
-        });
-
-        uploadBtn.addEventListener('click', () => {
-            showToast('Upload is ready — drag a PDF or connect Google Drive to continue.');
-        });
-
-        docsGrid.addEventListener('click', (e) => {
-            const btn = e.target.closest('[data-title]');
-            if (!btn) return;
-            showToast('Opening "' + btn.dataset.title + '" in the PDF viewer.');
-        });
-
-        // ====================================================================
-        // Init
-        // ====================================================================
-        renderFolders();
-        renderDocs(DOCS);
+        })();
     </script>
 </body>
 </html>

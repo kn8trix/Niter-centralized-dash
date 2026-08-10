@@ -4,11 +4,20 @@ Each authenticated user joins the ``user_<user_id>`` channel group, so any
 server component (a view, management command, or background task) can push a
 new alert to the user's open browser instantly via
 :func:`notify_user` or a raw ``channel_layer.group_send``.
+
+Resilience: ``notify_user`` never raises. When the configured channel layer
+(e.g. a Redis-backed one) is unreachable, the push is skipped and the
+notification is simply picked up on the student's next ``fetch_notifications``
+poll — a live-push outage must never fail the request that produced the alert.
 """
+
+import logging
 
 from asgiref.sync import async_to_sync
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from channels.layers import get_channel_layer
+
+logger = logging.getLogger(__name__)
 
 
 class NotificationConsumer(AsyncJsonWebsocketConsumer):
@@ -61,7 +70,12 @@ def notify_user(user_id, payload):
     channel_layer = get_channel_layer()
     if channel_layer is None:
         return
-    async_to_sync(channel_layer.group_send)(
-        'user_%s' % user_id,
-        {'type': 'notification', 'payload': payload},
-    )
+    try:
+        async_to_sync(channel_layer.group_send)(
+            'user_%s' % user_id,
+            {'type': 'notification', 'payload': payload},
+        )
+    except Exception:
+        # Channel layer outage (e.g. Redis went down after startup) — log and
+        # degrade to poll-only delivery instead of bubbling up a 500.
+        logger.warning('notify_user: channel layer push failed for user %s', user_id, exc_info=True)

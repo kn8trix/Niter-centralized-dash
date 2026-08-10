@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
     <!-- Shared top navigation -->
     <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
-    <!-- Clubs & Events frontend-only styles -->
+    <!-- Clubs & Events styles -->
     <link rel="stylesheet" href="{% static 'css/clubs.css' %}">
 
     <!-- Google Fonts (Inter) -->
@@ -48,22 +48,66 @@
         </div>
 
         <!-- ============================================================
-             View 1 — Public Student View
+             View 1 — Public Student View (live database clubs & events)
         ============================================================ -->
         <section id="panel-student" class="view-panel" role="tabpanel" aria-labelledby="tab-student">
 
             <h2 class="section-title">Featured Clubs</h2>
             <p class="section-subtitle">Find your community and join an active campus club.</p>
-            <div class="clubs-grid" id="clubs-grid"><!-- JS-rendered club cards --></div>
+            <div class="clubs-grid" id="clubs-grid">
+                {% for row in clubs %}
+                <article class="club-card" data-widget="club-card">
+                    <div class="club-card-top">
+                        <span class="club-icon"><i class="fa-solid {% if row.club.banner_image %}fa-image{% else %}{{ row.icon }}{% endif %}"></i></span>
+                        <span class="status-badge">Active</span>
+                    </div>
+                    <h3 class="club-name">{{ row.club.name }}</h3>
+                    <p class="club-tagline">{{ row.club.description|default:"Join this campus club." }}</p>
+                    <div class="club-footer">
+                        <span class="club-members"><i class="fa-solid fa-user-group"></i> {{ row.club.member_count }} member{{ row.club.member_count|pluralize }}</span>
+                        <button type="button" class="club-join" data-club-id="{{ row.club.pk }}" data-club="{{ row.club.name }}">Join →</button>
+                    </div>
+                </article>
+                {% empty %}
+                <div class="club-card" style="grid-column: 1 / -1;" role="status">
+                    <h3 class="club-name">No clubs yet</h3>
+                    <p class="club-tagline">Clubs will appear here once they are added in the admin panel.</p>
+                </div>
+                {% endfor %}
+            </div>
 
             <h2 class="section-title">Upcoming Events</h2>
             <p class="section-subtitle">Register online — payments via bKash / Nagad.</p>
-            <div class="events-grid" id="events-grid"><!-- JS-rendered event cards --></div>
+            <div class="events-grid" id="events-grid">
+                {% for event in events %}
+                <article class="event-card" data-widget="event-card">
+                    <div class="event-card-head">
+                        <h3 class="event-title">{{ event.title }}</h3>
+                        <span class="fee-badge fee-free">{{ event.capacity }} seats</span>
+                    </div>
+                    <p class="event-desc">{{ event.description|default:event.club.name }}</p>
+                    <div class="event-meta">
+                        <span><i class="fa-regular fa-calendar"></i> {{ event.event_date|date:"M d, Y" }}</span>
+                        <span><i class="fa-solid fa-location-dot"></i> {{ event.location|default:"Campus" }}</span>
+                        <span><i class="fa-solid fa-flag"></i> {{ event.club.name }}</span>
+                    </div>
+                    <a href="{{ checkout_url }}?type=event&amp;item={{ event.title|urlencode }}&amp;issuer={{ event.club.name|urlencode }}&amp;fee=0" class="register-btn">
+                        <i class="fa-solid fa-ticket"></i> Register Now
+                    </a>
+                </article>
+                {% empty %}
+                <div class="event-card" style="grid-column: 1 / -1;" role="status">
+                    <h3 class="event-title">No upcoming events</h3>
+                    <p class="event-desc">Events will appear here once they are scheduled.</p>
+                </div>
+                {% endfor %}
+            </div>
 
         </section>
 
         <!-- ============================================================
-             View 2 — Club Executive Workspace
+             View 2 — Club Executive Workspace (management lives at
+             /clubs/manage/; this panel keeps the quick overview).
         ============================================================ -->
         <section id="panel-exec" class="view-panel hidden" role="tabpanel" aria-labelledby="tab-exec">
 
@@ -124,51 +168,13 @@
 
     </div>
 
-    <!-- Toast for mock confirmations -->
+    <!-- Toast for confirmations -->
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <script>
         // ====================================================================
-        // Mock JavaScript data (frontend-only — no backend/database involved)
+        // Executive workspace mock data (club management lives at /clubs/manage/)
         // ====================================================================
-        const CLUBS = [
-            { name: 'Computer Club', tagline: 'Code · Hack · Innovate', members: 320, icon: 'fa-laptop-code' },
-            { name: 'Electronics Club', tagline: 'Circuits · Robotics · IoT', members: 210, icon: 'fa-microchip' },
-            { name: 'Cultural Society', tagline: 'Music · Dance · Drama', members: 450, icon: 'fa-masks-theater' },
-            { name: 'Sports Club', tagline: 'Cricket · Football · Athletics', members: 380, icon: 'fa-trophy' },
-        ];
-
-        const EVENTS = [
-            {
-                title: 'CodeStorm 2026 — Inter-University Hackathon',
-                date: 'Mar 14, 2026', time: '9:00 AM – 6:00 PM',
-                location: 'Innovation Lab, Building C',
-                description: 'A 24-hour build sprint where student teams solve real textile & software problems. Prizes, mentors, and refreshments included.',
-                fee_label: 'Free', fee_type: 'free', issuer: 'NITER Computer Club',
-            },
-            {
-                title: 'Tech Talk: AI in the Textile Industry',
-                date: 'Mar 18, 2026', time: '3:00 PM – 5:00 PM',
-                location: 'Central Auditorium',
-                description: 'Industry experts discuss computer vision, automation, and predictive maintenance reshaping textile manufacturing.',
-                fee_label: 'Free', fee_type: 'free', issuer: 'NITER Computer Club',
-            },
-            {
-                title: 'Spring Cultural Night',
-                date: 'Mar 21, 2026', time: '6:30 PM – 10:30 PM',
-                location: 'Main Auditorium, Block A',
-                description: 'An evening of music, dance, and drama celebrating spring — featuring performances from every department.',
-                fee_label: '৳200 BDT', fee_type: 'paid', issuer: 'NITER Cultural Society',
-            },
-            {
-                title: 'Inter-Department Football Cup',
-                date: 'Mar 25, 2026', time: '4:00 PM – 8:00 PM',
-                location: 'Main Field, Sports Complex',
-                description: 'Knockout tournament between the five departments. Squad of 11 + 5 substitutes per department.',
-                fee_label: '৳150 BDT', fee_type: 'paid', issuer: 'NITER Sports Club',
-            },
-        ];
-
         const STATS = [
             { label: 'Total Members', value: '1,360', icon: 'fa-users' },
             { label: 'Active Registrations', value: '84', icon: 'fa-clipboard-list' },
@@ -186,63 +192,22 @@
         ];
 
         // ====================================================================
-        // Checkout link builder (event registration routes to /checkout/)
+        // DOM refs + toast
         // ====================================================================
-        const CHECKOUT_URL = '{% url "checkout" %}';
+        const toastEl = document.getElementById('toast');
+        let toastTimer;
 
-        function eventCheckoutUrl(e) {
-            const fee = e.fee_type === 'paid' ? parseInt(String(e.fee_label).replace(/[^0-9]/g, ''), 10) : 0;
-            const qs = new URLSearchParams({ type: 'event', item: e.title, issuer: e.issuer, fee: String(fee) });
-            return CHECKOUT_URL + '?' + qs.toString();
+        function showToast(message, isError) {
+            toastEl.textContent = message;
+            toastEl.classList.toggle('error', !!isError);
+            toastEl.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3800);
         }
 
         // ====================================================================
-        // Render helpers
+        // Render executive workspace (mock)
         // ====================================================================
-        function renderClubs() {
-            const grid = document.getElementById('clubs-grid');
-            grid.innerHTML = CLUBS.map(c => `
-                <article class="club-card">
-                    <div class="club-card-top">
-                        <span class="club-icon"><i class="fa-solid ${c.icon}"></i></span>
-                        <span class="status-badge">Active</span>
-                    </div>
-                    <h3 class="club-name">${c.name}</h3>
-                    <p class="club-tagline">${c.tagline}</p>
-                    <div class="club-footer">
-                        <span class="club-members"><i class="fa-solid fa-user-group"></i> ${c.members} members</span>
-                        <button type="button" class="club-join" data-club="${c.name}">Join →</button>
-                    </div>
-                </article>
-            `).join('');
-        }
-
-        function renderEvents() {
-            const grid = document.getElementById('events-grid');
-            grid.innerHTML = EVENTS.map(e => {
-                const badge = e.fee_type === 'free'
-                    ? '<span class="fee-badge fee-free">Free</span>'
-                    : `<span class="fee-badge fee-paid">${e.fee_label}</span>`;
-                return `
-                    <article class="event-card">
-                        <div class="event-card-head">
-                            <h3 class="event-title">${e.title}</h3>
-                            ${badge}
-                        </div>
-                        <p class="event-desc">${e.description}</p>
-                        <div class="event-meta">
-                            <span><i class="fa-regular fa-calendar"></i> ${e.date}</span>
-                            <span><i class="fa-regular fa-clock"></i> ${e.time}</span>
-                            <span><i class="fa-solid fa-location-dot"></i> ${e.location}</span>
-                        </div>
-                        <a href="${eventCheckoutUrl(e)}" class="register-btn">
-                            <i class="fa-solid fa-ticket"></i> Register Now
-                        </a>
-                    </article>
-                `;
-            }).join('');
-        }
-
         function renderStats() {
             const grid = document.getElementById('stats-grid');
             grid.innerHTML = STATS.map(s => `
@@ -276,19 +241,6 @@
         }
 
         // ====================================================================
-        // Toast
-        // ====================================================================
-        const toastEl = document.getElementById('toast');
-        let toastTimer;
-
-        function showToast(message) {
-            toastEl.textContent = message;
-            toastEl.classList.add('show');
-            clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3800);
-        }
-
-        // ====================================================================
         // Dual-view toggle
         // ====================================================================
         const tabs = document.querySelectorAll('.view-toggle button');
@@ -305,17 +257,6 @@
 
         tabs.forEach(tab => {
             tab.addEventListener('click', () => setView(tab.id.replace('tab-', '')));
-        });
-
-        // ====================================================================
-        // Delegated mock actions: Join Club (toast). Event registration
-        // buttons route straight to the /checkout/ payment gateway.
-        // ====================================================================
-        document.addEventListener('click', (e) => {
-            const joinBtn = e.target.closest('[data-club]');
-            if (joinBtn) {
-                showToast('Membership request sent to ' + joinBtn.dataset.club + '. Welcome aboard!');
-            }
         });
 
         // Keyboard navigation for the view tabs (Left/Right/Home/End)
@@ -335,6 +276,42 @@
         });
 
         // ====================================================================
+        // Join club — real POST to /api/clubs/join/ (CSRF protected)
+        // ====================================================================
+        function getCookie(name) {
+            const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+            return match ? decodeURIComponent(match[1]) : '';
+        }
+
+        const JOIN_URL = '{% url "api_club_join" %}';
+
+        document.getElementById('clubs-grid').addEventListener('click', async (e) => {
+            const btn = e.target.closest('[data-club-id]');
+            if (!btn) return;
+            btn.disabled = true;
+            try {
+                const res = await fetch(JOIN_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken'),
+                    },
+                    body: new URLSearchParams({ club_id: btn.dataset.clubId }),
+                });
+                const data = await res.json();
+                if (res.ok && data.status === 'success') {
+                    showToast(data.message + ' Membership is pending approval.');
+                } else {
+                    showToast(data.message || 'Could not join this club.', true);
+                }
+            } catch (err) {
+                showToast('Network error — please try again.', true);
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        // ====================================================================
         // Announcement publisher (mock)
         // ====================================================================
         document.getElementById('announcement-form').addEventListener('submit', (e) => {
@@ -347,8 +324,6 @@
         // ====================================================================
         // Init
         // ====================================================================
-        renderClubs();
-        renderEvents();
         renderStats();
         renderRegistrations();
     </script>

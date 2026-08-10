@@ -82,6 +82,24 @@
                     </div>
                 </div>
             </div>
+
+            <p class="text-xs font-medium text-main/40 uppercase tracking-wider px-3 mb-2 mt-4">My Notes</p>
+            <div id="my-notes" class="space-y-1">
+                {% for note in user_notes %}
+                <button type="button" class="note-item group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer w-full text-left border border-border"
+                        data-note-id="{{ note.pk }}" data-note-title="{{ note.title }}" data-note-content="{{ note.content }}">
+                    <svg class="w-4 h-4 text-sky-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm text-main font-medium truncate">{{ note.title }}</p>
+                        <p class="text-[10px] text-main/50">Edited {{ note.updated_at|date:"M d, H:i" }}</p>
+                    </div>
+                </button>
+                {% empty %}
+                <p class="text-xs text-main/40 px-3">No saved notes yet — write one and hit “Save Note”.</p>
+                {% endfor %}
+            </div>
         </div>
     </div>
 
@@ -91,17 +109,17 @@
         <div class="flex-1 flex flex-col border-b border-border overflow-hidden">
             <!-- Title & Actions -->
             <div class="p-6 pb-4">
-                <input type="text" value="Advanced Algorithms - Lecture 5 Summary" class="w-full text-2xl font-bold text-main bg-transparent border-none focus:outline-none placeholder-main/30 mb-4" placeholder="Untitled Note">
+                <input type="text" id="note-title" value="Advanced Algorithms - Lecture 5 Summary" class="w-full text-2xl font-bold text-main bg-transparent border-none focus:outline-none placeholder-main/30 mb-4" placeholder="Untitled Note">
                 
                 <div class="flex flex-wrap items-center gap-3">
-                    <button type="button" class="flex items-center gap-2 bg-main hover:bg-main/90 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors shadow-sm">
+                    <button type="button" id="ai-summary-btn" class="flex items-center gap-2 bg-main hover:bg-main/90 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors shadow-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                         </svg>
                         Generate AI Summary
                     </button>
                     
-                    <button type="button" class="flex items-center gap-2 bg-card hover:bg-white text-main font-medium px-4 py-2 rounded-lg text-sm transition-colors border border-border shadow-sm">
+                    <button type="button" id="keywords-btn" class="flex items-center gap-2 bg-card hover:bg-white text-main font-medium px-4 py-2 rounded-lg text-sm transition-colors border border-border shadow-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
                         </svg>
@@ -110,7 +128,14 @@
 
                     <div class="hidden md:block md:flex-1"></div>
 
-                    <button type="button" class="flex items-center gap-2 bg-card hover:bg-white text-main font-medium px-4 py-2 rounded-lg text-sm transition-colors border border-border shadow-sm">
+                    <button type="button" id="save-note-btn" class="flex items-center gap-2 bg-card hover:bg-white text-main font-medium px-4 py-2 rounded-lg text-sm transition-colors border border-border shadow-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
+                        </svg>
+                        Save Note
+                    </button>
+
+                    <button type="button" id="export-btn" class="flex items-center gap-2 bg-card hover:bg-white text-main font-medium px-4 py-2 rounded-lg text-sm transition-colors border border-border shadow-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                         </svg>
@@ -121,7 +146,7 @@
 
             <!-- Textarea -->
             <div class="flex-1 px-6 pb-6 overflow-y-auto">
-                <textarea class="w-full h-full min-h-[320px] lg:min-h-0 bg-transparent text-main/80 font-mono text-sm leading-relaxed resize-none focus:outline-none placeholder-main/30" placeholder="Start typing your notes here... (Markdown supported)">## Key Concepts from Lecture 5
+                <textarea id="note-content" class="w-full h-full min-h-[320px] lg:min-h-0 bg-transparent text-main/80 font-mono text-sm leading-relaxed resize-none focus:outline-none placeholder-main/30" placeholder="Start typing your notes here... (Markdown supported)">## Key Concepts from Lecture 5
 
 - **Divide and Conquer Strategy**: Breaking problems into subproblems.
 - **Recurrence Relations**: Using Big-O notation to analyze recursive algorithms.
@@ -140,18 +165,10 @@
                     <div class="w-2 h-2 rounded-full bg-green-500"></div>
                     <span class="text-sm font-medium text-main">AI Summary Preview</span>
                 </div>
-                <span class="text-xs text-main/50">Generated from: Lecture_05_Notes.pdf</span>
+                <span class="text-xs text-main/50" id="ai-preview-src">Ready — pick an action above.</span>
             </div>
-            <div class="flex-1 p-6 overflow-y-auto prose prose-sm prose-slate max-w-none">
-                <p class="text-main/80 mb-2"><strong>Summary:</strong> This lecture covers advanced algorithm design techniques, focusing on divide and conquer strategies. Key takeaways include the analysis of recursive algorithms using the Master Theorem.</p>
-                <ul class="list-disc pl-5 text-main/80 space-y-1 mb-4">
-                    <li>Explored time complexity of Merge Sort and Quick Sort.</li>
-                    <li>Discussed the importance of balanced partitioning.</li>
-                    <li>Practical applications in database indexing and search operations.</li>
-                </ul>
-                <p class="text-main/80 text-xs bg-base p-3 rounded-lg border border-border inline-block">
-                    <strong>Keywords:</strong> Algorithms, Divide and Conquer, Recurrence, Big-O, Master Theorem
-                </p>
+            <div class="flex-1 p-6 overflow-y-auto prose prose-sm prose-slate max-w-none" id="ai-preview-body">
+                <p class="text-main/80">Use <strong>Generate AI Summary</strong> or <strong>Extract Keywords</strong> to analyze the current note — the results are computed server-side.</p>
             </div>
         </div>
     </div>
@@ -334,6 +351,148 @@
                 if (e.target === reauthModal) hideReauthModal();
             });
         }
+    })();
+
+    // ====================================================================
+    // Notes Engine — server-side actions (save / summarize / keywords / export)
+    // ====================================================================
+    (function () {
+        const SAVE_URL = '{% url "api_note_save" %}';
+        const SUMMARY_URL = '{% url "api_note_summarize" %}';
+        const KEYWORDS_URL = '{% url "api_note_keywords" %}';
+        const EXPORT_URL = '{% url "api_note_export" %}';
+
+        const titleInput = document.getElementById('note-title');
+        const contentArea = document.getElementById('note-content');
+        const previewBody = document.getElementById('ai-preview-body');
+        const previewSrc = document.getElementById('ai-preview-src');
+        const toast = document.getElementById('notes-toast');
+        let toastTimer;
+
+        function getCookie(name) {
+            const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+            return match ? decodeURIComponent(match[1]) : '';
+        }
+
+        function showToast(message, ok) {
+            toast.textContent = message;
+            toast.classList.remove('bg-main');
+            toast.classList.toggle('bg-success', !!ok);
+            toast.classList.toggle('bg-danger', !ok);
+            toast.style.opacity = '1';
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { toast.style.opacity = '0'; }, 3600);
+        }
+
+        function escapeHtml(value) {
+            return String(value).replace(/[&<>"']/g, (c) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+            }[c]));
+        }
+
+        async function postForm(url, payload) {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                body: new URLSearchParams(payload),
+            });
+            if (response.status === 302) {
+                window.location.href = '{% url "login" %}?next={{ request.path|urlencode }}';
+                return null;
+            }
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data.message || 'Action failed (HTTP ' + response.status + ').');
+            }
+            return data;
+        }
+
+        // Save Note
+        document.getElementById('save-note-btn').addEventListener('click', async () => {
+            try {
+                const data = await postForm(SAVE_URL, {
+                    title: titleInput.value.trim() || 'Untitled Note',
+                    content: contentArea.value,
+                });
+                if (data) showToast('Note saved ✓', true);
+            } catch (err) {
+                showToast(err.message, false);
+            }
+        });
+
+        // Generate AI Summary
+        document.getElementById('ai-summary-btn').addEventListener('click', async () => {
+            try {
+                const data = await postForm(SUMMARY_URL, { content: contentArea.value });
+                if (!data) return;
+                const summary = data.summary || '(No summary — the note may be too short.)';
+                previewSrc.textContent = 'Generated from: ' + (titleInput.value.trim() || 'Untitled Note');
+                previewBody.innerHTML =
+                    '<p class="text-main/80"><strong>Summary:</strong> ' + escapeHtml(summary) + '</p>';
+                showToast('Summary generated ✓', true);
+            } catch (err) {
+                showToast(err.message, false);
+            }
+        });
+
+        // Extract Keywords
+        document.getElementById('keywords-btn').addEventListener('click', async () => {
+            try {
+                const data = await postForm(KEYWORDS_URL, { content: contentArea.value });
+                if (!data) return;
+                const chips = (data.keywords || []).map(k =>
+                    '<span class="inline-block bg-base border border-border rounded-full px-3 py-1 text-xs font-medium text-main">' + escapeHtml(k) + '</span>'
+                ).join(' ') || 'No keywords found.';
+                previewSrc.textContent = 'Keywords extracted from: ' + (titleInput.value.trim() || 'Untitled Note');
+                previewBody.innerHTML = '<p class="text-main/80 text-xs mb-2"><strong>Keywords:</strong></p><div class="flex flex-wrap gap-2">' + chips + '</div>';
+                showToast('Keywords extracted ✓', true);
+            } catch (err) {
+                showToast(err.message, false);
+            }
+        });
+
+        // Export as PDF (server-generated, downloaded via blob)
+        document.getElementById('export-btn').addEventListener('click', async () => {
+            try {
+                const response = await fetch(EXPORT_URL, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                    body: new URLSearchParams({
+                        title: titleInput.value.trim() || 'Untitled Note',
+                        content: contentArea.value,
+                        format: 'pdf',
+                    }),
+                });
+                if (response.status === 302) {
+                    window.location.href = '{% url "login" %}?next={{ request.path|urlencode }}';
+                    return;
+                }
+                if (!response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    throw new Error(data.message || 'Export failed (HTTP ' + response.status + ').');
+                }
+                const blob = await response.blob();
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = (titleInput.value.trim() || 'note').replace(/[^A-Za-z0-9._-]+/g, '_') + '.pdf';
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                showToast('PDF downloaded ✓', true);
+            } catch (err) {
+                showToast(err.message, false);
+            }
+        });
+
+        // Click a saved note → load it into the editor
+        document.getElementById('my-notes').addEventListener('click', (e) => {
+            const item = e.target.closest('.note-item');
+            if (!item) return;
+            titleInput.value = item.dataset.noteTitle;
+            contentArea.value = item.dataset.noteContent;
+            previewSrc.textContent = 'Loaded: ' + item.dataset.noteTitle;
+            showToast('Note loaded ✓', true);
+        });
     })();
 </script>
 {% endblock %}

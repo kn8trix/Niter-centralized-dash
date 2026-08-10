@@ -194,19 +194,19 @@
                 <h2 class="section-title"><i class="fa-solid fa-bullhorn"></i> Official Notices</h2>
                 <p class="section-subtitle">Create and manage institutional announcements.</p>
 
-                <form class="inline-form" data-component="notice-form">
+                <form class="inline-form" data-component="notice-form" action="{% url 'api_notices_create' %}">
                     {% csrf_token %}
                     <input type="text" name="title" placeholder="Notice title…" aria-label="Notice title">
+                    <textarea name="content" placeholder="Notice content…" aria-label="Notice content" rows="2"></textarea>
                     <select name="category" aria-label="Category">
-                        <option>Academic</option>
-                        <option>General</option>
-                        <option>Event</option>
-                        <option>Workshop</option>
+                        <option value="academic">Academic</option>
+                        <option value="general">General</option>
+                        <option value="event">Event</option>
+                        <option value="urgent">Urgent</option>
                     </select>
                     <select name="status" aria-label="Status">
-                        <option>Draft</option>
-                        <option>Scheduled</option>
-                        <option>Published</option>
+                        <option value="published">Published</option>
+                        <option value="draft">Draft</option>
                     </select>
                     <button type="submit" class="btn-primary"><i class="fa-solid fa-plus"></i> Post Notice</button>
                 </form>
@@ -468,7 +468,7 @@
         })();
 
         // ====================================================================
-        // Mock toast + form confirmations (frontend-only)
+        // Toast + form wiring
         // ====================================================================
         (function () {
             const toast = document.getElementById('admin-toast');
@@ -483,13 +483,63 @@
                 timer = setTimeout(() => { toast.classList.remove('show'); toast.hidden = true; }, 2600);
             }
 
-            document.querySelectorAll('form.inline-form').forEach((form) => {
+            function escapeHtml(value) {
+                return String(value).replace(/[&<>"']/g, (c) => ({
+                    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+                }[c]));
+            }
+
+            // Material Drive stays frontend-only (demo) for now.
+            document.querySelectorAll('form[data-component="material-form"]').forEach((form) => {
                 form.addEventListener('submit', (e) => {
                     e.preventDefault();
                     show('Saved (demo — no backend changes yet).');
                     form.reset();
                 });
             });
+
+            // Official Notice publisher — POST to /api/notices/create/ and
+            // prepend the returned notice to the live notices table.
+            document.querySelectorAll('form[data-component="notice-form"]').forEach((form) => {
+                form.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const btn = form.querySelector('button[type="submit"]');
+                    btn.disabled = true;
+                    try {
+                        const resp = await fetch(form.action, {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                            body: new URLSearchParams(new FormData(form)).toString(),
+                        });
+                        const data = await resp.json();
+                        if (data.status === 'success') {
+                            show(data.message + (data.notified ? ' (' + data.notified + ' notified)' : ''));
+                            addNoticeRow(data);
+                            form.reset();
+                        } else {
+                            show(data.message || 'Could not publish notice.');
+                        }
+                    } catch (err) {
+                        show('Could not publish notice.');
+                    } finally {
+                        btn.disabled = false;
+                    }
+                });
+            });
+
+            function addNoticeRow(data) {
+                const tbody = document.querySelector('#panel-notices table tbody');
+                if (!tbody) return;
+                const tr = document.createElement('tr');
+                const statusClass = data.is_published ? 'published' : 'draft';
+                tr.innerHTML =
+                    '<td>' + escapeHtml(data.title) + '</td>' +
+                    '<td><span class="badge category">' + escapeHtml(data.category) + '</span></td>' +
+                    '<td><span class="badge ' + statusClass + '">' + (data.is_published ? 'Published' : 'Draft') + '</span></td>' +
+                    '<td class="mono">' + escapeHtml(data.created_at || '') + '</td>';
+                tbody.prepend(tr);
+            }
 
             // User role updates — POST to /api/admin/update-role/
             function getCookie(name) {

@@ -23,6 +23,7 @@ urlpatterns = [
     path('cafeteria/admin/', views.cafeteria_admin_view, name='cafeteria_admin'),
     path('clubs/manage/', views.club_admin_view, name='club_admin'),
     path('clubs/', views.clubs_dashboard, name='clubs_dashboard'),
+    path('api/clubs/join/', views.join_club, name='api_club_join'),
     path('transport/', views.transport_dashboard, name='transport_dashboard'),
     path('meals/', views.meal_dashboard, name='meal_dashboard'),
     path('checkout/', views.checkout_page, name='checkout'),
@@ -45,6 +46,15 @@ urlpatterns = [
     path('api/clubs/sheet/', views.fetch_club_sheet_view, name='api_club_sheet_fetch'),
     path('api/clubs/sheet/append/', views.append_club_sheet_view, name='api_club_sheet_append'),
 
+    # Notes Engine — server-side actions (save / summarize / keywords / export)
+    path('api/notes/save/', views.save_note, name='api_note_save'),
+    path('api/notes/summarize/', views.note_summary, name='api_note_summarize'),
+    path('api/notes/keywords/', views.note_keywords, name='api_note_keywords'),
+    path('api/notes/export/', views.export_note, name='api_note_export'),
+
+    # Research AI — structured query endpoint
+    path('api/research/query/', views.research_query, name='api_research_query'),
+
     # Real-time notification & system alert engine
     path('api/notifications/', views.fetch_notifications, name='api_notifications'),
     path('api/notifications/<int:notification_id>/read/', views.mark_notification_read, name='api_notification_read'),
@@ -59,4 +69,8 @@ urlpatterns = [
     path('api/medical/appointments/<int:appointment_id>/status/', views.update_appointment_status, name='api_appointment_status'),
     path('api/clubs/verify-transaction/', views.verify_club_transaction_view, name='api_club_verify_transaction'),
     path('api/admin/update-role/', views.update_user_role, name='api_admin_update_role'),
+
+    # Official notices — publish from the System Admin dashboard
+    path('api/notices/create/', views.create_notice, name='api_notices_create'),
 ]
+

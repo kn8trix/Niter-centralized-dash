@@ -42,64 +42,62 @@
         ============================================================ -->
         <div class="summary-grid">
 
-            <!-- Meal Ratio Counter -->
+            <!-- Meal Ratio Counter (live: tickets claimed today / capacity) -->
             <a href="{% url 'meal_dashboard' %}" class="widget-card" data-component="card" data-widget="meal-ratio">
                 <div class="widget-head">
                     <span class="widget-icon"><i class="fa-solid fa-utensils"></i></span>
                     <h3 class="widget-title">Meal Ratio Counter</h3>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-number">140 <small>/ 200</small></span>
+                    <span class="stat-number">{{ meal_widget.remaining }} <small>/ {{ meal_widget.total }}</small></span>
                     <span class="status-chip chip-green"><i class="fa-solid fa-circle-check"></i> Active</span>
                 </div>
-                <p class="stat-caption">slots remaining for this month.</p>
+                <p class="stat-caption">slots remaining for today.</p>
                 <div class="progress-track">
-                    <div class="progress-bar" style="width: 70%"></div>
+                    <div class="progress-bar" style="width: {{ meal_widget.percent }}%"></div>
                 </div>
                 <div class="progress-legend">
-                    <span>Used: 60</span>
-                    <span>Remaining: 140</span>
+                    <span>Used: {{ meal_widget.used }}</span>
+                    <span>Remaining: {{ meal_widget.remaining }}</span>
                 </div>
             </a>
 
-            <!-- Transport Service -->
+            <!-- Transport Service (live: seats left on the fullest-available route) -->
             <a href="{% url 'transport_dashboard' %}" class="widget-card" data-component="card" data-widget="transport">
                 <div class="widget-head">
                     <span class="widget-icon"><i class="fa-solid fa-bus"></i></span>
                     <h3 class="widget-title">Transport Service</h3>
                 </div>
-                <div class="route-name">Bus Route 1</div>
-                <div class="route-time"><i class="fa-regular fa-clock"></i> 8:00 AM</div>
-                <p class="route-dest">Morning shuttle to Academic Block</p>
+                <div class="route-name">{{ transport_widget.name }}</div>
+                <div class="route-time"><i class="fa-regular fa-clock"></i> {{ transport_widget.time }}</div>
+                <p class="route-dest">Next campus shuttle with open seats</p>
                 <div class="widget-footer">
-                    <span class="seats-avail"><span class="status-dot"></span> 12 seats available</span>
+                    <span class="seats-avail"><span class="status-dot"></span> {{ transport_widget.available }} seats available</span>
                     <span class="btn-dark"><i class="fa-solid fa-ticket"></i> Reserve Seat</span>
                 </div>
             </a>
 
-            <!-- Medical Center -->
+            <!-- Medical Center (live: on-duty doctors + slots open today) -->
             <a href="{% url 'medical' %}" class="widget-card" data-component="card" data-widget="medical-center">
                 <div class="widget-head">
                     <span class="widget-icon"><i class="fa-solid fa-stethoscope"></i></span>
                     <h3 class="widget-title">Medical Center</h3>
                 </div>
+                {% for doctor in medical_widget.doctors %}
                 <div class="doctor-row">
                     <span class="doctor-id">DR</span>
                     <div class="doctor-info">
-                        <strong>Dr. Sarah Smith</strong>
-                        <span>General Physician</span>
+                        <strong>{{ doctor.name }}</strong>
+                        <span>{{ doctor.specialty }}</span>
                     </div>
-                    <span class="status-chip chip-green">Available</span>
-                </div>
-                <div class="doctor-row">
-                    <span class="doctor-id">DR</span>
-                    <div class="doctor-info">
-                        <strong>Dr. Mike Johnson</strong>
-                        <span>Specialist</span>
-                    </div>
+                    {% if doctor.in_session %}
                     <span class="status-chip chip-amber">In Session</span>
+                    {% else %}
+                    <span class="status-chip chip-green">Available</span>
+                    {% endif %}
                 </div>
-                <span class="btn-accent"><i class="fa-solid fa-calendar-check"></i> Book Slot</span>
+                {% endfor %}
+                <span class="btn-accent"><i class="fa-solid fa-calendar-check"></i> Book Slot · {{ medical_widget.available }} open today</span>
             </a>
 
         </div>
@@ -117,41 +115,21 @@
                 </div>
 
                 <div class="notice-list">
+                    {% for notice in recent_notices %}
                     <a href="{% url 'notices' %}" class="notice-item">
                         <span class="notice-dot dot-red"></span>
                         <div class="notice-body">
                             <div class="notice-meta">
-                                <span class="notice-badge badge-urgent">Urgent</span>
-                                <span class="notice-date">Today, 10:30 AM</span>
+                                <span class="notice-badge badge-general">{{ notice.get_category_display }}</span>
+                                <span class="notice-date">{{ notice.created_at|date:"M d, Y" }}</span>
                             </div>
-                            <h4 class="notice-title">Exam Schedule Update</h4>
-                            <p class="notice-text">Mid-term examinations have been rescheduled to next week.</p>
+                            <h4 class="notice-title">{{ notice.title }}</h4>
+                            <p class="notice-text">{{ notice.content|truncatewords:14 }}</p>
                         </div>
                     </a>
-
-                    <a href="{% url 'notices' %}" class="notice-item">
-                        <span class="notice-dot dot-amber"></span>
-                        <div class="notice-body">
-                            <div class="notice-meta">
-                                <span class="notice-badge badge-general">General</span>
-                                <span class="notice-date">Yesterday</span>
-                            </div>
-                            <h4 class="notice-title">Campus Library Hours Extended</h4>
-                            <p class="notice-text">The central library will now remain open until 10 PM during exam season.</p>
-                        </div>
-                    </a>
-
-                    <a href="{% url 'notices' %}" class="notice-item">
-                        <span class="notice-dot dot-blue"></span>
-                        <div class="notice-body">
-                            <div class="notice-meta">
-                                <span class="notice-badge badge-event">Event</span>
-                                <span class="notice-date">2 days ago</span>
-                            </div>
-                            <h4 class="notice-title">Annual Tech Fest Registration Open</h4>
-                            <p class="notice-text">Register now for the upcoming technical festival happening next month.</p>
-                        </div>
-                    </a>
+                    {% empty %}
+                    <p class="stat-caption">No published notices yet.</p>
+                    {% endfor %}
                 </div>
             </div>
 
@@ -163,26 +141,15 @@
                 </div>
 
                 <div class="quick-grid">
+                    {% for course in course_links %}
                     <a href="{% url 'academic_notes' %}" class="quick-tile">
                         <span class="quick-icon"><i class="fa-solid fa-file-lines"></i></span>
-                        <span class="quick-name">CS101 Notes</span>
-                        <span class="quick-meta">12 files</span>
+                        <span class="quick-name">{{ course.code }}</span>
+                        <span class="quick-meta">{{ course.material_count }} file{{ course.material_count|pluralize }}</span>
                     </a>
-                    <a href="{% url 'academic_notes' %}" class="quick-tile">
-                        <span class="quick-icon"><i class="fa-solid fa-file-lines"></i></span>
-                        <span class="quick-name">Mathematics</span>
-                        <span class="quick-meta">8 files</span>
-                    </a>
-                    <a href="{% url 'academic_notes' %}" class="quick-tile">
-                        <span class="quick-icon"><i class="fa-solid fa-file-lines"></i></span>
-                        <span class="quick-name">Physics Lab</span>
-                        <span class="quick-meta">5 files</span>
-                    </a>
-                    <a href="{% url 'academic_notes' %}" class="quick-tile">
-                        <span class="quick-icon"><i class="fa-solid fa-file-lines"></i></span>
-                        <span class="quick-name">Programming</span>
-                        <span class="quick-meta">24 files</span>
-                    </a>
+                    {% empty %}
+                    <p class="stat-caption">No courses published yet.</p>
+                    {% endfor %}
                 </div>
             </div>
 

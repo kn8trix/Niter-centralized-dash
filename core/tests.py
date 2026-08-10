@@ -2,30 +2,49 @@ import json
 from datetime import timedelta
 from unittest import mock
 
+import shutil
+import tempfile
+
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError
 from django.template import Context, Template
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse, resolve
 from django.utils import timezone
 
 from core.models import (
+    ClassRoutine,
+    Club,
+    ClubEvent,
+    ClubRegistration,
     ContentBlock,
+    Course,
+    CourseMaterial,
+    Department,
     EditablePage,
+    FacultyMember,
     GoogleUserToken,
     MedicalAppointment,
     MealSubscription,
     MealTicket,
+    Notice,
     Notification,
     PageTemplate,
+    PaymentTransaction,
     StudentProfile,
     TransportBooking,
+    UserNote,
+    UserNotificationPreference,
 )
 
 
-class StudentPagesSmokeTest(SimpleTestCase):
-    """Every student page renders without error after the refactor."""
+class StudentPagesSmokeTest(TestCase):
+    """Every student page renders without error after the refactor.
+
+    ``TestCase`` (not ``SimpleTestCase``) because the notices and academic
+    notes pages query the database for live content.
+    """
 
     PAGES = [
         'home',
@@ -63,8 +82,12 @@ class StudentPagesSmokeTest(SimpleTestCase):
                 resolve(mapping[name])
 
 
-class UnifiedHeaderTest(SimpleTestCase):
-    """Every standalone public page shares the exact same top navigation header."""
+class UnifiedHeaderTest(TestCase):
+    """Every standalone public page shares the exact same top navigation header.
+
+    ``TestCase`` (not ``SimpleTestCase``) because the notices and academic
+    notes pages query the database for live content.
+    """
 
     PAGES = [
         'dashboard',
@@ -141,8 +164,12 @@ class ProfilePopoverAuthTest(TestCase):
         self.assertIn('href="' + reverse('signup') + '"', html)
 
 
-class CheckoutPageTest(SimpleTestCase):
-    """Payment gateway & checkout page renders and is wired from clubs/transport/meals."""
+class CheckoutPageTest(TestCase):
+    """Payment gateway & checkout page renders and is wired from clubs/transport/meals.
+
+    ``TestCase`` because the clubs page now lists live ``Club`` / ``ClubEvent``
+    rows from the database.
+    """
 
     def test_checkout_page_renders_core_sections(self):
         response = self.client.get(reverse('checkout'))
@@ -218,8 +245,10 @@ class ResearchAIPageTest(SimpleTestCase):
             self.assertContains(response, 'value="' + style + '"', msg_prefix=style)
 
 
-class DepartmentsPageTest(SimpleTestCase):
-    """Department Directory (/departments/) and Detail Hub (/departments/<slug>/)."""
+class DepartmentsPageTest(TestCase):
+    """Department Directory (/departments/) and Detail Hub (/departments/<slug>/)
+    render live ``Department`` rows seeded by the data migration.
+    """
 
     SLUGS = ['fde', 'cse', 'tex', 'eee', 'ipe']
 
@@ -237,13 +266,16 @@ class DepartmentsPageTest(SimpleTestCase):
         ]:
             self.assertContains(response, needle, msg_prefix=needle)
 
-    def test_directory_data_covers_all_departments(self):
+    def test_directory_lists_every_seeded_department(self):
         html = self.client.get(reverse('departments')).content.decode()
         for slug in self.SLUGS:
-            self.assertIn("slug: '" + slug + "'", html)
-            self.assertIn(slug, html)
-        # Cards build their detail links from the resolved directory base URL
-        self.assertIn('data-base="/departments/"', html)
+            with self.subTest(slug=slug):
+                self.assertIn('data-slug="' + slug + '"', html)
+                self.assertIn('href="/departments/' + slug + '/"', html)
+        # Live data (not mock JS) drives the cards
+        self.assertNotIn('const DEPARTMENTS', html)
+        self.assertIn('Computer Science &amp; Engineering', html)
+        self.assertIn('Prof. Dr. Md. Ashraful Alam', html)
 
     def test_every_slug_renders_detail_hub(self):
         for slug in self.SLUGS:
@@ -258,20 +290,21 @@ class DepartmentsPageTest(SimpleTestCase):
                     'Faculty Directory',
                     'Class &amp; Lab Schedule',
                     'Department Notes',
-                    'Upload New Notes',
+                    'Browse All Notes',
                     'data-base="/departments/"',
                 ]:
                     self.assertContains(response, needle, msg_prefix=slug + ':' + needle)
 
-    def test_detail_hub_shows_mock_department_content(self):
+    def test_detail_hub_shows_live_department_content(self):
         html = self.client.get(reverse('department_detail', args=['cse'])).content.decode()
-        # Mock JS data carries the full department name, head, and hub sections
-        self.assertIn('Computer Science & Engineering', html)
+        # Seeded database rows — department, HOD, faculty, and class routine
+        self.assertIn('Computer Science &amp; Engineering', html)
         self.assertIn('Prof. Dr. Md. Ashraful Alam', html)
-        self.assertIn('hodName:', html)
-        self.assertIn('schedule:', html)
-        self.assertIn('faculty:', html)
-        self.assertIn('announcements:', html)
+        self.assertIn('CSE-101 Programming Fundamentals', html)
+        self.assertIn('Dr. Tanvir Ahmed', html)
+        self.assertIn('cse.hod@niter.edu.bd', html)
+        self.assertIn('Room D-205, Academic Block D', html)
+        self.assertNotIn('DEPT_DATA', html)  # no mock JS registry anymore
 
     def test_detail_hub_uses_shared_header(self):
         html = self.client.get(reverse('department_detail', args=['fde'])).content.decode()
@@ -280,10 +313,14 @@ class DepartmentsPageTest(SimpleTestCase):
         self.assertIn('id="profile-popover"', html)
         self.assertIn('href="/departments/" class="active"', html)  # active Departments pill
 
-    def test_unknown_slug_renders_fallback(self):
+    def test_unknown_slug_returns_404(self):
         response = self.client.get(reverse('department_detail', args=['unknown-dept']))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Department not found')
+        self.assertEqual(response.status_code, 404)
+
+    def test_directory_does_not_show_departments_outside_the_db(self):
+        html = self.client.get(reverse('departments')).content.decode()
+        self.assertNotIn('does-not-exist', html)
+        self.assertEqual(Department.objects.count(), len(self.SLUGS))
 
 
 class AccountAndAdminPagesTest(TestCase):
@@ -2159,3 +2196,1064 @@ class BookAppointmentApiTest(TestCase):
         response = self._book(doctor_name='Dr. Sarah Smith')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(MedicalAppointment.objects.count(), 2)
+
+
+class NoticeModelTest(TestCase):
+    """Notice model — fields, category labels, ordering, and author cascade."""
+
+    def setUp(self):
+        self.author = User.objects.create_user(username='registrar', password='x12345678')
+
+    def _create(self, title='Midterm Schedule', category='academic', **kwargs):
+        defaults = {'content': 'body text', 'is_published': True}
+        defaults.update(kwargs)
+        return Notice.objects.create(
+            author=self.author, title=title, category=category, **defaults,
+        )
+
+    def test_str_reports_title(self):
+        self.assertEqual(str(self._create(title='Exam Rescheduled')), 'Exam Rescheduled')
+
+    def test_category_choices_and_display_labels(self):
+        for code, label in Notice.CATEGORY_CHOICES:
+            with self.subTest(code=code):
+                notice = self._create(category=code)
+                self.assertEqual(notice.get_category_display(), label)
+
+    def test_unpublished_by_default(self):
+        notice = Notice.objects.create(
+            author=self.author, title='Draft', content='x', category='general',
+        )
+        self.assertFalse(notice.is_published)
+
+    def test_default_ordering_is_newest_first(self):
+        first = self._create(title='First')
+        second = self._create(title='Second')
+        self.assertEqual(list(Notice.objects.all()), [second, first])
+
+    def test_author_cascade_delete(self):
+        notice = self._create()
+        self.author.delete()
+        self.assertFalse(Notice.objects.filter(pk=notice.pk).exists())
+
+
+class CourseMaterialModelTest(TestCase):
+    """Course + CourseMaterial — catalog and file metadata helpers."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.MEDIA_ROOT = tempfile.mkdtemp(prefix='niter-test-media-')
+        cls._media_override = override_settings(MEDIA_ROOT=cls.MEDIA_ROOT)
+        cls._media_override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._media_override.disable()
+        shutil.rmtree(cls.MEDIA_ROOT, ignore_errors=True)
+
+    def setUp(self):
+        self.course = Course.objects.create(
+            code='CS101', title='Introduction to Programming', department='CSE',
+        )
+
+    def test_course_str_and_unique_code(self):
+        self.assertEqual(str(self.course), 'CS101 — Introduction to Programming')
+        with self.assertRaises(IntegrityError):
+            Course.objects.create(
+                code='CS101', title='Duplicate', department='TEX',
+            )
+
+    def test_course_material_str_and_ordering(self):
+        first = CourseMaterial.objects.create(
+            course=self.course, title='Lecture 1',
+            file=SimpleUploadedFile('lec1.pdf', b'%PDF-1.4 fake', content_type='application/pdf'),
+        )
+        second = CourseMaterial.objects.create(
+            course=self.course, title='Lecture 2',
+            file=SimpleUploadedFile('lec2.pdf', b'%PDF-1.4 fake', content_type='application/pdf'),
+        )
+        self.assertEqual(str(first), 'Lecture 1')
+        self.assertEqual(list(CourseMaterial.objects.all()), [second, first])
+
+    def test_display_type_falls_back_to_extension(self):
+        material = CourseMaterial.objects.create(
+            course=self.course, title='Slides',
+            file=SimpleUploadedFile('slides.pptx', b'fake', content_type='application/octet-stream'),
+        )
+        self.assertEqual(material.display_type, 'PPTX')
+        material.file_type = 'PDF'
+        material.save()
+        self.assertEqual(material.display_type, 'PDF')
+
+    def test_size_display_formats_bytes(self):
+        material = CourseMaterial.objects.create(
+            course=self.course, title='Small',
+            file=SimpleUploadedFile('small.txt', b'hello world'),
+        )
+        self.assertIn('B', material.size_display)
+
+    def test_course_material_related_name(self):
+        CourseMaterial.objects.create(
+            course=self.course, title='Notes',
+            file=SimpleUploadedFile('n.txt', b'x'),
+        )
+        self.assertEqual(self.course.materials.count(), 1)
+
+
+class NoticesPageTest(TestCase):
+    """/notices/ — only published Notice rows render, filterable by category."""
+
+    def setUp(self):
+        self.author = User.objects.create_user(username='reg', password='x12345678')
+        self.published = Notice.objects.create(
+            author=self.author, title='Midterm Rescheduled', content='See the portal.',
+            category='academic', is_published=True,
+        )
+        Notice.objects.create(
+            author=self.author, title='Secret Draft', content='Hidden.',
+            category='general', is_published=False,
+        )
+        Notice.objects.create(
+            author=self.author, title='Power Outage', content='Building A.',
+            category='urgent', is_published=True,
+        )
+
+    def test_renders_only_published_notices(self):
+        response = self.client.get(reverse('notices'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Midterm Rescheduled')
+        self.assertContains(response, 'Power Outage')
+        self.assertNotContains(response, 'Secret Draft')
+        self.assertContains(response, 'Academic')
+        self.assertContains(response, 'Urgent')
+
+    def test_category_filter_narrows_results(self):
+        response = self.client.get(reverse('notices'), {'category': 'academic'})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Midterm Rescheduled')
+        self.assertNotContains(response, 'Power Outage')
+        # The active pill is marked for server-side filtering
+        self.assertContains(response, '?category=academic')
+
+    def test_unknown_category_shows_all(self):
+        response = self.client.get(reverse('notices'), {'category': 'bogus'})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Midterm Rescheduled')
+        self.assertContains(response, 'Power Outage')
+
+    def test_empty_feed_renders_empty_state(self):
+        Notice.objects.all().delete()
+        response = self.client.get(reverse('notices'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'No published notices')
+
+    def test_notice_card_shows_author_and_content(self):
+        response = self.client.get(reverse('notices'), {'category': 'academic'})
+        self.assertContains(response, 'reg')  # author username fallback
+        self.assertContains(response, 'See the portal.')
+
+
+class CreateNoticeApiTest(TestCase):
+    """POST /api/notices/create/ — persistence + broadcast to all students."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(username='staff', password='staffpass123', is_staff=True)
+        self.student = User.objects.create_user(username='student1', password='x12345678')
+        User.objects.create_user(username='student2', password='x12345678')
+        self.client.login(username='staff', password='staffpass123')
+
+    def _post(self, **overrides):
+        payload = {
+            'title': 'Library Hours Extended',
+            'content': 'The library stays open until 10 PM during exams.',
+            'category': 'general',
+            'status': 'published',
+        }
+        payload.update(overrides)
+        return self.client.post(reverse('api_notices_create'), payload)
+
+    def test_requires_staff(self):
+        self.client.logout()
+        response = self._post()
+        self.assertEqual(response.status_code, 302)
+        self.client.login(username='student1', password='x12345678')
+        response = self._post()
+        self.assertEqual(response.status_code, 302)
+
+    def test_requires_post(self):
+        response = self.client.get(reverse('api_notices_create'))
+        self.assertEqual(response.status_code, 405)
+
+    def test_creates_published_notice_and_notifies_all_users(self):
+        with mock.patch('core.views.notify_user') as mock_push:
+            response = self._post()
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertTrue(data['is_published'])
+        self.assertEqual(data['category'], 'General')
+        self.assertEqual(data['notified'], 3)  # staff + 2 students (all active users)
+        notice = Notice.objects.get(pk=data['notice_id'])
+        self.assertEqual(notice.author, self.staff)
+        self.assertEqual(notice.category, 'general')
+        # One Notification per active user, all pushed in real time
+        self.assertEqual(Notification.objects.filter(category='academic').count(), 3)
+        self.assertEqual(mock_push.call_count, 3)
+        pushed = mock_push.call_args_list[0][0][1]
+        self.assertIn('Library Hours Extended', pushed['title'])
+
+    def test_draft_is_stored_but_never_broadcast(self):
+        with mock.patch('core.views.notify_user') as mock_push:
+            response = self._post(status='draft')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['is_published'])
+        self.assertEqual(response.json()['notified'], 0)
+        self.assertTrue(Notice.objects.filter(title='Library Hours Extended', is_published=False).exists())
+        self.assertEqual(Notification.objects.count(), 0)
+        mock_push.assert_not_called()
+
+    def test_requires_title_and_content(self):
+        response = self._post(title='   ')
+        self.assertEqual(response.status_code, 400)
+        response = self._post(content='   ')
+        self.assertEqual(response.status_code, 400)
+
+    def test_rejects_invalid_category(self):
+        response = self._post(category='workshop')
+        self.assertEqual(response.status_code, 400)
+
+    def test_urgent_notice_maps_to_urgent_bell_category(self):
+        with mock.patch('core.views.notify_user'):
+            self._post(title='Fire Drill', category='urgent')
+        self.assertTrue(Notification.objects.filter(category='urgent').exists())
+
+
+class AcademicNotesPageTest(TestCase):
+    """/academic-notes/ — live Course folders and CourseMaterial documents."""
+
+    def setUp(self):
+        self.course = Course.objects.create(
+            code='CS101', title='Intro to Programming', department='CSE',
+        )
+        Course.objects.create(code='TEX101', title='Fibre Science', department='TEX')
+
+    def test_renders_course_folders_from_catalog(self):
+        response = self.client.get(reverse('academic_notes'))
+        self.assertEqual(response.status_code, 200)
+        # Folder cards group by department code + display the full name.
+        self.assertContains(response, 'CSE')
+        self.assertContains(response, 'Computer Science &amp; Engineering')
+        self.assertContains(response, 'TEX')
+        self.assertContains(response, 'Textile Engineering')
+
+    def test_renders_live_materials_with_metadata(self):
+        material = CourseMaterial.objects.create(
+            course=self.course, title='Lecture 1 Slides',
+            file=SimpleUploadedFile('lec1.pdf', b'%PDF-1.4 fake', content_type='application/pdf'),
+        )
+        response = self.client.get(reverse('academic_notes'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Lecture 1 Slides')
+        self.assertContains(response, 'PDF')  # display_type derived from extension
+        self.assertContains(response, 'CS101')  # course code chip on the doc card
+        # Material links to its real media URL (Django may dedupe the filename).
+        self.assertContains(response, material.file.url)
+        self.assertContains(response, '/media/course_materials/')
+
+    def test_empty_catalog_renders_empty_states(self):
+        Course.objects.all().delete()
+        response = self.client.get(reverse('academic_notes'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'No courses in the catalog yet.')
+        self.assertContains(response, 'No course materials uploaded yet')
+
+
+class ProfileActivityHistoryTest(TestCase):
+    """Profile activity tab reflects the user's real booking rows."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='S1001', password='student123',
+            first_name='Alice', last_name='Johnson',
+        )
+        StudentProfile.objects.create(user=self.user, student_id='S1001', department='CSE')
+        self.client.login(username='S1001', password='student123')
+
+    def test_profile_renders_live_activity_records(self):
+        MealTicket.objects.create(
+            user=self.user, meal_type='lunch', ticket_token='#MEAL-1001',
+        )
+        TransportBooking.objects.create(
+            user=self.user, route_name='Route 1: Main Campus Loop',
+            departure_time='08:00 AM', seat_number=7, qr_token='TR-ABCDEF',
+        )
+        MedicalAppointment.objects.create(
+            user=self.user, doctor_name='Dr. Ahmed Khan',
+            appointment_date=timezone.now().date(), time_slot='10:00 AM',
+            reason='Checkup',
+        )
+        response = self.client.get(reverse('profile'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '#MEAL-1001')
+        self.assertContains(response, 'Lunch')
+        self.assertContains(response, 'Route 1: Main Campus Loop')
+        self.assertContains(response, 'Seat 7')
+        self.assertContains(response, 'Dr. Ahmed Khan')
+        self.assertContains(response, 'Pending')
+        self.assertContains(response, 'Unused')
+
+    def test_profile_shows_empty_states_without_activity(self):
+        response = self.client.get(reverse('profile'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'No medical appointments booked yet.')
+        self.assertContains(response, 'No transport tickets booked yet.')
+        self.assertContains(response, 'No meal coupons claimed yet.')
+
+    def test_profile_never_leaks_other_users_activity(self):
+        other = User.objects.create_user(username='S2002', password='x12345678')
+        MealTicket.objects.create(user=other, meal_type='dinner', ticket_token='#MEAL-9999')
+        response = self.client.get(reverse('profile'))
+        self.assertNotContains(response, '#MEAL-9999')
+
+
+class DepartmentHubBackendTest(TestCase):
+    """Department / FacultyMember / ClassRoutine models + seeded hub data."""
+
+    def test_seeded_departments_exist(self):
+        self.assertEqual(Department.objects.count(), 5)
+        cse = Department.objects.get(slug='cse')
+        self.assertEqual(cse.code, 'CSE')
+        self.assertEqual(cse.head_of_dept, 'Prof. Dr. Md. Ashraful Alam')
+        self.assertIn('programming', cse.description.lower())
+
+    def test_department_str_and_ordering(self):
+        self.assertEqual(str(Department.objects.get(slug='cse')), 'Computer Science & Engineering')
+        names = list(Department.objects.values_list('name', flat=True))
+        self.assertEqual(names, sorted(names))
+
+    def test_seeded_faculty_are_attached_to_departments(self):
+        cse = Department.objects.get(slug='cse')
+        self.assertEqual(cse.faculty.count(), 3)
+        member = cse.faculty.get(name='Dr. Tanvir Ahmed')
+        self.assertEqual(member.designation, 'Associate Professor')
+        self.assertIn('@niter.edu.bd', member.email)
+        self.assertTrue(member.office_hours)
+
+    def test_faculty_cascade_deletes_with_department(self):
+        cse = Department.objects.get(slug='cse')
+        cse.delete()
+        self.assertEqual(FacultyMember.objects.filter(department__slug='cse').count(), 0)
+
+    def test_seeded_routines_group_by_department_and_day(self):
+        cse = Department.objects.get(slug='cse')
+        self.assertEqual(cse.class_routines.count(), 4)
+        self.assertTrue(cse.class_routines.filter(day_of_week='Sun').exists())
+        routine = cse.class_routines.get(subject='CSE-101 Programming Fundamentals')
+        self.assertEqual(routine.semester, 'Semester 1')
+        self.assertIn('AM', routine.time_slot)
+
+    def test_routine_day_display_label(self):
+        routine = ClassRoutine.objects.get(subject='CSE-101 Programming Fundamentals')
+        self.assertEqual(routine.get_day_of_week_display(), 'Sunday')
+
+
+class ClubModelsTest(TestCase):
+    """Club / ClubEvent / ClubRegistration models + seeded club data."""
+
+    def test_seeded_clubs_exist(self):
+        self.assertEqual(Club.objects.count(), 4)
+        computer = Club.objects.get(slug='computer-club')
+        self.assertEqual(computer.name, 'Computer Club')
+        self.assertIsNone(computer.lead_user)
+
+    def test_club_str_and_unique_slug(self):
+        self.assertEqual(str(Club.objects.get(slug='sports-club')), 'Sports Club')
+        with self.assertRaises(IntegrityError):
+            Club.objects.create(name='Dup', slug='sports-club')
+
+    def test_seeded_events_are_upcoming_and_ordered(self):
+        events = list(ClubEvent.objects.order_by('event_date'))
+        self.assertEqual(len(events), 4)
+        for event in events:
+            self.assertGreaterEqual(event.event_date, timezone.now().date())
+        dates = [e.event_date for e in events]
+        self.assertEqual(dates, sorted(dates))
+
+    def test_event_belongs_to_club(self):
+        event = ClubEvent.objects.get(title='CodeStorm — Inter-University Hackathon')
+        self.assertEqual(event.club.slug, 'computer-club')
+        self.assertTrue(event.capacity > 0)
+
+    def test_registration_unique_per_student_club(self):
+        student = User.objects.create_user(username='clubber', password='x12345678')
+        club = Club.objects.get(slug='sports-club')
+        ClubRegistration.objects.create(student=student, club=club, status='pending')
+        with self.assertRaises(IntegrityError):
+            ClubRegistration.objects.create(student=student, club=club, status='active')
+
+    def test_registration_defaults_to_pending(self):
+        student = User.objects.create_user(username='clubber2', password='x12345678')
+        registration = ClubRegistration.objects.create(
+            student=student, club=Club.objects.get(slug='sports-club'),
+        )
+        self.assertEqual(registration.status, 'pending')
+        self.assertIsNotNone(registration.joined_at)
+        self.assertIn('Sports Club', str(registration))
+
+
+class ClubsPageTest(TestCase):
+    """The /clubs/ student view renders live clubs and upcoming events."""
+
+    def test_clubs_page_lists_seeded_clubs_and_events(self):
+        response = self.client.get(reverse('clubs_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        for needle in [
+            'Computer Club',
+            'Cultural Society',
+            'CodeStorm — Inter-University Hackathon',
+            'Spring Cultural Night',
+            'data-club-id=',
+            'fa-laptop-code',
+        ]:
+            self.assertContains(response, needle, msg_prefix=needle)
+        self.assertNotIn('const CLUBS', response.content.decode())  # no mock array
+
+    def test_clubs_page_counts_active_members(self):
+        student = User.objects.create_user(username='m1', password='x12345678')
+        club = Club.objects.get(slug='computer-club')
+        ClubRegistration.objects.create(student=student, club=club, status='active')
+        html = self.client.get(reverse('clubs_dashboard')).content.decode()
+        self.assertIn('1 member', html)  # seeded club starts at 0 active
+
+    def test_clubs_page_hides_past_events(self):
+        club = Club.objects.get(slug='computer-club')
+        ClubEvent.objects.create(
+            club=club, title='Old Event', event_date=timezone.now().date() - timedelta(days=1),
+        )
+        html = self.client.get(reverse('clubs_dashboard')).content.decode()
+        self.assertNotIn('Old Event', html)
+
+    def test_clubs_page_links_to_checkout(self):
+        html = self.client.get(reverse('clubs_dashboard')).content.decode()
+        self.assertIn(reverse('checkout'), html)
+
+    def test_join_button_present_for_every_club(self):
+        html = self.client.get(reverse('clubs_dashboard')).content.decode()
+        for club in Club.objects.all():
+            self.assertIn('data-club-id="%s"' % club.pk, html)
+
+
+class JoinClubApiTest(TestCase):
+    """POST /api/clubs/join/ — membership requests with lead notifications."""
+
+    def setUp(self):
+        self.student = User.objects.create_user(
+            username='joiner', password='x12345678',
+            first_name='Jo', last_name='Iner',
+        )
+        self.lead = User.objects.create_user(username='leadstaff', password='x12345678', is_staff=True)
+        self.club = Club.objects.get(slug='computer-club')
+        self.club.lead_user = self.lead
+        self.club.save()
+
+    def test_join_requires_login(self):
+        response = self.client.post(reverse('api_club_join'), {'club_id': self.club.pk})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_join_requires_post(self):
+        self.client.login(username='joiner', password='x12345678')
+        response = self.client.get(reverse('api_club_join'))
+        self.assertEqual(response.status_code, 405)
+
+    def test_join_creates_pending_registration_and_notifies_lead(self):
+        self.client.login(username='joiner', password='x12345678')
+        with mock.patch('core.views.notify_user') as mock_push:
+            response = self.client.post(reverse('api_club_join'), {'club_id': self.club.pk})
+            mock_push.assert_called_once()
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertEqual(data['club'], 'Computer Club')
+        self.assertEqual(data['registration_status'], 'pending')
+        registration = ClubRegistration.objects.get(student=self.student, club=self.club)
+        self.assertEqual(registration.status, 'pending')
+        notification = Notification.objects.get(user=self.lead, category='club')
+        self.assertIn('Jo Iner', notification.message)
+        self.assertIn('Computer Club', notification.message)
+
+    def test_join_duplicate_returns_409(self):
+        ClubRegistration.objects.create(student=self.student, club=self.club, status='active')
+        self.client.login(username='joiner', password='x12345678')
+        response = self.client.post(reverse('api_club_join'), {'club_id': self.club.pk})
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('already requested', response.json()['message'])
+
+    def test_join_unknown_club_returns_404(self):
+        self.client.login(username='joiner', password='x12345678')
+        response = self.client.post(reverse('api_club_join'), {'club_id': 99999})
+        self.assertEqual(response.status_code, 404)
+
+    def test_join_without_lead_still_succeeds(self):
+        club = Club.objects.get(slug='sports-club')  # lead_user is None
+        self.client.login(username='joiner', password='x12345678')
+        response = self.client.post(reverse('api_club_join'), {'club_id': club.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'success')
+        self.assertEqual(Notification.objects.filter(category='club').count(), 0)
+
+
+class DashboardWidgetsTest(TestCase):
+    """The /dashboard/ widgets aggregate real database counts (no hardcoding)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='widget_user', password='x12345678')
+
+    def test_meal_widget_reflects_todays_claims(self):
+        for token in ('#MEAL-1001', '#MEAL-1002'):
+            MealTicket.objects.create(user=self.user, meal_type='lunch', ticket_token=token)
+        html = self.client.get(reverse('dashboard')).content.decode()
+        # 2 claims today → remaining = 440 - 2, used = 2
+        self.assertIn('Used: 2', html)
+        self.assertIn('Remaining: 438', html)
+        self.assertIn('438 <small>/ 440</small>', html)
+
+    def test_meal_widget_counts_only_todays_claims(self):
+        ticket = MealTicket.objects.create(
+            user=self.user, meal_type='dinner', ticket_token='#MEAL-2001',
+        )
+        # auto_now_add overrides on create, so move it to yesterday via update.
+        MealTicket.objects.filter(pk=ticket.pk).update(
+            claimed_at=timezone.now() - timedelta(days=1),
+        )
+        html = self.client.get(reverse('dashboard')).content.decode()
+        self.assertIn('Used: 0', html)
+        self.assertIn('Remaining: 440', html)
+
+    def test_transport_widget_shows_available_seats(self):
+        # Fill most of Route 1 (38/40) and Route 2 (30/40) so Route 3 is the
+        # unique route with the most open seats → the widget must show it.
+        for seat in range(1, 39):
+            TransportBooking.objects.create(
+                user=self.user, route_name='Route 1: Main Campus Loop',
+                departure_time='08:00 AM', seat_number=seat,
+                qr_token='TR-1AB%03d' % seat,
+            )
+        for seat in range(1, 31):
+            TransportBooking.objects.create(
+                user=self.user, route_name='Route 2: Sports Complex Shuttle',
+                departure_time='09:30 AM', seat_number=seat,
+                qr_token='TR-2AB%03d' % seat,
+            )
+        html = self.client.get(reverse('dashboard')).content.decode()
+        self.assertIn('40 seats available', html)  # Route 3 still has all 40
+        self.assertIn('Route 3: City Center Express', html)
+        self.assertIn('10:00 AM', html)
+
+    def test_medical_widget_counts_todays_slots(self):
+        today = timezone.now().date()
+        for slot in ('09:00 AM', '11:00 AM'):
+            MedicalAppointment.objects.create(
+                user=self.user, doctor_name='Dr. Ahmed Khan',
+                appointment_date=today, time_slot=slot, reason='Checkup',
+            )
+        html = self.client.get(reverse('dashboard')).content.decode()
+        # 16 total slots (4 doctors × 4), 2 booked today
+        self.assertIn('14 open today', html)
+        self.assertIn('In Session', html)
+        self.assertIn('Dr. Ahmed Khan', html)
+        self.assertIn('General Physician', html)
+
+    def test_medical_widget_ignores_cancelled_appointments(self):
+        today = timezone.now().date()
+        MedicalAppointment.objects.create(
+            user=self.user, doctor_name='Dr. Emily Johnson',
+            appointment_date=today, time_slot='2:00 PM', reason='Checkup',
+            status='cancelled',
+        )
+        html = self.client.get(reverse('dashboard')).content.decode()
+        self.assertIn('16 open today', html)
+        self.assertNotIn('In Session', html)
+
+    def test_dashboard_lists_latest_published_notices(self):
+        author = User.objects.create_user(username='admin_notice', password='x12345678', is_staff=True)
+        Notice.objects.create(
+            author=author, title='Live Feed Notice', category='urgent',
+            content='Broadcast to every dashboard.', is_published=True,
+        )
+        Notice.objects.create(
+            author=author, title='Hidden Draft', category='general',
+            content='Should never appear.', is_published=False,
+        )
+        html = self.client.get(reverse('dashboard')).content.decode()
+        self.assertIn('Live Feed Notice', html)
+        self.assertNotIn('Hidden Draft', html)
+
+    def test_dashboard_quick_links_use_live_courses(self):
+        Course.objects.create(code='WGT101', title='Widget Science', department='CSE')
+        html = self.client.get(reverse('dashboard')).content.decode()
+        self.assertIn('WGT101', html)
+        self.assertNotIn('material_count', html)  # server-rendered, not raw JS
+
+    def test_dashboard_renders_for_anonymous_users(self):
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Welcome back')
+
+
+class PaymentTransactionModelTest(TestCase):
+    """PaymentTransaction — fields, ordering, and unique transaction ids."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='payer', password='x12345678')
+        self.payment = PaymentTransaction.objects.create(
+            user=self.user,
+            amount='200.00',
+            payment_method='bkash',
+            transaction_id='NTR-4F2A1C',
+            purpose='event',
+            description='CodeStorm Ticket',
+            wallet_trx='9J32X8KL',
+        )
+
+    def test_defaults_to_pending(self):
+        self.assertEqual(self.payment.status, 'pending')
+        self.assertIsNotNone(self.payment.created_at)
+
+    def test_str_and_choice_labels(self):
+        self.assertEqual(str(self.payment), 'NTR-4F2A1C · Event')
+        self.assertEqual(self.payment.get_payment_method_display(), 'bKash')
+        self.assertEqual(self.payment.get_purpose_display(), 'Event')
+
+    def test_newest_first_ordering(self):
+        older = PaymentTransaction.objects.create(
+            user=self.user, amount='30.00', payment_method='nagad',
+            transaction_id='NTR-OLD000', purpose='transport',
+        )
+        # auto_now_add overrides on create, so backdate it via update().
+        PaymentTransaction.objects.filter(pk=older.pk).update(
+            created_at=timezone.now() - timedelta(hours=1),
+        )
+        self.assertEqual(list(PaymentTransaction.objects.all()), [self.payment, older])
+
+    def test_unique_transaction_id(self):
+        with self.assertRaises(IntegrityError):
+            PaymentTransaction.objects.create(
+                user=self.user, amount='10', payment_method='card',
+                transaction_id='NTR-4F2A1C', purpose='meal',
+            )
+
+    def test_cascade_delete_with_user(self):
+        self.user.delete()
+        self.assertFalse(PaymentTransaction.objects.filter(pk=self.payment.pk).exists())
+
+
+class CheckoutPaymentApiTest(TestCase):
+    """POST /checkout/ — server-backed payment recording with paid-item links."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='S3001', password='x12345678',
+            first_name='Pay', last_name='User',
+        )
+        self.client.login(username='S3001', password='x12345678')
+
+    def _pay(self, **overrides):
+        data = {
+            'type': 'event',
+            'item': 'CodeStorm 2026 Ticket',
+            'issuer': 'NITER Computer Club',
+            'fee': '200',
+            'method': 'bkash',
+            'wallet_no': '01712345678',
+            'trx_id': '9J32X8KL',
+        }
+        data.update(overrides)
+        return self.client.post(reverse('checkout'), data)
+
+    def test_checkout_get_stays_public(self):
+        self.client.logout()
+        response = self.client.get(reverse('checkout'))
+        self.assertEqual(response.status_code, 200)
+
+    def test_anonymous_post_redirects_to_login(self):
+        self.client.logout()
+        response = self.client.post(reverse('checkout'), {'fee': '200'})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_payment_persists_transaction_with_unique_id(self):
+        response = self._pay()
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertTrue(data['transaction_id'].startswith('NTR-'))
+        payment = PaymentTransaction.objects.get(transaction_id=data['transaction_id'])
+        self.assertEqual(payment.user, self.user)
+        self.assertEqual(payment.amount, 200)
+        self.assertEqual(payment.payment_method, 'bkash')
+        self.assertEqual(payment.purpose, 'event')
+        self.assertEqual(payment.wallet_trx, '9J32X8KL')
+        self.assertEqual(payment.status, 'pending')
+
+    def test_payment_generates_unique_ids(self):
+        first = self._pay(trx_id='AAAA1111').json()['transaction_id']
+        second = self._pay(trx_id='BBBB2222').json()['transaction_id']
+        self.assertNotEqual(first, second)
+
+    def test_meal_payment_activates_subscription(self):
+        response = self._pay(type='meal', item='Monthly Meal Subscription', fee='2000')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['purpose'], 'Meal Ticket')
+        self.assertEqual(data['linked'], 'meal_subscription')
+        subscription = self.user.meal_subscription
+        self.assertTrue(subscription.is_active)
+        self.assertGreater(subscription.expires_at, timezone.now())
+        self.assertTrue(PaymentTransaction.objects.filter(user=self.user, purpose='meal').exists())
+
+    def test_meal_payment_refreshes_existing_subscription(self):
+        MealSubscription.objects.create(
+            user=self.user, is_active=False, expires_at=timezone.now() - timedelta(days=5),
+        )
+        self._pay(type='meal', fee='2000')
+        self.user.meal_subscription.refresh_from_db()
+        self.assertTrue(self.user.meal_subscription.is_active)
+
+    def test_payment_creates_notification(self):
+        self._pay()
+        notification = Notification.objects.get(user=self.user, category='club')
+        self.assertIn('pending verification', notification.message)
+
+    def test_invalid_amount_rejected(self):
+        response = self._pay(fee='-5')
+        self.assertEqual(response.status_code, 400)
+        response = self._pay(fee='abc')
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(PaymentTransaction.objects.exists())
+
+    def test_non_finite_amount_rejected(self):
+        for bad_fee in ('NaN', 'Infinity', '1e999'):
+            with self.subTest(fee=bad_fee):
+                response = self._pay(fee=bad_fee)
+                self.assertEqual(response.status_code, 400)
+        self.assertFalse(PaymentTransaction.objects.exists())
+
+    def test_oversized_amount_rejected(self):
+        response = self._pay(fee='999999999999999')
+        self.assertEqual(response.status_code, 400)
+
+    def test_invalid_method_rejected(self):
+        response = self._pay(method='cheque')
+        self.assertEqual(response.status_code, 400)
+
+    def test_invalid_wallet_rejected(self):
+        response = self._pay(wallet_no='12345')
+        self.assertEqual(response.status_code, 400)
+
+    def test_invalid_trx_rejected(self):
+        response = self._pay(trx_id='ab')
+        self.assertEqual(response.status_code, 400)
+
+    def test_rocket_method_accepted(self):
+        response = self._pay(method='rocket')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['payment_method'], 'Rocket')
+
+
+class SettingsPreferencesTest(TestCase):
+    """UserNotificationPreference — signal auto-create + /settings/ persistence."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='prefs_user', password='x12345678')
+        self.client.login(username='prefs_user', password='x12345678')
+
+    def test_signal_auto_creates_default_prefs(self):
+        self.assertTrue(UserNotificationPreference.objects.filter(user=self.user).exists())
+        prefs = self.user.notification_prefs
+        self.assertTrue(prefs.email_alerts)
+        self.assertFalse(prefs.sms_alerts)
+        self.assertTrue(prefs.push_notifications)
+        self.assertFalse(prefs.dark_mode)
+
+    def test_settings_get_renders_saved_state(self):
+        prefs = self.user.notification_prefs
+        prefs.sms_alerts = True
+        prefs.dark_mode = True
+        prefs.save()
+        html = self.client.get(reverse('settings')).content.decode()
+        # The sms toggle + dark theme option render as selected
+        self.assertIn('data-pref="sms_alerts" checked', html)
+        self.assertIn('data-theme="dark" data-pref="dark_mode" data-value="1" aria-pressed="true"', html)
+        self.assertIn('data-pref="email_alerts" checked', html)
+
+    def test_settings_post_saves_prefs_to_database(self):
+        response = self.client.post(reverse('settings'), {
+            'email_alerts': 'on',
+            'sms_alerts': '',
+            'push_notifications': '',
+            'dark_mode': 'on',
+        })
+        self.assertEqual(response.status_code, 302)  # form POST redirects
+        self.user.notification_prefs.refresh_from_db()
+        self.assertTrue(self.user.notification_prefs.email_alerts)
+        self.assertFalse(self.user.notification_prefs.sms_alerts)
+        self.assertFalse(self.user.notification_prefs.push_notifications)
+        self.assertTrue(self.user.notification_prefs.dark_mode)
+
+    def test_settings_json_post_updates_prefs(self):
+        response = self.client.post(
+            reverse('settings'),
+            data=json.dumps({'email_alerts': False, 'sms_alerts': True, 'push_notifications': True, 'dark_mode': True}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'success')
+        self.user.notification_prefs.refresh_from_db()
+        self.assertFalse(self.user.notification_prefs.email_alerts)
+        self.assertTrue(self.user.notification_prefs.sms_alerts)
+        self.assertTrue(self.user.notification_prefs.dark_mode)
+
+    def test_settings_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse('settings'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_prefs_persist_across_sessions(self):
+        self.client.post(
+            reverse('settings'),
+            data=json.dumps({'dark_mode': True}),
+            content_type='application/json',
+        )
+        self.client.logout()
+        self.client.login(username='prefs_user', password='x12345678')
+        html = self.client.get(reverse('settings')).content.decode()
+        self.assertIn('data-theme="dark" data-pref="dark_mode" data-value="1" aria-pressed="true"', html)
+
+
+class NotesEngineApiTest(TestCase):
+    """Notes Engine server-side actions — save / summarize / keywords / export."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='note_taker', password='x12345678')
+        self.client.login(username='note_taker', password='x12345678')
+
+    SAMPLE = (
+        'Divide and conquer breaks a problem into smaller subproblems. '
+        'The Master Theorem solves recurrence relations for recursive algorithms. '
+        'Merge Sort applies divide and conquer to sort arrays efficiently. '
+        'Recurrence relations describe the running time of recursive algorithms.'
+    )
+
+    def _post(self, name, **data):
+        return self.client.post(reverse(name), data)
+
+    def test_endpoints_require_login(self):
+        self.client.logout()
+        for name in ['api_note_save', 'api_note_summarize', 'api_note_keywords']:
+            with self.subTest(endpoint=name):
+                response = self._post(name, content='hello')
+                self.assertEqual(response.status_code, 302)
+        response = self.client.get(reverse('api_note_export'))
+        self.assertEqual(response.status_code, 302)
+
+    def test_save_note_creates_and_updates(self):
+        response = self._post('api_note_save', title='Algorithms', content=self.SAMPLE)
+        self.assertEqual(response.status_code, 200)
+        note = UserNote.objects.get(user=self.user, title='Algorithms')
+        self.assertEqual(note.content, self.SAMPLE)
+
+        note_id = response.json()['note_id']
+        response = self._post('api_note_save', note_id=str(note_id), title='Renamed', content='updated')
+        self.assertEqual(response.status_code, 200)
+        note.refresh_from_db()
+        self.assertEqual(note.title, 'Renamed')
+        self.assertEqual(note.content, 'updated')
+        self.assertEqual(UserNote.objects.filter(user=self.user).count(), 1)
+
+    def test_save_note_defaults_title(self):
+        response = self._post('api_note_save', content='no title here')
+        self.assertEqual(response.json()['title'], 'Untitled Note')
+
+    def test_save_note_scoped_to_owner(self):
+        other = User.objects.create_user(username='other_note', password='x12345678')
+        note = UserNote.objects.create(user=other, title='Secret', content='private')
+        response = self._post('api_note_save', note_id=str(note.pk), title='Hacked', content='x')
+        self.assertEqual(response.status_code, 404)
+
+    def test_summarize_extracts_high_value_sentences(self):
+        response = self._post('api_note_summarize', content=self.SAMPLE)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertIn('divide and conquer', data['summary'].lower())
+        self.assertTrue(len(data['summary'].split('. ')) <= 3)
+
+    def test_summarize_empty_content(self):
+        response = self._post('api_note_summarize', content='')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['summary'], '')
+
+    def test_keywords_rank_by_frequency(self):
+        response = self._post('api_note_keywords', content=self.SAMPLE)
+        self.assertEqual(response.status_code, 200)
+        keywords = response.json()['keywords']
+        self.assertIn('recurrence', keywords)
+        self.assertIn('divide', keywords)
+        self.assertTrue(len(keywords) <= 8)
+        # Stopwords are excluded
+        self.assertNotIn('the', keywords)
+
+    def test_export_text(self):
+        response = self._post('api_note_export', title='My Note', content='line one\nline two', format='text')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/plain; charset=utf-8')
+        self.assertIn('attachment', response['Content-Disposition'])
+        self.assertIn('line one', response.content.decode())
+
+    def test_export_pdf_is_valid_pdf(self):
+        response = self._post('api_note_export', title='My Note', content='line one\nline two', format='pdf')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        payload = response.content
+        self.assertTrue(payload.startswith(b'%PDF-1.4'))
+        self.assertIn(b'startxref', payload)
+        self.assertTrue(payload.endswith(b'%%EOF\n'))
+        # Structural check: every xref offset points at its object header.
+        self._assert_xref_offsets_valid(payload)
+
+    def _assert_xref_offsets_valid(self, payload):
+        text = payload.decode('latin-1')
+        startxref = int(text.rsplit('startxref', 1)[1].strip().split('\n')[0])
+        xref_section = text[startxref:]
+        entries = xref_section.split('\n')[2:]  # skip "xref" + count line
+        obj_number = 1
+        for line in entries:
+            line = line.strip()
+            if not line or not line[0].isdigit():
+                break  # reached the trailer
+            parts = line.split()
+            if parts[1] == '65535':
+                continue  # the mandatory free entry (object 0)
+            offset = int(parts[0])
+            expected = ('%d 0 obj' % obj_number).encode('latin-1')
+            self.assertTrue(
+                payload.startswith(expected, offset),
+                msg='xref offset %d should point at %s' % (offset, expected),
+            )
+            obj_number += 1
+
+    def test_export_by_note_id(self):
+        note = UserNote.objects.create(user=self.user, title='Saved Note', content='saved content here')
+        response = self.client.get(reverse('api_note_export'), {'note_id': note.pk, 'format': 'text'})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('saved content here', response.content.decode())
+
+    def test_notes_page_lists_saved_notes(self):
+        UserNote.objects.create(user=self.user, title='Sidebar Note', content='x')
+        html = self.client.get(reverse('notes')).content.decode()
+        self.assertIn('Sidebar Note', html)
+        self.assertIn('data-note-id=', html)
+
+
+class ResearchQueryApiTest(TestCase):
+    """POST /api/research/query/ — structured server-side assistant responses."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='researcher', password='x12345678')
+        self.client.login(username='researcher', password='x12345678')
+
+    def _query(self, prompt, style='IEEE'):
+        return self.client.post(reverse('api_research_query'), {'prompt': prompt, 'citation_style': style})
+
+    def test_requires_login(self):
+        self.client.logout()
+        response = self._query('hello')
+        self.assertEqual(response.status_code, 302)
+
+    def test_requires_prompt(self):
+        response = self.client.post(reverse('api_research_query'), {'prompt': '   '})
+        self.assertEqual(response.status_code, 400)
+
+    def test_requires_post(self):
+        response = self.client.get(reverse('api_research_query'))
+        self.assertEqual(response.status_code, 405)
+
+    def test_structured_response_routes_by_keyword(self):
+        cases = {
+            'Draft a literature review on IoT in textiles': 'literature',
+            'Break down the methodology section': 'methodology',
+            'Check this citation in IEEE': 'citation',
+            '/summarize the abstract I pasted': 'summary',
+            'Explain the superposition theorem': 'superposition',
+            'Compare IoT architectures for looms': 'iot',
+            'Tell me about your day': 'fallback',
+        }
+        for prompt, expected_topic in cases.items():
+            with self.subTest(prompt=prompt):
+                data = self._query(prompt).json()
+                self.assertEqual(data['status'], 'success')
+                self.assertEqual(data['topic'], expected_topic)
+                self.assertTrue(data['response_markdown'].startswith('## '))
+
+    def test_references_formatted_for_selected_style(self):
+        data = self._query('check my citation', style='APA 7').json()
+        self.assertEqual(data['citation_style'], 'APA 7')
+        self.assertEqual(len(data['references']), 2)
+        self.assertTrue(data['references'][0]['text'].startswith('M. H. Rahman, & K. Ahmed. (2021).'))
+
+    def test_references_default_to_ieee(self):
+        data = self._query('literature review').json()
+        self.assertEqual(data['citation_style'], 'IEEE')
+        self.assertTrue(data['references'][0]['text'].startswith('[1]'))
+
+
+class NotificationPushResilienceTest(TestCase):
+    """``notify_user`` must never raise when the channel layer is down.
+
+    Deployment hardening: a Redis-backed channel layer can go offline after
+    startup. Live pushes then degrade to poll-only delivery (the notification
+    row is still persisted and picked up by ``fetch_notifications``) instead
+    of failing the request that produced the alert.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='sock', password='x12345678')
+
+    def test_notify_user_swallows_channel_layer_failures(self):
+        from core import consumers
+
+        class BoomLayer:
+            async def group_send(self, group, event):
+                raise ConnectionError('redis is down')
+
+        notification = Notification.objects.create(
+            user=self.user, title='Test', message='Hello', category='general',
+        )
+        with mock.patch.object(consumers, 'get_channel_layer', return_value=BoomLayer()):
+            # Must not raise even though the live push fails.
+            consumers.notify_user(self.user.id, {'id': notification.pk})
+
+    def test_notify_user_is_noop_without_channel_layer(self):
+        from core import consumers
+
+        with mock.patch.object(consumers, 'get_channel_layer', return_value=None):
+            consumers.notify_user(self.user.id, {'id': 1})  # no raise
+
+    def test_notify_user_pushes_to_user_group_on_success(self):
+        from core import consumers
+
+        sent = {}
+
+        class CaptureLayer:
+            async def group_send(self, group, event):
+                sent['group'] = group
+                sent['event'] = event
+
+        with mock.patch.object(consumers, 'get_channel_layer', return_value=CaptureLayer()):
+            consumers.notify_user(42, {'id': 7})
+        self.assertEqual(sent['group'], 'user_42')
+        self.assertEqual(sent['event'], {'type': 'notification', 'payload': {'id': 7}})

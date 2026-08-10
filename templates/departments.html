@@ -51,180 +51,100 @@
             <div class="quick-jump" role="group" aria-label="Jump to a department">
                 <span class="quick-jump-label">Jump to</span>
                 <button type="button" class="jump-btn active" data-jump="all"><i class="fa-solid fa-border-all"></i> All</button>
-                <div id="jump-pills"></div>
+                {% for row in departments %}
+                <button type="button" class="jump-btn" data-jump="{{ row.dept.slug }}">
+                    <i class="fa-solid {{ row.icon }}"></i> {{ row.dept.code }}
+                </button>
+                {% endfor %}
             </div>
         </section>
 
         <!-- ============================================================
-             Department showcase cards (rendered from mock JS data)
+             Department showcase cards (live database rows)
         ============================================================ -->
         <section class="dept-grid" id="dept-grid" data-widget="dept-directory-grid"
-                 data-base="{{ ENDPOINTS.departments }}" aria-label="Department list"></section>
+                 data-base="{{ ENDPOINTS.departments }}" aria-label="Department list">
+            {% for row in departments %}
+            <article class="dept-card" data-slug="{{ row.dept.slug }}" data-search="{{ row.dept.name|lower }} {{ row.dept.code|lower }}" data-widget="dept-card">
+                <div class="dept-card-head">
+                    <span class="chip-icon"><i class="fa-solid {{ row.icon }}"></i></span>
+                    <div>
+                        <h3><a href="{% url 'department_detail' row.dept.slug %}">{{ row.dept.name }}</a></h3>
+                        <span class="dept-code">{{ row.dept.code }}</span>
+                    </div>
+                </div>
+                <p class="dept-blurb">{{ row.dept.description|default:"Explore this department's faculty, class routine, and academic resources." }}</p>
+                <div class="dept-card-meta">
+                    <span class="pill"><i class="fa-solid fa-user-tie"></i> {{ row.dept.head_of_dept|default:"Head of Department" }}</span>
+                    <span class="pill info"><i class="fa-solid fa-user-group"></i> {{ row.students }} Students</span>
+                    <span class="pill success"><i class="fa-solid fa-file-lines"></i> {{ row.notes }} Notes</span>
+                </div>
+                <div class="dept-card-actions">
+                    <a class="btn-primary" href="{% url 'department_detail' row.dept.slug %}"><i class="fa-solid fa-compass"></i> Explore Department</a>
+                    <a class="btn-secondary" href="{% url 'department_detail' row.dept.slug %}#tab-notes"><i class="fa-solid fa-folder-open"></i> Department Notes</a>
+                </div>
+            </article>
+            {% empty %}
+            <div class="dept-empty" role="status">
+                <i class="fa-solid fa-building-columns"></i>
+                <strong>No departments published yet</strong>
+                <p>Departments will appear here once they are added in the admin panel.</p>
+            </div>
+            {% endfor %}
+        </section>
 
     </div>
 
     <script>
         // ====================================================================
-        // Mock department directory data (frontend-only — no backend involved)
-        // ====================================================================
-        const DEPARTMENTS = [
-            {
-                slug: 'fde',
-                code: 'FDAE',
-                name: 'Fashion Design & Apparel Engineering',
-                icon: 'fa-shirt',
-                hod: 'Prof. Dr. Farhana Yasmin',
-                students: 240,
-                notes: 84,
-                blurb: 'Design thinking meets garment engineering — pattern drafting, apparel production systems, and textile product development.',
-            },
-            {
-                slug: 'cse',
-                code: 'CSE',
-                name: 'Computer Science & Engineering',
-                icon: 'fa-laptop-code',
-                hod: 'Prof. Dr. Md. Ashraful Alam',
-                students: 620,
-                notes: 156,
-                blurb: 'Programming, AI & machine learning, software engineering, and computer networks — NITER\u2019s largest undergraduate program.',
-            },
-            {
-                slug: 'tex',
-                code: 'TE',
-                name: 'Textile Engineering',
-                icon: 'fa-industry',
-                hod: 'Prof. Dr. Kazi Abu Bakar Siddique',
-                students: 480,
-                notes: 132,
-                blurb: 'Fiber to fabric — yarn manufacturing, weaving, knitting, wet processing, and quality control across the textile value chain.',
-            },
-            {
-                slug: 'eee',
-                code: 'EEE',
-                name: 'Electrical & Electronic Engineering',
-                icon: 'fa-bolt',
-                hod: 'Prof. Dr. Sultana Parvin',
-                students: 310,
-                notes: 98,
-                blurb: 'Circuits, power systems, control engineering, and renewable energy with hands-on laboratory practice from the first year.',
-            },
-            {
-                slug: 'ipe',
-                code: 'IPE',
-                name: 'Industrial & Production Engineering',
-                icon: 'fa-gears',
-                hod: 'Prof. Dr. Mahmudul Hasan',
-                students: 265,
-                notes: 76,
-                blurb: 'Operations research, lean manufacturing, supply chain management, and ergonomics for efficient industrial systems.',
-            },
-        ];
-
-        // ====================================================================
-        // DOM refs
+        // Client-side search filter + quick-jump pills over the server-rendered
+        // department cards (the data itself is live from the database).
         // ====================================================================
         const grid = document.getElementById('dept-grid');
-        const base = grid.dataset.base;            // resolved ENDPOINTS.departments
         const search = document.getElementById('dept-search');
         const clearBtn = document.getElementById('dept-search-clear');
-        const jumpWrap = document.getElementById('jump-pills');
-        const allBtn = document.querySelector('.quick-jump .jump-btn[data-jump="all"]');
+        const jumpWrap = document.querySelector('.quick-jump');
+        const allBtn = jumpWrap.querySelector('.jump-btn[data-jump="all"]');
+        const cards = Array.from(grid.querySelectorAll('.dept-card'));
 
-        function escapeHtml(s) {
-            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        }
-
-        // ====================================================================
-        // Render department cards
-        // ====================================================================
-        function renderCards(list) {
-            grid.innerHTML = list.map(d => {
-                const detail = base + d.slug + '/';
-                return `
-                    <article class="dept-card" data-slug="${d.slug}" data-widget="dept-card">
-                        <div class="dept-card-head">
-                            <span class="chip-icon"><i class="fa-solid ${d.icon}"></i></span>
-                            <div>
-                                <h3><a href="${detail}">${escapeHtml(d.name)}</a></h3>
-                                <span class="dept-code">${d.code}</span>
-                            </div>
-                        </div>
-                        <p class="dept-blurb">${escapeHtml(d.blurb)}</p>
-                        <div class="dept-card-meta">
-                            <span class="pill"><i class="fa-solid fa-user-tie"></i> ${escapeHtml(d.hod)}</span>
-                            <span class="pill info"><i class="fa-solid fa-user-group"></i> ${d.students} Students</span>
-                            <span class="pill success"><i class="fa-solid fa-file-lines"></i> ${d.notes} Notes</span>
-                        </div>
-                        <div class="dept-card-actions">
-                            <a class="btn-primary" href="${detail}"><i class="fa-solid fa-compass"></i> Explore Department</a>
-                            <a class="btn-secondary" href="${detail}#tab-notes"><i class="fa-solid fa-folder-open"></i> Department Notes</a>
-                        </div>
-                    </article>`;
-            }).join('');
-
-            if (!list.length) {
-                grid.innerHTML = `<div class="dept-empty" role="status">
-                    <i class="fa-solid fa-magnifying-glass"></i>
-                    <strong>No departments found</strong>
-                    <p>Try a different keyword like “CSE” or “Textile”.</p>
-                </div>`;
-            }
-        }
-
-        // ====================================================================
-        // Search filter + quick jump pills
-        // ====================================================================
         function applyFilter() {
             const q = search.value.trim().toLowerCase();
-            const visible = DEPARTMENTS.filter(d =>
-                !q || d.name.toLowerCase().includes(q) || d.code.toLowerCase().includes(q)
+            const visible = cards.filter(card =>
+                !q || (card.dataset.search || '').includes(q)
             );
-            renderCards(visible);
+            cards.forEach(card => card.classList.toggle('is-hidden', !visible.includes(card)));
             clearBtn.hidden = !q;
-            // Highlight the matching jump pill only when one department is
-            // shown; otherwise highlight nothing (the “All” pill owns the
-            // unfiltered state).
-            const single = visible.length === 1 ? visible[0].slug : '';
-            document.querySelectorAll('#jump-pills .jump-btn').forEach(btn => {
-                btn.classList.toggle('active', !!q && btn.dataset.jump === single);
+
+            const single = visible.length === 1 ? visible[0].dataset.slug : '';
+            jumpWrap.querySelectorAll('.jump-btn[data-jump]').forEach(btn => {
+                const on = btn.dataset.jump === 'all' ? !q : (!!q && btn.dataset.jump === single);
+                btn.classList.toggle('active', on);
             });
-            if (allBtn) allBtn.classList.toggle('active', !q);
         }
 
         search.addEventListener('input', applyFilter);
-
         clearBtn.addEventListener('click', () => {
             search.value = '';
             applyFilter();
             search.focus();
         });
 
-        // Build the quick-jump pills
-        jumpWrap.innerHTML = DEPARTMENTS.map(d => `
-            <button type="button" class="jump-btn" data-jump="${d.slug}">
-                <i class="fa-solid ${d.icon}"></i> ${d.code}
-            </button>`).join('');
-
-        document.querySelectorAll('#jump-pills .jump-btn').forEach(btn => {
+        jumpWrap.querySelectorAll('.jump-btn[data-jump]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const slug = btn.dataset.jump;
-                search.value = slug === 'all' ? '' : DEPARTMENTS.find(d => d.slug === slug).code;
-                applyFilter();
-                if (slug !== 'all') {
-                    const card = grid.querySelector('[data-slug="' + slug + '"]');
-                    if (card) {
-                        card.classList.add('is-jumped');
-                        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        setTimeout(() => card.classList.remove('is-jumped'), 1600);
-                    }
-                } else {
+                if (slug === 'all') {
+                    search.value = '';
+                    applyFilter();
                     window.scrollTo({ top: 0, behavior: 'smooth' });
+                    return;
                 }
+                const card = grid.querySelector('.dept-card[data-slug="' + slug + '"]');
+                if (!card) return;
+                card.classList.add('is-jumped');
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                setTimeout(() => card.classList.remove('is-jumped'), 1600);
             });
         });
-
-        // Initial render
-        renderCards(DEPARTMENTS);
     </script>
 </body>
 </html>

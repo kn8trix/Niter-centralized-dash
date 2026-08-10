@@ -201,7 +201,9 @@ To create a new page, extend the base template:
 
 ## 6. Technical Stack
 - **Backend:** Django 4.2 (`requirements.txt` pins `django>=4.2,<5.0`)
-- **Real-time:** Django Channels 4 + Daphne (ASGI — WebSockets for live notifications)
+- **Config:** `django-environ` — all secrets/settings from environment / `.env`
+- **Real-time:** Django Channels 4 + Daphne (ASGI — WebSockets for live notifications); `channels-redis` in production with in-memory fallback
+- **Static:** WhiteNoise (`CompressedStaticFilesStorage`) — production static serving + `collectstatic`
 - **Auth:** django-allauth (Google OAuth) + Django sessions
 - **Google APIs:** `google-api-python-client`, `gspread` (Drive notes upload, club sheets)
 - **Frontend Styling:** Tailwind CSS (via CDN for rapid development)
@@ -228,13 +230,23 @@ source venv/bin/activate  # On Linux/Mac
 # OR on Windows: venv\Scripts\activate
 
 # 3. Install dependencies
-pip install django
+pip install -r requirements.txt
 
-# 4. Run the development server
+# 4. Configure the environment
+cp .env.example .env   # then set SECRET_KEY / DEBUG=True for local dev
+
+# 5. Apply migrations (fresh DBs get seed data for departments/clubs)
+python manage.py migrate
+
+# 6. Run the development server (daphne serves HTTP + WebSockets)
 python manage.py runserver 0.0.0.0:8000
 
-# 5. Open your browser
+# 7. Open your browser
 # Navigate to: http://127.0.0.1:8000/
+
+# For production, also run:
+python manage.py collectstatic --noinput
+python manage.py check --deploy
 ```
 
 ### Available Pages
@@ -287,11 +299,14 @@ Niter-centralized-dash/
 ├── core/
 │   ├── __init__.py
 │   ├── models.py                # StudentProfile, PageTemplate/EditablePage/ContentBlock,
-│   │                            # GoogleUserToken, Notification, MealSubscription/MealTicket,
-│   │                            # TransportBooking, MedicalAppointment
+│   │                            # GoogleUserToken, Notification, Notice, Course/CourseMaterial,
+│   │                            # MealSubscription/MealTicket, TransportBooking, MedicalAppointment,
+│   │                            # Department/FacultyMember/ClassRoutine, Club/ClubEvent/ClubRegistration,
+│   │                            # PaymentTransaction, UserNotificationPreference, UserNote
 │   ├── views.py                 # View functions (incl. claim_meal/book_transport/book_appointment)
 │   │                            # + staff endpoints: redeem_meal_ticket, update_appointment_status,
-│   │                            #   verify_club_transaction_view, update_user_role
+│   │                            #   verify_club_transaction_view, update_user_role, create_notice,
+│   │                            #   join_club, _process_checkout, notes actions, research_query
 │   ├── urls.py                  # App URL routes
 │   ├── consumers.py             # NotificationConsumer (WebSocket, user_<id> groups) + notify_user
 │   ├── routing.py               # WebSocket URL routing (ws/notifications/)
@@ -307,7 +322,12 @@ Niter-centralized-dash/
 │       ├── 0003_googleusertoken.py
 │       ├── 0004_notification.py
 │       ├── 0005_*.py            # MealSubscription/MealTicket/TransportBooking/MedicalAppointment
-│       └── 0006_*.py            # MealTicket.redeemed_at + Notification 'club' category
+│       ├── 0006_*.py            # MealTicket.redeemed_at + Notification 'club' category
+│       ├── 0007_*.py            # Notice + Course/CourseMaterial
+│       ├── 0008_*.py            # Department/FacultyMember/ClassRoutine/Club/ClubEvent/ClubRegistration
+│       ├── 0009_seed_*.py       # Seed data (5 departments, faculty, routines, clubs, events)
+│       ├── 0010_*.py            # PaymentTransaction/UserNotificationPreference/UserNote
+│       └── 0011_*.py            # Database indexes (db_index + composite)
 ├── host/
 │   ├── __init__.py
 │   ├── views.py                 # Host portal views (medical host + admin dashboards)
@@ -369,27 +389,37 @@ Niter-centralized-dash/
 ## 9. Django Configuration
 
 ### Key Settings (`config/settings.py`)
-- **DEBUG:** `True` (development mode)
-- **ALLOWED_HOSTS:** `[]` (add your domain in production)
+- **Environment-driven (django-environ):** `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DATABASE_URL`, `REDIS_URL` read from the environment / `.env` (see `.env.example`). `DEBUG` **defaults to False**; `SECRET_KEY` **fails closed** when `DEBUG=False` and unset.
+- **DEBUG / ALLOWED_HOSTS:** no longer hardcoded — from `.env` (dev: `DEBUG=True`, `ALLOWED_HOSTS=localhost,127.0.0.1`).
 - **INSTALLED_APPS:** `daphne` (first, so `runserver` serves ASGI), `django.contrib.admin/auth/contenttypes/sessions/messages/staticfiles/sites`, `channels`, allauth (`allauth`, `allauth.account`, `allauth.socialaccount` + Google provider), `core`
-- **MIDDLEWARE:** Security, Session, Common, Csrf, Auth, `allauth.account.middleware.AccountMiddleware`, Messages
-- **TEMPLATES DIRS:** `[BASE_DIR / 'templates']` — context processors include `auth`, `messages`, and `core.context_processors.endpoints`
-- **DATABASES:** SQLite (`db.sqlite3`) — required for Django auth (run `manage.py migrate` first)
+- **MIDDLEWARE:** Security, **WhiteNoise**, Session, Common, Csrf, Auth, `allauth.account.middleware.AccountMiddleware`, Messages, **XFrameOptions** (clickjacking)
+- **TEMPLATES DIRS:** `[BASE_DIR / 'templates']` — context processors include `request`, `auth`, `messages`, and `core.context_processors.endpoints`
+- **DATABASES:** SQLite by default (`sqlite:///db.sqlite3`); set `DATABASE_URL` (e.g. Postgres) for production
 - **AUTH SETTINGS:** `LOGIN_URL='/login/'`, `LOGIN_REDIRECT_URL='/dashboard/'`, `LOGOUT_REDIRECT_URL='/'`
-- **REAL-TIME:** `ASGI_APPLICATION = 'config.asgi.application'`; `CHANNEL_LAYERS` uses `channels.layers.InMemoryChannelLayer` (dev/tests — switch to `channels_redis` for multi-process production)
+- **REAL-TIME:** `ASGI_APPLICATION = 'config.asgi.application'`; `CHANNEL_LAYERS` uses **`channels_redis`** when a reachable `REDIS_URL` is configured, otherwise falls back to `InMemoryChannelLayer` (startup ping probe; `notify_user` never raises on a runtime outage)
 - **GOOGLE OAUTH:** `SITE_ID = 1`; `SOCIALACCOUNT_PROVIDERS['google']` scopes profile/email + Drive (app-data) + Sheets with offline/consent auth params (refresh tokens persisted in `GoogleUserToken`)
-- **STATIC:** `STATICFILES_DIRS = [BASE_DIR / 'static']`
+- **STATIC:** `STATICFILES_DIRS = [BASE_DIR / 'static']`, `STATIC_ROOT = staticfiles/`, WhiteNoise `CompressedStaticFilesStorage`; run `collectstatic` for production
+- **SECURITY (DEBUG=False only):** `SECURE_SSL_REDIRECT`, `SECURE_PROXY_SSL_HEADER`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, HSTS (+subdomains/preload), `SECURE_REFERRER_POLICY` — `manage.py check --deploy` is clean
 
 ### Run the ASGI/dev server
 Because `daphne` is first in `INSTALLED_APPS`, `python manage.py runserver` serves both HTTP and WebSockets — no extra `--asgi` flag needed.
 
-### Environment Variables (Recommended for Production)
-Create a `.env` file in the root directory:
+### Environment Variables (Required — see `.env.example`)
+Copy `.env.example` to `.env` and fill in values. Real environment variables (set by your process manager / hosting platform) always take precedence over `.env`.
+
 ```env
-DEBUG=False
-SECRET_KEY=your-secret-key-here
-ALLOWED_HOSTS=yourdomain.com
-DATABASE_URL=postgres://user:pass@localhost:5432/niter_db
+# Required
+SECRET_KEY=your-long-random-secret      # fails startup when DEBUG=False and unset
+DEBUG=False                            # MUST be False in production
+ALLOWED_HOSTS=niter.edu.bd,www.niter.edu.bd
+
+# Optional
+DATABASE_URL=postgres://user:pass@localhost:5432/niter_db   # unset → SQLite
+REDIS_URL=redis://127.0.0.1:6379/0     # unset/unreachable → in-memory channel layer
+CSRF_TRUSTED_ORIGINS=https://niter.edu.bd
+SECURE_SSL_REDIRECT=True               # production-only flags (DEBUG=False)
+SESSION_COOKIE_SECURE=True
+CSRF_COOKIE_SECURE=True
 ```
 
 ## 10. Git Repository
@@ -416,8 +446,17 @@ DATABASE_URL=postgres://user:pass@localhost:5432/niter_db
 | POST | `/api/medical/appointments/<id>/status/` | Staff: persist appointment status changes + notify the student (`update_appointment_status`) |
 | POST | `/api/clubs/verify-transaction/` | Staff: mark a TrxID **Verified** in the club Google Sheet + notify the student (`verify_club_transaction_view`) |
 | POST | `/api/admin/update-role/` | Superuser: toggle `is_staff` / `is_superuser` with self-demotion + last-superuser guards (`update_user_role`) |
-| GET | `/api/notices/` | **Planned** — notice feed endpoint (does not exist yet; notices are mock JS) |
-| GET | `/api/courses/` | **Planned** — course materials endpoint (does not exist yet; notes are mock JS) |
+| POST | `/api/notices/create/` | Staff: persist a `Notice` (published/draft); publishing broadcasts a real-time notification to every active user (`create_notice`) |
+| POST | `/api/clubs/join/` | Student: create a pending `ClubRegistration` (duplicate → 409, club lead notified) (`join_club`) |
+| POST | `/checkout/` | Student: validate wallet payment, persist a `PaymentTransaction` with a unique `NTR-` id; meal purpose activates the `MealSubscription` (`_process_checkout`) |
+| POST | `/api/notes/save/` | Student: create/update a `UserNote` (owner-scoped) |
+| POST | `/api/notes/summarize/` | Student: server-side extractive TF summarization of note content |
+| POST | `/api/notes/keywords/` | Student: TF keyword ranking for note content |
+| POST/GET | `/api/notes/export/` | Student: export a `UserNote` as `.txt` or a dependency-free generated PDF |
+| POST | `/api/research/query/` | Student: structured research responses (topic, markdown, IEEE/APA7/Harvard/Chicago references) |
+| GET | `/notices/` | Published `Notice` feed with optional `?category=` filter (server-rendered) |
+| GET | `/academic-notes/` | Live `Course`/`CourseMaterial` drive (server-rendered) |
+| GET | `/departments/` + `/departments/<slug>/` | Live department directory + detail hubs (server-rendered) |
 | GET | `/` | Public homepage (glassmorphism landing page) |
 | GET | `/dashboard/` | Student dashboard (moved from `/`) |
 | GET | `/clubs/` | Clubs & Events (frontend-only student view) |
@@ -439,26 +478,28 @@ DATABASE_URL=postgres://user:pass@localhost:5432/niter_db
 
 ### Backend Status Summary
 
-**Backend live:** auth + accounts (login/signup/settings/profile), campus-service models & handlers (meal/transport/medical, sections 34–35), real-time notification engine (section 33), Website Builder backend (section 30+), Google Drive/Sheets layer, and the staff/admin/host dashboards (section 36: cafeteria redemption, appointment status, club sheet verification, role management).
+**Backend live (as of section 37):** everything below is implemented, tested (320 tests), and verified end-to-end:
+- auth + accounts (login/signup/settings/profile) — settings preferences persist to `UserNotificationPreference` (DB, not localStorage)
+- campus-service models & handlers (meal/transport/medical, sections 34–35) + real-time notification engine (section 33)
+- Website Builder backend (section 30+), Google Drive/Sheets layer, staff/admin/host dashboards (section 36)
+- **Profile booking & activity history** — real per-user `MealTicket`/`TransportBooking`/`MedicalAppointment` rows (section 37 pass 1)
+- **Official Notices** — `Notice` model, `/notices/` feed, staff `POST /api/notices/create/` publisher with real-time student broadcasts
+- **Academic Notes / Course Materials** — `Course` + `CourseMaterial` models drive `/academic-notes/` (no mock folders)
+- **Department Directory & Detail Hubs** — `Department`/`FacultyMember`/`ClassRoutine` models + seed migration; `/departments/<slug>/` hubs render live data
+- **Club student view** — `Club`/`ClubEvent`/`ClubRegistration` models; `POST /api/clubs/join/` (pending membership, duplicate → 409, lead notified)
+- **Checkout / payments** — `PaymentTransaction` model + server-backed `POST /checkout/` (unique `NTR-` ids, meal purpose activates `MealSubscription`)
+- **Research AI** — `POST /api/research/query/` returns structured responses with style-aware references
+- **Dashboard live widgets** — meal ratio, transport seats, medical availability + feeds computed from the database
+- **Notes Engine AI actions** — server-side save / summarize / keywords / export (.txt + PDF)
+- **Deployment** — env-driven settings (django-environ), `DEBUG=False` + `ALLOWED_HOSTS` from env, WhiteNoise static, `channels_redis` with offline fallback, `check --deploy` clean
 
-**Still frontend-only (needs backend):** see the priority list below. The most impactful items are flagged **HIGH**.
+### Remaining (LOW priority)
 
-### Backend To-Do List (priority order)
-
-1. **HIGH — Profile booking history** (`core/views.py::profile_view`): the "Booking & Activity History" tab still renders hardcoded mock lists, but `MealTicket`, `TransportBooking`, and `MedicalAppointment` models now exist — swap the mocks for real per-user queries.
-2. **HIGH — Official Notices** (`/notices/` + System Admin tab 2): `NOTICES` is mock JS; there is **no `Notice` model** and the `/api/notices/` endpoint in this table is planned, not implemented. Needs model, publish CRUD (staff), and a student feed endpoint.
-3. **HIGH — Academic Notes / Course Materials** (`/academic-notes/` + System Admin tab 2): folders/documents are mock JS; `/api/courses/` is planned only. Needs course/material models (or a Google-Drive-backed listing) + upload/download endpoints (the `/api/notes/upload/` Drive endpoint exists for the Notes Engine only).
-4. **HIGH — Department Directory & Detail Hubs** (`/departments/`, `/departments/<slug>/`): 5 departments with HODs, faculty, schedules, and notes are all mock JS (`DEPT_DATA`). Needs Department/Faculty/Routine/Notes models + endpoints (or reuse `EditablePage` with `page_type='department'`).
-5. **MEDIUM — Club student view** (`/clubs/`): `CLUBS`/`EVENTS`/`REGISTRATIONS` are mock JS; "Register Now" routes to `/checkout/` with no persisted registration. Needs Club/Event/Registration models + student registration endpoint. (The executive workspace at `/clubs/manage/` is already real via Google Sheets.)
-6. **MEDIUM — Checkout / payments** (`/checkout/`): the bKash/Nagad/Rocket flow is a simulated 1.4s mock — no transaction is persisted and no gateway callback exists. Needs a `Payment`/`Order` model and real gateway integration (or at least a persisted order + verification hook into `/api/clubs/verify-transaction/`).
-7. **MEDIUM — Research AI** (`/research-ai/`): canned mock responses. Needs a real LLM/summarization endpoint, upload storage, and persisted threads.
-8. **MEDIUM — Dashboard live widgets** (`/dashboard/`): meal ratio (140/200), route seats, doctor availability, and notices feed are hardcoded — derive from the real models now that they exist.
-9. **MEDIUM — Settings notification preferences** (`/settings/`): toggles persist to `localStorage` only. Needs a `NotificationPreference` model + API.
-10. **MEDIUM — Transport live status / route catalog**: `TRANSPORT_ROUTES` is a hardcoded constant and the "Live Bus Status" tracker is mock — move to DB-backed routes + a status endpoint for real-time seat availability.
-11. **MEDIUM — Cafeteria kitchen inventory + System Admin driver/scan tables**: still mock forms ("Saved (demo — no backend changes yet)") — needs inventory/driver/scan models + staff CRUD.
-12. **LOW — Medical admin chat/doctor-schedule/content sections**: mock (see 4.9) — needs models + staff CRUD.
-13. **LOW — Notes Engine AI actions** (`/notes/`): "Generate AI Summary" / "Extract Keywords" / "Export as PDF" are client-side mocks; upload-to-Drive is real.
-14. **Deployment:** configure production env vars, `ALLOWED_HOSTS`, static files, `channels_redis` (currently in-memory).
+1. **LOW — Transport live status / route catalog**: `TRANSPORT_ROUTES` is still a hardcoded catalog constant and the "Live Bus Status" tracker is mock — move to DB-backed routes + a status endpoint for real-time seat availability.
+2. **LOW — Cafeteria kitchen inventory + System Admin driver/scan tables**: still mock forms — needs inventory/driver/scan models + staff CRUD.
+3. **LOW — Medical admin chat/doctor-schedule/content sections**: mock (see 4.9) — needs models + staff CRUD.
+4. **LOW — Research AI persisted threads & real LLM**: `/api/research/query/` is deterministic server-side (no external AI calls); persisted thread history + an actual LLM integration would be the next step.
+5. **LOW — Media at scale**: media is served by Django — swap to django-storages/CDN if uploads grow (noted in `.env.example`).
 
 ## 13. Update by Tajkia Tasnim
 
@@ -1294,3 +1335,77 @@ Connected all four staff/admin/host dashboards to real database models and persi
 - New `StaffAdminBackendTest` (permissions, redemption, status transitions + notifications, sheet verification, role updates) and rewritten `host/tests.py` with staff-gated access tests.
 - Verified end-to-end against the running server: all five dashboards 200 for staff; redeem/status/verify/role flows round-trip with notifications; wrong-role access blocked.
 - `python manage.py check` ✔ · `python manage.py makemigrations --check` (no drift) ✔ · `python manage.py test` ✔ (**187 tests**).
+
+---
+
+## 37. Backend Finalization: Profile/Notices/Courses, Departments/Clubs/Dashboard, Checkout/Settings/Notes-AI, Deployment Prep
+
+**Date:** 10 August 2026  
+**Branch:** main (working tree → committed & pushed)
+
+### Overview
+
+Four consecutive passes that closed out the remaining backend gaps and prepared the project for production:
+
+1. **Profile Activity History, Official Notices Engine, Course Materials API** (migrations `0007`)
+2. **Department Hubs, Club Management System, Dynamic Dashboard Widgets** (migrations `0008` + `0009` seed)
+3. **Checkout/Payments, Settings Persistence, Server-Side Notes & Research AI** (migration `0010`)
+4. **Deployment Preparation, Performance Optimization, Security Hardening** (migration `0011`)
+
+Full suite: **320 tests pass**; `manage.py check` and `check --deploy` clean; all verification data removed after live E2E runs.
+
+---
+
+### Pass 1 — Profile History, Notices Engine, Course Materials (`0007`)
+
+**Models** (`core/models.py`, all admin-registered):
+- `Notice` — `title`, `content`, `category` (urgent/academic/event/general), `is_published`, `author` FK, `created_at`/`updated_at`. Published rows drive the `/notices/` feed.
+- `Course` (`code` unique, `title`, `department`, `semester`) and `CourseMaterial` (`course` FK, `title`, `file` upload, `file_type`, `uploaded_at`, `display_type`/`size_display` helpers).
+
+**Views:**
+- `profile_view` — the "Booking & Activity History" now renders real per-user `MealTicket`, `TransportBooking`, and `MedicalAppointment` rows (no mock lists).
+- `notices_view` — filters published `Notice` rows by `?category=`; `academic_notes` — live `Course`/`CourseMaterial` folders grouped by department.
+- New **`POST /api/notices/create/`** (`create_notice`, staff-only): persists the notice and, when published, creates a `Notification` for every active user and pushes it over WebSocket.
+
+---
+
+### Pass 2 — Departments, Clubs, Dashboard Widgets (`0008` + `0009`)
+
+**Models** (admin-registered): `Department` (name/code/slug/HOD/description/office), `FacultyMember` (dept FK), `ClassRoutine` (dept FK, day/semester/subject/time/room), `Club` (name/slug/lead_user/banner), `ClubEvent` (club FK, date/capacity/location), `ClubRegistration` (student+club unique, pending/active).
+
+**Seed migration `0009`:** 5 departments, 15 faculty, 20 routine periods, 4 clubs, 4 upcoming events — pages work out of the box on a fresh DB.
+
+**Views:**
+- `/departments/` — live DB rows with student/material counts (2 grouped queries, no N+1); search + quick-jump filter server-rendered cards.
+- `/departments/<slug>/` — full hub: HOD/office header, faculty cards, routine grouped by weekday, notes drive grouped by semester, published academic notices; unknown slug → 404.
+- `/clubs/` — live clubs (annotated active-member counts) + upcoming events; new **`POST /api/clubs/join/`** (`join_club`) creates a pending registration (duplicate → 409), notifying the club lead.
+- `dashboard` — three live widgets: meal ratio (tickets claimed today / capacity), transport (seats left per catalog route), medical (on-duty doctors + slots open today); notices feed + course quick-tiles are live DB data.
+
+---
+
+### Pass 3 — Checkout, Settings, Notes & Research AI (`0010`)
+
+**Models** (admin-registered): `PaymentTransaction` (user, amount, method bKash/Nagad/Card/Rocket, unique `transaction_id`, purpose Meal/Tuition/Event/Transport, status pending/completed/failed, `wallet_trx`), `UserNotificationPreference` (email/sms/push/dark_mode; auto-created for every new user via a `post_save` signal), `UserNote` (user, title, content).
+
+**Views / endpoints (all `@login_required`, CSRF-protected):**
+- `checkout_view` POST → `_process_checkout`: validates wallet number/TrxID/amount (guards NaN/Infinity/negative/oversized), generates a unique `NTR-XXXXXX` id, persists the payment, notifies the user, and **a meal payment activates/extends the `MealSubscription`**. The checkout page's simulated `setTimeout` was replaced with a real POST; the receipt shows the server reference.
+- `/settings/` — GET loads saved prefs; POST (form or JSON) persists them to the DB (localStorage toggles removed); dark theme applied from `prefs.dark_mode`.
+- Notes Engine actions: `POST /api/notes/save/`, `POST /api/notes/summarize/` (extractive TF summarization), `POST /api/notes/keywords/` (TF keyword ranking), `POST|GET /api/notes/export/` → `.txt` or a **dependency-free PDF writer** (structure-validated; `file` reports "PDF document, version 1.4"). The page has working Save/Summary/Keywords/Export buttons + a "My Notes" sidebar.
+- `POST /api/research/query/` — structured responses (`topic`, `response_markdown`, style-aware `references` for IEEE/APA 7/Harvard/Chicago); the research page POSTs to it with a local offline fallback.
+
+---
+
+### Pass 4 — Deployment Preparation, Performance, Security (`0011`)
+
+**Production configuration (`config/settings.py`):**
+- Environment-driven via **django-environ**: `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DATABASE_URL`, `REDIS_URL` (real env vars beat `.env`). `DEBUG` hard-defaults to **False** and `SECRET_KEY` **fails closed** (`ImproperlyConfigured` when `DEBUG=False` without a secret).
+- `.env` (gitignored, dev) + documented `.env.example`; `requirements.txt` adds `django-environ`, `whitenoise`, `channels-redis`.
+- **WhiteNoise** (`CompressedStaticFilesStorage`, middleware) serves collected static; `STATIC_ROOT = staticfiles/` (gitignored); media stays served via `config/urls.py` (`static()` helper, gate removed so it works in production).
+- Production security block (only when `DEBUG=False`): `SECURE_SSL_REDIRECT`, `SECURE_PROXY_SSL_HEADER`, `SESSION_COOKIE_SECURE`/`CSRF_COOKIE_SECURE`, HSTS (+subdomains/preload), `SECURE_REFERRER_POLICY`, clickjacking middleware — **`check --deploy` clean**.
+- **Channel layers:** `channels_redis` when a reachable `REDIS_URL` is configured; a startup ping probe falls back to the in-memory layer when unset **or offline**. `notify_user` (`core/consumers.py`) swallows channel-layer failures so a runtime Redis outage degrades to poll-only delivery instead of 500ing the request (new `NotificationPushResilienceTest`).
+
+**Performance (`0011`):**
+- `db_index` on status flags/timestamps + composite indexes for the hot paths: `Notification(user, is_read)` & `(user, -created_at)`, `Notice(is_published, -created_at)`, `PaymentTransaction(user, status)`, `UserNote(user, -updated_at)`, plus `MealTicket`/`MedicalAppointment`/`TransportBooking`/`ClubEvent` fields.
+- `dashboard` transport widget collapsed from a per-route COUNT loop to **one grouped query**; the medical widget uses a single `values_list` for both the booked count and on-duty doctor set. `profile`/`departments`/`clubs` were already N+1-free (`select_related`/`prefetch_related`/grouped aggregates).
+
+**Verification:** `collectstatic` (147 files), `manage.py check` + `check --deploy` clean, **320 tests pass**. Live E2E confirmed: pages/static/media 200 in dev; HTTP→HTTPS 301 in production mode; Redis fallback; fail-closed `SECRET_KEY`; join-club + checkout + notes + research flows round-trip over real HTTP (all verification data cleaned up, server stopped).

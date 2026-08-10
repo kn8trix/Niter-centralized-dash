@@ -392,7 +392,8 @@ body.profile a {
 .badge.confirmed,
 .badge.booked,
 .badge.boarded,
-.badge.active {
+.badge.active,
+.badge.redeemed {
     background: var(--success-soft, #dcfce7);
     color: #166534;
 }
@@ -401,6 +402,16 @@ body.profile a {
 .badge.unused {
     background: #fef3c7;
     color: #b45309;
+}
+
+.badge.completed {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.badge.cancelled {
+    background: #fee2e2;
+    color: #b91c1c;
 }
 
 /* ---------------------------------------------------------------------------

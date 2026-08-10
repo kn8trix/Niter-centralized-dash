@@ -3,6 +3,10 @@
 Routing: HTTP requests go to the standard Django ASGI handler; WebSocket
 connections (``/ws/...``) are authenticated via ``AuthMiddlewareStack`` and
 dispatched by ``core.routing`` (real-time notification engine).
+
+Static assets are served by ``whitenoise.middleware.WhiteNoiseMiddleware``
+(configured in ``config/settings.py``) and uploaded media by the ``static()``
+helper in ``config/urls.py``.
 """
 
 import os
