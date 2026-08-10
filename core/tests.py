@@ -578,6 +578,12 @@ class SignUpFormTest(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('already exists', form.errors['email'][0])
 
+    def test_duplicate_email_rejected_case_insensitively(self):
+        User.objects.create_user(username='someone', email='RIFAT@niter.edu.bd', password='x12345678')
+        form = SignUpForm(self._data())
+        self.assertFalse(form.is_valid())
+        self.assertIn('already exists', form.errors['email'][0])
+
     def test_password_confirmation_mismatch_rejected(self):
         form = SignUpForm(self._data(confirm_password='different1'))
         self.assertFalse(form.is_valid())

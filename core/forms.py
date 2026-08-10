@@ -49,14 +49,18 @@ class SignUpForm(forms.Form):
     )
 
     def clean_student_id(self):
-        student_id = self.cleaned_data['student_id'].strip()
+        # Student IDs are stored uppercase (S1001-style) so `s7777` and
+        # `S7777` can never become two separate accounts.
+        student_id = self.cleaned_data['student_id'].strip().upper()
         if (User.objects.filter(username=student_id).exists()
                 or StudentProfile.objects.filter(student_id=student_id).exists()):
             raise forms.ValidationError('An account with this Student ID already exists.')
         return student_id
 
     def clean_email(self):
-        email = self.cleaned_data['email'].strip()
+        # Normalize to lowercase so stored emails match the case-insensitive
+        # uniqueness rule (a case variant can never sneak past the check).
+        email = self.cleaned_data['email'].strip().lower()
         if User.objects.filter(email__iexact=email).exists():
             raise forms.ValidationError('An account with this email address already exists.')
         return email

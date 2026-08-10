@@ -1029,7 +1029,6 @@ def signup_view(request):
         'errors': errors,
         'departments': StudentProfile.DEPARTMENT_CHOICES,
         'form_data': request.POST if request.method == 'POST' else None,
-        'form': form,
     })
 
 
