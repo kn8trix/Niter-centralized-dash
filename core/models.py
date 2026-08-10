@@ -89,6 +89,15 @@ class EditablePage(models.Model):
         help_text="Theme style overrides",
     )
     is_published = models.BooleanField(default=True)
+    seo_description = models.TextField(
+        blank=True,
+        help_text="Meta description used for search-engine snippets",
+    )
+    show_in_nav = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Show a link to this page in the top navigation Pages menu",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -115,7 +124,9 @@ class ContentBlock(models.Model):
     # tag and the editable-page renderer share this map, so a new type only
     # needs a partial in templates/builder/blocks/ and a row here.
     BLOCK_TYPE_CHOICES = [
-        ('html', 'Rich Text / HTML'),
+        ('html', 'Text Block'),
+        ('hero', 'Hero Header'),
+        ('features', 'Feature Cards Grid'),
         ('faq', 'FAQ Accordion'),
         ('stats', 'Stats Counter Grid'),
         ('testimonials', 'Testimonial Slider'),
@@ -137,6 +148,20 @@ class ContentBlock(models.Model):
             'subtitle': 'Optional intro line',
             'items': [
                 {'value': '4,500+', 'label': 'Active Students', 'icon': 'fa-user-graduate', 'highlight': True},
+            ],
+        },
+        'hero': {
+            'headline': 'Welcome to NITER',
+            'subheadline': 'A supporting line under the headline',
+            'image_url': 'https://…',
+            'primary_label': 'Explore',
+            'primary_url': '/departments/',
+        },
+        'features': {
+            'title': 'Why NITER',
+            'subtitle': 'Optional intro line',
+            'items': [
+                {'icon': 'fa-laptop-code', 'title': 'Feature', 'text': '…'},
             ],
         },
         'testimonials': {
@@ -175,10 +200,18 @@ class ContentBlock(models.Model):
         help_text='Structured data for faq / stats / testimonials / cta blocks — see BLOCK_SCHEMAS',
     )
     style_json = models.JSONField(default=dict, blank=True)
+    order = models.PositiveIntegerField(
+        default=0,
+        db_index=True,
+        help_text='Display order within the page (lowest first)',
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         unique_together = ('page', 'element_id')
+        # Stable display order: explicit ``order`` first, then creation order
+        # so rows created before the field existed keep their relative order.
+        ordering = ['order', 'id']
 
     def __str__(self):
         return self.element_id

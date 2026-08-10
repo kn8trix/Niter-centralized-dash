@@ -2181,3 +2181,200 @@ and re-runs the full builder test battery.
 
 Note: the literal `core.tests.test_builder` label from the task spec does not
 resolve — builder tests live in `core/tests.py` (§41.4).
+
+---
+
+## 52. Website Builder Visual Editor — Live Canvas Controls & Block Management
+
+**Date:** 11 August 2026  
+**Branch:** main
+
+### Overview
+
+Enhanced the visual editor (`/builder/edit/<slug>/`) with responsive preview
+canvas toggles, per-block Move Up / Move Down / Delete management wired to an
+atomic reorder API, and instant custom-CSS injection into the live preview.
+
+### Completed Work
+
+1. **Canvas viewport toggles (`templates/builder/editor.html`, CSS)**
+   - Desktop (fluid), Tablet (768px centered) and Mobile (375px centered)
+     preview buttons with smooth `max-width`/`width` transitions on the canvas
+     frame and iframe; toggles report the active width via toast and
+     `aria-pressed`.
+
+2. **Block management (`editor.html`, `editor.js`, `core/views.py`)**
+   - Each inspector block card now carries **Move Up / Move Down / Delete**
+     handles (first/last cards disable the corresponding move button).
+   - Move buttons POST the full order to `/api/builder/save-block/` as one
+     atomic `reorder` payload (`{page_slug, reorder: [{element_id, order}…]}`)
+     and then refresh the canvas iframe; on failure the optimistic DOM swap is
+     reverted so UI always matches the DB.
+   - Delete POSTs `{delete: true}` to the same endpoint (superuser-gated),
+     removes the card, updates the block count and refreshes the canvas.
+   - `ContentBlock.order` (PositiveIntegerField, migration **0018**) + `Meta
+     ordering ['order', 'id']`; the live page (`editable_page_view`) and the
+     editor (`visual_editor`) render blocks in order. New blocks created via
+     the API append after the page's last block unless an explicit `order` is
+     sent. `save_content_block` validates every reorder entry before a single
+     `transaction.atomic` (unknown block → 400, nothing persisted).
+
+3. **Instant CSS injection (`editor.html`, `editor.js`)**
+   - New **Save CSS** button persists `/api/builder/save-css/` and re-injects
+     the `<style>` block straight into the preview iframe `<head>` — no page
+     reload. Typing already previews live; Save CSS persists.
+
+4. **Latent fix** — server-rendered inspector cards were never wired to the
+   edit handlers (only dynamically discovered cards were). `wireItem` is now
+   idempotent and applied to every card on init, so editing, selection, and
+   the new action handles work on first load.
+
+### Verification
+
+- `python manage.py check` — no issues
+- `python manage.py makemigrations --check --dry-run` — no changes
+- `python manage.py test core.tests.BuilderBlockLibraryTest
+  core.tests.EditablePageRenderTest core.tests.BuilderBackendTest
+  core.tests.BuilderBlockOrderingTest` — **61 tests, OK** (10 new ordering
+  tests: order default, API append order, atomic reorder, unknown-block and
+  bad-entry rejection, delete, ordered live-page rendering, editor markup)
+- **Full suite — 398 tests, OK**
+- `node --check static/js/builder/editor.js` — syntax OK
+- Rendered `/builder/edit/component-demo/` (superuser): Save CSS button,
+  per-block Move Up/Down/Delete handles, and the 3 viewport buttons all
+  present.
+
+Note: block management handles live on the inspector cards (the builder's
+block-management surface) rather than on the canvas wrappers, so the public
+page markup stays clean. The spec's literal `core.tests.test_builder` label
+still does not resolve — builder tests live in `core/tests.py` (§41.4).
+
+---
+
+## 53. Page Lifecycle Management & Automatic Navigation Linking
+
+**Date:** 11 August 2026  
+**Branch:** main
+
+### Overview
+
+Added page lifecycle controls (publish gating + SEO description) and wired
+published builder pages flagged ``show_in_nav`` into the shared top navigation
+as a live, DB-backed Pages menu.
+
+### Completed Work
+
+1. **Lifecycle flags (`core/models.py`, migration 0019)**
+   - ``EditablePage.seo_description`` — optional meta description rendered in
+     the ``<meta name="description">`` tag of ``/page/<slug>/`` (falls back to
+     the page title).
+   - ``EditablePage.show_in_nav`` (default False, indexed) — opt-in flag that
+     surfaces a page in the top navigation. ``is_published`` already existed
+     (default True) and is unchanged.
+   - Admin: ``show_in_nav`` added to ``list_display`` / ``list_filter``.
+
+2. **Publish gating (`core/views.py`)**
+   - ``editable_page_view`` now 404s unpublished drafts for everyone except
+     super admins, who reach them from the builder to preview work in
+     progress. Existing anonymous 404 behaviour is preserved.
+
+3. **Automatic navigation (`core/context_processors.py`, `config/settings.py`)**
+   - New ``custom_pages_nav`` context processor exposes ``NAV_CUSTOM_PAGES``
+     (published + ``show_in_nav`` pages ordered by title) to every template;
+     registered in ``TEMPLATES``. The query is one small indexed lookup per
+     render — note: any future test that renders a full page must subclass
+     ``TestCase`` (``ResearchAIPageTest`` was converted for this reason).
+
+4. **Topbar integration (`templates/partials/topbar.html`, `topbar.css`)**
+   - Desktop: a **Pages** dropdown pill in the nav row lists every custom
+     page with the current page highlighted; open/close on click, outside
+     click, or Escape with ``aria-expanded`` + caret rotation.
+   - Mobile: the same links appear under a **Custom Pages** label inside the
+     profile menu (desktop pills are hidden on mobile, so each set renders
+     exactly once).
+   - ``editable_page.html`` now emits the page's ``seo_description`` in the
+     meta description.
+
+### Verification
+
+- ``manage.py check`` — clean · ``makemigrations --check`` — no changes
+- Builder tests (render / backend / block library / ordering / custom nav) —
+  **66 tests OK** (5 new: superuser draft preview, staff draft 404, SEO meta,
+  context-processor filtering, topbar dropdown rendering)
+- Full suite — **403 tests OK**
+- Live render check: flagged page appears twice in the topbar (dropdown +
+  mobile menu) and the SEO meta is present.
+
+---
+
+## 54. Frontend Visual Page Builder & Drag-and-Drop Block Manager
+
+**Date:** 11 August 2026  
+**Branch:** main
+
+### Overview
+
+Added a frontend page builder at ``/builder/edit/<slug>/`` with a page-settings
+toolbar (title, slug display, Published + Show-in-Nav toggles, Save Draft /
+Publish), a drag-and-drop block manager with a section palette, and two new
+AJAX endpoints for atomic reorder and block save. The older split-screen
+canvas editor moved to ``/builder/visual/<slug>/``.
+
+### Completed Work
+
+1. **Page builder UI (`templates/builder/edit_page.html`, new)**
+   - Top toolbar: editable page title, read-only slug chip, **Published** and
+     **Show in Nav** toggle switches, SEO description input, **Save Draft**
+     (sets ``is_published=false``) and **Publish** buttons, plus a link to the
+     canvas Visual Editor.
+   - Left panel: sortable block list (drag handle, type badge, element id,
+     edit/delete), an **Add Block** palette with all section types, and an
+     inline block editor (type select + content HTML + content JSON). Block
+     contents are embedded safely via ``json_script`` for the editor.
+   - Right panel: live preview iframe that refreshes after every mutation
+     without a full page reload.
+   - ``static/js/builder/page_manager.js`` + ``static/css/builder_page.css``.
+
+2. **New section block types (`core/models.py`, partials, migration 0020)**
+   - **Hero Header** (``hero``) and **Feature Cards Grid** (``features``)
+     added to ``BLOCK_TYPE_CHOICES`` / ``BLOCK_SCHEMAS`` / the partial map;
+     partials ``hero_section.html`` + ``features_grid.html``. The ``html``
+     label is now **Text Block**. Migration 0020 records the choices change.
+
+3. **Endpoints (`core/views.py`, `core/urls.py`)**
+   - ``/builder/api/blocks/reorder/`` — atomic drag-and-drop reorder (all
+     orders change in one transaction or none).
+   - ``/builder/api/blocks/save/`` — create / update / delete a block (HTML
+     sanitized on save, same trust model as the legacy endpoint).
+   - ``/builder/api/page/save/`` — persist title / publish state / nav flag /
+     SEO description; only keys present are written.
+   - ``save_content_block`` refactored into shared helpers
+     (``_get_builder_page`` / ``_reorder_content_blocks`` /
+     ``_save_content_block_data``) used by both the legacy and new endpoints.
+
+4. **Access control (`core/decorators.py`)**
+   - New ``@change_editablepage_required`` decorator gates every builder route
+     on the ``core.change_editablepage`` permission (staff may be granted it;
+     superusers pass implicitly). Anonymous visitors redirect to login, logged-
+     in users without the permission get 403 — matching the project's existing
+     ``superuser_required`` UX (Django 4.2's ``permission_required(
+     raise_exception=True)`` would 403 anonymous users, so a custom decorator
+     is used).
+   - ``editable_page_view`` draft preview now opens to permission holders
+     (was superuser-only) so authorized builders can preview drafts in the
+     builder's iframe.
+
+5. **Routing** — ``builder_editor`` at ``/builder/edit/<slug>/``, the canvas
+   ``visual_editor`` at ``/builder/visual/<slug>/``, and the dashboard's
+   **Edit Page** button now opens the page builder (New Page lands there too).
+
+### Verification
+
+- ``manage.py check`` — clean · migrations consistent (0020 applied)
+- Builder tests (backend / block library / render / ordering / custom nav /
+  page manager) — **82 tests OK** (13 new: permissions, toolbar, reorder /
+  block-save / page-save endpoints, new section types, draft preview for
+  permission holders)
+- Full suite — **419 tests OK** · ``node --check page_manager.js`` — clean
+- Live check: toolbar + 7-type palette + 4 block rows render; save / reorder /
+  page-save APIs return success; nav dropdown + hero/features partials render

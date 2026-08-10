@@ -1,0 +1,29 @@
+{% comment %}
+    Feature Cards Grid block — heading plus a responsive grid of cards, each
+    with an optional FontAwesome icon, title and text.
+    Data schema (ContentBlock.content_json), see ContentBlock.BLOCK_SCHEMAS['features']:
+        { "title": "…", "subtitle": "…",
+          "items": [{"icon": "fa-laptop-code", "title": "Feature", "text": "…"}] }
+{% endcomment %}
+<section class="builder-block features-block" data-builder-block="features">
+    {% if data.title %}
+    <header class="bb-head">
+        <h2 class="bb-title">{{ data.title }}</h2>
+        {% if data.subtitle %}<p class="bb-subtitle">{{ data.subtitle }}</p>{% endif %}
+    </header>
+    {% endif %}
+
+    <div class="features-grid">
+        {% for item in data.items %}
+        {% if item.title or item.text %}
+        <article class="feature-card">
+            {% if item.icon %}<i class="fa-solid {{ item.icon }} feature-icon" aria-hidden="true"></i>{% endif %}
+            {% if item.title %}<h3 class="feature-title">{{ item.title }}</h3>{% endif %}
+            {% if item.text %}<p class="feature-text">{{ item.text }}</p>{% endif %}
+        </article>
+        {% endif %}
+        {% empty %}
+        <p class="bb-empty">No features have been added yet.</p>
+        {% endfor %}
+    </div>
+</section>

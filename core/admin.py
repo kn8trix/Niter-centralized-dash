@@ -45,8 +45,8 @@ class PageTemplateAdmin(admin.ModelAdmin):
 
 @admin.register(EditablePage)
 class EditablePageAdmin(admin.ModelAdmin):
-    list_display = ('title', 'slug', 'page_type', 'template', 'is_published', 'updated_at')
-    list_filter = ('page_type', 'is_published')
+    list_display = ('title', 'slug', 'page_type', 'template', 'is_published', 'show_in_nav', 'updated_at')
+    list_filter = ('page_type', 'is_published', 'show_in_nav')
     search_fields = ('title', 'slug')
     prepopulated_fields = {'slug': ('title',)}
     inlines = [ContentBlockInline]

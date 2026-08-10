@@ -90,6 +90,13 @@
                                   placeholder=".content-block { padding: 2rem; }">{{ page.custom_css }}</textarea>
                     </label>
 
+                    <div class="inspector-css-actions">
+                        <button type="button" class="btn save-css-btn" id="save-css">
+                            <i class="fa-solid fa-bolt"></i> Save CSS
+                        </button>
+                        <span class="css-hint">Typing previews instantly; Save CSS persists it.</span>
+                    </div>
+
                     <div class="inspector-colors">
                         <label class="color-field" title="Body background color">
                             <span>Page background</span>
@@ -118,6 +125,17 @@
                                 {% if block.block_type != 'html' %}
                                 <span class="block-type-badge">{{ block.block_type }}</span>
                                 {% endif %}
+                                <span class="block-actions" role="group" aria-label="Block actions">
+                                    <button type="button" class="block-action-btn" data-action="up" title="Move block up" aria-label="Move block up">
+                                        <i class="fa-solid fa-arrow-up"></i>
+                                    </button>
+                                    <button type="button" class="block-action-btn" data-action="down" title="Move block down" aria-label="Move block down">
+                                        <i class="fa-solid fa-arrow-down"></i>
+                                    </button>
+                                    <button type="button" class="block-action-btn danger" data-action="delete" title="Delete block" aria-label="Delete block">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
+                                </span>
                             </div>
 
                             <label class="inspector-field">

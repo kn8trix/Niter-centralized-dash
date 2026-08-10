@@ -1,0 +1,31 @@
+{% load builder_tags %}
+{% comment %}
+    Hero Header block — big headline, supporting subheadline, optional image
+    and a single primary action button.
+    Data schema (ContentBlock.content_json), see ContentBlock.BLOCK_SCHEMAS['hero']:
+        { "headline": "…", "subheadline": "…", "image_url": "https://…",
+          "primary_label": "Explore", "primary_url": "/departments/" }
+    The button only renders when both label and URL are set; URLs run through
+    the ``safe_url`` filter so only http(s)/mailto/tel/ftp and relative/#
+    links ever reach an ``href``.
+{% endcomment %}
+<section class="builder-block hero-block" data-builder-block="hero">
+    <div class="hero-inner">
+        <div class="hero-copy">
+            {% if data.headline %}
+            <h2 class="hero-headline">{{ data.headline }}</h2>
+            {% endif %}
+            {% if data.subheadline %}
+            <p class="hero-subheadline">{{ data.subheadline }}</p>
+            {% endif %}
+            {% if data.primary_label and data.primary_url %}
+            <div class="hero-actions">
+                <a class="bb-btn bb-btn--primary" href="{{ data.primary_url|safe_url }}">{{ data.primary_label }}</a>
+            </div>
+            {% endif %}
+        </div>
+        {% if data.image_url %}
+        <img class="hero-image" src="{{ data.image_url|safe_url }}" alt="{{ data.headline|default:'Hero image' }}" loading="lazy">
+        {% endif %}
+    </div>
+</section>

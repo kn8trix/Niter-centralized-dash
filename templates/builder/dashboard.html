@@ -70,8 +70,11 @@
                     </div>
 
                     <div class="page-actions">
-                        <a class="btn primary" href="{% url 'visual_editor' page.slug %}">
+                        <a class="btn primary" href="{% url 'builder_editor' page.slug %}">
                             <i class="fa-solid fa-pen"></i> Edit Page
+                        </a>
+                        <a class="btn ghost" href="{% url 'visual_editor' page.slug %}">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> Visual Editor
                         </a>
                         <a class="btn ghost" href="{% url 'editable_page' page.slug %}" target="_blank" rel="noopener">
                             <i class="fa-solid fa-arrow-up-right-from-square"></i> View

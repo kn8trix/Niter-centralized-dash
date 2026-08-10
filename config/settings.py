@@ -150,6 +150,8 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 # Centralized endpoint registry for decoupled URL mappings
                 'core.context_processors.endpoints',
+                # Published builder pages flagged for the top navigation
+                'core.context_processors.custom_pages_nav',
             ],
         },
     },

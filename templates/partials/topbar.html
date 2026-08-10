@@ -80,6 +80,15 @@ active: dashboard | notes | departments | research | notices | transport | meals
                         <a href="{% url 'medical' %}" class="{% if active == 'medical' %}active{% endif %}"><i class="fa-solid fa-stethoscope"></i> Medical</a>
                         <a href="{% url 'clubs_dashboard' %}" class="{% if active == 'clubs' %}active{% endif %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
                         <a href="{% url 'tickets' %}"><i class="fa-solid fa-ticket"></i> Tickets</a>
+                        {% if NAV_CUSTOM_PAGES %}
+                        <span class="profile-links-label"><i class="fa-solid fa-sitemap"></i> Custom Pages</span>
+                        {% for item in NAV_CUSTOM_PAGES %}
+                        {% url 'editable_page' item.slug as item_url %}
+                        <a href="{{ item_url }}"{% if request.path == item_url %} class="active"{% endif %}>
+                            <i class="fa-solid fa-file-lines"></i> {{ item.title }}
+                        </a>
+                        {% endfor %}
+                        {% endif %}
                     </nav>
 
                     <!-- Account actions (separated by a #f0ebe1 divider on mobile) -->
@@ -118,6 +127,22 @@ active: dashboard | notes | departments | research | notices | transport | meals
         <a href="{% url 'meal_dashboard' %}" class="{% if active == 'meals' %}active{% endif %}"><i class="fa-solid fa-utensils"></i> Meals</a>
         <a href="{% url 'medical' %}" class="{% if active == 'medical' %}active{% endif %}"><i class="fa-solid fa-stethoscope"></i> Medical</a>
         <a href="{% url 'clubs_dashboard' %}" class="{% if active == 'clubs' %}active{% endif %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
+        {% if NAV_CUSTOM_PAGES %}
+        <div class="nav-dropdown" data-component="nav-dropdown">
+            <button type="button" class="nav-dropdown-btn" aria-haspopup="true" aria-expanded="false">
+                <i class="fa-solid fa-sitemap"></i> Pages
+                <i class="fa-solid fa-chevron-down nav-dropdown-caret" aria-hidden="true"></i>
+            </button>
+            <div class="nav-dropdown-menu" aria-label="Custom pages">
+                {% for item in NAV_CUSTOM_PAGES %}
+                {% url 'editable_page' item.slug as item_url %}
+                <a href="{{ item_url }}"{% if request.path == item_url %} class="active"{% endif %}>
+                    <i class="fa-solid fa-file-lines"></i> {{ item.title }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
     </nav>
 </header>
 
@@ -159,6 +184,34 @@ active: dashboard | notes | departments | research | notices | transport | meals
                 bellBtn.click();
             });
         }
+    })();
+
+    // Custom pages dropdown — the "Pages" pill in the desktop nav row.
+    (function () {
+        document.querySelectorAll('.nav-dropdown').forEach((dd) => {
+            const btn = dd.querySelector('.nav-dropdown-btn');
+            if (!btn) return;
+
+            function setOpen(open) {
+                dd.classList.toggle('open', open);
+                btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            }
+
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                setOpen(!dd.classList.contains('open'));
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!dd.classList.contains('open')) return;
+                if (dd.contains(e.target)) return;
+                setOpen(false);
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') setOpen(false);
+            });
+        });
     })();
 </script>
 

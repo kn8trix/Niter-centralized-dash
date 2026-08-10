@@ -8,6 +8,24 @@ without touching template HTML.
 
 from django.urls import reverse
 
+from core.models import EditablePage
+
+
+def custom_pages_nav(request):
+    """Expose published builder pages flagged for the top navigation.
+
+    Only ``EditablePage`` rows that are both published and marked
+    ``show_in_nav`` appear in ``NAV_CUSTOM_PAGES`` (ordered by title), so the
+    shared topbar's Pages dropdown / mobile menu is always a live view of the
+    database and never references unpublished work.
+    """
+    return {
+        'NAV_CUSTOM_PAGES': EditablePage.objects.filter(
+            is_published=True,
+            show_in_nav=True,
+        ).order_by('title'),
+    }
+
 
 def endpoints(request):
     """Expose a single ENDPOINTS dict to every template.

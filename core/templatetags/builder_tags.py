@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 # Structured block type → template partial (kept in sync with
 # ContentBlock.BLOCK_TYPE_CHOICES / BLOCK_SCHEMAS).
 _BLOCK_PARTIALS = {
+    'hero': 'builder/blocks/hero_section.html',
+    'features': 'builder/blocks/features_grid.html',
     'faq': 'builder/blocks/faq_accordion.html',
     'stats': 'builder/blocks/stats_grid.html',
     'testimonials': 'builder/blocks/testimonial_slider.html',

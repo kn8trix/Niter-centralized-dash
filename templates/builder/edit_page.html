@@ -1,0 +1,190 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Building {{ page.title }} — Website Builder</title>
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Page builder styles (toolbar + block manager + preview) -->
+    <link rel="stylesheet" href="{% static 'css/builder_page.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="page-builder"
+      data-app="campusdash-admin"
+      data-page-slug="{{ page.slug }}"
+      data-page-save-url="{% url 'builder_page_save' %}"
+      data-blocks-save-url="{% url 'builder_blocks_save' %}"
+      data-blocks-reorder-url="{% url 'builder_blocks_reorder' %}">
+
+    <!-- ============================================================
+         Top toolbar: identity + page settings + save/publish
+    ============================================================ -->
+    <header class="pb-topbar">
+        <div class="pb-identity">
+            <a class="pb-back" href="{% url 'builder_dashboard' %}" title="Back to builder">
+                <i class="fa-solid fa-arrow-left"></i>
+            </a>
+            <div class="pb-title-wrap">
+                <input type="text" id="pb-title" class="pb-title-input" value="{{ page.title }}"
+                       maxlength="200" aria-label="Page title" placeholder="Page title">
+                <span class="pb-slug" title="URL slug — set when the page is created">
+                    <i class="fa-solid fa-link"></i> /page/{{ page.slug }}/
+                </span>
+            </div>
+        </div>
+
+        <div class="pb-controls">
+            <label class="pb-toggle" title="Visitors can view this page">
+                <span>Published</span>
+                <input type="checkbox" id="pb-published" role="switch" {% if page.is_published %}checked{% endif %}>
+                <span class="pb-track"><span class="pb-thumb"></span></span>
+            </label>
+
+            <label class="pb-toggle" title="Show a link in the top navigation Pages menu">
+                <span>Show in Nav</span>
+                <input type="checkbox" id="pb-nav" role="switch" {% if page.show_in_nav %}checked{% endif %}>
+                <span class="pb-track"><span class="pb-thumb"></span></span>
+            </label>
+
+            <input type="text" id="pb-seo" class="pb-seo-input" value="{{ page.seo_description }}" maxlength="300"
+                   placeholder="SEO description (optional)" aria-label="SEO description">
+
+            <button type="button" class="btn pb-btn pb-draft-btn" id="pb-save-draft">
+                <i class="fa-solid fa-file-pen"></i> Save Draft
+            </button>
+            <button type="button" class="btn pb-btn primary pb-publish-btn" id="pb-publish">
+                <i class="fa-solid fa-rocket"></i> Publish
+            </button>
+            <a class="btn pb-btn ghost pb-visual-link" href="{% url 'visual_editor' page.slug %}">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Visual Editor
+            </a>
+        </div>
+    </header>
+
+    <!-- ============================================================
+         Body: block manager (left) + live preview (right)
+    ============================================================ -->
+    <div class="pb-body">
+
+        <!-- Left: block manager -->
+        <aside class="pb-blocks" aria-label="Block manager">
+            <div class="pb-panel-head">
+                <h2><i class="fa-solid fa-layer-group"></i> Blocks</h2>
+                <span class="pb-count" id="pb-block-count">{{ blocks|length }}</span>
+                <button type="button" class="btn pb-btn pb-add-btn" id="pb-add-block" aria-expanded="false">
+                    <i class="fa-solid fa-plus"></i> Add Block
+                </button>
+            </div>
+
+            <p class="pb-hint">
+                <i class="fa-solid fa-up-down-left-right"></i> Drag blocks to reorder —
+                click <i class="fa-solid fa-pen"></i> to edit a block's content.
+            </p>
+
+            <!-- Section type palette -->
+            <div class="pb-palette" id="pb-palette" hidden>
+                <span class="pb-palette-title">Add a section</span>
+                {% for bt in block_types %}
+                <button type="button" class="pb-palette-item" data-block-type="{{ bt.code }}">
+                    <i class="fa-solid {{ bt.icon }}" aria-hidden="true"></i> {{ bt.label }}
+                </button>
+                {% endfor %}
+            </div>
+
+            <!-- Sortable block list -->
+            <ol class="pb-list" id="pb-block-list">
+                {% for block in blocks %}
+                <li class="pb-item" draggable="true" data-block-id="{{ block.element_id }}"
+                    data-block-type="{{ block.block_type }}">
+                    <span class="pb-grip" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>
+                    <span class="pb-type-badge">{{ block.type_label }}</span>
+                    <span class="pb-eid">#{{ block.element_id }}</span>
+                    <span class="pb-item-actions">
+                        <button type="button" class="pb-icon-btn" data-action="edit" title="Edit block" aria-label="Edit block">
+                            <i class="fa-solid fa-pen"></i>
+                        </button>
+                        <button type="button" class="pb-icon-btn danger" data-action="delete" title="Delete block" aria-label="Delete block">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </span>
+                </li>
+                {% empty %}
+                <li class="pb-empty">No blocks yet — click <strong>Add Block</strong> to start building this page.</li>
+                {% endfor %}
+            </ol>
+
+            <!-- Inline block editor -->
+            <section class="pb-editor" id="pb-editor" hidden aria-label="Block editor">
+                <div class="pb-editor-head">
+                    <h3><i class="fa-solid fa-pen-to-square"></i> Edit Block <span id="pb-editor-eid" class="pb-editor-eid"></span></h3>
+                    <button type="button" class="pb-icon-btn" id="pb-editor-close" title="Close editor" aria-label="Close editor">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+
+                <label class="pb-field">
+                    <span>Block type</span>
+                    <select id="pb-editor-type">
+                        {% for bt in block_types %}
+                        <option value="{{ bt.code }}">{{ bt.label }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+
+                <label class="pb-field">
+                    <span>Content (HTML) <small>— used by Text Blocks</small></span>
+                    <textarea id="pb-editor-html" rows="4" spellcheck="false"
+                              placeholder="<h2>Hello</h2><p>Body text…</p>"></textarea>
+                </label>
+
+                <label class="pb-field">
+                    <span>Content (JSON) <small>— for Hero / Features / FAQ / Stats / Testimonials / CTA</small></span>
+                    <textarea id="pb-editor-json" rows="6" spellcheck="false"
+                              placeholder='{"headline": "A bold headline", "subheadline": "…"}'></textarea>
+                </label>
+
+                <div class="pb-editor-actions">
+                    <button type="button" class="btn pb-btn primary" id="pb-editor-save">
+                        <i class="fa-solid fa-floppy-disk"></i> Save Block
+                    </button>
+                    <button type="button" class="btn pb-btn ghost" id="pb-editor-cancel">Cancel</button>
+                </div>
+            </section>
+        </aside>
+
+        <!-- Right: live preview -->
+        <main class="pb-preview" aria-label="Live page preview">
+            <div class="pb-preview-bar">
+                <span><i class="fa-solid fa-eye"></i> Live preview</span>
+                <button type="button" class="pb-icon-btn" id="pb-refresh-preview" title="Refresh preview" aria-label="Refresh preview">
+                    <i class="fa-solid fa-rotate"></i>
+                </button>
+            </div>
+            <div class="pb-preview-frame">
+                <iframe id="pb-preview" src="{% url 'editable_page' page.slug %}" title="Live page preview"></iframe>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast -->
+    <div class="pb-toast" id="pb-toast" role="status" aria-live="polite"></div>
+
+    {% csrf_token %}
+
+    <!-- Server-rendered block contents for the inline editor (escaped by json_script) -->
+    {{ blocks|json_script:"pb-blocks-data" }}
+
+    <script src="{% static 'js/builder/page_manager.js' %}"></script>
+</body>
+</html>

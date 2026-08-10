@@ -27,6 +27,7 @@
     const blockCount = document.getElementById('block-count');
     const liveToggle = document.getElementById('live-preview');
     const saveAllBtn = document.getElementById('save-all');
+    const saveCssBtn = document.getElementById('save-css');
     const toastEl = document.getElementById('builder-toast');
 
     let doc = null;          // iframe contentDocument (same-origin)
@@ -165,7 +166,12 @@
         node.className = 'inspector-block';
         node.dataset.blockId = id;
         node.innerHTML =
-            '<div class="inspector-block-head"><span class="block-id">#' + id + '</span></div>' +
+            '<div class="inspector-block-head"><span class="block-id">#' + id + '</span>' +
+            '<span class="block-actions" role="group" aria-label="Block actions">' +
+            '<button type="button" class="block-action-btn" data-action="up" title="Move block up" aria-label="Move block up"><i class="fa-solid fa-arrow-up"></i></button>' +
+            '<button type="button" class="block-action-btn" data-action="down" title="Move block down" aria-label="Move block down"><i class="fa-solid fa-arrow-down"></i></button>' +
+            '<button type="button" class="block-action-btn danger" data-action="delete" title="Delete block" aria-label="Delete block"><i class="fa-solid fa-trash"></i></button>' +
+            '</span></div>' +
             '<label class="inspector-field"><span>Content (HTML)</span>' +
             '<textarea rows="3" spellcheck="false" data-edit="html"></textarea></label>' +
             '<div class="inspector-styles">' +
@@ -182,6 +188,8 @@
     }
 
     function wireItem(item, id) {
+        if (item.dataset.wired === '1') return; // idempotent — server & dynamic cards
+        item.dataset.wired = '1';
         item.querySelectorAll('[data-edit]').forEach(function (input) {
             input.addEventListener('input', function () {
                 applyStyleToElement(id, input);
@@ -192,13 +200,95 @@
             });
         });
         item.addEventListener('click', function (e) {
-            if (e.target.closest('textarea, input, select')) return;
+            if (e.target.closest('textarea, input, select, .block-actions')) return;
             selectItem(id, item);
             const el = iframeElement(id);
             if (el) {
                 el.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         });
+        // Block management handles: move up / move down / delete.
+        const upBtn = item.querySelector('[data-action="up"]');
+        const downBtn = item.querySelector('[data-action="down"]');
+        const deleteBtn = item.querySelector('[data-action="delete"]');
+        if (upBtn) upBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            moveBlock(item, -1);
+        });
+        if (downBtn) downBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            moveBlock(item, 1);
+        });
+        if (deleteBtn) deleteBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            deleteBlock(item);
+        });
+    }
+
+    function blockItems() {
+        return Array.from(inspectorList.querySelectorAll('.inspector-block'));
+    }
+
+    function refreshBlockActionState() {
+        const items = blockItems();
+        items.forEach(function (item, i) {
+            const upBtn = item.querySelector('[data-action="up"]');
+            const downBtn = item.querySelector('[data-action="down"]');
+            if (upBtn) upBtn.disabled = i === 0;
+            if (downBtn) downBtn.disabled = i === items.length - 1;
+        });
+    }
+
+    function refreshCanvas() {
+        if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.location.reload();
+        }
+    }
+
+    async function moveBlock(item, dir) {
+        const items = blockItems();
+        const index = items.indexOf(item);
+        const target = index + dir;
+        if (target < 0 || target >= items.length) return;
+        const originalOrder = blockItems().slice();
+        // Swap in the DOM first so the change is visible instantly.
+        if (dir < 0) {
+            inspectorList.insertBefore(item, items[target]);
+        } else {
+            inspectorList.insertBefore(items[target], item);
+        }
+        refreshBlockActionState();
+        // Persist the whole order in ONE atomic reorder call.
+        const reorder = blockItems().map(function (n, i) {
+            return { element_id: n.dataset.blockId, order: i };
+        });
+        const data = await postJSON(saveBlockUrl, { page_slug: pageSlug, reorder: reorder });
+        if (data.status === 'success') {
+            showToast('Block order saved — refreshing canvas…', true);
+            refreshCanvas();
+        } else {
+            // Revert the optimistic swap so the UI always matches the DB.
+            originalOrder.forEach(function (node) { inspectorList.appendChild(node); });
+            refreshBlockActionState();
+            showToast('Reorder failed — order restored.', false);
+        }
+    }
+
+    async function deleteBlock(item) {
+        const id = item.dataset.blockId;
+        if (!confirm('Delete block #' + id + '? This cannot be undone.')) return;
+        const data = await postJSON(saveBlockUrl, { page_slug: pageSlug, element_id: id, delete: true });
+        if (data.status === 'success') {
+            item.remove();
+            refreshBlockActionState();
+            if (blockCount) {
+                blockCount.textContent = inspectorList.querySelectorAll('.inspector-block').length;
+            }
+            showToast('Block deleted — refreshing canvas…', true);
+            refreshCanvas();
+        } else {
+            showToast('Delete failed — please try again.', false);
+        }
     }
 
     function selectItem(id, item) {
@@ -293,13 +383,38 @@
     });
 
     // ---------------------------------------------------------------------
+    // Save CSS — persist, then inject straight into the iframe <head>.
+    // No page reload: typing already previews live; this button persists it
+    // and re-applies the <style> block in place.
+    // ---------------------------------------------------------------------
+    if (saveCssBtn) {
+        saveCssBtn.addEventListener('click', async function () {
+            saveCssBtn.disabled = true;
+            const data = await postJSON(saveCssUrl, { page_slug: pageSlug, custom_css: cssInput.value });
+            saveCssBtn.disabled = false;
+            if (data.status === 'success') {
+                applyCss(); // re-inject into the live iframe <head>
+                showToast('Custom CSS saved & injected ✓', true);
+            } else {
+                showToast('Failed to save CSS — try again.', false);
+            }
+        });
+    }
+
+    // ---------------------------------------------------------------------
     // Viewport switcher
     // ---------------------------------------------------------------------
     document.querySelectorAll('.viewport-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            document.querySelectorAll('.viewport-btn').forEach(function (b) { b.classList.remove('active'); });
+            document.querySelectorAll('.viewport-btn').forEach(function (b) {
+                b.classList.remove('active');
+                b.setAttribute('aria-pressed', 'false');
+            });
             btn.classList.add('active');
+            btn.setAttribute('aria-pressed', 'true');
             canvasFrame.dataset.viewport = btn.dataset.viewport;
+            const widths = { desktop: 'fluid', tablet: '768px', mobile: '375px' };
+            showToast('Preview: ' + btn.textContent.trim() + ' (' + (widths[btn.dataset.viewport] || 'fluid') + ')', true);
         });
     });
 
@@ -334,6 +449,13 @@
         syncInspector();
         wireClickToSelect();
     });
+
+    // Wire the server-rendered inspector cards (edits + action handles) and
+    // initialise the move-button disabled state.
+    inspectorList.querySelectorAll('.inspector-block').forEach(function (item) {
+        wireItem(item, item.dataset.blockId);
+    });
+    refreshBlockActionState();
 
     cssInput.addEventListener('input', applyCss);
     bindColorPicker(pageBgPicker, 'body', 'background-color');

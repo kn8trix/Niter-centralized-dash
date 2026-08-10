@@ -17,7 +17,7 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Max, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -27,7 +27,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from google.auth.exceptions import RefreshError
 
 from .consumers import notify_user, send_chat_push
-from .decorators import superuser_required
+from .decorators import change_editablepage_required, superuser_required
 from .forms import SignUpForm
 from .templatetags.builder_tags import render_block_html
 from .google_service import (
@@ -2560,14 +2560,21 @@ def _style_attr(style_json):
 def editable_page_view(request, slug):
     """Public renderer for a builder-authored page and its ContentBlocks.
 
-    Serves the page at ``/page/<slug>/``. Unknown or unpublished pages 404
-    so drafts are never exposed to visitors. Blocks are ordered by their
-    creation order (stable pk order). Structured blocks (faq / stats /
-    testimonials / cta) are rendered through their partials with the shared
+    Serves the page at ``/page/<slug>/``. Published pages are public;
+    unpublished drafts 404 for everyone except super admins, who reach them
+    from the builder to preview work in progress. Blocks are ordered by their
+    ``order`` (stable pk order). Structured blocks (faq / stats / testimonials
+    / cta) are rendered through their partials with the shared
     ``render_block_html`` helper, so the live page and the ``render_block``
     tag never drift apart.
     """
-    page = get_object_or_404(EditablePage, slug=slug, is_published=True)
+    # Published pages are public; drafts are only reachable by users with the
+    # builder's ``change_editablepage`` permission (super admins and authorized
+    # staff, so the builder can preview unpublished work) and 404 otherwise.
+    qs = EditablePage.objects.filter(slug=slug)
+    if not request.user.has_perm('core.change_editablepage'):
+        qs = qs.filter(is_published=True)
+    page = get_object_or_404(qs)
     blocks = [
         {
             'element_id': block.element_id,
@@ -2577,7 +2584,7 @@ def editable_page_view(request, slug):
             'rendered_html': render_block_html(block),
             'style_attr': _style_attr(block.style_json),
         }
-        for block in page.content_blocks.all()
+        for block in page.content_blocks.order_by('order', 'id')
     ]
     return render(request, 'editable_page.html', {
         'page': page,
@@ -2739,7 +2746,7 @@ def _parse_json_body(request):
 # Views
 # ----------------------------------------------------------------------------
 
-@superuser_required
+@change_editablepage_required
 def builder_dashboard(request):
     """Super admin console listing every EditablePage and PageTemplate."""
     pages = (
@@ -2755,7 +2762,7 @@ def builder_dashboard(request):
     })
 
 
-@superuser_required
+@change_editablepage_required
 def visual_editor(request, page_slug):
     """Split-screen visual editor for a single page and its ContentBlocks."""
     page = get_object_or_404(EditablePage, slug=page_slug)
@@ -2766,8 +2773,9 @@ def visual_editor(request, page_slug):
             'content_html': block.content_html,
             'content_json': block.content_json or {},
             'style': block.style_json or {},
+            'order': block.order,
         }
-        for block in page.content_blocks.all()
+        for block in page.content_blocks.order_by('order', 'id')
     ]
     return render(request, 'builder/editor.html', {
         'page': page,
@@ -2775,7 +2783,7 @@ def visual_editor(request, page_slug):
     })
 
 
-@superuser_required
+@change_editablepage_required
 def create_page(request):
     """JSON API: register a new EditablePage from the builder dashboard modal.
 
@@ -2819,33 +2827,108 @@ def create_page(request):
     return JsonResponse({
         'status': 'success',
         'page_slug': page.slug,
-        'edit_url': reverse('visual_editor', args=[page.slug]),
+        'edit_url': reverse('builder_editor', args=[page.slug]),
     })
 
 
-@superuser_required
+@change_editablepage_required
 def save_content_block(request):
-    """JSON API: create/update a ContentBlock from the visual editor.
+    """JSON API: create / update / delete / re-order a ContentBlock.
 
-    Expects ``{page_slug, element_id, content_html, style_json}``. HTML is
-    sanitized before it is stored; the response is ``{'status': 'success'}``.
+    Modes (all scoped to ``page_slug``):
+
+      * **create/update** — ``{page_slug, element_id, content_html,
+        style_json, block_type?, content_json?, order?}``. HTML is sanitized
+        before storage; a new block without an explicit ``order`` is appended
+        after the page's current last block.
+      * **delete** — ``{page_slug, element_id, delete: true}`` removes the
+        block.
+      * **reorder** — ``{page_slug, reorder: [{element_id, order}, …]}``
+        updates every listed block's ``order`` inside a single transaction
+        (atomic — either all orders change or none).
+
+    The response is ``{'status': 'success'}`` (with the reordered/deleted
+    counts when relevant).
     """
     data, error = _parse_json_body(request)
     if error is not None:
         return error
 
-    page_slug = data.get('page_slug')
+    page = _get_builder_page(data.get('page_slug'))
+    if isinstance(page, JsonResponse):
+        return page
+
+    if data.get('reorder') is not None:
+        ok, err = _reorder_content_blocks(page, data.get('reorder'))
+        return ok if ok is not None else err
+    return _save_content_block_data(page, data)
+
+
+def _get_builder_page(page_slug):
+    """Resolve a ``page_slug`` to an EditablePage, or a JSON error response.
+
+    Returns either the page instance or a ``JsonResponse`` — never ``None``.
+    """
+    if not page_slug:
+        return JsonResponse({'status': 'error', 'message': 'page_slug is required'}, status=400)
+    try:
+        return EditablePage.objects.get(slug=page_slug)
+    except EditablePage.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Page not found'}, status=404)
+
+
+def _reorder_content_blocks(page, reorder):
+    """Validate + atomically apply a reorder payload.
+
+    Returns ``(ok_response, error_response)`` — exactly one is not ``None``.
+    """
+    if not isinstance(reorder, list) or not reorder:
+        return None, JsonResponse(
+            {'status': 'error', 'message': 'reorder must be a non-empty list'},
+            status=400,
+        )
+    page_blocks = {b.element_id: b for b in ContentBlock.objects.filter(page=page)}
+    entries = []
+    for entry in reorder:
+        if not isinstance(entry, dict):
+            return None, JsonResponse(
+                {'status': 'error', 'message': 'reorder entries must be objects'},
+                status=400,
+            )
+        eid = entry.get('element_id')
+        if eid not in page_blocks:
+            return None, JsonResponse(
+                {'status': 'error', 'message': 'Unknown block: %s' % eid},
+                status=400,
+            )
+        try:
+            order_value = max(int(entry.get('order')), 0)
+        except (TypeError, ValueError):
+            return None, JsonResponse(
+                {'status': 'error', 'message': 'reorder entries need an integer order'},
+                status=400,
+            )
+        entries.append((page_blocks[eid], order_value))
+    with transaction.atomic():
+        for block, order_value in entries:
+            block.order = order_value
+            block.save(update_fields=['order', 'updated_at'])
+    return JsonResponse({'status': 'success', 'reordered': len(entries)}), None
+
+
+def _save_content_block_data(page, data):
+    """Create / update / delete a single ContentBlock from a payload dict."""
     element_id = data.get('element_id')
-    if not page_slug or not element_id:
+    if not element_id:
         return JsonResponse(
             {'status': 'error', 'message': 'page_slug and element_id are required'},
             status=400,
         )
 
-    try:
-        page = EditablePage.objects.get(slug=page_slug)
-    except EditablePage.DoesNotExist:
-        return JsonResponse({'status': 'error', 'message': 'Page not found'}, status=404)
+    # ---- Delete ----
+    if data.get('delete'):
+        deleted = ContentBlock.objects.filter(page=page, element_id=element_id).delete()[0]
+        return JsonResponse({'status': 'success', 'deleted': deleted})
 
     style_json = data.get('style_json') or {}
     if not isinstance(style_json, dict):
@@ -2867,20 +2950,158 @@ def save_content_block(request):
     elif content_json is None:
         content_json = existing.content_json if existing else {}
 
+    defaults = {
+        'block_type': block_type,
+        'content_html': sanitize_html(data.get('content_html', '')),
+        'content_json': content_json,
+        'style_json': style_json,
+    }
+    if existing is None:
+        # New block: append after the current last block unless the payload
+        # explicitly positions it.
+        try:
+            defaults['order'] = max(int(data.get('order')), 0)
+        except (TypeError, ValueError):
+            defaults['order'] = (
+                ContentBlock.objects.filter(page=page)
+                .aggregate(top=Max('order'))['top'] or 0
+            ) + 1
+    else:
+        # Existing block: keep its position unless the payload moves it.
+        try:
+            defaults['order'] = max(int(data.get('order')), 0)
+        except (TypeError, ValueError):
+            pass
+
     ContentBlock.objects.update_or_create(
         page=page,
         element_id=element_id,
-        defaults={
-            'block_type': block_type,
-            'content_html': sanitize_html(data.get('content_html', '')),
-            'content_json': content_json,
-            'style_json': style_json,
-        },
+        defaults=defaults,
     )
     return JsonResponse({'status': 'success'})
 
 
-@superuser_required
+@change_editablepage_required
+def builder_editor(request, page_slug):
+    """Frontend page builder: page-settings toolbar + drag-and-drop block manager.
+
+    Renders ``builder/edit_page.html`` at ``/builder/edit/<slug>/``. The block
+    list, type palette and toolbar are all server-rendered; the JS wires
+    drag-and-drop reordering, inline block editing, and the Save Draft /
+    Publish actions to the JSON endpoints below.
+    """
+    page = get_object_or_404(EditablePage, slug=page_slug)
+    type_labels = dict(ContentBlock.BLOCK_TYPE_CHOICES)
+    block_type_icons = {
+        'html': 'fa-align-left',
+        'hero': 'fa-bolt',
+        'features': 'fa-table-cells-large',
+        'faq': 'fa-circle-question',
+        'stats': 'fa-chart-column',
+        'testimonials': 'fa-quote-left',
+        'cta': 'fa-bullhorn',
+    }
+    blocks = [
+        {
+            'element_id': block.element_id,
+            'block_type': block.block_type,
+            'type_label': type_labels.get(block.block_type, block.block_type),
+            'content_html': block.content_html,
+            'content_json': block.content_json or {},
+            'order': block.order,
+        }
+        for block in page.content_blocks.order_by('order', 'id')
+    ]
+    block_types = [
+        {'code': code, 'label': label, 'icon': block_type_icons.get(code, 'fa-cube')}
+        for code, label in ContentBlock.BLOCK_TYPE_CHOICES
+    ]
+    return render(request, 'builder/edit_page.html', {
+        'page': page,
+        'blocks': blocks,
+        'block_types': block_types,
+    })
+
+
+@change_editablepage_required
+def builder_blocks_reorder(request):
+    """JSON API: atomic drag-and-drop block reorder for the page builder.
+
+    Expects ``{page_slug, reorder: [{element_id, order}, …]}``. Every listed
+    block's ``order`` changes inside one transaction — either all or none.
+    """
+    data, error = _parse_json_body(request)
+    if error is not None:
+        return error
+    page = _get_builder_page(data.get('page_slug'))
+    if isinstance(page, JsonResponse):
+        return page
+    ok, err = _reorder_content_blocks(page, data.get('reorder'))
+    return ok if ok is not None else err
+
+
+@change_editablepage_required
+def builder_blocks_save(request):
+    """JSON API: create / update / delete a ContentBlock for the page builder.
+
+    Expects ``{page_slug, element_id, block_type?, content_html?,
+    content_json?, style_json?, order?, delete?}``.
+    """
+    data, error = _parse_json_body(request)
+    if error is not None:
+        return error
+    page = _get_builder_page(data.get('page_slug'))
+    if isinstance(page, JsonResponse):
+        return page
+    return _save_content_block_data(page, data)
+
+
+@change_editablepage_required
+def builder_page_save(request):
+    """JSON API: persist page-level settings from the page builder toolbar.
+
+    Expects ``{page_slug, title, is_published?, show_in_nav?, seo_description?}``
+    — Save Draft sends ``is_published: false``, Publish sends ``true``. Only
+    keys present in the payload are written; the rest keep their values.
+    """
+    data, error = _parse_json_body(request)
+    if error is not None:
+        return error
+    page = _get_builder_page(data.get('page_slug'))
+    if isinstance(page, JsonResponse):
+        return page
+
+    title = (data.get('title') or '').strip()
+    if not title:
+        return JsonResponse({'status': 'error', 'message': 'title is required'}, status=400)
+
+    page.title = title[:200]
+    update_fields = ['title', 'is_published', 'show_in_nav', 'seo_description', 'updated_at']
+    if 'is_published' in data:
+        page.is_published = _as_bool(data.get('is_published'))
+    if 'show_in_nav' in data:
+        page.show_in_nav = _as_bool(data.get('show_in_nav'))
+    if 'seo_description' in data:
+        page.seo_description = (data.get('seo_description') or '').strip()
+    page.save(update_fields=update_fields)
+    return JsonResponse({
+        'status': 'success',
+        'page_slug': page.slug,
+        'is_published': page.is_published,
+        'show_in_nav': page.show_in_nav,
+    })
+
+
+def _as_bool(value):
+    """Coerce a JSON/form value to a boolean without string truthiness traps."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ('1', 'true', 'yes', 'on')
+    return bool(value)
+
+
+@change_editablepage_required
 def save_page_css(request):
     """JSON API: update an EditablePage's ``custom_css`` theme overrides.
 

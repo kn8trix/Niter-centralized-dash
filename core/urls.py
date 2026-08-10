@@ -36,7 +36,15 @@ urlpatterns = [
 
     # Website Builder — Super Admin console (Phase 2)
     path('builder/', views.builder_dashboard, name='builder_dashboard'),
-    path('builder/edit/<slug:page_slug>/', views.visual_editor, name='visual_editor'),
+    # Frontend page builder (page-settings toolbar + drag-and-drop block manager)
+    path('builder/edit/<slug:page_slug>/', views.builder_editor, name='builder_editor'),
+    # Split-screen canvas visual editor
+    path('builder/visual/<slug:page_slug>/', views.visual_editor, name='visual_editor'),
+    # Page builder JSON endpoints (atomic block reorder / save + page settings)
+    path('builder/api/blocks/reorder/', views.builder_blocks_reorder, name='builder_blocks_reorder'),
+    path('builder/api/blocks/save/', views.builder_blocks_save, name='builder_blocks_save'),
+    path('builder/api/page/save/', views.builder_page_save, name='builder_page_save'),
+    # Legacy JSON endpoints (visual editor + dashboard)
     path('api/builder/create-page/', views.create_page, name='create_page'),
     path('api/builder/save-block/', views.save_content_block, name='save_content_block'),
     path('api/builder/save-css/', views.save_page_css, name='save_page_css'),

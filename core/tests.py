@@ -5,13 +5,15 @@ from unittest import mock
 import shutil
 import tempfile
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Permission, User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError
 from django.template import Context, Template
-from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
+from django.test import RequestFactory, SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse, resolve
 from django.utils import timezone
+
+from core.context_processors import custom_pages_nav
 
 from core.forms import SignUpForm
 from core.models import (
@@ -224,8 +226,12 @@ class CheckoutPageTest(TestCase):
         self.assertIn('Pay your monthly fee to claim tickets.', html)
 
 
-class ResearchAIPageTest(SimpleTestCase):
-    """Academic Research & Thesis Assistant page renders all core sections."""
+class ResearchAIPageTest(TestCase):
+    """Academic Research & Thesis Assistant page renders all core sections.
+
+    TestCase (not SimpleTestCase): the shared topbar renders the DB-backed
+    ``NAV_CUSTOM_PAGES`` context processor, so full page renders query the
+    database."""
 
     def test_page_renders_core_sections(self):
         response = self.client.get(reverse('research_ai'))
@@ -928,6 +934,31 @@ class EditablePageRenderTest(TestCase):
         response = self.client.get(reverse('editable_page', args=[self.page.slug]))
         self.assertEqual(response.status_code, 404)
 
+    def test_staff_without_superuser_cannot_view_draft(self):
+        self.page.is_published = False
+        self.page.save()
+        self.client.force_login(User.objects.create_user(
+            username='staff_nav', password='staffpass123', is_staff=True,
+        ))
+        response = self.client.get(reverse('editable_page', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_superuser_can_preview_unpublished_draft(self):
+        self.page.is_published = False
+        self.page.save()
+        self.client.force_login(User.objects.create_superuser(
+            username='root_preview', email='rp@niter.edu.bd', password='rootpass123',
+        ))
+        response = self.client.get(reverse('editable_page', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Hello from the database')
+
+    def test_seo_description_renders_in_meta(self):
+        self.page.seo_description = 'NITER research assistant page.'
+        self.page.save()
+        html = self.client.get(reverse('editable_page', args=[self.page.slug])).content.decode()
+        self.assertIn('name="description" content="NITER research assistant page."', html)
+
     def test_unknown_slug_returns_404(self):
         response = self.client.get(reverse('editable_page', args=['does-not-exist']))
         self.assertEqual(response.status_code, 404)
@@ -971,9 +1002,9 @@ class BuilderBackendTest(TestCase):
     # superuser_required permission guard
     # ------------------------------------------------------------------
     def test_builder_pages_redirect_anonymous_to_login(self):
-        for name in ['builder_dashboard', 'visual_editor']:
+        for name in ['builder_dashboard', 'visual_editor', 'builder_editor']:
             with self.subTest(page=name):
-                kwargs = {'page_slug': 'research-ai'} if name == 'visual_editor' else {}
+                kwargs = {'page_slug': 'research-ai'} if name in ('visual_editor', 'builder_editor') else {}
                 response = self.client.get(reverse(name, kwargs=kwargs))
                 self.assertEqual(response.status_code, 302)
                 self.assertIn(reverse('login'), response.url)
@@ -1030,7 +1061,8 @@ class BuilderBackendTest(TestCase):
         data = response.json()
         self.assertEqual(data['status'], 'success')
         self.assertEqual(data['page_slug'], 'about-us')
-        self.assertEqual(data['edit_url'], reverse('visual_editor', args=['about-us']))
+        # New pages land in the frontend page builder (the primary editor).
+        self.assertEqual(data['edit_url'], reverse('builder_editor', args=['about-us']))
         page = EditablePage.objects.get(slug='about-us')
         self.assertEqual(page.title, 'About Us')
         self.assertEqual(page.template, self.template)
@@ -3903,13 +3935,11 @@ class BuilderBlockLibraryTest(TestCase):
 
     def test_block_type_choices_include_structured_types(self):
         codes = {code for code, _label in ContentBlock.BLOCK_TYPE_CHOICES}
-        self.assertIn('faq', codes)
-        self.assertIn('stats', codes)
-        self.assertIn('testimonials', codes)
-        self.assertIn('cta', codes)
+        for block_type in ('hero', 'features', 'faq', 'stats', 'testimonials', 'cta'):
+            self.assertIn(block_type, codes)
 
     def test_block_schemas_document_each_structured_type(self):
-        for block_type in ('faq', 'stats', 'testimonials', 'cta'):
+        for block_type in ('hero', 'features', 'faq', 'stats', 'testimonials', 'cta'):
             self.assertIn(block_type, ContentBlock.BLOCK_SCHEMAS)
 
     # ------------------------------------------------------------------
@@ -4100,3 +4130,384 @@ class BuilderBlockLibraryTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'block-type-badge')
         self.assertContains(response, 'testimonials')
+
+
+class BuilderBlockOrderingTest(TestCase):
+    """Visual editor block management: ``order`` persistence, atomic reorder,
+    delete, and ordered live-page rendering."""
+
+    def setUp(self):
+        self.page = EditablePage.objects.create(title='Ordered', slug='ordered')
+        self.user = User.objects.create_superuser(
+            username='root_order', email='ro@niter.edu.bd', password='rootpass123',
+        )
+        self.client.force_login(self.user)
+
+    def _post_json(self, payload):
+        return self.client.post(
+            reverse('save_content_block'),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+    def _create_block(self, element_id, html):
+        response = self._post_json({
+            'page_slug': self.page.slug,
+            'element_id': element_id,
+            'content_html': html,
+        })
+        self.assertEqual(response.status_code, 200)
+        return ContentBlock.objects.get(page=self.page, element_id=element_id)
+
+    def test_order_defaults_to_zero(self):
+        block = ContentBlock.objects.create(page=self.page, element_id='plain')
+        self.assertEqual(block.order, 0)
+
+    def test_new_blocks_append_with_next_order(self):
+        first = self._create_block('first', '<p>First</p>')
+        second = self._create_block('second', '<p>Second</p>')
+        self.assertEqual(first.order, 1)
+        self.assertEqual(second.order, 2)
+
+    def test_reorder_updates_orders_atomically(self):
+        self._create_block('a', '<p>A</p>')
+        self._create_block('b', '<p>B</p>')
+        self._create_block('c', '<p>C</p>')
+        response = self._post_json({
+            'page_slug': self.page.slug,
+            'reorder': [
+                {'element_id': 'c', 'order': 0},
+                {'element_id': 'a', 'order': 1},
+                {'element_id': 'b', 'order': 2},
+            ],
+        })
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertEqual(data['reordered'], 3)
+        self.assertEqual(ContentBlock.objects.get(page=self.page, element_id='c').order, 0)
+        self.assertEqual(ContentBlock.objects.get(page=self.page, element_id='a').order, 1)
+        self.assertEqual(ContentBlock.objects.get(page=self.page, element_id='b').order, 2)
+
+    def test_reorder_rejects_unknown_block_without_changes(self):
+        self._create_block('a', '<p>A</p>')
+        response = self._post_json({
+            'page_slug': self.page.slug,
+            'reorder': [
+                {'element_id': 'a', 'order': 0},
+                {'element_id': 'ghost', 'order': 1},
+            ],
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Unknown block', response.json()['message'])
+        # Nothing was persisted (atomic — the valid entry was not applied).
+        self.assertEqual(ContentBlock.objects.get(page=self.page, element_id='a').order, 1)
+
+    def test_reorder_rejects_bad_entry(self):
+        self._create_block('a', '<p>A</p>')
+        response = self._post_json({
+            'page_slug': self.page.slug,
+            'reorder': [{'element_id': 'a', 'order': 'up'}],
+        })
+        self.assertEqual(response.status_code, 400)
+
+    def test_delete_removes_block(self):
+        self._create_block('doomed', '<p>Bye</p>')
+        response = self._post_json({
+            'page_slug': self.page.slug,
+            'element_id': 'doomed',
+            'delete': True,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['deleted'], 1)
+        self.assertFalse(ContentBlock.objects.filter(page=self.page, element_id='doomed').exists())
+
+    def test_delete_missing_block_is_success(self):
+        response = self._post_json({
+            'page_slug': self.page.slug,
+            'element_id': 'nope',
+            'delete': True,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['deleted'], 0)
+
+    def test_editable_page_renders_blocks_in_order(self):
+        self._create_block('a', '<p>AAA</p>')
+        self._create_block('b', '<p>BBB</p>')
+        self._create_block('c', '<p>CCC</p>')
+        self._post_json({
+            'page_slug': self.page.slug,
+            'reorder': [
+                {'element_id': 'c', 'order': 0},
+                {'element_id': 'a', 'order': 1},
+                {'element_id': 'b', 'order': 2},
+            ],
+        })
+        html = self.client.get(reverse('editable_page', args=[self.page.slug])).content.decode()
+        self.assertLess(html.index('CCC'), html.index('AAA'))
+        self.assertLess(html.index('AAA'), html.index('BBB'))
+
+    def test_visual_editor_exposes_block_ids(self):
+        self._create_block('alpha', '<p>Alpha</p>')
+        response = self.client.get(reverse('visual_editor', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-block-id="alpha"')
+        # Block management handles + instant CSS save UI render.
+        self.assertContains(response, 'data-action="up"')
+        self.assertContains(response, 'data-action="down"')
+        self.assertContains(response, 'data-action="delete"')
+        self.assertContains(response, 'id="save-css"')
+
+
+class CustomPagesNavTest(TestCase):
+    """Page lifecycle navigation: published pages flagged ``show_in_nav``
+    surface in the shared topbar's Pages dropdown and the mobile profile
+    menu; drafts and unflagged pages never appear anywhere."""
+
+    def setUp(self):
+        self.published_nav = EditablePage.objects.create(
+            title='Admissions', slug='admissions', show_in_nav=True,
+        )
+        self.published_hidden = EditablePage.objects.create(
+            title='Hidden', slug='hidden-page',
+        )
+        self.draft_nav = EditablePage.objects.create(
+            title='Draft Nav', slug='draft-nav', show_in_nav=True, is_published=False,
+        )
+
+    def test_context_processor_filters_to_published_nav_pages(self):
+        request = RequestFactory().get('/')
+        pages = list(custom_pages_nav(request)['NAV_CUSTOM_PAGES'])
+        slugs = {p.slug for p in pages}
+        self.assertIn('admissions', slugs)
+        self.assertNotIn('hidden-page', slugs)   # show_in_nav=False
+        self.assertNotIn('draft-nav', slugs)     # unpublished
+        self.assertEqual(len(pages), 1)
+
+    def test_topbar_renders_pages_dropdown_with_custom_links(self):
+        response = self.client.get(reverse('editable_page', args=['admissions']))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'nav-dropdown')
+        self.assertIn('/page/admissions/', response.content.decode())
+        # Hidden + draft pages never appear in navigation.
+        self.assertNotIn('/page/hidden-page/', response.content.decode())
+        self.assertNotIn('/page/draft-nav/', response.content.decode())
+
+    def test_draft_page_is_404_for_visitors(self):
+        response = self.client.get(reverse('editable_page', args=['draft-nav']))
+        self.assertEqual(response.status_code, 404)
+
+
+class BuilderPageManagerTest(TestCase):
+    """Frontend page builder (builder/edit_page.html): permission model, page
+    toolbar, the drag-and-drop reorder / block save / page save endpoints, and
+    draft preview for authorized builders."""
+
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(
+            username='root_pm', email='rpm@niter.edu.bd', password='rootpass123',
+        )
+        self.staff = User.objects.create_user(
+            username='staff_pm', password='staffpass123', is_staff=True,
+        )
+        self.builder_staff = User.objects.create_user(
+            username='builder_staff', password='builderpass123', is_staff=True,
+        )
+        self.builder_staff.user_permissions.add(
+            Permission.objects.get(codename='change_editablepage')
+        )
+        self.page = EditablePage.objects.create(title='Landing', slug='landing-pm')
+        ContentBlock.objects.create(
+            page=self.page, element_id='hero', block_type='hero',
+            content_json={'headline': 'Welcome', 'primary_label': 'Go', 'primary_url': '/departments/'},
+        )
+        ContentBlock.objects.create(
+            page=self.page, element_id='body', content_html='<p>Body text</p>',
+        )
+
+    def _post_json(self, url_name, payload, username='root_pm', password='rootpass123'):
+        self.client.login(username=username, password=password)
+        return self.client.post(
+            reverse(url_name), data=json.dumps(payload), content_type='application/json',
+        )
+
+    # ------------------------------------------------------------------
+    # Access control
+    # ------------------------------------------------------------------
+    def test_builder_editor_redirects_anonymous(self):
+        response = self.client.get(reverse('builder_editor', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_builder_editor_forbids_staff_without_permission(self):
+        self.client.login(username='staff_pm', password='staffpass123')
+        response = self.client.get(reverse('builder_editor', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 403)
+
+    def test_builder_editor_allows_staff_with_change_permission(self):
+        self.client.login(username='builder_staff', password='builderpass123')
+        response = self.client.get(reverse('builder_editor', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 200)
+
+    def test_new_builder_apis_enforce_permissions(self):
+        # Anonymous → redirect to login.
+        response = self.client.post(
+            reverse('builder_blocks_reorder'), data='{}', content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 302)
+        # Staff without the permission → 403 on every new endpoint.
+        self.client.login(username='staff_pm', password='staffpass123')
+        for name in ('builder_blocks_reorder', 'builder_blocks_save', 'builder_page_save'):
+            with self.subTest(api=name):
+                response = self.client.post(reverse(name), data='{}', content_type='application/json')
+                self.assertEqual(response.status_code, 403)
+
+    # ------------------------------------------------------------------
+    # Toolbar + markup
+    # ------------------------------------------------------------------
+    def test_builder_editor_renders_toolbar_and_blocks(self):
+        self.client.login(username='root_pm', password='rootpass123')
+        response = self.client.get(reverse('builder_editor', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 200)
+        for needle in (
+            'id="pb-title"', 'id="pb-published"', 'id="pb-nav"',
+            'id="pb-save-draft"', 'id="pb-publish"', 'Save Draft',
+            'id="pb-block-list"', 'data-block-id="hero"', 'data-block-id="body"',
+            'data-block-type="hero"', 'id="pb-palette"', 'id="pb-blocks-data"',
+            'Visual Editor', 'Publish',
+        ):
+            self.assertContains(response, needle, msg_prefix=needle)
+        # The palette offers the standard section types.
+        for code in ('html', 'hero', 'features', 'cta'):
+            self.assertContains(response, 'data-block-type="%s"' % code)
+        # Live preview iframe points at the public route.
+        self.assertContains(response, reverse('editable_page', args=[self.page.slug]))
+
+    def test_new_section_types_render_on_live_page(self):
+        response = self.client.get(reverse('editable_page', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-builder-block="hero"')
+        self.assertContains(response, 'Welcome')
+        # HTML blocks render their raw content (no partial wrapper).
+        self.assertContains(response, 'Body text')
+        self.assertContains(response, 'id="body"')
+
+    def test_features_type_is_registered_and_renders(self):
+        ContentBlock.objects.create(
+            page=self.page, element_id='features', block_type='features',
+            content_json={'title': 'Why us', 'items': [{'icon': 'fa-star', 'title': 'Quality', 'text': 'Top-tier.'}]},
+        )
+        html = self.client.get(reverse('editable_page', args=[self.page.slug])).content.decode()
+        self.assertIn('data-builder-block="features"', html)
+        self.assertIn('Why us', html)
+        self.assertIn('Quality', html)
+
+    # ------------------------------------------------------------------
+    # Drag-and-drop reorder endpoint
+    # ------------------------------------------------------------------
+    def test_blocks_reorder_is_atomic(self):
+        response = self._post_json('builder_blocks_reorder', {
+            'page_slug': self.page.slug,
+            'reorder': [
+                {'element_id': 'body', 'order': 0},
+                {'element_id': 'hero', 'order': 1},
+            ],
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'success')
+        orders = dict(ContentBlock.objects.filter(page=self.page).values_list('element_id', 'order'))
+        self.assertEqual(orders, {'body': 0, 'hero': 1})
+        # The live page renders in the new order.
+        html = self.client.get(reverse('editable_page', args=[self.page.slug])).content.decode()
+        self.assertLess(html.index('Body text'), html.index('Welcome'))
+
+    def test_blocks_reorder_rejects_unknown_block(self):
+        response = self._post_json('builder_blocks_reorder', {
+            'page_slug': self.page.slug,
+            'reorder': [{'element_id': 'nope', 'order': 0}],
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Unknown block', response.json()['message'])
+
+    # ------------------------------------------------------------------
+    # Block save endpoint (create / update / delete)
+    # ------------------------------------------------------------------
+    def test_blocks_save_creates_and_updates(self):
+        response = self._post_json('builder_blocks_save', {
+            'page_slug': self.page.slug,
+            'element_id': 'cta-new',
+            'block_type': 'cta',
+            'content_json': {'headline': 'Join us', 'primary_label': 'Sign Up', 'primary_url': '/signup/'},
+        })
+        self.assertEqual(response.status_code, 200)
+        block = ContentBlock.objects.get(page=self.page, element_id='cta-new')
+        self.assertEqual(block.block_type, 'cta')
+        self.assertEqual(block.content_json['headline'], 'Join us')
+        # Update the same block without touching its type.
+        self._post_json('builder_blocks_save', {
+            'page_slug': self.page.slug,
+            'element_id': 'cta-new',
+            'content_json': {'headline': 'Join us now'},
+        })
+        block.refresh_from_db()
+        self.assertEqual(block.block_type, 'cta')
+        self.assertEqual(block.content_json['headline'], 'Join us now')
+
+    def test_blocks_save_deletes(self):
+        response = self._post_json('builder_blocks_save', {
+            'page_slug': self.page.slug,
+            'element_id': 'body',
+            'delete': True,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(ContentBlock.objects.filter(page=self.page, element_id='body').exists())
+
+    # ------------------------------------------------------------------
+    # Page settings endpoint (Save Draft / Publish)
+    # ------------------------------------------------------------------
+    def test_page_save_publishes_with_title_and_flags(self):
+        response = self._post_json('builder_page_save', {
+            'page_slug': self.page.slug,
+            'title': 'Renamed Landing',
+            'is_published': True,
+            'show_in_nav': True,
+            'seo_description': 'A fresh landing page.',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.page.refresh_from_db()
+        self.assertEqual(self.page.title, 'Renamed Landing')
+        self.assertTrue(self.page.is_published)
+        self.assertTrue(self.page.show_in_nav)
+        self.assertEqual(self.page.seo_description, 'A fresh landing page.')
+
+    def test_page_save_saves_draft(self):
+        response = self._post_json('builder_page_save', {
+            'page_slug': self.page.slug,
+            'title': self.page.title,
+            'is_published': False,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.page.refresh_from_db()
+        self.assertFalse(self.page.is_published)
+        # Drafts 404 for visitors but stay visible to authorized builders.
+        self.client.logout()
+        self.assertEqual(
+            self.client.get(reverse('editable_page', args=[self.page.slug])).status_code,
+            404,
+        )
+
+    def test_page_save_requires_title(self):
+        response = self._post_json('builder_page_save', {
+            'page_slug': self.page.slug,
+            'title': '   ',
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('title', response.json()['message'])
+
+    def test_builder_staff_can_preview_draft_page(self):
+        self.page.is_published = False
+        self.page.save()
+        self.client.login(username='builder_staff', password='builderpass123')
+        response = self.client.get(reverse('editable_page', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Body text')

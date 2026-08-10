@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ page.title }} — CampusDash</title>
-    <meta name="description" content="{{ page.title }} — a dynamic page published through the CampusDash Website Builder.">
+    <meta name="description" content="{{ page.seo_description|default:page.title }}">
 
     <!-- Global design tokens -->
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
