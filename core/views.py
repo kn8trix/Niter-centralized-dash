@@ -14,6 +14,8 @@ from django.contrib.auth import login as auth_login, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse
@@ -1035,12 +1037,15 @@ def signup_view(request):
 @login_required
 def settings_view(request):
     """Account settings — tabbed dashboard: notification preferences, account
-    (password + Google OAuth integration), and display (theme + timezone).
+    (profile + password + Google OAuth integration), and display (theme +
+    timezone + layout).
 
-    POST requests are disambiguated by payload: ``old_password`` means the
-    password form, ``tab=preferences`` or JSON means preference toggles.
+    POST requests are disambiguated by payload: a hidden ``form=profile``
+    marker means the profile form, ``old_password`` means the password form,
+    and anything else means preference toggles (form-encoded or JSON).
     """
     prefs, _ = UserNotificationPreference.objects.get_or_create(user=request.user)
+    profile = getattr(request.user, 'student_profile', None)
 
     # Google OAuth connection status (allauth SocialAccount + GoogleUserToken).
     google_social = _get_google_social_account(request.user)
@@ -1049,37 +1054,81 @@ def settings_view(request):
     )
 
     password_updated = False
+    profile_updated = False
+    profile_errors = []
+    active_tab = 'notifications'
+    password_form = PasswordChangeForm(request.user)
+
     if request.method == 'POST':
-        if 'old_password' in request.POST:
+        if request.POST.get('form') == 'profile':
+            # Account & Google tab → Profile Details form (full name + email).
+            active_tab = 'account'
+            profile_updated, profile_errors = _save_profile_settings(request)
+        elif 'old_password' in request.POST:
+            active_tab = 'account'
             password_form = PasswordChangeForm(request.user, request.POST)
             if password_form.is_valid():
                 password_form.save()
                 update_session_auth_hash(request, password_form.user)
                 password_updated = True
                 password_form = PasswordChangeForm(request.user)
-            else:
-                return render(request, 'settings.html', {
-                    'password_form': password_form,
-                    'password_updated': password_updated,
-                    'prefs': prefs,
-                    'google_social': google_social,
-                    'has_google_token': has_google_token,
-                    'active_tab': 'account',
-                })
         else:
+            # Preference toggles (form-encoded or JSON) — answered directly.
             return _save_settings_prefs(request, prefs)
     else:
-        password_form = PasswordChangeForm(request.user)
+        active_tab = request.GET.get('tab', 'notifications')
 
-    active_tab = request.GET.get('tab', 'notifications')
     return render(request, 'settings.html', {
         'password_form': password_form,
         'password_updated': password_updated,
+        'profile': profile,
+        'profile_updated': profile_updated,
+        'profile_errors': profile_errors,
         'prefs': prefs,
         'google_social': google_social,
         'has_google_token': has_google_token,
         'active_tab': active_tab,
     })
+
+
+def _save_profile_settings(request):
+    """Update the signed-in user's full name and email (Profile Details).
+
+    The Student ID is an institutional identity and is deliberately read-only
+    here. Returns ``(saved, errors)`` where ``errors`` is a list of
+    human-readable validation messages (empty when the save succeeded).
+    """
+    errors = []
+    full_name = (request.POST.get('full_name') or '').strip()
+    email = (request.POST.get('email') or '').strip()
+
+    if not full_name:
+        errors.append('Full name is required.')
+    if not email:
+        errors.append('An email address is required.')
+    else:
+        try:
+            validate_email(email)
+        except ValidationError:
+            errors.append('Please enter a valid email address.')
+        else:
+            duplicate = (
+                User.objects.filter(email__iexact=email)
+                .exclude(pk=request.user.pk)
+                .exists()
+            )
+            if duplicate:
+                errors.append('That email address is already used by another account.')
+
+    if errors:
+        return False, errors
+
+    parts = full_name.split(None, 1)
+    request.user.first_name = parts[0] if parts else ''
+    request.user.last_name = parts[1] if len(parts) > 1 else ''
+    request.user.email = email
+    request.user.save(update_fields=['first_name', 'last_name', 'email'])
+    return True, []
 
 
 def _get_google_social_account(user):
@@ -1122,6 +1171,7 @@ def _save_settings_prefs(request, prefs):
         ('sms_alerts', 'sms_alerts'), ('sms', 'sms_alerts'),
         ('push_notifications', 'push_notifications'), ('push', 'push_notifications'),
         ('dark_mode', 'dark_mode'),
+        ('compact_layout', 'compact_layout'),
         ('notify_meals', 'notify_meals'),
         ('notify_transport', 'notify_transport'),
         ('notify_medical', 'notify_medical'),
@@ -1131,6 +1181,21 @@ def _save_settings_prefs(request, prefs):
         val = enabled(key)
         if val is not None:
             setattr(prefs, attr, val)
+
+    # Theme (tri-state light/dark/system) — takes precedence over the legacy
+    # ``dark_mode`` key and keeps ``dark_mode`` in sync so older callers that
+    # read the boolean stay correct.
+    if 'theme' in data:
+        theme = str(data['theme']).strip()
+        valid_themes = {code for code, _label in UserNotificationPreference.THEME_CHOICES}
+        if theme in valid_themes:
+            prefs.theme = theme
+            prefs.dark_mode = theme == 'dark'
+    elif 'dark_mode' in data:
+        dark = enabled('dark_mode')
+        if dark is not None:
+            prefs.dark_mode = dark
+            prefs.theme = 'dark' if dark else 'light'
 
     # Timezone — only accept values from the model choices.
     if 'timezone' in data:
@@ -1148,6 +1213,8 @@ def _save_settings_prefs(request, prefs):
             'sms_alerts': prefs.sms_alerts,
             'push_notifications': prefs.push_notifications,
             'dark_mode': prefs.dark_mode,
+            'theme': prefs.theme,
+            'compact_layout': prefs.compact_layout,
             'notify_meals': prefs.notify_meals,
             'notify_transport': prefs.notify_transport,
             'notify_medical': prefs.notify_medical,

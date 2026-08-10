@@ -278,8 +278,8 @@ class PaymentTransactionAdmin(admin.ModelAdmin):
 class UserNotificationPreferenceAdmin(admin.ModelAdmin):
     """Per-user alert + theme preferences."""
 
-    list_display = ('user', 'email_alerts', 'sms_alerts', 'push_notifications', 'dark_mode')
-    list_filter = ('email_alerts', 'sms_alerts', 'push_notifications', 'dark_mode')
+    list_display = ('user', 'email_alerts', 'sms_alerts', 'push_notifications', 'dark_mode', 'theme', 'compact_layout')
+    list_filter = ('email_alerts', 'sms_alerts', 'push_notifications', 'dark_mode', 'theme', 'compact_layout')
     search_fields = ('user__username', 'user__email')
     list_select_related = ('user',)
 

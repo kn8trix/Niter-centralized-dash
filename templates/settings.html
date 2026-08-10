@@ -41,13 +41,13 @@
              Tab navigation
         ============================================================ -->
         <div class="tabs-nav" role="tablist" aria-label="Settings tabs">
-            <button type="button" class="tab-btn" data-tab="notifications" role="tab" aria-selected="{% if active_tab == 'notifications' %}true{% else %}false{% endif %}" aria-controls="tab-notifications">
+            <button type="button" class="tab-btn{% if active_tab == 'notifications' %} active{% endif %}" data-tab="notifications" role="tab" aria-selected="{% if active_tab == 'notifications' %}true{% else %}false{% endif %}" aria-controls="tab-notifications">
                 <i class="fa-solid fa-bell"></i> Notifications
             </button>
-            <button type="button" class="tab-btn" data-tab="account" role="tab" aria-selected="{% if active_tab == 'account' %}true{% else %}false{% endif %}" aria-controls="tab-account">
+            <button type="button" class="tab-btn{% if active_tab == 'account' %} active{% endif %}" data-tab="account" role="tab" aria-selected="{% if active_tab == 'account' %}true{% else %}false{% endif %}" aria-controls="tab-account">
                 <i class="fa-solid fa-user"></i> Account &amp; Google
             </button>
-            <button type="button" class="tab-btn" data-tab="display" role="tab" aria-selected="{% if active_tab == 'display' %}true{% else %}false{% endif %}" aria-controls="tab-display">
+            <button type="button" class="tab-btn{% if active_tab == 'display' %} active{% endif %}" data-tab="display" role="tab" aria-selected="{% if active_tab == 'display' %}true{% else %}false{% endif %}" aria-controls="tab-display">
                 <i class="fa-solid fa-palette"></i> Display
             </button>
         </div>
@@ -131,10 +131,6 @@
                         <span class="toggle-switch" aria-hidden="true"></span>
                     </label>
                 </div>
-
-                <p class="toast-note" id="pref-note" role="status" hidden>
-                    <i class="fa-solid fa-circle-check"></i> Preferences saved to your account.
-                </p>
             </section>
 
             <!-- ============================================================
@@ -142,6 +138,58 @@
             ============================================================ -->
             <section class="card tab-panel" id="tab-account" role="tabpanel" aria-labelledby="tab-account-label" {% if active_tab != 'account' %}hidden{% endif %}>
                 <h2 id="tab-account-label" class="section-title"><i class="fa-solid fa-user"></i> Account &amp; Google Integration</h2>
+
+                <!-- Profile Details -->
+                <div class="settings-section">
+                    <h3 class="sub-section-title"><i class="fa-solid fa-id-card"></i> Profile Details</h3>
+                    <p class="section-subtitle">Your identity as registered with Niter Hub. The Student ID is set by the institution and cannot be changed here.</p>
+
+                    {% if profile_updated %}
+                    <div class="alert success" role="status">
+                        <i class="fa-solid fa-circle-check"></i>
+                        <span>Your account settings have been saved.</span>
+                    </div>
+                    {% endif %}
+
+                    {% if profile_errors %}
+                    <div class="alert error" role="alert">
+                        <i class="fa-solid fa-circle-exclamation"></i>
+                        <div>
+                            {% for error in profile_errors %}<p>{{ error }}</p>{% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <form method="post" action="{% url 'settings' %}" class="settings-form" novalidate>
+                        {% csrf_token %}
+                        <input type="hidden" name="form" value="profile">
+                        <div class="field">
+                            <label for="profile-student-id" class="field-label">Student ID</label>
+                            <div class="field-input">
+                                <i class="fa-solid fa-id-badge"></i>
+                                <input type="text" id="profile-student-id" value="{{ profile.student_id|default:user.username }}" readonly aria-describedby="profile-student-id-note">
+                            </div>
+                            <small id="profile-student-id-note" class="field-note">Institutional identity — read-only.</small>
+                        </div>
+                        <div class="field">
+                            <label for="profile-full-name" class="field-label">Full Name</label>
+                            <div class="field-input">
+                                <i class="fa-solid fa-user"></i>
+                                <input type="text" id="profile-full-name" name="full_name" value="{{ user.get_full_name }}" placeholder="Your full name" required>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label for="profile-email" class="field-label">Email</label>
+                            <div class="field-input">
+                                <i class="fa-solid fa-envelope"></i>
+                                <input type="email" id="profile-email" name="email" value="{{ user.email }}" placeholder="you@niter.edu.bd" required>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn-primary">
+                            <i class="fa-solid fa-floppy-disk"></i> Save Account Settings
+                        </button>
+                    </form>
+                </div>
 
                 <!-- Password Reset -->
                 <div class="settings-section">
@@ -243,15 +291,20 @@
                     <p class="section-subtitle">Pick how the portal looks for you.</p>
 
                     <div class="theme-grid">
-                        <button type="button" class="theme-option" data-theme="light" data-pref="dark_mode" data-value="0" aria-pressed="{% if not prefs.dark_mode %}true{% else %}false{% endif %}">
+                        <button type="button" class="theme-option" data-theme="light" data-pref="theme" data-value="light" aria-pressed="{% if prefs.theme == 'light' %}true{% else %}false{% endif %}">
                             <span class="theme-swatch light"><i class="fa-solid fa-sun"></i></span>
-                            <strong>Warm Light</strong>
+                            <strong>Light Mode</strong>
                             <span>Paper-like, easy on the eyes.</span>
                         </button>
-                        <button type="button" class="theme-option" data-theme="dark" data-pref="dark_mode" data-value="1" aria-pressed="{% if prefs.dark_mode %}true{% else %}false{% endif %}">
+                        <button type="button" class="theme-option" data-theme="dark" data-pref="theme" data-value="dark" aria-pressed="{% if prefs.theme == 'dark' %}true{% else %}false{% endif %}">
                             <span class="theme-swatch dark"><i class="fa-solid fa-moon"></i></span>
-                            <strong>Dark</strong>
+                            <strong>Dark Mode</strong>
                             <span>Low-glare for late-night work.</span>
+                        </button>
+                        <button type="button" class="theme-option theme-option-full" data-theme="system" data-pref="theme" data-value="system" aria-pressed="{% if prefs.theme == 'system' %}true{% else %}false{% endif %}">
+                            <span class="theme-swatch system"><i class="fa-solid fa-display"></i></span>
+                            <strong>System Default</strong>
+                            <span>Automatically match your device's light / dark preference.</span>
                         </button>
                     </div>
                 </div>
@@ -269,9 +322,33 @@
                         </select>
                     </div>
                 </div>
+
+                <!-- Layout density -->
+                <div class="settings-section">
+                    <h3 class="sub-section-title"><i class="fa-solid fa-table-cells-large"></i> Layout Density</h3>
+                    <p class="section-subtitle">Control how much content fits on screen at once.</p>
+
+                    <div class="layout-picker" role="group" aria-label="Layout density">
+                        <button type="button" class="layout-option" data-layout="comfortable" data-pref="compact_layout" data-value="0" aria-pressed="{% if not prefs.compact_layout %}true{% else %}false{% endif %}">
+                            <span class="layout-icon"><i class="fa-solid fa-arrows-up-down-left-right"></i></span>
+                            <strong>Comfortable</strong>
+                            <span>Generous spacing and padding.</span>
+                        </button>
+                        <button type="button" class="layout-option" data-layout="compact" data-pref="compact_layout" data-value="1" aria-pressed="{% if prefs.compact_layout %}true{% else %}false{% endif %}">
+                            <span class="layout-icon"><i class="fa-solid fa-compress"></i></span>
+                            <strong>Compact</strong>
+                            <span>Denser layout — more on screen.</span>
+                        </button>
+                    </div>
+                </div>
             </section>
 
         </div>
+
+        <!-- Floating save toast (works from every tab) -->
+        <p class="toast-note" id="pref-note" role="status" hidden>
+            <i class="fa-solid fa-circle-check"></i> Preferences saved to your account.
+        </p>
     </div>
 
     <script>
@@ -283,6 +360,7 @@
             const note = document.getElementById('pref-note');
             const inputs = document.querySelectorAll('.toggle-input');
             const options = document.querySelectorAll('.theme-option');
+            const layoutOptions = document.querySelectorAll('.layout-option');
             const tzSelect = document.getElementById('timezone-select');
 
             // ---- Tab navigation ----
@@ -355,9 +433,18 @@
                 });
             });
 
-            // ---- Theme grid → dark_mode ----
+            // ---- Theme grid → theme (light / dark / system) ----
+            const systemQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+            function resolveTheme(theme) {
+                if (theme === 'system') {
+                    return systemQuery && systemQuery.matches ? 'dark' : 'light';
+                }
+                return theme;
+            }
+
             function applyTheme(theme) {
-                document.documentElement.dataset.theme = theme;
+                document.documentElement.dataset.theme = resolveTheme(theme);
                 options.forEach((opt) => {
                     const pressed = opt.dataset.theme === theme;
                     opt.setAttribute('aria-pressed', pressed ? 'true' : 'false');
@@ -365,12 +452,20 @@
                 });
             }
 
-            applyTheme({{ prefs.dark_mode|yesno:"'dark','light'" }});
+            applyTheme('{{ prefs.theme }}');
+            if (systemQuery) {
+                const onSystemChange = () => applyTheme('{{ prefs.theme }}');
+                if (systemQuery.addEventListener) {
+                    systemQuery.addEventListener('change', onSystemChange);
+                } else if (systemQuery.addListener) {
+                    systemQuery.addListener(onSystemChange); // Safari < 14
+                }
+            }
 
             options.forEach((opt) => {
                 opt.addEventListener('click', async () => {
                     applyTheme(opt.dataset.theme);
-                    const data = await savePrefs({ dark_mode: opt.dataset.value === '1' });
+                    const data = await savePrefs({ theme: opt.dataset.value });
                     if (data.status === 'success') showSaved();
                 });
             });
@@ -382,6 +477,27 @@
                     if (data.status === 'success') showSaved();
                 });
             }
+
+            // ---- Layout density (comfortable / compact) → DB ----
+            function applyLayout(compact) {
+                document.body.classList.toggle('layout-compact', compact);
+                layoutOptions.forEach((opt) => {
+                    const pressed = opt.dataset.value === (compact ? '1' : '0');
+                    opt.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+                    opt.classList.toggle('selected', pressed);
+                });
+            }
+
+            applyLayout({{ prefs.compact_layout|yesno:"true,false" }});
+
+            layoutOptions.forEach((opt) => {
+                opt.addEventListener('click', async () => {
+                    const compact = opt.dataset.value === '1';
+                    applyLayout(compact);
+                    const data = await savePrefs({ compact_layout: compact });
+                    if (data.status === 'success') showSaved();
+                });
+            });
 
             // ---- Google unlink (AJAX) ----
             const unlinkBtn = document.getElementById('google-unlink-btn');

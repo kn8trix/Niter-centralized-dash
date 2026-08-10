@@ -939,6 +939,22 @@ class UserNotificationPreference(models.Model):
         default=False,
         help_text='Apply the dark portal theme across pages',
     )
+
+    THEME_CHOICES = [
+        ('light', 'Light Mode'),
+        ('dark', 'Dark Mode'),
+        ('system', 'System Default'),
+    ]
+    theme = models.CharField(
+        max_length=10,
+        choices=THEME_CHOICES,
+        default='light',
+        help_text='Portal theme: light, dark, or follow the system preference',
+    )
+    compact_layout = models.BooleanField(
+        default=False,
+        help_text='Use a more compact, denser layout',
+    )
     # Per-category notification toggles (default all on — checked in addition
     # to the channel-level toggles above).
     notify_meals = models.BooleanField(

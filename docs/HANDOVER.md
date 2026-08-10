@@ -2070,3 +2070,72 @@ row beneath.
   `topbar-left`/`settings-link`); authenticated render confirms DOM order
   bell → profile inside `.topbar-right`, brand inside `.topbar-row`, and
   `profile-notif-link` still present.
+
+---
+
+## 50. Settings Tab Navigation & Account/Display Panels
+
+**Date:** 11 August 2026  
+**Branch:** main
+
+### Overview
+
+Fixed the Settings page tab navigation and completed the Account & Google and
+Display panels so every tab is fully functional and persisted to the database.
+
+### Completed Work
+
+1. **Tab navigation fix (`templates/settings.html`)**
+   - The active tab button is now marked with the `active` class server-side
+     (matching `?tab=`), so the highlighted pill renders correctly on first
+     load instead of only after a click. Click handlers, `?tab=` URL sync, and
+     panel `hidden` toggling are unchanged.
+
+2. **Account & Google tab**
+   - New **Profile Details** section: read-only Student ID, editable Full Name
+     and Email, and a **Save Account Settings** button.
+   - `settings_view` now accepts a hidden `form=profile` POST and persists
+     name/email via the new `_save_profile_settings` helper (splits Full Name
+     into first/last name, validates email format with Django's
+     `validate_email` + uniqueness across accounts, and renders inline
+     success/error alerts).
+   - Password Reset and Google OAuth (Connect / Unlink) sections unchanged.
+
+3. **Display tab**
+   - Theme picker upgraded from a 2-way boolean (Warm Light / Dark) to a
+     tri-state **Light Mode / Dark Mode / System Default** picker.
+   - New **Layout Density** picker: Comfortable / Compact (persisted as
+     `compact_layout`; the settings page tightens its own spacing when
+     Compact is active).
+   - Timezone selector unchanged.
+
+### Backend
+
+- `UserNotificationPreference` gained `theme` (CharField: light/dark/system,
+  default light) and `compact_layout` (BooleanField) fields; the legacy
+  `dark_mode` boolean is kept for backward compatibility.
+- Migration `0017_usernotificationpreference_theme_compact_layout` adds both
+  fields and backfills `theme` from the legacy `dark_mode` boolean.
+- `_save_settings_prefs` accepts `theme` and `compact_layout` keys, keeps the
+  legacy `dark_mode` key working, and keeps `dark_mode` in sync with `theme`
+  so older callers stay correct (partial updates preserved).
+- `UserNotificationPreferenceAdmin` lists the two new fields.
+
+### Frontend
+
+- Theme JS resolves `system` via `matchMedia('(prefers-color-scheme: dark)')`
+  (with Safari < 14 `addListener` fallback) and live-updates when the OS theme
+  changes; the selection persists via the `theme` key. The save toast was
+  moved to a fixed floating pill so it is visible from every tab.
+
+### Testing
+
+- `python manage.py check` ✔ (no issues)
+- `python manage.py test` ✔ (389 tests — added coverage for the tri-state
+  theme, the layout toggle, and the profile form: success, duplicate email,
+  invalid email)
+- Verified over HTTP: login → `/settings/` renders all three tabs; the Account
+  panel shows Profile Details + Save Account Settings + Google status; the
+  Display panel shows Light/Dark/System, timezone, and Comfortable/Compact;
+  `?tab=display` activates the Display panel and hides the others; inline JS
+  passes `node --check`.

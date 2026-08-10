@@ -3112,13 +3112,19 @@ class SettingsPreferencesTest(TestCase):
     def test_settings_get_renders_saved_state(self):
         prefs = self.user.notification_prefs
         prefs.sms_alerts = True
-        prefs.dark_mode = True
+        prefs.theme = 'dark'
+        prefs.compact_layout = True
         prefs.save()
         html = self.client.get(reverse('settings')).content.decode()
-        # The sms toggle + dark theme option render as selected.
+        # The sms toggle + dark theme + compact layout options render selected.
         self.assertIn('data-pref="sms_alerts" checked', html)
-        self.assertIn('data-theme="dark" data-pref="dark_mode" data-value="1" aria-pressed="true"', html)
+        self.assertIn('data-theme="dark" data-pref="theme" data-value="dark" aria-pressed="true"', html)
         self.assertIn('data-pref="email_alerts" checked', html)
+        self.assertIn('data-layout="compact" data-pref="compact_layout" data-value="1" aria-pressed="true"', html)
+        # All three theme options are offered (Light / Dark / System Default).
+        self.assertIn('data-theme="light" data-pref="theme" data-value="light"', html)
+        self.assertIn('data-theme="system" data-pref="theme" data-value="system"', html)
+        self.assertIn('System Default', html)
         # New per-category toggles render with default checked.
         self.assertIn('data-pref="notify_meals" checked', html)
         self.assertIn('data-pref="notify_notices" checked', html)
@@ -3196,7 +3202,72 @@ class SettingsPreferencesTest(TestCase):
         self.client.logout()
         self.client.login(username='prefs_user', password='x12345678')
         html = self.client.get(reverse('settings')).content.decode()
-        self.assertIn('data-theme="dark" data-pref="dark_mode" data-value="1" aria-pressed="true"', html)
+        # The legacy dark_mode key still works and keeps theme in sync.
+        self.assertIn('data-theme="dark" data-pref="theme" data-value="dark" aria-pressed="true"', html)
+
+    def test_theme_and_layout_json_post_saves_to_database(self):
+        response = self.client.post(
+            reverse('settings'),
+            data=json.dumps({'theme': 'system', 'compact_layout': True}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['theme'], 'system')
+        self.assertTrue(data['compact_layout'])
+        prefs = self.user.notification_prefs
+        prefs.refresh_from_db()
+        self.assertEqual(prefs.theme, 'system')
+        self.assertTrue(prefs.compact_layout)
+        # The legacy dark_mode flag stays in sync with the tri-state theme.
+        self.assertFalse(prefs.dark_mode)
+
+    def test_invalid_theme_rejected(self):
+        response = self.client.post(
+            reverse('settings'),
+            data=json.dumps({'theme': 'neon'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        prefs = self.user.notification_prefs
+        prefs.refresh_from_db()
+        self.assertEqual(prefs.theme, 'light')  # unchanged
+
+    def test_profile_form_updates_name_and_email(self):
+        response = self.client.post(reverse('settings'), {
+            'form': 'profile',
+            'full_name': 'Rifat Hasan',
+            'email': 'rifat@niter.edu.bd',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Your account settings have been saved')
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, 'Rifat')
+        self.assertEqual(self.user.last_name, 'Hasan')
+        self.assertEqual(self.user.email, 'rifat@niter.edu.bd')
+
+    def test_profile_form_rejects_duplicate_email(self):
+        User.objects.create_user(username='other', email='other@niter.edu.bd', password='x12345678')
+        response = self.client.post(reverse('settings'), {
+            'form': 'profile',
+            'full_name': 'Rifat Hasan',
+            'email': 'other@niter.edu.bd',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'already used by another account')
+        self.user.refresh_from_db()
+        self.assertNotEqual(self.user.email, 'other@niter.edu.bd')
+
+    def test_profile_form_requires_valid_email(self):
+        response = self.client.post(reverse('settings'), {
+            'form': 'profile',
+            'full_name': 'Rifat Hasan',
+            'email': 'not-an-email',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'valid email address')
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, '')
 
     def test_google_unlink_removes_token(self):
         """POST /api/settings/google-unlink/ deletes the user's GoogleUserToken."""
