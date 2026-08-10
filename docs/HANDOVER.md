@@ -2139,3 +2139,45 @@ Display panels so every tab is fully functional and persisted to the database.
   Display panel shows Light/Dark/System, timezone, and Comfortable/Compact;
   `?tab=display` activates the Display panel and hides the others; inline JS
   passes `node --check`.
+
+---
+
+## 51. Website Builder Component Library — Verification Pass
+
+**Date:** 11 August 2026  
+**Branch:** main
+
+### Overview
+
+Re-verified the structured block component library (FAQ Accordion, Stats
+Counter Grid, Testimonial Slider, CTA Section) first built in §41. The
+feature was already fully implemented; this pass confirms every requirement
+and re-runs the full builder test battery.
+
+### Confirmed (no code changes needed)
+
+1. **Models (`core/models.py`)** — `ContentBlock.BLOCK_TYPE_CHOICES` already
+   includes `faq` / `stats` / `testimonials` / `cta` (migration 0015) and
+   `BLOCK_SCHEMAS` documents each type's `content_json` shape.
+2. **Partials (`templates/builder/blocks/`)** — `faq_accordion.html`,
+   `stats_grid.html`, `testimonial_slider.html`, `cta_section.html` all exist
+   and match the schemas.
+3. **Renderer (`core/templatetags/builder_tags.py`)** — `render_block` already
+   dispatches by `block_type` through `_BLOCK_PARTIALS` with layered fallbacks:
+   missing/malformed partial or bad JSON → `content_html` → `default_text`
+   (a broken block never 500s a page).
+
+### Verification
+
+- `python manage.py check` — no issues
+- `python manage.py makemigrations --check --dry-run` — no changes
+- `python manage.py test core.tests.BuilderBlockLibraryTest
+  core.tests.EditablePageRenderTest core.tests.BuilderBackendTest` — **52 tests,
+  OK** (18 block-library tests cover model defaults, partial dispatch,
+  fallbacks, `safe_url`, save-API structured fields, live-page rendering, and
+  the editor badge)
+- Live check: `/page/component-demo/` serves 200 and renders all four
+  components (`data-builder-block="faq|stats|testimonials|cta"`).
+
+Note: the literal `core.tests.test_builder` label from the task spec does not
+resolve — builder tests live in `core/tests.py` (§41.4).
