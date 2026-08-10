@@ -173,19 +173,24 @@ DATABASES = {
 SITE_ID = 1
 
 # Google OAuth (allauth) — Phase 1
-# Scopes request profile/email plus Google Drive (app-data only) and Sheets
-# access; AUTH_PARAMS request a refresh token (offline + consent) so long-lived
-# tokens can be stored in GoogleUserToken for the notes/club backends.
+# Scopes request openid/profile/email plus Google Drive (app-data + read-only
+# browsing) and Sheets access; AUTH_PARAMS request an offline refresh token so
+# long-lived tokens can be stored for background Drive/Sheets operations.
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
         'SCOPE': [
+            'openid',
             'profile',
             'email',
             'https://www.googleapis.com/auth/drive.file',
+            'https://www.googleapis.com/auth/drive.readonly',
             'https://www.googleapis.com/auth/spreadsheets',
         ],
         'AUTH_PARAMS': {
             'access_type': 'offline',
+            # Forces the consent screen on every authorization, which guarantees
+            # Google returns a fresh refresh token (also on re-connect flows)
+            # for background Drive/Sheets operations.
             'prompt': 'consent',
         },
     },

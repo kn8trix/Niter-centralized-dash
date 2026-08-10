@@ -2506,3 +2506,65 @@ payloads and partial (field/style-only) updates.
 - Builder tests — **98 OK** · full suite — **435 OK** · ``node --check`` clean
 - Live check — 78 edit-field bindings, 128 swatches, style popover, six
   library cards, staff block create + public render verified
+
+---
+
+## 57. Google Drive API Scopes & Offline Token Management
+
+**Date:** 11 August 2026  
+**Branch:** main
+
+### Overview
+
+Extended the Google OAuth integration for Google Drive API access: the
+allauth scope list now covers openid/profile/email plus Drive (app-data and
+read-only) and Sheets, offline access is requested so a refresh token is
+stored, and a new allauth-``SocialToken``-based credential helper powers the
+Drive status shown on the Account & Google settings tab.
+
+### Completed Work
+
+1. **OAuth scopes (`config/settings.py`)**
+   - ``SCOPE`` now requests ``openid``, ``profile``, ``email``,
+     ``drive.file``, ``drive.readonly`` (new) and ``spreadsheets``.
+   - ``AUTH_PARAMS`` keeps ``access_type: offline`` (refresh token for
+     background ops) plus ``prompt: consent`` — the consent prompt is what
+     guarantees Google returns a *fresh* refresh token on every
+     authorization, including unlink → re-grant flows.
+
+2. **Credential helper (`core/google_service.py`)**
+   - ``get_user_google_credentials(user)`` reads the user's active allauth
+     ``SocialToken`` (access token in ``.token``, refresh token in
+     ``.token_secret``, client id/secret on the linked ``SocialApp``),
+     rebuilds ``google.oauth2.credentials.Credentials``, and **proactively
+     refreshes** an expired access token before any API request, persisting
+     the fresh access token + expiry back to allauth.
+   - Refreshed/valid tokens are **mirrored into ``GoogleUserToken``** (which
+     previously had no writer) so the existing Drive/Sheets service layer
+     (``upload_note_to_user_drive``, gspread club backends) works end-to-end
+     after a plain allauth login; ``get_google_credentials`` falls back to
+     the allauth path when no legacy row exists.
+   - ``user_has_drive_access(user)`` — cheap, network-free check (connected
+     + Drive scope in the stored token) used by the settings page.
+
+3. **Drive UI status (`templates/settings.html`, `settings.css`)**
+   - The Account & Google tab now shows a dedicated Drive status card:
+     ``Connected: Google Drive access granted`` when a valid Drive token
+     exists, or ``Not Connected`` with a ``Grant Google Drive Access``
+     button (links to the Google OAuth flow).
+   - ``settings_view`` passes ``has_drive_access`` in the context.
+
+4. **Tests (`GoogleDriveOAuthTest`, 12 new)**
+   - Scope/AUTH_PARAMS config; credential reconstruction + legacy mirror;
+     auto-refresh on expiry (persisted to allauth + legacy); not-connected
+     and reauth error paths; ``user_has_drive_access`` variants; the Drive
+     status card in both connected and not-connected states.
+
+### Verification
+
+- ``manage.py check`` — clean · migrations unchanged
+- Google + settings test battery — **80 OK** (12 new) · full suite — **447 OK**
+- Live check — Not Connected card renders first; after a SocialToken is
+  created the card flips to "Connected: Google Drive access granted", the
+  helper returns credentials with the Drive scope, and ``GoogleUserToken``
+  is mirrored; all cleaned up after the check.

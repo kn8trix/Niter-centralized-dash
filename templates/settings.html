@@ -275,6 +275,30 @@
                         </div>
                         {% endif %}
                     </div>
+
+                    <!-- Google Drive access status -->
+                    <div class="drive-status">
+                        {% if has_drive_access %}
+                        <div class="drive-status-row connected">
+                            <div class="drive-status-icon"><i class="fa-brands fa-google-drive"></i></div>
+                            <div class="drive-status-body">
+                                <strong>Connected: Google Drive access granted</strong>
+                                <span>Notes uploads and Drive exports are available.</span>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="drive-status-row disconnected">
+                            <div class="drive-status-icon"><i class="fa-brands fa-google-drive"></i></div>
+                            <div class="drive-status-body">
+                                <strong>Not Connected</strong>
+                                <span>Grant Drive access to upload notes and use Drive exports.</span>
+                            </div>
+                            <a href="{% url 'google_login' %}" class="btn-connect" target="_blank" rel="noopener">
+                                <i class="fa-brands fa-google-drive"></i> Grant Google Drive Access
+                            </a>
+                        </div>
+                        {% endif %}
+                    </div>
                 </div>
             </section>
 

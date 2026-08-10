@@ -739,3 +739,77 @@ body.layout-compact .toggle-row {
         animation: none;
     }
 }
+
+/* ---------------------------------------------------------------------------
+   10c. Google Drive access status (Account & Google tab)
+--------------------------------------------------------------------------- */
+.drive-status {
+    margin-top: 0.6rem;
+}
+
+.drive-status-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.9rem;
+    padding: 1rem 1.1rem;
+    border-radius: 0.9rem;
+    border: 1px solid var(--border-color);
+    background: var(--bg-subtle);
+}
+
+.drive-status-icon {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.drive-status-row.connected .drive-status-icon {
+    color: #188038;
+}
+
+.drive-status-row.disconnected .drive-status-icon {
+    color: #6b7280;
+}
+
+.drive-status-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.drive-status-body strong {
+    display: block;
+    font-size: 0.93rem;
+    color: var(--text-primary);
+}
+
+.drive-status-body span {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+}
+
+.drive-status-row.connected {
+    border-color: rgba(24, 128, 56, 0.35);
+    background: rgba(24, 128, 56, 0.07);
+}
+
+.drive-status-row.connected .drive-status-body strong {
+    color: #188038;
+}
+
+@media (max-width: 560px) {
+    .drive-status-row {
+        flex-wrap: wrap;
+    }
+    .drive-status-row .btn-connect {
+        width: 100%;
+        justify-content: center;
+    }
+}

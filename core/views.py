@@ -38,6 +38,7 @@ from .google_service import (
     append_club_sheet_row,
     get_club_sheet_data,
     upload_note_to_user_drive,
+    user_has_drive_access,
     verify_club_transaction,
 )
 from .models import (
@@ -1053,6 +1054,8 @@ def settings_view(request):
     has_google_token = hasattr(request.user, 'google_token') and bool(
         request.user.google_token.access_token
     )
+    # Google Drive access status for the Account & Google tab (no network call).
+    has_drive_access = user_has_drive_access(request.user)
 
     password_updated = False
     profile_updated = False
@@ -1088,6 +1091,7 @@ def settings_view(request):
         'prefs': prefs,
         'google_social': google_social,
         'has_google_token': has_google_token,
+        'has_drive_access': has_drive_access,
         'active_tab': active_tab,
     })
 

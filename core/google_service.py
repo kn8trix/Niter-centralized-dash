@@ -66,10 +66,10 @@ def get_google_credentials(user):
     """
     token = GoogleUserToken.objects.filter(user=user).first()
     if token is None:
-        raise GoogleAccountNotConnected(
-            'No Google account connected for this user. '
-            'Connect Google in Account Settings first.'
-        )
+        # No legacy row (e.g. the user connected via allauth after the Drive
+        # scopes were enabled) — fall back to the allauth SocialToken path,
+        # which also mirrors a fresh GoogleUserToken row for future calls.
+        return get_user_google_credentials(user)
     creds = Credentials(
         token=token.access_token,
         refresh_token=token.refresh_token,
@@ -116,6 +116,149 @@ def get_google_credentials(user):
         token.expiry = creds.expiry
     token.save(update_fields=['access_token', 'expiry'])
     return creds
+
+
+# ---------------------------------------------------------------------------
+# 1b. allauth SocialToken credential reconstruction (Drive API access)
+# ---------------------------------------------------------------------------
+def _configured_google_scopes():
+    """Return the Google OAuth scopes configured in ``SOCIALACCOUNT_PROVIDERS``."""
+    from django.conf import settings as django_settings
+    return list(
+        django_settings.SOCIALACCOUNT_PROVIDERS.get('google', {})
+        .get('SCOPE', [])
+    )
+
+
+def _get_user_google_social_token(user):
+    """Return the user's active allauth ``SocialToken`` for Google, or None."""
+    try:
+        from allauth.socialaccount.models import SocialAccount, SocialToken
+    except Exception:  # allauth not installed / not migrated
+        return None
+    account = SocialAccount.objects.filter(user=user, provider='google').first()
+    if account is None:
+        return None
+    return SocialToken.objects.filter(account=account).order_by('-id').first()
+
+
+def _persist_google_user_token(user, social_token, creds):
+    """Mirror the allauth token into ``GoogleUserToken`` (legacy storage).
+
+    The Drive/Sheets service layer reads ``GoogleUserToken``; keeping it in
+    sync here means the old code paths keep working once a user has completed
+    the allauth OAuth flow, without double maintenance.
+    """
+    app = social_token.app
+    if timezone.is_aware(creds.expiry):
+        expiry = timezone.localtime(creds.expiry)
+    else:
+        expiry = creds.expiry
+    GoogleUserToken.objects.update_or_create(
+        user=user,
+        defaults={
+            'access_token': creds.token or '',
+            'refresh_token': creds.refresh_token or social_token.token_secret or '',
+            'token_uri': 'https://oauth2.googleapis.com/token',
+            'client_id': getattr(app, 'client_id', '') or '',
+            'client_secret': getattr(app, 'secret', '') or '',
+            'scopes': _configured_google_scopes(),
+            'expiry': expiry or timezone.now(),
+        },
+    )
+
+
+def get_user_google_credentials(user):
+    """Rebuild valid Google ``Credentials`` from the user's allauth token.
+
+    Looks up the user's active ``SocialToken`` (django-allauth) for Google and
+    reconstructs a ``google.oauth2.credentials.Credentials`` object carrying the
+    stored refresh token, so the transports used by googleapiclient / gspread
+    can transparently refresh expired access tokens.
+
+    If the stored access token has already expired, the token is refreshed here
+    using the refresh token (``SocialToken.token_secret``), and the freshly
+    issued ``access_token`` + ``expiry`` are persisted back to both the allauth
+    ``SocialToken`` and the legacy ``GoogleUserToken`` row.
+
+    Raises :class:`GoogleAccountNotConnected` when the user has no Google
+    connection, and :class:`GoogleReauthRequired` when the stored token can no
+    longer be refreshed.
+    """
+    social_token = _get_user_google_social_token(user)
+    if social_token is None or not social_token.token:
+        raise GoogleAccountNotConnected(
+            'No Google account connected for this user. '
+            'Connect Google in Account Settings first.'
+        )
+
+    app = social_token.app
+    creds = Credentials(
+        token=social_token.token,
+        refresh_token=social_token.token_secret or None,
+        token_uri='https://oauth2.googleapis.com/token',
+        client_id=getattr(app, 'client_id', '') or '',
+        client_secret=getattr(app, 'secret', '') or '',
+        scopes=_configured_google_scopes(),
+        # Lets google-auth refresh proactively instead of waiting for a 401.
+        expiry=social_token.expires_at,
+    )
+
+    # Expired? Refresh with the refresh token before any API request. allauth
+    # stores naive local expiry (USE_TZ=False) so compare like with like.
+    if social_token.expires_at is None or social_token.expires_at <= timezone.now():
+        if not creds.refresh_token:
+            raise GoogleReauthRequired(
+                'Your Google session has expired. Connect Google again to continue.'
+            )
+        try:
+            creds.refresh(GoogleAuthRequest())
+        except RefreshError as exc:
+            raise GoogleReauthRequired(
+                'Your Google session has expired or was revoked. '
+                'Connect Google again to continue.'
+            ) from exc
+
+        # Persist the refreshed access token + expiry back to allauth storage.
+        if timezone.is_aware(creds.expiry):
+            social_token.expires_at = timezone.localtime(creds.expiry)
+        else:
+            social_token.expires_at = creds.expiry
+        social_token.token = creds.token
+        social_token.save(update_fields=['token', 'expires_at'])
+
+    _persist_google_user_token(user, social_token, creds)
+    return creds
+
+
+def user_has_drive_access(user):
+    """Return True when the user holds a valid Google Drive-enabled token.
+
+    Cheap check (no network calls) used by the Account & Google settings tab:
+    the user is connected and their stored scopes include a Drive scope, so a
+    Drive upload / export would succeed. Mirrored ``GoogleUserToken`` rows are
+    also honoured for legacy users.
+    """
+    drive_scopes = {
+        'https://www.googleapis.com/auth/drive.file',
+        'https://www.googleapis.com/auth/drive.readonly',
+    }
+    configured = set(_configured_google_scopes())
+    if not (configured & drive_scopes):
+        return False
+
+    social_token = _get_user_google_social_token(user)
+    if social_token is not None and social_token.token:
+        # Valid unless the token is expired with no refresh token left.
+        if social_token.expires_at is None or social_token.expires_at > timezone.now():
+            return True
+        return bool(social_token.token_secret)
+
+    legacy = GoogleUserToken.objects.filter(user=user).first()
+    if not (legacy and legacy.access_token):
+        return False
+    # Valid now, or expired but still refreshable (matches the social path).
+    return not legacy.is_expired or bool(legacy.refresh_token)
 
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ from unittest import mock
 import shutil
 import tempfile
 
+from allauth.socialaccount.models import SocialAccount, SocialApp, SocialToken
 from django.contrib.auth.models import Permission, User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError
@@ -4839,3 +4840,150 @@ class BuilderDynamicRenderEditTest(TestCase):
         # A Text Block's section body becomes the raw-HTML edit surface.
         self.assertIn('data-edit-html', html)
         self.assertIn('Raw paragraph', html)
+
+
+class GoogleDriveOAuthTest(TestCase):
+    """Google Drive API scopes + allauth SocialToken credential helper + UI.
+
+    Covers ``get_user_google_credentials`` (credential reconstruction,
+    auto-refresh on expiry, error paths), ``user_has_drive_access``, the
+    configured OAuth scopes, and the Drive status card on the Account & Google
+    settings tab.
+    """
+
+    DRIVE_FILE = 'https://www.googleapis.com/auth/drive.file'
+    DRIVE_RO = 'https://www.googleapis.com/auth/drive.readonly'
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='drive_user', password='x12345678')
+        self.app = SocialApp.objects.create(
+            provider='google', name='Google', client_id='app-id.apps.googleusercontent.com',
+            secret='app-secret', key='',
+        )
+        self.account = SocialAccount.objects.create(
+            user=self.user, provider='google', uid='1177', extra_data={'email': 'd@niter.edu.bd'},
+        )
+
+    def _make_token(self, access='ya29.access', refresh='1//refresh', expires_in=3600):
+        return SocialToken.objects.create(
+            app=self.app, account=self.account,
+            token=access, token_secret=refresh,
+            expires_at=timezone.now() + timedelta(seconds=expires_in),
+        )
+
+    # ------------------------------------------------------------------
+    # OAuth scope configuration
+    # ------------------------------------------------------------------
+    def test_google_scopes_include_openid_profile_email_and_drive(self):
+        from django.conf import settings as django_settings
+        scopes = django_settings.SOCIALACCOUNT_PROVIDERS['google']['SCOPE']
+        for expected in ('openid', 'profile', 'email', self.DRIVE_FILE, self.DRIVE_RO):
+            self.assertIn(expected, scopes)
+        auth_params = django_settings.SOCIALACCOUNT_PROVIDERS['google']['AUTH_PARAMS']
+        # Offline access_type is what issues a refresh token for background ops.
+        self.assertEqual(auth_params.get('access_type'), 'offline')
+
+    # ------------------------------------------------------------------
+    # get_user_google_credentials
+    # ------------------------------------------------------------------
+    def test_get_user_google_credentials_builds_from_social_token(self):
+        from core.google_service import get_user_google_credentials
+        self._make_token()
+        creds = get_user_google_credentials(self.user)
+        self.assertEqual(creds.token, 'ya29.access')
+        self.assertEqual(creds.refresh_token, '1//refresh')
+        self.assertEqual(creds.client_id, 'app-id.apps.googleusercontent.com')
+        self.assertEqual(creds.client_secret, 'app-secret')
+        self.assertIn(self.DRIVE_FILE, creds.scopes)
+
+    def test_get_user_google_credentials_mirrors_legacy_token(self):
+        from core.google_service import get_user_google_credentials
+        self._make_token()
+        get_user_google_credentials(self.user)
+        legacy = GoogleUserToken.objects.get(user=self.user)
+        self.assertEqual(legacy.access_token, 'ya29.access')
+        self.assertEqual(legacy.refresh_token, '1//refresh')
+        self.assertIn(self.DRIVE_FILE, legacy.scopes)
+
+    def test_get_user_google_credentials_refreshes_expired_token(self):
+        from core.google_service import get_user_google_credentials
+        self._make_token(expires_in=-60)  # already expired
+        # Fake Credentials object whose ``refresh()`` issues a fresh token.
+        fake_creds = mock.MagicMock()
+        fake_creds.token = 'ya29.access'
+        fake_creds.refresh_token = '1//refresh'
+        fake_creds.expiry = timezone.now() + timedelta(hours=1)
+
+        def _apply_refresh(*_args):
+            fake_creds.token = 'ya29.fresh'
+            fake_creds.expiry = timezone.now() + timedelta(hours=1)
+
+        fake_creds.refresh.side_effect = _apply_refresh
+        with mock.patch('core.google_service.GoogleAuthRequest'), \
+                mock.patch('core.google_service.Credentials', return_value=fake_creds):
+            creds = get_user_google_credentials(self.user)
+            self.assertEqual(creds.token, 'ya29.fresh')
+            # Refreshed token is persisted back to allauth + legacy storage.
+            legacy = GoogleUserToken.objects.get(user=self.user)
+            self.assertEqual(legacy.access_token, 'ya29.fresh')
+            social = SocialToken.objects.get(account=self.account)
+            self.assertEqual(social.token, 'ya29.fresh')
+
+    def test_get_user_google_credentials_raises_without_account(self):
+        from core.google_service import GoogleAccountNotConnected, get_user_google_credentials
+        orphan = User.objects.create_user(username='no_google_drive', password='x12345678')
+        with self.assertRaises(GoogleAccountNotConnected):
+            get_user_google_credentials(orphan)
+
+    def test_get_user_google_credentials_raises_reauth_when_refresh_fails(self):
+        from core.google_service import GoogleReauthRequired, get_user_google_credentials
+        from google.auth.exceptions import RefreshError
+        self._make_token(expires_in=-60)
+        with mock.patch('core.google_service.GoogleAuthRequest'), \
+                mock.patch('core.google_service.Credentials.refresh', side_effect=RefreshError('revoked')):
+            with self.assertRaises(GoogleReauthRequired):
+                get_user_google_credentials(self.user)
+
+    # ------------------------------------------------------------------
+    # user_has_drive_access
+    # ------------------------------------------------------------------
+    def test_user_has_drive_access_true_with_valid_token(self):
+        from core.google_service import user_has_drive_access
+        self._make_token()
+        self.assertTrue(user_has_drive_access(self.user))
+
+    def test_user_has_drive_access_false_without_token(self):
+        from core.google_service import user_has_drive_access
+        self.assertFalse(user_has_drive_access(self.user))
+
+    def test_user_has_drive_access_false_when_token_expired_and_unrefreshable(self):
+        from core.google_service import user_has_drive_access
+        self._make_token(refresh='', expires_in=-60)
+        self.assertFalse(user_has_drive_access(self.user))
+
+    def test_user_has_drive_access_honours_legacy_token(self):
+        from core.google_service import user_has_drive_access
+        GoogleUserToken.objects.create(
+            user=self.user, access_token='abc', refresh_token='def',
+            client_id='x', client_secret='y',
+            scopes=[self.DRIVE_FILE],
+            expiry=timezone.now() + timedelta(hours=1),
+        )
+        self.assertTrue(user_has_drive_access(self.user))
+
+    # ------------------------------------------------------------------
+    # Settings UI — Drive status card
+    # ------------------------------------------------------------------
+    def test_settings_shows_drive_connected_status(self):
+        self._make_token()
+        self.client.force_login(self.user)
+        html = self.client.get(reverse('settings')).content.decode()
+        self.assertIn('Connected: Google Drive access granted', html)
+        self.assertNotIn('Grant Google Drive Access', html)
+
+    def test_settings_shows_drive_not_connected_with_grant_button(self):
+        self.client.force_login(self.user)
+        html = self.client.get(reverse('settings')).content.decode()
+        self.assertIn('Not Connected', html)
+        self.assertIn('Grant Google Drive Access', html)
+        self.assertIn(reverse('google_login'), html)
