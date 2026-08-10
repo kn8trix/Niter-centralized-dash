@@ -31,8 +31,33 @@
         </div>
         <div class="bg-card rounded-xl border border-border p-4 text-center">
             <div class="text-sm text-main/60">Today's Queue</div>
-            <div class="text-2xl font-bold text-indigo-600">{{ summaries.todays_queue }}</div>
+            <div class="text-2xl font-bold text-indigo-600" id="queue-count">{{ summaries.todays_queue }}</div>
         </div>
+    </div>
+
+    <!-- Live Queue (FIFO — pending first, then confirmed; polls the queue API) -->
+    <div data-component="card" data-widget="live-queue" class="bg-card rounded-xl border border-border p-4">
+        <div class="flex items-center justify-between gap-3">
+            <div>
+                <h3 class="font-semibold text-main">Live Queue</h3>
+                <p class="text-sm text-main/60">Today's patients in order — updates automatically.</p>
+            </div>
+            <span class="text-xs text-main/50" id="queue-updated">—</span>
+        </div>
+        <ol id="queue-list" class="mt-3 space-y-2">
+            {% for item in queue %}
+            <li class="flex flex-col gap-1 rounded-lg border border-border bg-base px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <span class="flex min-w-0 items-center gap-2">
+                    <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-main">{{ item.position }}</span>
+                    <span class="truncate">{{ item.student_name }} <span class="text-xs text-main/50">({{ item.student_id }})</span></span>
+                </span>
+                <span class="text-main/60">{{ item.doctor }} · {{ item.time }}</span>
+                <span class="rounded-full px-2.5 py-1 text-xs font-medium {% if item.status == 'pending' %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">{{ item.status_label }}</span>
+            </li>
+            {% empty %}
+            <li class="rounded-lg border border-border bg-base px-3 py-2 text-sm text-main/50">No appointments in today's queue.</li>
+            {% endfor %}
+        </ol>
     </div>
 
     <!-- Search & Filters -->
@@ -153,4 +178,46 @@
     </div>
 
 </div>
+<script>
+(function () {
+    // Live queue — refreshes today's FIFO queue + the summary count from the
+    // staff queue API every 15s (staff also get a WebSocket Notification push
+    // whenever an appointment status changes).
+    const QUEUE_URL = '{% url "api_medical_queue" %}';
+    const listEl = document.getElementById('queue-list');
+    const countEl = document.getElementById('queue-count');
+    const updatedEl = document.getElementById('queue-updated');
+    if (!listEl) return;
+
+    const statusClass = (s) => s === 'pending'
+        ? 'bg-amber-100 text-amber-700'
+        : 'bg-emerald-100 text-emerald-700';
+    const statusLabel = (s) => s === 'pending' ? 'Pending' : 'Confirmed';
+    const esc = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
+
+    async function refresh() {
+        try {
+            const resp = await fetch(QUEUE_URL, { credentials: 'same-origin' });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (!data || data.status !== 'success') return;
+            if (countEl) countEl.textContent = String(data.counts.total);
+            if (updatedEl) updatedEl.textContent = 'updated ' + new Date().toLocaleTimeString();
+            listEl.innerHTML = (data.queue || []).map((q) =>
+                '<li class="flex flex-col gap-1 rounded-lg border border-border bg-base px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">' +
+                    '<span class="flex min-w-0 items-center gap-2">' +
+                        '<span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-main">' + q.position + '</span>' +
+                        '<span class="truncate">' + esc(q.student_name) + ' <span class="text-xs text-main/50">(' + esc(q.student_id) + ')</span></span>' +
+                    '</span>' +
+                    '<span class="text-main/60">' + esc(q.doctor) + ' · ' + esc(q.time) + '</span>' +
+                    '<span class="rounded-full px-2.5 py-1 text-xs font-medium ' + statusClass(q.status) + '">' + statusLabel(q.status) + '</span>' +
+                '</li>'
+            ).join('') || '<li class="rounded-lg border border-border bg-base px-3 py-2 text-sm text-main/50">No appointments in today\'s queue.</li>';
+        } catch (err) { /* transient — next poll will retry */ }
+    }
+
+    refresh();
+    setInterval(refresh, 15000);
+})();
+</script>
 {% endblock %}

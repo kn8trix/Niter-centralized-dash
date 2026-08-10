@@ -24,7 +24,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 
 from google.auth.exceptions import RefreshError
 
-from .consumers import notify_user
+from .consumers import notify_user, send_chat_push
 from .decorators import superuser_required
 from .google_service import (
     GoogleAccountNotConnected,
@@ -46,6 +46,8 @@ from .models import (
     Department,
     EditablePage,
     MedicalAppointment,
+    MedicalChatMessage,
+    MedicalChatThread,
     MealSubscription,
     MealTicket,
     Notice,
@@ -54,6 +56,7 @@ from .models import (
     PaymentTransaction,
     StudentProfile,
     TransportBooking,
+    TransportRoute,
     UserNote,
     UserNotificationPreference,
 )
@@ -88,24 +91,21 @@ def dashboard(request):
     }
 
     # --- Transport Service (available seats per active route) ---
-    # One grouped query for every catalog route instead of a COUNT per route.
+    # One grouped query for every DB catalog route instead of a COUNT per route.
+    transport_catalog = _transport_catalog()
     route_booked = {
         (row['route_name'], row['departure_time']): row['booked']
-        for row in TransportBooking.objects.filter(
-            route_name__in=[info['route_name'] for info in TRANSPORT_ROUTES.values()],
-            departure_time__in=[info['departure_time'] for info in TRANSPORT_ROUTES.values()],
-        )
-        .values('route_name', 'departure_time')
+        for row in TransportBooking.objects.values('route_name', 'departure_time')
         .annotate(booked=Count('id'))
     }
     routes = []
-    for route_id, info in TRANSPORT_ROUTES.items():
+    for route_id, info in transport_catalog.items():
         booked = route_booked.get((info['route_name'], info['departure_time']), 0)
         routes.append({
             'id': route_id,
             'name': info['route_name'],
             'time': info['departure_time'],
-            'available': max(TRANSPORT_SEATS_PER_BUS - booked, 0),
+            'available': max(info['capacity'] - booked, 0),
             'booked': booked,
         })
     routes.sort(key=lambda r: r['available'], reverse=True)
@@ -155,7 +155,15 @@ def tickets(request):
     return render(request, 'ticketing/tickets.html')
 
 def medical(request):
-    return render(request, 'medical/booking.html')
+    """Medical booking page — form plus the signed-in student's live
+    appointments and consultation threads (patient-side chat UI)."""
+    context = {}
+    if request.user.is_authenticated:
+        context['my_appointments'] = request.user.medical_appointments.all()
+        context['my_threads'] = MedicalChatThread.objects.filter(
+            patient=request.user,
+        ).select_related('patient').prefetch_related('messages')
+    return render(request, 'medical/booking.html', context)
 
 def notes(request):
     """Notes Engine workspace — the editor plus the signed-in user's saved
@@ -324,8 +332,41 @@ def join_club(request):
 
 
 def transport_dashboard(request):
-    """Transport online ticket system — frontend-only page driven by mock JS data."""
-    return render(request, 'transport.html')
+    """Transport online ticket system — live DB routes, schedules and drivers.
+
+    The active catalog (routes, departures, driver details, and live booked-
+    seat counts) is rendered as JSON for the page's frontend JS; seat booking
+    goes through ``book_transport`` against the same DB rows.
+    """
+    catalog = _transport_catalog()
+    route_booked = {
+        (row['route_name'], row['departure_time']): row['booked']
+        for row in TransportBooking.objects.values('route_name', 'departure_time')
+        .annotate(booked=Count('id'))
+    }
+    routes = []
+    for route_id, info in catalog.items():
+        booked = route_booked.get((info['route_name'], info['departure_time']), 0)
+        left = max(info['capacity'] - booked, 0)
+        if left == 0:
+            status, dot = 'Full', 'dot-red'
+        elif left <= 5:
+            status, dot = 'Few seats left', 'dot-amber'
+        else:
+            status, dot = 'On Time', 'dot-green'
+        routes.append({
+            'id': route_id,
+            'name': info['route_name'],
+            'dest': ' → '.join(x for x in (info['origin'], info['destination']) if x),
+            'driver': info['driver_name'] or '—',
+            'phone': info['driver_phone'] or '—',
+            'departures': info['departures'],
+            'total': info['capacity'],
+            'booked': booked,
+            'status': status,
+            'dot': dot,
+        })
+    return render(request, 'transport.html', {'routes': routes})
 
 
 def meal_dashboard(request):
@@ -578,15 +619,64 @@ DAILY_MEAL_CAPACITY = {
     'dinner': 160,
 }
 
-# Transport route catalog — the transport page posts a ``route_id``.
+# Transport route catalog — fallback when no DB routes exist yet. The DB is
+# the source of truth (TransportRoute + BusSchedule + Driver, seeded in
+# migration 0013 with these exact names/times); the constant keeps legacy
+# route ids and fresh-DB-less environments working.
 TRANSPORT_ROUTES = {
     '1': {'route_name': 'Route 1: Main Campus Loop', 'departure_time': '08:00 AM'},
     '2': {'route_name': 'Route 2: Sports Complex Shuttle', 'departure_time': '09:30 AM'},
     '3': {'route_name': 'Route 3: City Center Express', 'departure_time': '10:00 AM'},
 }
 
-# Seat capacity per bus — mirrors the seat range accepted by book_transport.
+# Seat capacity per bus — used only by the legacy fallback catalog.
 TRANSPORT_SEATS_PER_BUS = 40
+
+
+def _transport_catalog():
+    """Active DB routes merged with driver + schedule data, keyed by route id.
+
+    Falls back to the legacy ``TRANSPORT_ROUTES`` constants when no DB routes
+    exist (e.g. a checkout that hasn't run the 0013 seed migration) so
+    historical route ids/names and older forms keep resolving.
+    """
+    catalog = {}
+    for route in (
+        TransportRoute.objects.filter(is_active=True)
+        .select_related('driver')
+        .prefetch_related('schedules')
+    ):
+        departures = [
+            s.departure_time
+            for s in route.schedules.filter(is_active=True).order_by('id')
+        ]
+        if not departures:
+            continue
+        catalog[route.pk] = {
+            'route_name': route.name,
+            'departures': departures,
+            'departure_time': departures[0],
+            'capacity': route.capacity,
+            'origin': route.origin,
+            'destination': route.destination,
+            'driver_name': route.driver.name if route.driver else '',
+            'driver_phone': route.driver.phone if route.driver else '',
+        }
+    if catalog:
+        return catalog
+    return {
+        int(route_id): {
+            'route_name': info['route_name'],
+            'departures': [info['departure_time']],
+            'departure_time': info['departure_time'],
+            'capacity': TRANSPORT_SEATS_PER_BUS,
+            'origin': '',
+            'destination': '',
+            'driver_name': '',
+            'driver_phone': '',
+        }
+        for route_id, info in TRANSPORT_ROUTES.items()
+    }
 
 # Medical doctor catalog — the booking page posts a ``doctor`` id.
 DOCTORS = {
@@ -728,11 +818,26 @@ def book_transport(request):
     departure_time = request.POST.get('departure_time', '').strip()
     seat_raw = request.POST.get('seat_number', '').strip()
 
-    # The legacy transport form posts only route_id — fill the rest from catalog.
-    # Explicit route_name/departure_time (if both sent) take precedence.
-    if route_id and route_id in TRANSPORT_ROUTES:
-        route_name = route_name or TRANSPORT_ROUTES[route_id]['route_name']
-        departure_time = departure_time or TRANSPORT_ROUTES[route_id]['departure_time']
+    # Resolve route_id through the DB-backed catalog (legacy ids also resolve
+    # via the constant fallback). Explicit route_name/departure_time (if both
+    # sent) take precedence over the catalog values.
+    route_info = None
+    if route_id:
+        try:
+            route_info = _transport_catalog().get(int(route_id))
+        except (TypeError, ValueError):
+            route_info = None
+    if route_info is not None:
+        route_name = route_name or route_info['route_name']
+        departure_time = departure_time or route_info['departure_time']
+        capacity = route_info['capacity']
+    else:
+        # route_name-only submissions still honour the DB route's capacity.
+        capacity = (
+            TransportRoute.objects.filter(name=route_name, is_active=True)
+            .values_list('capacity', flat=True)
+            .first()
+        ) or TRANSPORT_SEATS_PER_BUS
 
     if not route_name or not departure_time:
         return JsonResponse(
@@ -747,9 +852,9 @@ def book_transport(request):
             {'status': 'error', 'message': 'seat_number must be an integer.'},
             status=400,
         )
-    if not 1 <= seat_number <= 40:
+    if not 1 <= seat_number <= capacity:
         return JsonResponse(
-            {'status': 'error', 'message': 'Seat number must be between 1 and 40.'},
+            {'status': 'error', 'message': 'Seat number must be between 1 and %s.' % capacity},
             status=400,
         )
 
@@ -1370,6 +1475,22 @@ def update_appointment_status(request, appointment_id):
     )
     _broadcast_notification(notification)
 
+    # Notify every active staff member so the host/admin queue widgets refresh
+    # in real time (their WebSocket bell pushes the update without a reload).
+    for staff_user in User.objects.filter(is_staff=True, is_active=True).exclude(pk=request.user.pk):
+        staff_notice = Notification.objects.create(
+            user=staff_user,
+            title='Medical queue updated',
+            message='%s · %s with %s is now %s.' % (
+                appointment.user.get_full_name() or appointment.user.username,
+                appointment.appointment_date,
+                appointment.doctor_name,
+                label,
+            ),
+            category='medical',
+        )
+        _broadcast_notification(staff_notice)
+
     if request.headers.get('x-requested-with') == 'XMLHttpRequest':
         return JsonResponse({
             'status': 'success',
@@ -1385,6 +1506,196 @@ def update_appointment_status(request, appointment_id):
     ):
         next_url = reverse('medical_admin_dashboard')
     return redirect(next_url)
+
+
+# ============================================================================
+# Medical consultation chat + live queue (patient ↔ doctor, real-time)
+# ============================================================================
+
+def _chat_thread_serialize(thread, viewer):
+    """Shape a MedicalChatThread for the chat lists/APIs.
+
+    The unread count is viewer-scoped: messages the viewer sent are never
+    counted against them. Uses the prefetched ``messages`` cache in one pass —
+    ``order_by().first()`` / ``count()`` would each issue a new query per
+    thread (N+1) instead of reading the prefetch cache.
+    """
+    messages = list(thread.messages.all())
+    last = messages[-1] if messages else None
+    unread = sum(1 for m in messages if not m.is_read and m.sender_id != viewer.pk)
+    profile = getattr(thread.patient, 'student_profile', None)
+    return {
+        'id': thread.pk,
+        'appointment_id': thread.appointment_id,
+        'patient_name': thread.patient.get_full_name() or thread.patient.username,
+        'patient_id': getattr(profile, 'student_id', thread.patient.username),
+        'doctor_name': thread.doctor_name,
+        'status': thread.status,
+        'status_label': thread.get_status_display(),
+        'unread': unread,
+        'last_message': last.content if last else '',
+        'last_time': last.created_at.strftime('%I:%M %p') if last else '',
+        'updated_at': thread.updated_at.strftime('%Y-%m-%d %H:%M'),
+    }
+
+
+@login_required
+def medical_chat_threads(request):
+    """JSON API: consultation threads visible to the caller.
+
+    Staff see every thread (newest activity first); students see only their
+    own. Each row carries a viewer-scoped unread count and the last message.
+    """
+    if request.method != 'GET':
+        return JsonResponse({'status': 'error', 'message': 'GET required'}, status=405)
+    threads = MedicalChatThread.objects.select_related('patient', 'appointment')
+    if not request.user.is_staff:
+        threads = threads.filter(patient=request.user)
+    threads = threads.prefetch_related('messages').order_by('-updated_at', '-id')
+    return JsonResponse({
+        'status': 'success',
+        'threads': [_chat_thread_serialize(t, request.user) for t in threads],
+    })
+
+
+@login_required
+def medical_chat_start(request):
+    """JSON API: open a consultation thread for an appointment (get-or-create).
+
+    The patient may open their own thread; staff may open any thread. Calling
+    again simply returns the existing thread (idempotent).
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+
+    try:
+        appointment = MedicalAppointment.objects.select_related('user').get(
+            pk=request.POST.get('appointment_id', ''),
+        )
+    except (MedicalAppointment.DoesNotExist, ValueError, TypeError):
+        return JsonResponse({'status': 'error', 'message': 'Appointment not found.'}, status=404)
+    if not (request.user.is_staff or appointment.user_id == request.user.pk):
+        return JsonResponse({'status': 'error', 'message': 'Not your appointment.'}, status=403)
+
+    thread, created = MedicalChatThread.objects.get_or_create(
+        appointment=appointment,
+        defaults={'patient': appointment.user, 'doctor_name': appointment.doctor_name},
+    )
+    return JsonResponse({
+        'status': 'success',
+        'created': created,
+        'thread': _chat_thread_serialize(thread, request.user),
+    })
+
+
+def _thread_for_user(thread_id, user):
+    """Fetch a thread the user may view (patient owner or staff), else None."""
+    try:
+        thread = MedicalChatThread.objects.select_related('patient').get(pk=thread_id)
+    except (MedicalChatThread.DoesNotExist, ValueError, TypeError):
+        return None
+    if not (user.is_staff or thread.patient_id == user.pk):
+        return None
+    return thread
+
+
+def _chat_message_payload(message):
+    """Serialize one message row for the chat APIs / WS pushes.
+
+    ``is_mine`` is intentionally omitted — clients compare ``sender_id`` with
+    their own viewer id so the same payload serves every recipient.
+    """
+    return {
+        'id': message.pk,
+        'sender_id': message.sender_id,
+        'sender_name': message.sender.get_full_name() or message.sender.username,
+        'content': message.content,
+        'created_at': message.created_at.strftime('%Y-%m-%d %H:%M'),
+    }
+
+
+@login_required
+def medical_chat_messages(request, thread_id):
+    """JSON API: message history (GET) or append a message (POST) to a thread.
+
+    GET marks the other party's messages as read. POST is the non-WebSocket
+    fallback for sending — the UI normally sends over ``ws/medical-chat/``,
+    but the payload is broadcast to the thread's channel group either way.
+    """
+    thread = _thread_for_user(thread_id, request.user)
+    if thread is None:
+        return JsonResponse({'status': 'error', 'message': 'Thread not found.'}, status=404)
+
+    if request.method == 'GET':
+        thread.messages.filter(is_read=False).exclude(sender=request.user).update(is_read=True)
+        messages = list(
+            thread.messages.select_related('sender').order_by('created_at', 'id')
+        )
+        return JsonResponse({
+            'status': 'success',
+            'thread_id': thread.pk,
+            'messages': [_chat_message_payload(m) for m in messages],
+        })
+
+    if request.method == 'POST':
+        content = request.POST.get('content', '').strip()
+        if not content:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Message content is required.'},
+                status=400,
+            )
+        message = MedicalChatMessage.objects.create(
+            thread=thread, sender=request.user, content=content,
+        )
+        MedicalChatThread.objects.filter(pk=thread.pk).update(updated_at=timezone.now())
+        payload = _chat_message_payload(message)
+        send_chat_push(thread.pk, payload)
+        return JsonResponse({'status': 'success', 'message': payload})
+
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed.'}, status=405)
+
+
+@staff_member_required(login_url=settings.LOGIN_URL)
+def medical_queue_api(request):
+    """JSON API: today's appointment queue (pending → confirmed, FIFO).
+
+    Powers the live queue widget on the host dashboard. Every status change
+    also pushes a real-time Notification to staff (see
+    ``update_appointment_status``), so the queue refreshes without a reload.
+    """
+    if request.method != 'GET':
+        return JsonResponse({'status': 'error', 'message': 'GET required'}, status=405)
+
+    today = timezone.now().date()
+    queue = list(
+        MedicalAppointment.objects.filter(
+            appointment_date=today, status__in=['pending', 'confirmed'],
+        ).select_related('user').order_by('created_at', 'id')
+    )
+    items = []
+    for position, appointment in enumerate(queue, start=1):
+        profile = getattr(appointment.user, 'student_profile', None)
+        items.append({
+            'position': position,
+            'id': appointment.pk,
+            'student_name': appointment.user.get_full_name() or appointment.user.username,
+            'student_id': getattr(profile, 'student_id', appointment.user.username),
+            'doctor': appointment.doctor_name,
+            'time': appointment.time_slot,
+            'status': appointment.status,
+            'status_label': appointment.get_status_display(),
+            'booking_time': appointment.created_at.strftime('%I:%M %p'),
+        })
+    return JsonResponse({
+        'status': 'success',
+        'today': today.isoformat(),
+        'queue': items,
+        'counts': {
+            'waiting': sum(1 for i in items if i['status'] == 'pending'),
+            'in_consultation': sum(1 for i in items if i['status'] == 'confirmed'),
+            'total': len(items),
+        },
+    })
 
 
 def _sheet_cell(row, *keys):

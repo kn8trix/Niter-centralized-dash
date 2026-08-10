@@ -9,11 +9,12 @@ from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError
 from django.template import Context, Template
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse, resolve
 from django.utils import timezone
 
 from core.models import (
+    BusSchedule,
     ClassRoutine,
     Club,
     ClubEvent,
@@ -22,10 +23,13 @@ from core.models import (
     Course,
     CourseMaterial,
     Department,
+    Driver,
     EditablePage,
     FacultyMember,
     GoogleUserToken,
     MedicalAppointment,
+    MedicalChatMessage,
+    MedicalChatThread,
     MealSubscription,
     MealTicket,
     Notice,
@@ -34,6 +38,7 @@ from core.models import (
     PaymentTransaction,
     StudentProfile,
     TransportBooking,
+    TransportRoute,
     UserNote,
     UserNotificationPreference,
 )
@@ -3257,3 +3262,337 @@ class NotificationPushResilienceTest(TestCase):
             consumers.notify_user(42, {'id': 7})
         self.assertEqual(sent['group'], 'user_42')
         self.assertEqual(sent['event'], {'type': 'notification', 'payload': {'id': 7}})
+
+
+# ============================================================================
+# DB-backed transport catalog (routes/schedules/drivers) — section 39
+# ============================================================================
+
+class TransportCatalogModelTest(TestCase):
+    """Driver / TransportRoute / BusSchedule — catalog rows and uniqueness."""
+
+    def setUp(self):
+        self.driver = Driver.objects.create(name='Test Driver', phone='+880 1712-000000')
+        self.route = TransportRoute.objects.create(
+            name='Route X: Test Loop', origin='A', destination='B',
+            capacity=10, fare='15.00', driver=self.driver,
+        )
+
+    def test_route_str_and_default_capacity(self):
+        self.assertEqual(str(self.route), 'Route X: Test Loop')
+        self.assertEqual(TransportRoute.objects.create(name='Route Y').capacity, 40)
+
+    def test_driver_str(self):
+        self.assertEqual(str(self.driver), 'Test Driver')
+
+    def test_schedule_unique_per_route(self):
+        BusSchedule.objects.create(route=self.route, departure_time='08:00 AM')
+        with self.assertRaises(IntegrityError):
+            BusSchedule.objects.create(route=self.route, departure_time='08:00 AM')
+
+    def test_inactive_routes_excluded_from_catalog(self):
+        inactive = TransportRoute.objects.create(name='Route Z: Retired', is_active=False)
+        from core.views import _transport_catalog
+        self.assertNotIn(inactive.pk, _transport_catalog())
+
+    def test_catalog_falls_back_to_legacy_constants_without_db_routes(self):
+        # With every DB route gone, the catalog resolves from TRANSPORT_ROUTES
+        # (legacy ids 1/2/3, 40-seat capacity) — pre-seed databases stay usable.
+        from core.views import _transport_catalog
+        TransportRoute.objects.all().delete()
+        catalog = _transport_catalog()
+        self.assertEqual(len(catalog), 3)
+        self.assertEqual(catalog[1]['route_name'], 'Route 1: Main Campus Loop')
+        self.assertEqual(catalog[2]['departure_time'], '09:30 AM')
+        self.assertEqual(catalog[1]['capacity'], 40)
+
+
+class TransportCatalogViewsTest(TestCase):
+    """transport_dashboard + book_transport read the DB catalog (no mocks)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='catalog_user', password='x12345678')
+        self.client.login(username='catalog_user', password='x12345678')
+        # A small route with its own capacity — exercises the per-route bound
+        # (the seeded 0013 routes are capacity 40).
+        self.driver = Driver.objects.create(name='Shuttle Driver')
+        self.route = TransportRoute.objects.create(
+            name='Route 9: Test Shuttle', origin='Campus', destination='Gate',
+            capacity=5, fare='10.00', driver=self.driver,
+        )
+        BusSchedule.objects.create(route=self.route, departure_time='07:00 AM')
+
+    def test_transport_page_renders_db_routes_and_drivers(self):
+        response = self.client.get(reverse('transport_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('transport-data', html)
+        self.assertIn('Route 9: Test Shuttle', html)
+        self.assertIn('Route 1: Main Campus Loop', html)  # seeded catalog
+        self.assertIn('Shuttle Driver', html)             # driver details
+
+    def test_book_transport_uses_route_capacity(self):
+        response = self.client.post(reverse('book_transport_ticket'), {
+            'route_id': str(self.route.pk), 'seat_number': '6',
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('between 1 and 5', response.json()['message'])
+
+    def test_book_transport_accepts_seat_within_capacity(self):
+        response = self.client.post(reverse('book_transport_ticket'), {
+            'route_id': str(self.route.pk), 'seat_number': '3',
+        })
+        self.assertEqual(response.status_code, 200)
+        booking = TransportBooking.objects.get(user=self.user)
+        self.assertEqual(booking.route_name, 'Route 9: Test Shuttle')
+        self.assertEqual(booking.departure_time, '07:00 AM')
+        self.assertEqual(booking.seat_number, 3)
+
+
+# ============================================================================
+# Medical consultation chat (persistent patient ↔ doctor threads)
+# ============================================================================
+
+class MedicalChatApiTest(TestCase):
+    """Threads — start, list scoping, messages, unread marking, access."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            username='chat_admin', password='x12345678', is_staff=True,
+        )
+        self.patient = User.objects.create_user(
+            username='S2001', password='x12345678', first_name='Rina', last_name='Akter',
+        )
+        StudentProfile.objects.create(user=self.patient, student_id='S2001', department='CSE')
+        self.other = User.objects.create_user(username='S2002', password='x12345678')
+        StudentProfile.objects.create(user=self.other, student_id='S2002', department='EEE')
+        self.appointment = MedicalAppointment.objects.create(
+            user=self.patient, doctor_name='Dr. Sarah Smith',
+            appointment_date='2026-09-01', time_slot='11:30', reason='Checkup',
+        )
+
+    def _start(self, client, appointment_id=None):
+        return client.post(reverse('api_medical_chat_start'), {
+            'appointment_id': str(appointment_id or self.appointment.pk),
+        })
+
+    def test_patient_starts_thread_for_own_appointment(self):
+        self.client.login(username='S2001', password='x12345678')
+        response = self._start(self.client)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['created'])
+        thread = MedicalChatThread.objects.get(appointment=self.appointment)
+        self.assertEqual(thread.patient, self.patient)
+        self.assertEqual(thread.doctor_name, 'Dr. Sarah Smith')
+
+    def test_start_is_idempotent(self):
+        self.client.login(username='S2001', password='x12345678')
+        self.assertEqual(self._start(self.client).status_code, 200)
+        second = self._start(self.client)
+        self.assertEqual(second.status_code, 200)
+        self.assertFalse(second.json()['created'])
+
+    def test_other_student_cannot_open_someone_elses_thread(self):
+        self.client.login(username='S2002', password='x12345678')
+        response = self._start(self.client)
+        self.assertEqual(response.status_code, 403)
+
+    def test_staff_can_start_thread_for_any_appointment(self):
+        self.client.login(username='chat_admin', password='x12345678')
+        response = self._start(self.client)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['created'])
+
+    def test_thread_list_scoped_to_patient(self):
+        self.client.login(username='S2001', password='x12345678')
+        self._start(self.client)
+        response = self.client.get(reverse('api_medical_chat_threads'))
+        self.assertEqual(response.status_code, 200)
+        threads = response.json()['threads']
+        self.assertEqual(len(threads), 1)
+        self.assertEqual(threads[0]['doctor_name'], 'Dr. Sarah Smith')
+        self.assertEqual(threads[0]['unread'], 0)
+
+    def test_staff_sees_all_threads(self):
+        self.client.login(username='S2001', password='x12345678')
+        self._start(self.client)
+        self.client.login(username='chat_admin', password='x12345678')
+        response = self.client.get(reverse('api_medical_chat_threads'))
+        self.assertEqual(len(response.json()['threads']), 1)
+
+    def test_messages_post_then_get_with_unread_marking(self):
+        self.client.login(username='S2001', password='x12345678')
+        thread_id = self._start(self.client).json()['thread']['id']
+        response = self.client.post(
+            reverse('api_medical_chat_messages', args=[thread_id]),
+            {'content': 'I have a fever.'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['message']['sender_id'], self.patient.pk)
+
+        # Staff fetches history → the patient's message is now marked read.
+        self.client.login(username='chat_admin', password='x12345678')
+        response = self.client.get(reverse('api_medical_chat_messages', args=[thread_id]))
+        self.assertEqual(response.status_code, 200)
+        messages = response.json()['messages']
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0]['content'], 'I have a fever.')
+        self.assertTrue(MedicalChatMessage.objects.get(thread_id=thread_id).is_read)
+
+    def test_empty_message_rejected(self):
+        self.client.login(username='S2001', password='x12345678')
+        thread_id = self._start(self.client).json()['thread']['id']
+        response = self.client.post(
+            reverse('api_medical_chat_messages', args=[thread_id]), {'content': '   '},
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_other_student_cannot_read_thread(self):
+        self.client.login(username='S2001', password='x12345678')
+        thread_id = self._start(self.client).json()['thread']['id']
+        self.client.login(username='S2002', password='x12345678')
+        response = self.client.get(reverse('api_medical_chat_messages', args=[thread_id]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_anonymous_threads_api_redirects_to_login(self):
+        response = self.client.get(reverse('api_medical_chat_threads'))
+        self.assertEqual(response.status_code, 302)
+
+
+class MedicalChatConsumerTest(TransactionTestCase):
+    """WebSocket chat consumer — membership checks + live message broadcast.
+
+    ``TransactionTestCase`` (not ``TestCase``) because the consumer reads/writes
+    through ``database_sync_to_async`` on a worker thread that must see the
+    fixture rows, which requires committed (not in-transaction) data.
+    """
+
+    def setUp(self):
+        self.patient = User.objects.create_user(username='chat_patient', password='x12345678')
+        self.other = User.objects.create_user(username='chat_other', password='x12345678')
+        self.staff = User.objects.create_user(
+            username='chat_staff', password='x12345678', is_staff=True,
+        )
+        self.appointment = MedicalAppointment.objects.create(
+            user=self.patient, doctor_name='Dr. Ahmed Khan',
+            appointment_date='2026-09-01', time_slot='10:00', reason='Follow-up',
+        )
+        self.thread = MedicalChatThread.objects.create(
+            appointment=self.appointment, patient=self.patient,
+            doctor_name='Dr. Ahmed Khan',
+        )
+
+    async def _open_socket(self, user, thread_id=None):
+        from channels.testing import WebsocketCommunicator
+        from core.consumers import MedicalChatConsumer
+        communicator = WebsocketCommunicator(
+            MedicalChatConsumer.as_asgi(),
+            '/ws/medical-chat/%s/' % (thread_id or self.thread.pk),
+        )
+        communicator.scope['user'] = user
+        communicator.scope['url_route'] = {
+            'kwargs': {'thread_id': str(thread_id or self.thread.pk)},
+        }
+        connected, _ = await communicator.connect()
+        return communicator, connected
+
+    async def test_patient_connects_to_own_thread(self):
+        communicator, connected = await self._open_socket(self.patient)
+        self.assertTrue(connected)
+        await communicator.disconnect()
+
+    async def test_staff_connects_to_any_thread(self):
+        communicator, connected = await self._open_socket(self.staff)
+        self.assertTrue(connected)
+        await communicator.disconnect()
+
+    async def test_other_patient_is_rejected(self):
+        communicator, connected = await self._open_socket(self.other)
+        self.assertFalse(connected)
+
+    async def test_anonymous_is_rejected(self):
+        communicator, connected = await self._open_socket(None)
+        self.assertFalse(connected)
+
+    async def test_message_persists_and_broadcasts(self):
+        communicator, connected = await self._open_socket(self.patient)
+        self.assertTrue(connected)
+        await communicator.send_json_to({'type': 'message', 'content': 'Hello doctor!'})
+        received = await communicator.receive_json_from()
+        self.assertEqual(received['content'], 'Hello doctor!')
+        self.assertEqual(received['sender_id'], self.patient.pk)
+        await communicator.disconnect()
+        from asgiref.sync import sync_to_async
+        message = await sync_to_async(MedicalChatMessage.objects.get)(thread=self.thread)
+        self.assertEqual(message.content, 'Hello doctor!')
+        # sender_id is the FK column (no extra query in async context)
+        self.assertEqual(message.sender_id, self.patient.pk)
+
+
+# ============================================================================
+# Medical live queue (staff) — section 39
+# ============================================================================
+
+class MedicalQueueApiTest(TestCase):
+    """Live staff queue API — FIFO ordering, counts, and access control."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            username='queue_admin', password='x12345678', is_staff=True,
+        )
+        self.student = User.objects.create_user(
+            username='Q1001', password='x12345678', first_name='Queue', last_name='Student',
+        )
+        StudentProfile.objects.create(user=self.student, student_id='Q1001', department='CSE')
+
+    def _book(self, day_offset=0, **overrides):
+        date = (timezone.now() + timedelta(days=day_offset)).date()
+        defaults = {
+            'user': self.student, 'doctor_name': 'Dr. Michael Chen',
+            'appointment_date': date.isoformat(), 'time_slot': '14:00',
+            'reason': 'Queue test',
+        }
+        defaults.update(overrides)
+        return MedicalAppointment.objects.create(**defaults)
+
+    def test_queue_lists_only_todays_pending_and_confirmed(self):
+        today = self._book()
+        self._book(day_offset=1)  # tomorrow — excluded
+        self._book(status='cancelled', time_slot='15:00')  # cancelled — excluded
+        self.client.login(username='queue_admin', password='x12345678')
+        data = self.client.get(reverse('api_medical_queue')).json()
+        self.assertEqual(data['counts']['total'], 1)
+        self.assertEqual(data['queue'][0]['id'], today.pk)
+        self.assertEqual(data['queue'][0]['position'], 1)
+        self.assertEqual(data['counts']['waiting'], 1)
+        self.assertEqual(data['counts']['in_consultation'], 0)
+
+    def test_queue_is_fifo(self):
+        first = self._book(time_slot='09:00')
+        second = self._book(time_slot='10:00')
+        self.client.login(username='queue_admin', password='x12345678')
+        data = self.client.get(reverse('api_medical_queue')).json()
+        self.assertEqual([q['id'] for q in data['queue']], [first.pk, second.pk])
+        self.assertEqual([q['position'] for q in data['queue']], [1, 2])
+
+    def test_queue_requires_staff(self):
+        self.client.login(username='Q1001', password='x12345678')
+        response = self.client.get(reverse('api_medical_queue'))
+        self.assertEqual(response.status_code, 302)
+
+    def test_status_change_notifies_other_staff_in_real_time(self):
+        other_staff = User.objects.create_user(
+            username='queue_other', password='x12345678', is_staff=True,
+        )
+        appointment = self._book()
+        self.client.login(username='queue_admin', password='x12345678')
+        with mock.patch('core.views.notify_user') as mock_push:
+            response = self.client.post(
+                reverse('api_appointment_status', args=[appointment.pk]),
+                {'status': 'confirmed'},
+                HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+            )
+        self.assertEqual(response.status_code, 200)
+        notice = Notification.objects.get(user=other_staff, category='medical')
+        self.assertIn('now Confirmed', notice.message)
+        self.assertTrue(mock_push.called)

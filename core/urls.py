@@ -72,5 +72,11 @@ urlpatterns = [
 
     # Official notices — publish from the System Admin dashboard
     path('api/notices/create/', views.create_notice, name='api_notices_create'),
+
+    # Medical consultation chat + live queue (patient ↔ doctor, real-time)
+    path('api/medical/chat/threads/', views.medical_chat_threads, name='api_medical_chat_threads'),
+    path('api/medical/chat/start/', views.medical_chat_start, name='api_medical_chat_start'),
+    path('api/medical/chat/<int:thread_id>/messages/', views.medical_chat_messages, name='api_medical_chat_messages'),
+    path('api/medical/queue/', views.medical_queue_api, name='api_medical_queue'),
 ]
 

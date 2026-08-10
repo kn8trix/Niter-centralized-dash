@@ -4,7 +4,8 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.db.models import Q
 from django.shortcuts import redirect, render
 
-from core.models import MedicalAppointment, StudentProfile
+from core.models import MedicalAppointment, MedicalChatThread, StudentProfile
+from core.views import _chat_thread_serialize as _serialize_chat_thread
 
 # Fallback catalog shown in the filter dropdown when no appointments exist yet.
 DOCTOR_NAMES = [
@@ -49,6 +50,24 @@ def _appointment_summaries(queryset, today):
     }
 
 
+def _serialize_queue(appointments):
+    """Shape today's pending/confirmed appointments into a numbered FIFO queue."""
+    items = []
+    for position, appointment in enumerate(appointments, start=1):
+        profile = getattr(appointment.user, 'student_profile', None)
+        items.append({
+            'position': position,
+            'id': appointment.pk,
+            'student_name': appointment.user.get_full_name() or appointment.user.username,
+            'student_id': getattr(profile, 'student_id', appointment.user.username),
+            'doctor': appointment.doctor_name,
+            'time': appointment.time_slot,
+            'status': appointment.status,
+            'status_label': appointment.get_status_display(),
+        })
+    return items
+
+
 def index(request):
     return redirect('host:medical_host_dashboard')
 
@@ -79,9 +98,18 @@ def medical_host_dashboard(request):
 
     appointments = [_serialize_appointment(a) for a in queryset]
 
+    # Live FIFO queue for today (pending + confirmed) — polled client-side for
+    # updates, and pushed to staff in real time via update_appointment_status.
+    queue = _serialize_queue(
+        MedicalAppointment.objects.filter(
+            appointment_date=today, status__in=['pending', 'confirmed'],
+        ).select_related('user').order_by('created_at', 'id')
+    )
+
     context = {
         'summaries': _appointment_summaries(base, today),
         'appointments': appointments,
+        'queue': queue,
         'search_query': request.GET.get('q', ''),
         'active_filter': active_filter,
     }
@@ -151,11 +179,14 @@ def medical_admin_dashboard(request):
     doctors_list = real_doctors or DOCTOR_NAMES
     departments = [code for code, _label in StudentProfile.DEPARTMENT_CHOICES]
 
-    # Mock panels that have no backing models yet.
-    chats = [
-        {'student_name': 'Alice Johnson', 'student_id': 'S1001', 'last_message': 'Please share the prescription details.', 'time': '10:15', 'status': 'Active'},
-        {'student_name': 'David Tennant', 'student_id': 'S1004', 'last_message': 'Waiting for doctor confirmation.', 'time': '09:40', 'status': 'Waiting'},
-        {'student_name': 'Eve Parker', 'student_id': 'S1005', 'last_message': 'Thanks, the guidance was helpful.', 'time': '08:20', 'status': 'Resolved'},
+    # Real consultation threads — created by patients/staff via the chat API
+    # (one thread per appointment, persisted in MedicalChatThread).
+    chat_threads = [
+        _serialize_chat_thread(thread, request.user)
+        for thread in MedicalChatThread.objects
+        .select_related('patient', 'appointment')
+        .prefetch_related('messages')
+        .order_by('-updated_at', '-id')[:30]
     ]
     doctors = [
         {'name': 'Dr. Ahmed Khan', 'specialty': 'General Physician', 'days': 'Sunday - Thursday', 'time': '10:00 AM - 2:00 PM', 'status': 'Available'},
@@ -189,7 +220,7 @@ def medical_admin_dashboard(request):
         'department_filter': department_filter,
         'doctor_filter': doctor_filter,
         'date_filter': date_filter,
-        'chats': chats,
+        'chat_threads': chat_threads,
         'doctors': doctors,
         'content_sections': content_sections,
         'home_page_sections': home_page_sections,

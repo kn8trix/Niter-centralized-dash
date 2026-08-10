@@ -831,3 +831,43 @@ table.matrix td:not(:first-child) {
         transition: none;
     }
 }
+
+/* ============================================================================
+   Medical consultation chat (staff/admin)
+   ============================================================================ */
+.chat-row {
+    cursor: pointer;
+}
+
+.chat-row:hover {
+    background: rgb(var(--color-chip) / 0.5);
+}
+
+.chat-bubble {
+    max-width: 78%;
+    padding: 10px 14px;
+    border-radius: 14px 14px 14px 4px;
+    background: rgb(var(--color-card));
+    border: 1px solid rgb(var(--color-border));
+}
+
+.chat-bubble-mine {
+    margin-left: auto;
+    border-radius: 14px 14px 4px 14px;
+    background: rgb(var(--color-accent));
+    border-color: transparent;
+}
+
+.chat-bubble-meta {
+    font-size: 10px;
+    color: rgb(var(--color-main) / 0.5);
+    margin-bottom: 3px;
+}
+
+.chat-bubble-text {
+    font-size: 14px;
+    color: rgb(var(--color-main));
+    line-height: 1.45;
+    word-break: break-word;
+    white-space: pre-wrap;
+}

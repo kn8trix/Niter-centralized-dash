@@ -419,6 +419,78 @@ class TransportBooking(models.Model):
         return '%s · seat %s' % (self.route_name, self.seat_number)
 
 
+class Driver(models.Model):
+    """A campus transport driver, assigned to a ``TransportRoute``."""
+
+    name = models.CharField(max_length=120)
+    phone = models.CharField(max_length=30, blank=True, default='')
+    license_number = models.CharField(max_length=50, blank=True, default='')
+    is_active = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class TransportRoute(models.Model):
+    """A DB-backed campus bus route (replaces the hardcoded ``TRANSPORT_ROUTES``).
+
+    Seat availability is derived from live ``TransportBooking`` rows against
+    ``capacity``; departure times live on the linked ``BusSchedule`` rows so a
+    route can run multiple trips a day.
+    """
+
+    name = models.CharField(max_length=150, unique=True)
+    origin = models.CharField(max_length=120, blank=True, default='')
+    destination = models.CharField(max_length=120, blank=True, default='')
+    capacity = models.PositiveIntegerField(
+        default=40,
+        help_text='Seats per bus — bounds the seat numbers book_transport accepts',
+    )
+    fare = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    driver = models.ForeignKey(
+        Driver,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='routes',
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class BusSchedule(models.Model):
+    """One departure time for a ``TransportRoute`` (multiple trips per day)."""
+
+    route = models.ForeignKey(
+        TransportRoute,
+        on_delete=models.CASCADE,
+        related_name='schedules',
+    )
+    departure_time = models.CharField(
+        max_length=50,
+        help_text='Display departure time, e.g. 08:00 AM',
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        # No duplicate departures for the same route. NO string ordering here:
+        # alphabetical sorting would put '01:00 PM' before '08:00 AM'. The
+        # catalog iterates schedules by id (insertion order) instead, so the
+        # first departure stays the seeded morning departure.
+        unique_together = ('route', 'departure_time')
+
+    def __str__(self):
+        return '%s @ %s' % (self.route.name, self.departure_time)
+
+
 class Department(models.Model):
     """An academic department whose directory card + detail hub are rendered
     live from the database (no mock data).
@@ -629,6 +701,75 @@ class MedicalAppointment(models.Model):
 
     def __str__(self):
         return '%s · %s %s' % (self.doctor_name, self.appointment_date, self.time_slot)
+
+
+class MedicalChatThread(models.Model):
+    """A persistent patient ↔ doctor consultation thread tied to an appointment.
+
+    One thread per appointment (``OneToOne``), so a consultation always has a
+    single message history. Messages are pushed over WebSockets
+    (``ws/medical-chat/<id>/``) via ``core.consumers.MedicalChatConsumer`` and
+    persisted as ``MedicalChatMessage`` rows.
+    """
+
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('closed', 'Closed'),
+    ]
+
+    appointment = models.OneToOneField(
+        MedicalAppointment,
+        on_delete=models.CASCADE,
+        related_name='chat_thread',
+    )
+    patient = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='medical_chat_threads',
+    )
+    doctor_name = models.CharField(max_length=100)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='open',
+        db_index=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return 'Thread #%s · %s × %s' % (self.pk, self.patient.username, self.doctor_name)
+
+
+class MedicalChatMessage(models.Model):
+    """One message inside a ``MedicalChatThread``."""
+
+    thread = models.ForeignKey(
+        MedicalChatThread,
+        on_delete=models.CASCADE,
+        related_name='messages',
+    )
+    sender = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='medical_chat_messages',
+    )
+    content = models.TextField()
+    is_read = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+        # Unread-count fast path: per-thread unseen messages, oldest first.
+        indexes = [
+            models.Index(fields=['thread', 'is_read']),
+        ]
+
+    def __str__(self):
+        return '%s: %s…' % (self.sender.username, self.content[:40])
 
 
 class PaymentTransaction(models.Model):

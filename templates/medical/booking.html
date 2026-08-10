@@ -161,6 +161,73 @@
 
         </div>
 
+        <!-- ============================================================
+             My Consultations (patient ↔ doctor chat, real-time WebSockets)
+        ============================================================ -->
+        {% if user.is_authenticated %}
+        <section class="consultations" data-component="card" data-widget="patient-consultations">
+            <div class="consultations-head">
+                <h2 class="section-title">My Consultations</h2>
+                <p class="section-subtitle">Chat with your doctor about a booked appointment — messages are saved for both sides.</p>
+            </div>
+
+            {% if my_appointments %}
+            <form id="consult-start" class="consult-start">
+                {% csrf_token %}
+                <select id="consult-appointment" class="field-select">
+                    <option value="">Choose an appointment to open a consultation…</option>
+                    {% for appointment in my_appointments %}
+                    <option value="{{ appointment.id }}">{{ appointment.doctor_name }} · {{ appointment.appointment_date }} · {{ appointment.time_slot }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="confirm-btn"><i class="fa-solid fa-comment-medical"></i> Start Consultation</button>
+            </form>
+            {% else %}
+            <p class="section-subtitle">Book an appointment first — a consultation thread opens against it.</p>
+            {% endif %}
+
+            <div id="consult-list" class="appt-list mt-4">
+                {% for thread in my_threads %}
+                <button type="button" class="appt-item w-full text-left" data-thread-id="{{ thread.id }}" data-doctor="{{ thread.doctor_name }}">
+                    <div class="appt-head">
+                        <div>
+                            <strong>Dr. {{ thread.doctor_name }}</strong>
+                            <span class="appt-spec">Consultation #{{ thread.id }} · {{ thread.get_status_display }}</span>
+                        </div>
+                        <span class="status-badge {% if thread.status == 'open' %}status-pending{% else %}status-confirmed{% endif %}">{{ thread.get_status_display }}</span>
+                    </div>
+                    {% with last=thread.messages.all|last %}
+                    <div class="appt-meta">
+                        <span><i class="fa-regular fa-message"></i> {{ last.content|default:"No messages yet — tap to open."|truncatechars:60 }}</span>
+                    </div>
+                    {% endwith %}
+                </button>
+                {% empty %}
+                <div class="appt-item">
+                    <div class="appt-head"><div><strong>No open consultations</strong><span class="appt-spec">Threads appear here once started.</span></div></div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Live chat window -->
+            <div id="consult-window" class="card mt-4" hidden>
+                <div class="consult-window-head">
+                    <div>
+                        <strong id="consult-title">Consultation</strong>
+                        <div class="appt-spec" id="consult-sub"></div>
+                    </div>
+                    <button type="button" id="consult-close" class="time-chip">Close</button>
+                </div>
+                <div id="consult-messages" class="consult-messages"></div>
+                <form id="consult-form" class="consult-form">
+                    {% csrf_token %}
+                    <input type="text" id="consult-input" class="field-input" placeholder="Type a message…" autocomplete="off">
+                    <button type="submit" class="confirm-btn"><i class="fa-solid fa-paper-plane"></i> Send</button>
+                </form>
+            </div>
+        </section>
+        {% endif %}
+
     </div>
 
     <script>
@@ -290,6 +357,118 @@
                 }
             });
         }
+
+        // ====================================================================
+        // My Consultations — persistent patient ↔ doctor chat (WebSockets)
+        // ====================================================================
+        (function () {
+            const listEl = document.getElementById('consult-list');
+            if (!listEl) return; // anonymous visitors don't get the section
+
+            const VIEWER_ID = {{ request.user.id|default:"0" }};
+            const START_URL = '{% url "api_medical_chat_start" %}';
+            const MSGS_BASE = '{% url "api_medical_chat_messages" 0 %}'.replace('/0/messages/', '/');
+            const windowEl = document.getElementById('consult-window');
+            const titleEl = document.getElementById('consult-title');
+            const subEl = document.getElementById('consult-sub');
+            const messagesEl = document.getElementById('consult-messages');
+            const formEl = document.getElementById('consult-form');
+            const inputEl = document.getElementById('consult-input');
+            let socket = null;
+            let activeThreadId = null;
+
+            function wsUrl(id) {
+                return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/medical-chat/' + id + '/';
+            }
+
+            function esc(value) {
+                const div = document.createElement('div');
+                div.textContent = value == null ? '' : String(value);
+                return div.innerHTML;
+            }
+
+            function bubble(m) {
+                const mine = m.sender_id === VIEWER_ID ? ' chat-bubble-mine' : '';
+                return '<div class="chat-bubble' + mine + '">' +
+                    '<div class="chat-bubble-meta">' + esc(m.sender_name) + ' · ' + esc(m.created_at) + '</div>' +
+                    '<div class="chat-bubble-text">' + esc(m.content) + '</div></div>';
+            }
+
+            function openThread(id, doctor) {
+                if (socket) { socket.close(); socket = null; }
+                activeThreadId = id;
+                titleEl.textContent = 'Consultation #' + id;
+                subEl.textContent = doctor || '';
+                windowEl.hidden = false;
+                messagesEl.innerHTML = '<p class="consult-empty">Loading messages…</p>';
+                fetch(MSGS_BASE + id + '/messages/')
+                    .then(r => r.json())
+                    .then(data => {
+                        messagesEl.innerHTML = '';
+                        (data.messages || []).forEach(m => messagesEl.insertAdjacentHTML('beforeend', bubble(m)));
+                        messagesEl.scrollTop = messagesEl.scrollHeight;
+                        socket = new WebSocket(wsUrl(id));
+                        socket.onmessage = (ev) => {
+                            messagesEl.insertAdjacentHTML('beforeend', bubble(JSON.parse(ev.data)));
+                            messagesEl.scrollTop = messagesEl.scrollHeight;
+                        };
+                        socket.onclose = () => { socket = null; };
+                    })
+                    .catch(() => {
+                        messagesEl.innerHTML = '<p class="consult-empty">Could not load messages.</p>';
+                    });
+            }
+
+            listEl.addEventListener('click', (e) => {
+                const row = e.target.closest('[data-thread-id]');
+                if (!row) return;
+                openThread(row.dataset.threadId, row.dataset.doctor);
+            });
+
+            const startForm = document.getElementById('consult-start');
+            if (startForm) {
+                startForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const appointmentId = document.getElementById('consult-appointment').value;
+                    if (!appointmentId) { showAlert('Choose an appointment first.', 'error'); return; }
+                    const resp = await fetch(START_URL, {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                        body: new URLSearchParams({ appointment_id: appointmentId }).toString(),
+                    });
+                    const body = await resp.json();
+                    if (resp.ok && body.thread) {
+                        openThread(body.thread.id, body.thread.doctor_name);
+                    } else {
+                        showAlert(body.message || 'Could not start the consultation.', 'error');
+                    }
+                });
+            }
+
+            formEl.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const text = inputEl.value.trim();
+                if (!text || !activeThreadId) return;
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ type: 'message', content: text }));
+                } else {
+                    // Non-WebSocket fallback — the POST endpoint broadcasts to the group.
+                    fetch(MSGS_BASE + activeThreadId + '/messages/', {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                        body: new URLSearchParams({ content: text }).toString(),
+                    }).catch(() => {});
+                }
+                inputEl.value = '';
+            });
+
+            document.getElementById('consult-close').addEventListener('click', () => {
+                if (socket) socket.close();
+                socket = null;
+                activeThreadId = null;
+                windowEl.hidden = true;
+            });
+        })();
     </script>
 </body>
 </html>

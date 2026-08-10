@@ -204,23 +204,47 @@
             <div class="mb-4 flex items-center justify-between gap-3">
                 <div>
                     <h3 class="text-lg font-semibold text-main">Medical Chat Management</h3>
-                    <p class="text-sm text-main/60">Monitor student conversations and follow up where needed.</p>
+                    <p class="text-sm text-main/60">Persistent patient–doctor consultation threads — click a thread to open it.</p>
                 </div>
                 <span class="rounded-full bg-accent px-3 py-1 text-xs font-medium text-main">Admin-only</span>
             </div>
-            <div class="space-y-3">
-                {% for chat in chats %}
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border border-border bg-base px-4 py-3">
-                    <div>
-                        <div class="font-medium text-main">{{ chat.student_name }} <span class="text-xs text-main/50">({{ chat.student_id }})</span></div>
-                        <div class="text-sm text-main/60">{{ chat.last_message }}</div>
-                    </div>
-                    <div class="text-left sm:text-right text-sm">
-                        <div class="text-main/60">{{ chat.time }}</div>
-                        <div class="rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-main">{{ chat.status }}</div>
-                    </div>
-                </div>
+
+            <div id="chat-list" class="space-y-3">
+                {% for thread in chat_threads %}
+                <button type="button" data-thread-id="{{ thread.id }}" data-patient="{{ thread.patient_name }}" data-doctor="{{ thread.doctor_name }}"
+                        class="chat-row flex w-full flex-col gap-2 rounded-xl border border-border bg-base px-4 py-3 text-left transition-colors hover:border-accent sm:flex-row sm:items-center sm:justify-between">
+                    <span class="min-w-0">
+                        <span class="block font-medium text-main">{{ thread.patient_name }} <span class="text-xs text-main/50">({{ thread.patient_id }})</span></span>
+                        <span class="block truncate text-sm text-main/60">{{ thread.last_message|default:"No messages yet — open to start the consultation." }}</span>
+                    </span>
+                    <span class="flex shrink-0 items-center gap-2 text-sm">
+                        <span class="text-main/50">{{ thread.doctor_name }} · {{ thread.last_time|default:"—" }}</span>
+                        {% if thread.unread %}
+                        <span class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600">{{ thread.unread }} new</span>
+                        {% endif %}
+                        <span class="rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-main">{{ thread.status_label }}</span>
+                    </span>
+                </button>
+                {% empty %}
+                <div class="rounded-xl border border-border bg-base px-4 py-3 text-sm text-main/60">No consultation threads yet — threads open when a student or staff member starts a chat for an appointment.</div>
                 {% endfor %}
+            </div>
+
+            <!-- Live chat window (opens per thread; messages flow over WebSockets) -->
+            <div id="chat-window" class="mt-4 hidden rounded-2xl border border-border">
+                <div class="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+                    <div>
+                        <div id="chat-window-title" class="font-semibold text-main">Consultation</div>
+                        <div id="chat-window-sub" class="text-xs text-main/50"></div>
+                    </div>
+                    <button type="button" id="chat-close" class="rounded-lg border border-border px-2.5 py-1 text-xs text-main/70 hover:text-main">Close</button>
+                </div>
+                <div id="chat-messages" class="max-h-80 space-y-2 overflow-y-auto bg-base px-4 py-3"></div>
+                <form id="chat-form" class="flex items-center gap-2 border-t border-border px-4 py-3">
+                    {% csrf_token %}
+                    <input id="chat-input" type="text" autocomplete="off" placeholder="Type a reply…" class="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent">
+                    <button type="submit" class="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-main">Send</button>
+                </form>
             </div>
         </div>
 
@@ -275,4 +299,104 @@
         </div>
     </div>
 </div>
+{{ request.user.id|json_script:"chat-viewer-id" }}
+<script>
+(function () {
+    // Persistent patient–doctor consultation chat (WebSockets, per-thread groups).
+    const VIEWER_ID = JSON.parse(document.getElementById('chat-viewer-id').textContent);
+    const MSGS_BASE = '{% url "api_medical_chat_messages" 0 %}'.replace('/0/messages/', '/');
+
+    const listEl = document.getElementById('chat-list');
+    const windowEl = document.getElementById('chat-window');
+    const titleEl = document.getElementById('chat-window-title');
+    const subEl = document.getElementById('chat-window-sub');
+    const messagesEl = document.getElementById('chat-messages');
+    const formEl = document.getElementById('chat-form');
+    const inputEl = document.getElementById('chat-input');
+    let socket = null;
+    let activeThreadId = null;
+
+    function getCookie(name) {
+        if (!document.cookie || document.cookie === '') return null;
+        for (const part of document.cookie.split(';')) {
+            const pair = part.trim();
+            if (pair.startsWith(name + '=')) return decodeURIComponent(pair.slice(name.length + 1));
+        }
+        return null;
+    }
+
+    function esc(value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+
+    function wsUrl(id) {
+        return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/medical-chat/' + id + '/';
+    }
+
+    function bubble(m) {
+        const mine = m.sender_id === VIEWER_ID ? ' chat-bubble-mine' : '';
+        return '<div class="chat-bubble' + mine + '">' +
+            '<div class="chat-bubble-meta">' + esc(m.sender_name) + ' · ' + esc(m.created_at) + '</div>' +
+            '<div class="chat-bubble-text">' + esc(m.content) + '</div></div>';
+    }
+
+    function openThread(id, title, doctor) {
+        if (socket) { socket.close(); socket = null; }
+        activeThreadId = id;
+        titleEl.textContent = title;
+        subEl.textContent = doctor || '';
+        windowEl.classList.remove('hidden');
+        messagesEl.innerHTML = '<p class="text-xs text-main/50">Loading messages…</p>';
+
+        fetch(MSGS_BASE + id + '/messages/')
+            .then(r => r.json())
+            .then(data => {
+                messagesEl.innerHTML = '';
+                (data.messages || []).forEach(m => messagesEl.insertAdjacentHTML('beforeend', bubble(m)));
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+                socket = new WebSocket(wsUrl(id));
+                socket.onmessage = (ev) => {
+                    messagesEl.insertAdjacentHTML('beforeend', bubble(JSON.parse(ev.data)));
+                    messagesEl.scrollTop = messagesEl.scrollHeight;
+                };
+                socket.onclose = () => { socket = null; };
+            })
+            .catch(() => {
+                messagesEl.innerHTML = '<p class="text-xs text-red-600">Could not load messages.</p>';
+            });
+    }
+
+    listEl.addEventListener('click', (e) => {
+        const row = e.target.closest('[data-thread-id]');
+        if (!row) return;
+        openThread(row.dataset.threadId, row.dataset.patient, row.dataset.doctor);
+    });
+
+    formEl.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const text = inputEl.value.trim();
+        if (!text || !activeThreadId) return;
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'message', content: text }));
+        } else {
+            // Non-WebSocket fallback — the POST endpoint broadcasts to the group.
+            fetch(MSGS_BASE + activeThreadId + '/messages/', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                body: new URLSearchParams({ content: text }).toString(),
+            }).catch(() => {});
+        }
+        inputEl.value = '';
+    });
+
+    document.getElementById('chat-close').addEventListener('click', () => {
+        if (socket) socket.close();
+        socket = null;
+        activeThreadId = null;
+        windowEl.classList.add('hidden');
+    });
+})();
+</script>
 {% endblock %}

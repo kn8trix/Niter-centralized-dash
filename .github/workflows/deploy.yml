@@ -1,0 +1,58 @@
+name: Deploy
+
+# Automated production deployment on push to `main`.
+#
+# Flow: tests already passed on this commit (CI) → SSH into the production
+# server → git pull → install deps → migrate → collectstatic → reload the
+# gunicorn/daphne service (scripts/deploy.sh on the server).
+#
+# No-op until the repository secrets below are configured in
+# Settings → Secrets and variables → Actions:
+#   DEPLOY_HOST   — production server hostname/IP
+#   DEPLOY_USER   — SSH user (must have an authorized deploy key)
+#   DEPLOY_KEY    — private SSH key (add the public half to ~/.ssh/authorized_keys)
+#   DEPLOY_PORT   — SSH port (optional, defaults to 22)
+#   DEPLOY_PATH   — absolute path of the app checkout on the server
+#
+# The reload targets a systemd unit whose name matches the repo (override via
+# the DEPLOY_SERVICE_NAME secret). Example unit:
+#   [Service]
+#   WorkingDirectory=<DEPLOY_PATH>
+#   ExecStart=<DEPLOY_PATH>/venv/bin/daphne -b 127.0.0.1 -p 8000 config.asgi:application
+#   Restart=always
+#   User=<DEPLOY_USER>
+#
+# NOTE: if the live service is Render (render.yaml Blueprint), Render already
+# auto-deploys on push — this workflow is for a self-hosted gunicorn/daphne
+# server and simply skips when DEPLOY_HOST is not configured.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run remote deploy script
+        if: secrets.DEPLOY_HOST != ''
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            set -e
+            echo "==> Pulling latest main"
+            cd ${{ secrets.DEPLOY_PATH }}
+            git pull --ff-only origin main
+            echo "==> Running versioned deploy script (migrate + collectstatic + reload)"
+            bash scripts/deploy.sh

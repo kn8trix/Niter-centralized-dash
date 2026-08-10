@@ -138,6 +138,9 @@
     <!-- Toast -->
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+    <!-- Live route catalog from the DB (TransportRoute + BusSchedule + Driver) -->
+    {{ routes|json_script:"transport-data" }}
+
     <script>
         // ====================================================================
         // Backend wiring
@@ -149,26 +152,15 @@
         const LOGIN_URL = '{% url "login" %}';
         const CHECKOUT_URL = '{% url "checkout" %}';
 
-        const ROUTES = [
-            {
-                id: 1, name: 'Route 1: Campus → Town Center', dest: 'Campus Main Gate → Town Center Bus Stand',
-                driver: 'Abdul Karim', phone: '+880 1712-345601',
-                departures: ['8:00 AM', '1:00 PM', '5:00 PM'],
-                total: 40, booked: 12, status: 'On Time', dot: 'dot-green',
-            },
-            {
-                id: 2, name: 'Route 2: Campus → Savar Bazar', dest: 'Campus Main Gate → Savar Bazar',
-                driver: 'Rashed Mia', phone: '+880 1712-345602',
-                departures: ['9:00 AM', '3:00 PM'],
-                total: 40, booked: 25, status: 'In Transit', dot: 'dot-blue',
-            },
-            {
-                id: 3, name: 'Route 3: Campus → Dhaka (Mirpur)', dest: 'Campus Main Gate → Mirpur 10',
-                driver: 'Faruk Hossain', phone: '+880 1712-345603',
-                departures: ['7:30 AM', '5:00 PM'],
-                total: 40, booked: 37, status: 'Arriving in 10 mins', dot: 'dot-amber',
-            },
-        ];
+        // Live route catalog from the backend (DB rows — routes, schedules,
+        // drivers, and current booked-seat counts). Empty until the server
+        // provides data; all rendering below guards against an empty list.
+        let ROUTES = [];
+        try {
+            ROUTES = JSON.parse(document.getElementById('transport-data').textContent) || [];
+        } catch (err) {
+            ROUTES = [];
+        }
 
         // Deterministic PRNG for seat booking / QR patterns
         function seeded(seed) {
@@ -187,7 +179,7 @@
         // ====================================================================
         // State
         // ====================================================================
-        let selectedRouteId = 1;
+        let selectedRouteId = ROUTES.length ? ROUTES[0].id : null;
         let selectedTime = null;
         let selectedSeat = null;
 
@@ -215,6 +207,10 @@
             return ROUTES.find(r => r.id === selectedRouteId);
         }
 
+        function emptyCatalog() {
+            return ROUTES.length === 0;
+        }
+
         function seatsLeft(route) {
             return route.total - route.booked;
         }
@@ -229,17 +225,28 @@
         // ====================================================================
         // Rendering
         // ====================================================================
+        function renderEmpty(message) {
+            trackerEl.innerHTML = '';
+            routesGrid.innerHTML = `<p class="section-subtitle">${message}</p>`;
+            routeSelect.innerHTML = '<option value="">No routes available</option>';
+            timeChipsEl.innerHTML = '';
+            seatGridEl.innerHTML = '<p class="section-subtitle">No route selected.</p>';
+            bookBtn.disabled = true;
+        }
+
         function renderTracker() {
+            if (!ROUTES.length) return renderEmpty('No active routes right now — check back soon.');
             trackerEl.innerHTML = ROUTES.map(r => `
                 <span class="tracker-item">
                     <span class="status-dot ${r.dot}"></span>
                     <i class="fa-solid fa-bus"></i>
-                    Route ${r.id}: ${r.status}
+                    ${r.name}: ${r.status}
                 </span>
             `).join('');
         }
 
         function renderRoutes() {
+            if (!ROUTES.length) return;
             routesGrid.innerHTML = ROUTES.map(r => `
                 <article class="route-card">
                     <div class="route-card-head">
@@ -258,6 +265,7 @@
         }
 
         function renderRouteSelect() {
+            if (!ROUTES.length) return;
             routeSelect.innerHTML = ROUTES.map(r =>
                 `<option value="${r.id}" ${r.id === selectedRouteId ? 'selected' : ''}>${r.name}</option>`
             ).join('');
@@ -265,6 +273,7 @@
 
         function renderTimeChips() {
             const route = currentRoute();
+            if (!route) return;
             if (!route.departures.includes(selectedTime)) selectedTime = route.departures[0];
             timeChipsEl.innerHTML = route.departures.map(t =>
                 `<button type="button" class="time-chip ${t === selectedTime ? 'selected' : ''}" data-time="${t}" aria-pressed="${t === selectedTime}">${t}</button>`
@@ -273,6 +282,7 @@
 
         function renderSeats() {
             const route = currentRoute();
+            if (!route) return;
             const booked = route.bookedSet;
             seatGridEl.innerHTML = Array.from({ length: route.total }, (_, i) => {
                 const num = i + 1;
@@ -390,6 +400,7 @@
 
         // Book Seat → confirm via /book-transport/ → boarding pass from the API.
         bookBtn.addEventListener('click', async () => {
+            if (emptyCatalog()) { showToast('No routes are available right now.'); return; }
             if (selectedSeat === null) { showToast('Please select a seat first.'); return; }
             if (seatsLeft(currentRoute()) <= 0) { showToast('This bus is fully booked.'); return; }
 

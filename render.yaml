@@ -1,0 +1,80 @@
+# Render Blueprint — Niter Centralized Dash
+#
+# One-click deploy: push this file to GitHub and create a Blueprint from the
+# Render dashboard (New + -> Blueprint), or run `render blueprint launch`.
+#
+# Resources provisioned:
+#   1. Web Service  - Python runtime, Daphne ASGI (HTTP + WebSockets)
+#   2. PostgreSQL   - managed database, wired to DATABASE_URL
+#   3. Redis        - managed Key Value, wired to REDIS_URL (Channels layer)
+#
+# NOTE: `runtime: python` is the current field name - the older `env: python`
+# was deprecated by Render. The plan is `free`; switch to `starter`/`standard`
+# for always-on uptime (free services spin down after 15 min of inactivity).
+#
+# Custom domain: niter.edu.bd is attached to the web service below. Render
+# auto-provisions Let's Encrypt TLS for it — before launching the Blueprint,
+# point the domain's DNS at Render (CNAME -> <service>.onrender.com, or
+# A/AAAA -> Render's IPs). The www subdomain is handled automatically by
+# Render (redirect to the root) and both hosts are in ALLOWED_HOSTS via
+# config/settings.py's RENDER auto-config.
+
+services:
+  - type: web
+    name: niter-centralized-dash
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: ./build.sh
+    startCommand: daphne -b 0.0.0.0 -p $PORT config.asgi:application
+    healthCheckPath: /
+    # autoDeployTrigger: commit   # (default) redeploy on every push to main
+    # Custom domain — Let's Encrypt cert is provisioned automatically once DNS
+    # points at Render (CNAME -> <service>.onrender.com). Remove if not live yet.
+    domains:
+      - niter.edu.bd
+    envVars:
+      # Pin the Python version used by Render's build image.
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      # Production hardening - never turn this on in production.
+      - key: DEBUG
+        value: "false"
+      # Render generates and stores a random SECRET_KEY for this service.
+      - key: SECRET_KEY
+        generateValue: true
+      # Managed PostgreSQL connection string (django-environ DATABASE_URL).
+      - key: DATABASE_URL
+        fromDatabase:
+          name: niter-centralized-dash-db
+          property: connectionString
+      # Managed Redis connection string - Django Channels channel layer.
+      # Same region/workspace => private-network URL is used automatically.
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: niter-centralized-dash-redis
+          property: connectionString
+      # NOTE: ALLOWED_HOSTS / CSRF_TRUSTED_ORIGINS are intentionally NOT set
+      # here. config/settings.py auto-appends the platform domain AND the
+      # custom domain (niter.edu.bd + www) whenever RENDER=true (set by the
+      # platform). Any additional domains go in these env vars in THIS file
+      # so Blueprint syncs keep them in sync.
+
+  # Managed Redis for Django Channels WebSocket broadcasting.
+  # `type: redis` is the documented alias for Render's `keyvalue` service type.
+  # ipAllowList: [] -> no public access; the web service connects over Render's
+  # private network (connectionString resolves to the internal URL).
+  - type: redis
+    name: niter-centralized-dash-redis
+    plan: free
+    maxmemoryPolicy: noeviction
+    ipAllowList: []
+
+# Managed PostgreSQL (renders as a database resource named niter-centralized-dash-db).
+# Free plan: 1 GB storage, expires 30 days after creation unless upgraded.
+databases:
+  - name: niter-centralized-dash-db
+    plan: free
+    databaseName: niter
+    user: niter

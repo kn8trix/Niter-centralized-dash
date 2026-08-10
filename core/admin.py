@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    BusSchedule,
     ClassRoutine,
     Club,
     ClubEvent,
@@ -9,10 +10,13 @@ from .models import (
     Course,
     CourseMaterial,
     Department,
+    Driver,
     EditablePage,
     FacultyMember,
     GoogleUserToken,
     MedicalAppointment,
+    MedicalChatMessage,
+    MedicalChatThread,
     MealSubscription,
     MealTicket,
     Notice,
@@ -20,6 +24,7 @@ from .models import (
     PageTemplate,
     PaymentTransaction,
     TransportBooking,
+    TransportRoute,
     UserNote,
     UserNotificationPreference,
 )
@@ -129,6 +134,33 @@ class TransportBookingAdmin(admin.ModelAdmin):
     list_select_related = ('user',)
 
 
+class BusScheduleInline(admin.TabularInline):
+    """Manage a route's departure times directly under the route form."""
+
+    model = BusSchedule
+    extra = 1
+
+
+@admin.register(Driver)
+class DriverAdmin(admin.ModelAdmin):
+    """Campus transport drivers assigned to routes."""
+
+    list_display = ('name', 'phone', 'license_number', 'is_active')
+    list_filter = ('is_active',)
+    search_fields = ('name', 'phone', 'license_number')
+
+
+@admin.register(TransportRoute)
+class TransportRouteAdmin(admin.ModelAdmin):
+    """DB-backed bus routes with per-route capacity, driver, and schedules."""
+
+    list_display = ('name', 'origin', 'destination', 'capacity', 'fare', 'driver', 'is_active')
+    list_filter = ('is_active', 'driver')
+    search_fields = ('name', 'origin', 'destination')
+    list_select_related = ('driver',)
+    inlines = [BusScheduleInline]
+
+
 @admin.register(MedicalAppointment)
 class MedicalAppointmentAdmin(admin.ModelAdmin):
     """Manage doctor appointment slots and statuses."""
@@ -137,6 +169,28 @@ class MedicalAppointmentAdmin(admin.ModelAdmin):
     list_filter = ('status', 'doctor_name', 'appointment_date')
     search_fields = ('doctor_name', 'user__username', 'reason')
     list_select_related = ('user',)
+
+
+@admin.register(MedicalChatThread)
+class MedicalChatThreadAdmin(admin.ModelAdmin):
+    """Patient ↔ doctor consultation threads (one per appointment)."""
+
+    list_display = ('id', 'patient', 'doctor_name', 'status', 'updated_at')
+    list_filter = ('status', 'updated_at')
+    search_fields = ('patient__username', 'patient__email', 'doctor_name')
+    list_select_related = ('patient', 'appointment')
+    readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(MedicalChatMessage)
+class MedicalChatMessageAdmin(admin.ModelAdmin):
+    """Messages inside consultation threads."""
+
+    list_display = ('thread', 'sender', 'is_read', 'created_at')
+    list_filter = ('is_read', 'created_at')
+    search_fields = ('content', 'sender__username', 'thread__doctor_name')
+    list_select_related = ('thread', 'sender')
+    readonly_fields = ('created_at',)
 
 
 @admin.register(Department)

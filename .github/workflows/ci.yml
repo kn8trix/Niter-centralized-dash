@@ -1,0 +1,49 @@
+name: CI
+
+# Runs the Django system check + full test suite on every pull request to
+# `main` and on every push to `main` (so the deploy job below never ships a
+# broken commit). Tests run against SQLite with the in-memory channel layer,
+# matching local development.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Check & test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Django system check
+        run: python manage.py check
+        env:
+          DEBUG: "true"
+          SECRET_KEY: ci-check-key
+
+      - name: Run test suite
+        run: python manage.py test
+        env:
+          DEBUG: "true"
+          SECRET_KEY: ci-test-key

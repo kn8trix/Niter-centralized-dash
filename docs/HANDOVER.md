@@ -492,12 +492,16 @@ CSRF_COOKIE_SECURE=True
 - **Dashboard live widgets** — meal ratio, transport seats, medical availability + feeds computed from the database
 - **Notes Engine AI actions** — server-side save / summarize / keywords / export (.txt + PDF)
 - **Deployment** — env-driven settings (django-environ), `DEBUG=False` + `ALLOWED_HOSTS` from env, WhiteNoise static, `channels_redis` with offline fallback, `check --deploy` clean
+- **Render Blueprint (§38)** — `render.yaml` one-click PaaS deploy (web + Postgres + Redis), `build.sh`, auto `ALLOWED_HOSTS`/CSRF for `.onrender.com`
+- **CI/CD (§39)** — GitHub Actions: full test suite on PRs to `main`, SSH auto-deploy on push to `main`
+- **DB transport catalog (§39)** — `Driver`/`TransportRoute`/`BusSchedule` models + seed; transport page/widget/booking read the DB
+- **Medical chat + live queue (§39)** — persistent `MedicalChatThread`/`MedicalChatMessage` with a WebSocket consumer; FIFO staff queue API with real-time pushes
 
 ### Remaining (LOW priority)
 
-1. **LOW — Transport live status / route catalog**: `TRANSPORT_ROUTES` is still a hardcoded catalog constant and the "Live Bus Status" tracker is mock — move to DB-backed routes + a status endpoint for real-time seat availability.
-2. **LOW — Cafeteria kitchen inventory + System Admin driver/scan tables**: still mock forms — needs inventory/driver/scan models + staff CRUD.
-3. **LOW — Medical admin chat/doctor-schedule/content sections**: mock (see 4.9) — needs models + staff CRUD.
+1. **~~LOW — Transport live status / route catalog~~ — DONE in §39**: `TRANSPORT_ROUTES` is replaced by DB models (`TransportRoute`/`BusSchedule`/`Driver`); the transport page, dashboard widget, and booking handler read live seat counts and driver details from the database.
+2. **LOW — Cafeteria kitchen inventory + System Admin driver/scan tables**: still mock forms — needs inventory/scan models + staff CRUD (drivers themselves now live in the DB via `Driver`).
+3. **~~LOW — Medical admin chat~~ — DONE in §39**: persistent patient–doctor consultation threads (models + REST + WebSockets). The doctor-schedule and content-management panels in the admin dashboard remain mock.
 4. **LOW — Research AI persisted threads & real LLM**: `/api/research/query/` is deterministic server-side (no external AI calls); persisted thread history + an actual LLM integration would be the next step.
 5. **LOW — Media at scale**: media is served by Django — swap to django-storages/CDN if uploads grow (noted in `.env.example`).
 
@@ -1409,3 +1413,146 @@ Full suite: **320 tests pass**; `manage.py check` and `check --deploy` clean; al
 - `dashboard` transport widget collapsed from a per-route COUNT loop to **one grouped query**; the medical widget uses a single `values_list` for both the booked count and on-duty doctor set. `profile`/`departments`/`clubs` were already N+1-free (`select_related`/`prefetch_related`/grouped aggregates).
 
 **Verification:** `collectstatic` (147 files), `manage.py check` + `check --deploy` clean, **320 tests pass**. Live E2E confirmed: pages/static/media 200 in dev; HTTP→HTTPS 301 in production mode; Redis fallback; fail-closed `SECRET_KEY`; join-club + checkout + notes + research flows round-trip over real HTTP (all verification data cleaned up, server stopped).
+
+---
+
+## 38. Production Deployment — Render (render.yaml Blueprint)
+
+**Date:** 10 August 2026  
+**Branch:** main  
+
+### Overview
+
+The app is packaged for one-click deployment on **Render** via a Blueprint (`render.yaml`). Render provisions the web service, a managed PostgreSQL database, and a managed Redis (Key Value) instance — everything is wired together with environment variables, so no separate nginx/systemd/certbot setup is needed (Render terminates TLS automatically at `https://<service>.onrender.com`).
+
+### Files Added / Modified
+
+| File | Purpose |
+| :--- | :--- |
+| `render.yaml` | Blueprint: web service (Python/Daphne), managed Postgres, managed Redis |
+| `build.sh` | Render build command (executable): pip install → collectstatic → migrate |
+| `config/settings.py` | Render auto-config: `ALLOWED_HOSTS` + `CSRF_TRUSTED_ORIGINS` when `RENDER=true` |
+| `requirements.txt` | Added `psycopg2-binary>=2.9.9` (Postgres driver for `DATABASE_URL`) |
+
+### `render.yaml` Blueprint
+
+- **Web Service** (`type: web`, `runtime: python` — the modern replacement for the deprecated `env: python` field):
+  - `buildCommand: ./build.sh`  
+  - `startCommand: daphne -b 0.0.0.0 -p $PORT config.asgi:application` — Daphne serves both HTTP and WebSockets (`ws/notifications/`) on Render's injected `$PORT` (default `10000`).
+  - `healthCheckPath: /` (homepage renders without DB reads — a safe liveness probe).
+  - `domains: [niter.edu.bd]` — the production custom domain is attached in the Blueprint (Render auto-provisions Let's Encrypt TLS and the `www` redirect; point the domain's DNS at Render before launching).
+  - Env vars: `PYTHON_VERSION: 3.12.3`, `DEBUG: false`, `SECRET_KEY` (`generateValue: true` — Render stores a random secret), `DATABASE_URL` (`fromDatabase`), `REDIS_URL` (`fromService`, type `redis`). `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS` are intentionally **not** set — the settings auto-config below fills in `.onrender.com` **and** `niter.edu.bd` (keeping Blueprint syncs from clobbering dashboard-set values).
+- **PostgreSQL** (`databases:`): `niter-centralized-dash-db`, plan `free` (`databaseName: niter`, `user: niter`).
+- **Redis** (`type: redis` — the documented alias for Render's `keyvalue` service): `niter-centralized-dash-redis`, plan `free`, `maxmemoryPolicy: noeviction`, `ipAllowList: []` (no public access — the web service uses Render's private network, so `connectionString` resolves to the internal `redis://` URL; TLS cert issues are avoided entirely).
+
+### `build.sh`
+
+```bash
+#!/usr/bin/env bash
+set -o errexit
+python -m pip install -r requirements.txt
+python manage.py collectstatic --noinput
+python manage.py migrate
+```
+
+### Settings Changes (`config/settings.py`)
+
+Render injects `RENDER=true` for every service. When present, the app **appends** the platform host `.onrender.com`, the production custom domain `niter.edu.bd` (+ `www.`), and `localhost`/`127.0.0.1` to `ALLOWED_HOSTS`; `CSRF_TRUSTED_ORIGINS` gets `https://*.onrender.com` plus `https://niter.edu.bd` / `https://www.niter.edu.bd`. The block only ever **appends** — env-provided hosts still pass through untouched. Non-Render environments (local dev/tests) are unaffected. Verified: `RENDER=true` → `ALLOWED_HOSTS=['.onrender.com','niter.edu.bd','www.niter.edu.bd','localhost','127.0.0.1']`, `CSRF_TRUSTED_ORIGINS=['https://*.onrender.com','https://niter.edu.bd','https://www.niter.edu.bd']`; without `RENDER` → unchanged.
+
+WhiteNoise (`CompressedStaticFilesStorage`, middleware) already serves collected static in production — no changes needed; `build.sh` runs `collectstatic` so `staticfiles/` is fresh on every deploy.
+
+### Deploying (First Launch)
+
+1. Commit and push `render.yaml` + `build.sh` (plus the settings/requirements changes) to the GitHub repo (`kn8trix/Niter-centralized-dash`).
+2. In the Render dashboard: **New + → Blueprint → select the repo** → Render validates the Blueprint and creates all three resources.
+3. First deploy runs `build.sh`: pip install → collectstatic → migrate (seeded departments/clubs come via migration `0009`).
+4. Open `https://niter-centralized-dash.onrender.com`. Create the admin with `python manage.py createsuperuser` — easiest via a one-off command in the Render **Shell** tab, or temporarily via `DJANGO_SUPERUSER_*` env vars + `createsuperuser --noinput`.
+
+### Custom Domain (`niter.edu.bd`)
+
+- Already attached via `domains: [niter.edu.bd]` in `render.yaml` — Render provisions Let's Encrypt TLS automatically (no certbot), and `www.niter.edu.bd` redirects to the root.
+- Before the Blueprint launches, point the domain's DNS at Render: `CNAME niter.edu.bd → niter-centralized-dash.onrender.com` (or `A/AAAA` records to Render's IPs).
+- Hosts + CSRF origins are handled by the settings auto-config — no env vars needed. To add *further* domains later, extend `domains:` in `render.yaml` AND add them to the `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS` env vars in the same file so Blueprint syncs keep them in sync.
+
+### Free-Tier Caveats (plan: free)
+
+- Web services **spin down after 15 min of inactivity** (next request takes ~1 min to cold-start). Use `starter`/`standard` for always-on.
+- Free Postgres **expires 30 days after creation** (1 GB cap, one per workspace) — upgrade before then or migrate data off.
+- Free web services share 750 instance hours/month per workspace.
+- WebSockets are supported on the free plan, but connections drop when the instance spins down — the notification JS should reconnect (the current UI polls `/api/notifications/` as a fallback).
+
+### Verification (local, before deploy)
+
+- `python manage.py check` — no issues  
+- `python manage.py check --deploy` — clean under a production env (only the expected warnings from a throwaway test `SECRET_KEY` / empty hosts)  
+- `python manage.py test` — **349 tests, OK** (includes the channel-layer fallback resilience tests)  
+- `python manage.py collectstatic --noinput` — 147 files post-processed (WhiteNoise compression)  
+- `RENDER=true` settings probe — auto-host/CSRF config confirmed working
+
+---
+
+## 39. Production Systems Round-Up: DB Transport Catalog, Medical Chat & Live Queue, CI/CD
+
+**Date:** 10 August 2026  
+**Branch:** main  
+
+### 1. Dynamic Transport Catalog & Driver Management
+
+Replaced the hardcoded `TRANSPORT_ROUTES` catalog with real database models (migrations `0012` schema + `0013` seed + `0014` ordering fix):
+
+- **`Driver`** — name, phone, license number, active flag.
+- **`TransportRoute`** — name (unique), origin/destination, **per-route capacity**, fare, driver FK, active flag.
+- **`BusSchedule`** — one departure time per route (a route runs several trips/day; unique per route; **no string ordering** — alphabetical sorting would put `01:00 PM` before `08:00 AM`, the catalog iterates by insertion id instead).
+- Seed (`0013`) mirrors the legacy catalog exactly (`Route 1/2/3`, 40 seats, `08:00/09:30/10:00 AM` primaries, Abdul Karim/Rashed Mia/Faruk Hossain) so existing bookings, the dashboard widget, and legacy `route_id` booking forms keep resolving identically.
+- **`_transport_catalog()`** (`core/views.py`) — active DB routes + schedules + driver details keyed by route id, with a legacy-constant fallback for pre-seed databases.
+- `transport_dashboard` now renders the live catalog as JSON (`transport-data`); the page's JS renders routes/schedules/driver cards, live booked counts, and a derived status (Full / Few seats left / On Time).
+- `book_transport` resolves `route_id` through the catalog and bounds seats by **`route.capacity`** (a capacity-5 route rejects seat 6).
+- Admin: `Driver`/`TransportRoute` (with `BusScheduleInline`) registrations.
+
+### 2. Medical Admin & Consultation Chat Engine
+
+**Persistent patient ↔ doctor threads** (`MedicalChatThread` one-per-appointment + `MedicalChatMessage`):
+
+- **REST APIs** (`core/urls.py`): `GET /api/medical/chat/threads/` (staff sees all, students only their own, viewer-scoped unread counts), `POST /api/medical/chat/start/` (idempotent get-or-create; patient may open their own appointment, staff any), `GET|POST /api/medical/chat/<id>/messages/` (history marks the other side's messages read; POST is the non-WS fallback).
+- **WebSockets** — `MedicalChatConsumer` on `ws/medical-chat/<thread_id>/` (`core/routing.py` + `core/consumers.py`): membership enforced on connect (thread patient or any staff), messages persisted and broadcast to the `medical_chat_<id>` group; `send_chat_push()` mirrors `notify_user` resilience.
+- **Staff UI** (`host/medical/admin_dashboard.html`) — the mock chat panel is replaced with real threads (patient, last message, unread badge, status) + an inline live chat window (WS send/receive, close/fallback to POST).
+- **Patient UI** (`templates/medical/booking.html`) — new "My Consultations" section: start a thread from a booked appointment, list open threads, and chat live.
+
+**Real-time doctor queue management**: `GET /api/medical/queue/` (staff-only) returns today's pending→confirmed FIFO queue with positions and counts; the host dashboard (`templates/host/medical/dashboard.html`) renders it and polls every 15s; every `update_appointment_status` call now also creates + pushes a `Notification` to **all active staff** so queue widgets update without a reload.
+
+### 3. CI/CD Deployment Automation
+
+- **`.github/workflows/ci.yml`** — on PRs to `main` and pushes to `main`: checkout → Python 3.12 → `pip install -r requirements.txt` → `manage.py check` → full `manage.py test` suite (SQLite + in-memory channel layer).
+- **`.github/workflows/deploy.yml`** — on push to `main`: SSH into the production server (`DEPLOY_HOST`/`DEPLOY_USER`/`DEPLOY_KEY`/`DEPLOY_PORT`/`DEPLOY_PATH` secrets), `git pull --ff-only`, then run the versioned `scripts/deploy.sh` — pip install → `migrate --noinput` → `collectstatic --noinput` → `systemctl reload` the gunicorn/daphne unit. The job is a no-op until `DEPLOY_HOST` is configured; the workflow comments document the matching systemd unit.
+- **`scripts/deploy.sh`** — idempotent remote deploy (APP_DIR/VENV_DIR/SERVICE_NAME overridable). Note: if the live target is Render (§38), Render already auto-deploys from the repo on push — this workflow is for a self-hosted gunicorn/daphne server.
+
+### Verification
+
+- `python manage.py check` — no issues · `makemigrations --check` — no changes detected  
+- **`python manage.py test` — 349 tests, OK** (29 new: transport catalog models/views + legacy fallback, chat API + WebSocket consumer, queue API, host dashboards)  
+- Local `migrate` applied `0012`–`0014` (reverse tested); catalog probe confirms `08:00 AM` / `09:30 AM` / `10:00 AM` primaries
+
+---
+
+## 40. Work Session Summary — Render Deployment, Production Systems & CI/CD
+
+**Date:** 10 August 2026  
+**Branch:** main  
+
+### Overview
+
+One work session covering: the **Render Blueprint production deployment** (with the `niter.edu.bd` custom domain), the remaining **low-priority systems** (DB-backed transport catalog, medical consultation chat, live doctor queue), and **CI/CD automation**. Full details in §38 (Render) and §39 (systems + CI/CD).
+
+### Completed
+
+1. **Render Blueprint deployment** — `render.yaml` (web service + managed PostgreSQL + managed Redis, `domains: [niter.edu.bd]`), executable `build.sh` (pip install → collectstatic → migrate), `RENDER=true` auto-config in `config/settings.py` (appends `.onrender.com` + `niter.edu.bd`/`www` to `ALLOWED_HOSTS` and CSRF origins), `psycopg2-binary` Postgres driver. → §38
+2. **DB transport catalog** — `Driver` / `TransportRoute` / `BusSchedule` models + seed migration (0013); the transport page, dashboard widget, and `book_transport` read live routes/drivers/seats with per-route capacity; legacy-constant fallback for pre-seed databases. → §39.1
+3. **Medical consultation chat + live queue** — persistent `MedicalChatThread` / `MedicalChatMessage`; REST APIs + WebSocket consumer (`ws/medical-chat/<id>/`); staff admin chat UI and patient "My Consultations" UI; staff-only FIFO queue API (`/api/medical/queue/`) with real-time staff pushes on status changes. → §39.2
+4. **CI/CD** — `.github/workflows/ci.yml` (check + full test suite on PRs to main and pushes), `.github/workflows/deploy.yml` (SSH deploy on push to main, secrets-guarded), `scripts/deploy.sh` (versioned, idempotent remote deploy). → §39.3
+
+### Verification
+
+- `python manage.py check` — no issues · `makemigrations --check` — no changes detected  
+- **`python manage.py test` — 349 tests, OK** (29 new)  
+- `RENDER=true` probe: `ALLOWED_HOSTS = ['.onrender.com', 'niter.edu.bd', 'www.niter.edu.bd', 'localhost', '127.0.0.1']`, `CSRF_TRUSTED_ORIGINS` includes `https://*.onrender.com` + `https://niter.edu.bd`  
+- `render.yaml` validated (no duplicate keys; correct commands/domains/datastores)

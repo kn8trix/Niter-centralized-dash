@@ -53,6 +53,34 @@ ALLOWED_HOSTS = env('ALLOWED_HOSTS')
 # (needed when the site sits behind a proxy on a custom domain).
 CSRF_TRUSTED_ORIGINS = env('CSRF_TRUSTED_ORIGINS')
 
+# --- Render PaaS auto-config (render.yaml Blueprint) --------------------------
+# Render injects ``RENDER=true`` for every service it runs. The public hostname
+# is auto-generated (``<service>.onrender.com``) and not known in advance, so
+# we append the platform domain to the env-driven host list and trust CSRF for
+# its origin. The production custom domain (niter.edu.bd) is included here too,
+# matching the ``domains:`` entry in render.yaml. Any additional hosts can still
+# be injected via the ALLOWED_HOSTS / CSRF_TRUSTED_ORIGINS environment
+# variables — this block only ever appends, never replaces.
+if env.bool('RENDER', default=False):
+    for _host in (
+        '.onrender.com',
+        'niter.edu.bd',
+        'www.niter.edu.bd',
+        'localhost',
+        '127.0.0.1',
+    ):
+        if _host not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(_host)
+    _csrf_origins = env('CSRF_TRUSTED_ORIGINS')
+    for _origin in (
+        'https://*.onrender.com',
+        'https://niter.edu.bd',
+        'https://www.niter.edu.bd',
+    ):
+        if _origin not in _csrf_origins:
+            _csrf_origins.append(_origin)
+    CSRF_TRUSTED_ORIGINS = _csrf_origins
+
 INSTALLED_APPS = [
     # Daphne must be first so runserver serves ASGI (HTTP + WebSockets)
     'daphne',
