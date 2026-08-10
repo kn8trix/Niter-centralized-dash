@@ -127,6 +127,7 @@ class ContentBlock(models.Model):
         ('html', 'Text Block'),
         ('hero', 'Hero Header'),
         ('features', 'Feature Cards Grid'),
+        ('split', 'Text & Image Split'),
         ('faq', 'FAQ Accordion'),
         ('stats', 'Stats Counter Grid'),
         ('testimonials', 'Testimonial Slider'),
@@ -163,6 +164,12 @@ class ContentBlock(models.Model):
             'items': [
                 {'icon': 'fa-laptop-code', 'title': 'Feature', 'text': '…'},
             ],
+        },
+        'split': {
+            'heading': 'Our mission',
+            'text': 'Rich text content…',
+            'image_url': 'https://…',
+            'image_alt': 'Description',
         },
         'testimonials': {
             'title': 'Optional heading',

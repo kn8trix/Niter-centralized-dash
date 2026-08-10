@@ -44,6 +44,9 @@ urlpatterns = [
     path('builder/api/blocks/reorder/', views.builder_blocks_reorder, name='builder_blocks_reorder'),
     path('builder/api/blocks/save/', views.builder_blocks_save, name='builder_blocks_save'),
     path('builder/api/page/save/', views.builder_page_save, name='builder_page_save'),
+    # Block library: create from a section template + delete by block id
+    path('builder/api/blocks/create/', views.builder_block_create, name='builder_block_create'),
+    path('builder/api/blocks/<int:block_id>/delete/', views.builder_block_delete, name='builder_block_delete'),
     # Legacy JSON endpoints (visual editor + dashboard)
     path('api/builder/create-page/', views.create_page, name='create_page'),
     path('api/builder/save-block/', views.save_content_block, name='save_content_block'),

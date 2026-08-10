@@ -454,3 +454,223 @@ body.page-builder {
 @media (prefers-reduced-motion: reduce) {
     .pb-item, .pb-track, .pb-thumb, .pb-palette-item, .pb-toast, .pb-icon-btn, .btn.pb-btn, .pb-back { transition: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   4. Section canvas (inline rendering of the page's blocks)
+--------------------------------------------------------------------------- */
+.btn.pb-btn.danger { background: #b91c1c; color: #ffffff; border-color: transparent; }
+.btn.pb-btn.danger:hover { box-shadow: 0 6px 16px rgba(185, 28, 28, 0.25); }
+
+.pb-tabs {
+    display: inline-flex;
+    gap: 0.25rem;
+    background: var(--bg-subtle, #f6f2ea);
+    border: 1px solid var(--border-color, #f0ebe1);
+    border-radius: 999px;
+    padding: 0.2rem;
+}
+
+.pb-tab {
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted, #6b7280);
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    padding: 0.4rem 0.9rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.pb-tab:hover { color: var(--text-primary, #1f2937); }
+.pb-tab.active { background: var(--bg-card, #ffffff); color: var(--text-primary, #1f2937); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
+
+.pb-preview-note { font-size: 0.75rem; color: var(--text-muted, #6b7280); }
+
+.pb-canvas-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    background: var(--bg-page, #faf9f6);
+    border: 1px solid var(--border-color, #f0ebe1);
+    border-radius: 1rem;
+    padding: 1.4rem;
+}
+
+.pb-canvas { display: flex; flex-direction: column; gap: 1.1rem; max-width: 820px; margin: 0 auto; }
+
+/* A rendered section with its hover toolbar */
+.pb-section {
+    position: relative;
+    border: 1px dashed var(--border-color, #f0ebe1);
+    border-radius: 1rem;
+    background: var(--bg-card, #ffffff);
+    overflow: hidden;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pb-section:hover { border-color: var(--accent-dark, #3f3a2e); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06); }
+.pb-section.editing { border-color: var(--accent-dark, #3f3a2e); box-shadow: 0 0 0 3px rgba(232, 226, 216, 0.7); }
+
+.pb-section-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.45rem 0.7rem;
+    background: var(--bg-subtle, #f6f2ea);
+    border-bottom: 1px solid var(--border-color, #f0ebe1);
+}
+
+.pb-section-toolbar .pb-eid { flex: 1; }
+
+.pb-section-body { padding: 1.2rem; }
+
+/* "+ Add New Section" insert handles between sections and at the bottom */
+.pb-insert {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    width: 100%;
+    margin: 0.2rem 0;
+    padding: 0.5rem;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-muted, #6b7280);
+    background: transparent;
+    border: 2px dashed var(--border-color, #f0ebe1);
+    border-radius: 0.8rem;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.pb-insert:hover { color: var(--accent-dark, #3f3a2e); border-color: var(--accent-dark, #3f3a2e); background: var(--accent-primary, #e8e2d8); }
+
+.pb-insert--bottom {
+    padding: 1rem;
+    font-size: 0.9rem;
+    background: var(--bg-card, #ffffff);
+}
+
+.pb-canvas-empty {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-muted, #6b7280);
+    border: 2px dashed var(--border-color, #f0ebe1);
+    border-radius: 1rem;
+    background: var(--bg-card, #ffffff);
+}
+
+.pb-canvas-empty i { font-size: 2rem; color: var(--accent-primary-hover, #dfd7cb); margin-bottom: 0.5rem; }
+.pb-canvas-empty h3 { margin: 0 0 0.3rem; color: var(--text-primary, #1f2937); }
+.pb-canvas-empty p { margin: 0; font-size: 0.85rem; }
+
+/* ---------------------------------------------------------------------------
+   5. Modals (block library drawer + delete confirmation)
+--------------------------------------------------------------------------- */
+.pb-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    background: rgba(31, 41, 55, 0.45);
+    backdrop-filter: blur(2px);
+    display: grid;
+    place-items: center;
+    padding: 1.2rem;
+}
+
+.pb-modal {
+    width: min(760px, 94vw);
+    max-height: 86vh;
+    overflow-y: auto;
+    background: var(--bg-card, #ffffff);
+    border: 1px solid var(--border-color, #f0ebe1);
+    border-radius: 1.1rem;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
+    padding: 1.2rem;
+}
+
+.pb-modal--sm { width: min(420px, 92vw); }
+
+.pb-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-bottom: 0.4rem;
+}
+
+.pb-modal-head h3 { margin: 0; font-size: 1.05rem; font-weight: 800; }
+.pb-modal-note { margin: 0 0 1rem; font-size: 0.85rem; color: var(--text-muted, #6b7280); }
+
+/* Block library cards with live template previews */
+.pb-lib-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 0.9rem;
+}
+
+.pb-lib-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    border: 1px solid var(--border-color, #f0ebe1);
+    border-radius: 0.9rem;
+    background: var(--bg-page, #faf9f6);
+    padding: 0.8rem;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.pb-lib-card:hover, .pb-lib-card:focus-visible {
+    border-color: var(--accent-dark, #3f3a2e);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+    outline: none;
+}
+
+.pb-lib-preview {
+    pointer-events: none;
+    border: 1px solid var(--border-color, #f0ebe1);
+    border-radius: 0.6rem;
+    background: #ffffff;
+    overflow: hidden;
+    min-height: 96px;
+    display: grid;
+    place-items: center;
+    font-size: 0.8rem;
+}
+
+.pb-lib-preview .builder-block { padding: 0.6rem; }
+
+.pb-lib-meta { display: flex; flex-direction: column; gap: 0.15rem; }
+.pb-lib-meta strong { font-size: 0.9rem; font-weight: 700; }
+.pb-lib-meta span { font-size: 0.78rem; color: var(--text-muted, #6b7280); line-height: 1.4; }
+
+.pb-lib-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.5rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #ffffff;
+    background: var(--accent-dark, #3f3a2e);
+    transition: background 0.15s ease;
+}
+
+.pb-lib-card:hover .pb-lib-cta { background: #2c2820; }
+
+.pb-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+}

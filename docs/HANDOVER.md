@@ -2378,3 +2378,75 @@ canvas editor moved to ``/builder/visual/<slug>/``.
 - Full suite — **419 tests OK** · ``node --check page_manager.js`` — clean
 - Live check: toolbar + 7-type palette + 4 block rows render; save / reorder /
   page-save APIs return success; nav dropdown + hero/features partials render
+
+---
+
+## 55. Block Library Drawer, Section Creation & Deletion
+
+**Date:** 11 August 2026  
+**Branch:** main
+
+### Overview
+
+Added a block library to the frontend page builder: on-canvas "+ Add New
+Section" insert handles (between sections and at the bottom) open a modal
+drawer with four selectable section templates (live previews), backed by a
+create endpoint and a delete-by-id endpoint with a soft-confirmation modal.
+
+### Completed Work
+
+1. **Section canvas (`templates/builder/edit_page.html`, `builder_page.css`)**
+   - The right pane now renders an inline **canvas**: every block is shown
+     as a real section (server-rendered partial, page ``custom_css`` applied)
+     with a hover toolbar (type badge, edit, delete) and a dashed
+     "**+ Add New Section**" insert handle after it, plus a large one at the
+     bottom. A **Canvas / Live Preview** tab switcher toggles between the
+     inline canvas and the existing page iframe.
+
+2. **Block library drawer (modal)**
+   - Insert handles (and the bottom button) open a modal presenting four
+     template cards, each with a live partial preview, name and description:
+     **Hero Section**, **Feature Grid**, **Text & Image Split** and
+     **Announcement Banner / CTA**. Picking one POSTs to the create endpoint
+     at the chosen position. Cards are keyboard accessible (role=button +
+     Enter/Space) and previews are derived from the same default content the
+     create endpoint seeds, so the preview always matches what is created.
+
+3. **Endpoints (`core/views.py`, `core/urls.py`)**
+   - ``/builder/api/blocks/create/`` — accepts ``{page_id, block_type,
+     order_index?}``; seeds default content (``_BLOCK_TEMPLATES``) and
+     inserts atomically, shifting existing blocks at/after the target order
+     up by one (``F('order') + 1``) or appending when no index is given.
+     Element ids are random-hex suffixed to stay unique.
+   - ``/builder/api/blocks/<block_id>/delete/`` — removes a block by its
+     database id, called from a **soft-confirmation modal** (Cancel/Delete,
+     backdrop click or Escape closes; the old ``window.confirm`` is gone).
+   - Both are gated by ``@change_editablepage_required`` like all builder
+     routes.
+
+4. **New block type: Text & Image Split (``split``)**
+   - ``split_section.html`` partial (rich text left, image right), schema +
+     choices added, migration **0021**. The image is URL-based
+     (``image_url``) — a full media-upload pipeline is out of scope; the URL
+     is validated by the ``safe_url`` filter at render time.
+
+5. **Fixes found in review**
+   - ``page_manager.js`` now indexes the ``json_script`` block payload by
+     ``element_id`` (it is an array, not a map) — a latent bug from the
+     previous task that broke the inline editor's data lookup.
+   - Library previews derive from ``_BLOCK_TEMPLATES`` (single source of
+     truth in Python) instead of a hand-written second copy.
+   - Missing ``page_id`` on create returns 400 (was an accidental 404).
+   - Pending insert/delete state is cleared when modals close.
+
+### Verification
+
+- ``manage.py check`` — clean · migrations consistent (0021 applied)
+- Builder tests (backend / block library / render / ordering / custom nav /
+  page manager / library drawer) — **90 tests OK** (8 new: create append +
+  insert + validation + permissions, delete by id + 404, canvas/insert/
+  library markup, split rendering)
+- Full suite — **427 tests OK** · ``node --check page_manager.js`` — clean
+- Live check: 4 canvas sections + insert handles render, library drawer
+  shows 4 template cards, create (insert at index 1) and delete both return
+  success.

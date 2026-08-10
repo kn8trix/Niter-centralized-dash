@@ -3935,11 +3935,11 @@ class BuilderBlockLibraryTest(TestCase):
 
     def test_block_type_choices_include_structured_types(self):
         codes = {code for code, _label in ContentBlock.BLOCK_TYPE_CHOICES}
-        for block_type in ('hero', 'features', 'faq', 'stats', 'testimonials', 'cta'):
+        for block_type in ('hero', 'features', 'split', 'faq', 'stats', 'testimonials', 'cta'):
             self.assertIn(block_type, codes)
 
     def test_block_schemas_document_each_structured_type(self):
-        for block_type in ('hero', 'features', 'faq', 'stats', 'testimonials', 'cta'):
+        for block_type in ('hero', 'features', 'split', 'faq', 'stats', 'testimonials', 'cta'):
             self.assertIn(block_type, ContentBlock.BLOCK_SCHEMAS)
 
     # ------------------------------------------------------------------
@@ -4511,3 +4511,144 @@ class BuilderPageManagerTest(TestCase):
         response = self.client.get(reverse('editable_page', args=[self.page.slug]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Body text')
+
+
+class BuilderBlockLibraryDrawerTest(TestCase):
+    """Block library drawer + create/delete endpoints + Text & Image Split type.
+
+    Covers the on-canvas insert handles, the modal library (4 template cards),
+    ``/builder/api/blocks/create/`` (insert vs append, defaults, validation,
+    permissions) and ``/builder/api/blocks/<id>/delete/``.
+    """
+
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(
+            username='root_lib', email='rl@niter.edu.bd', password='rootpass123',
+        )
+        self.page = EditablePage.objects.create(title='Library', slug='library-page')
+        self.hero = ContentBlock.objects.create(
+            page=self.page, element_id='hero', block_type='hero', order=0,
+            content_json={'headline': 'Welcome', 'primary_label': 'Go', 'primary_url': '/departments/'},
+        )
+        self.body = ContentBlock.objects.create(
+            page=self.page, element_id='body', content_html='<p>Body</p>', order=1,
+        )
+        self.client.login(username='root_lib', password='rootpass123')
+
+    def _post_json(self, url_name, payload):
+        return self.client.post(
+            reverse(url_name), data=json.dumps(payload), content_type='application/json',
+        )
+
+    # ------------------------------------------------------------------
+    # Permissions
+    # ------------------------------------------------------------------
+    def test_create_delete_require_permission(self):
+        # Anonymous → redirect to login.
+        self.client.logout()
+        response = self.client.post(
+            reverse('builder_block_create'), data='{}', content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 302)
+        # Staff without the permission → 403.
+        staff = User.objects.create_user(username='staff_lib', password='staffpass123', is_staff=True)
+        self.client.login(username='staff_lib', password='staffpass123')
+        response = self.client.post(
+            reverse('builder_block_create'), data='{}', content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 403)
+        response = self.client.post(
+            reverse('builder_block_delete', args=[self.hero.pk]), data='{}', content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 403)
+
+    # ------------------------------------------------------------------
+    # Create endpoint
+    # ------------------------------------------------------------------
+    def test_create_appends_block_with_defaults(self):
+        response = self._post_json('builder_block_create', {
+            'page_id': self.page.pk, 'block_type': 'cta',
+        })
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        block = ContentBlock.objects.get(pk=data['block']['id'])
+        self.assertEqual(block.block_type, 'cta')
+        self.assertEqual(block.order, 2)
+        self.assertEqual(block.content_json['headline'], 'Ready to start?')
+        self.assertTrue(block.element_id.startswith('cta-'))
+
+    def test_create_inserts_at_order_index(self):
+        response = self._post_json('builder_block_create', {
+            'page_id': self.page.pk, 'block_type': 'features', 'order_index': 1,
+        })
+        self.assertEqual(response.status_code, 200)
+        new_block = ContentBlock.objects.get(pk=response.json()['block']['id'])
+        self.assertEqual(new_block.order, 1)
+        self.hero.refresh_from_db()
+        self.body.refresh_from_db()
+        self.assertEqual(self.hero.order, 0)
+        self.assertEqual(self.body.order, 2)
+        # Live page order: hero, features, body.
+        html = self.client.get(reverse('editable_page', args=[self.page.slug])).content.decode()
+        self.assertLess(html.index('Welcome'), html.index('Why choose us'))
+        self.assertLess(html.index('Why choose us'), html.index('Body'))
+
+    def test_create_validates_page_and_type(self):
+        response = self._post_json('builder_block_create', {'page_id': 999999, 'block_type': 'hero'})
+        self.assertEqual(response.status_code, 404)
+        response = self._post_json('builder_block_create', {'page_id': self.page.pk, 'block_type': 'nope'})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Unknown block type', response.json()['message'])
+        response = self._post_json('builder_block_create', {'block_type': 'hero'})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('page_id', response.json()['message'])
+
+    # ------------------------------------------------------------------
+    # Delete endpoint (by block id)
+    # ------------------------------------------------------------------
+    def test_delete_removes_block_by_id(self):
+        response = self.client.post(
+            reverse('builder_block_delete', args=[self.body.pk]), data='{}', content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'success')
+        self.assertFalse(ContentBlock.objects.filter(pk=self.body.pk).exists())
+
+    def test_delete_unknown_block_404(self):
+        response = self.client.post(
+            reverse('builder_block_delete', args=[999999]), data='{}', content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 404)
+
+    # ------------------------------------------------------------------
+    # UI markup: canvas, insert handles, library drawer, confirm modal
+    # ------------------------------------------------------------------
+    def test_builder_renders_canvas_insert_buttons_and_library(self):
+        response = self.client.get(reverse('builder_editor', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        # One insert handle after each block (2) plus the bottom one.
+        self.assertEqual(html.count('class="pb-insert" data-order'), 2)
+        self.assertEqual(html.count('pb-insert--bottom'), 1)
+        # Canvas sections carry pk + order for the toolbar/insert actions.
+        self.assertIn('data-block-pk="%s"' % self.hero.pk, html)
+        self.assertIn('data-order="1"', html)  # insert handle after the first block
+        # The library drawer renders all four template cards with previews.
+        for code in ('hero', 'features', 'split', 'cta'):
+            self.assertIn('data-block-type="%s"' % code, html)
+        self.assertIn('id="pb-lib-modal"', html)
+        self.assertIn('id="pb-confirm-modal"', html)
+        # The canvas renders the block's partial markup server-side.
+        self.assertIn('data-builder-block="hero"', html)
+        self.assertIn('Welcome', html)
+
+    def test_split_type_renders_on_live_page(self):
+        ContentBlock.objects.create(
+            page=self.page, element_id='split1', block_type='split',
+            content_json={'heading': 'Our mission', 'text': 'Body copy.', 'image_url': '', 'image_alt': ''},
+        )
+        html = self.client.get(reverse('editable_page', args=[self.page.slug])).content.decode()
+        self.assertIn('data-builder-block="split"', html)
+        self.assertIn('Our mission', html)
+        self.assertIn('Body copy.', html)

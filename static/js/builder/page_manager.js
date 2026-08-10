@@ -2,20 +2,24 @@
    Page Builder (builder/edit_page.html) — drag-and-drop block manager.
    ----------------------------------------------------------------------------
    Wires the page-settings toolbar (Save Draft / Publish / toggles / SEO),
-   drag-and-drop block reordering (atomic POST to /builder/api/blocks/reorder/),
-   the section palette (adds blocks via /builder/api/blocks/save/), and the
-   inline block editor. All mutations refresh the live preview iframe without
-   a full page reload.
+   drag-and-drop block reordering, the section palette, the inline block
+   editor, the on-canvas "+ Add New Section" insert handles that open the
+   block library drawer, and the soft-confirmation delete modal. All mutations
+   hit the JSON endpoints and refresh the canvas/preview without a full page
+   reload (add/delete reload once to re-render server-side).
    ========================================================================== */
 (function () {
     'use strict';
 
     var body = document.body;
     var PAGE_SLUG = body.dataset.pageSlug;
+    var PAGE_ID = body.dataset.pageId;
     var URLS = {
         pageSave: body.dataset.pageSaveUrl,
         blocksSave: body.dataset.blocksSaveUrl,
         blocksReorder: body.dataset.blocksReorderUrl,
+        blockCreate: body.dataset.blockCreateUrl,
+        blockDeleteTemplate: body.dataset.blockDeleteTemplate, // '/builder/api/blocks/0/delete/'
     };
 
     var toast = document.getElementById('pb-toast');
@@ -34,7 +38,20 @@
     var editorType = document.getElementById('pb-editor-type');
     var editorHtml = document.getElementById('pb-editor-html');
     var editorJson = document.getElementById('pb-editor-json');
+    var canvas = document.getElementById('pb-canvas');
+    var libModal = document.getElementById('pb-lib-modal');
+    var confirmModal = document.getElementById('pb-confirm-modal');
+    var confirmTarget = document.getElementById('pb-confirm-target');
+    var confirmDeleteBtn = document.getElementById('pb-confirm-delete');
 
+    // Pending actions: where the next library section goes + which block a
+    // delete confirmation applies to.
+    var pendingOrder = null;  // order_index for the next library insert (null = append)
+    var pendingDelete = null; // {pk, elementId}
+
+    /* ------------------------------------------------------------------ */
+    /* Helpers                                                             */
+    /* ------------------------------------------------------------------ */
     function getCookie(name) {
         if (!document.cookie || document.cookie === '') return null;
         for (var _a = document.cookie.split(';'), i = 0; i < _a.length; i++) {
@@ -56,6 +73,10 @@
         }, 2600);
     }
 
+    function requestFailed() {
+        showToast('Request failed — check your connection and try again.', true);
+    }
+
     function postJson(url, payload) {
         return fetch(url, {
             method: 'POST',
@@ -64,7 +85,7 @@
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCookie('csrftoken'),
             },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(payload || {}),
         }).then(function (response) {
             return response.json().catch(function () { return {}; }).then(function (data) {
                 return { ok: response.ok, data: data };
@@ -78,9 +99,36 @@
         }
     }
 
-    function requestFailed() {
-        showToast('Request failed — check your connection and try again.', true);
+    function blockDeleteUrl(pk) {
+        return URLS.blockDeleteTemplate.replace('/0/delete/', '/' + pk + '/delete/');
     }
+
+    /* ------------------------------------------------------------------ */
+    /* Modals (library drawer + delete confirmation)                       */
+    /* ------------------------------------------------------------------ */
+    function openModal(modal) { modal.hidden = false; }
+    function closeModal(modal) { modal.hidden = true; }
+    function closeAllModals() {
+        closeModal(libModal);
+        closeModal(confirmModal);
+        pendingOrder = null;
+        pendingDelete = null;
+    }
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeAllModals();
+    });
+
+    [libModal, confirmModal].forEach(function (modal) {
+        modal.addEventListener('click', function (e) {
+            if (e.target === modal) closeModal(modal);
+        });
+    });
+
+    var libClose = document.getElementById('pb-lib-close');
+    if (libClose) libClose.addEventListener('click', function () { closeModal(libModal); });
+    var confirmClose = document.getElementById('pb-confirm-close');
+    if (confirmClose) confirmClose.addEventListener('click', function () { closeModal(confirmModal); });
 
     /* ------------------------------------------------------------------ */
     /* Page settings — Save Draft / Publish                                */
@@ -115,7 +163,7 @@
     if (publishBtn) publishBtn.addEventListener('click', function () { savePage(true); });
 
     /* ------------------------------------------------------------------ */
-    /* Drag & drop block reordering (atomic reorder endpoint)              */
+    /* Drag & drop block reordering (left panel list)                      */
     /* ------------------------------------------------------------------ */
     var dragItem = null;
 
@@ -184,12 +232,13 @@
     }
 
     /* ------------------------------------------------------------------ */
-    /* Section palette — add a block of the chosen type                    */
+    /* Section palette (left panel quick add)                              */
     /* ------------------------------------------------------------------ */
     var DEFAULTS = {
         html: '<h2>New section</h2><p>Write your content here.</p>',
         hero: { headline: 'A bold headline', subheadline: 'Supporting line', primary_label: 'Learn More', primary_url: '/departments/' },
         features: { title: 'Why choose us', items: [{ icon: 'fa-star', title: 'Feature', text: 'Describe it here.' }] },
+        split: { heading: 'Our mission', text: 'Rich text content goes here.', image_url: '', image_alt: '' },
         faq: { title: 'FAQs', items: [{ question: 'A question?', answer: 'An answer.' }] },
         stats: { title: 'At a glance', items: [{ value: '100+', label: 'Highlight', icon: 'fa-chart-simple' }] },
         testimonials: { title: 'What people say', items: [{ quote: 'A quote worth sharing.', author: 'Name', title: 'Role' }] },
@@ -223,18 +272,68 @@
                     return;
                 }
                 showToast('Block added.');
-                location.reload(); // refresh list + preview from the server
+                location.reload(); // refresh list + canvas from the server
             }).catch(requestFailed);
         });
     }
 
     /* ------------------------------------------------------------------ */
+    /* Block library drawer (modal) — create from a section template       */
+    /* ------------------------------------------------------------------ */
+    function openLibrary(orderIndex) {
+        pendingOrder = (typeof orderIndex === 'number') ? orderIndex : null;
+        openModal(libModal);
+    }
+
+    function createBlockFromLibrary(type) {
+        postJson(URLS.blockCreate, {
+            page_id: parseInt(PAGE_ID, 10),
+            block_type: type,
+            order_index: pendingOrder,
+        }).then(function (_a) {
+            if (!_a.ok) {
+                showToast((_a.data && _a.data.message) || 'Could not add section.', true);
+                return;
+            }
+            closeAllModals();
+            showToast('Section added.');
+            location.reload(); // refresh list + canvas from the server
+        }).catch(requestFailed);
+    }
+
+    document.querySelectorAll('.pb-insert').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var order = btn.dataset.order;
+            openLibrary(order ? parseInt(order, 10) : null);
+        });
+    });
+
+    document.querySelectorAll('.pb-lib-card').forEach(function (card) {
+        function pick() {
+            createBlockFromLibrary(card.dataset.blockType);
+        }
+        card.addEventListener('click', pick);
+        card.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                pick();
+            }
+        });
+    });
+
+    /* ------------------------------------------------------------------ */
     /* Inline block editor                                                 */
     /* ------------------------------------------------------------------ */
+    // The json_script payload is an ARRAY of block dicts — index it by
+    // element_id so the editor can look blocks up by their canvas id.
     var blocksData = {};
     try {
         var raw = document.getElementById('pb-blocks-data');
-        if (raw) blocksData = JSON.parse(raw.textContent) || {};
+        var blocksArray = raw ? JSON.parse(raw.textContent) : [];
+        for (var i = 0; i < blocksArray.length; i++) {
+            var b = blocksArray[i];
+            if (b && b.element_id) blocksData[b.element_id] = b;
+        }
     } catch (err) { blocksData = {}; }
 
     function parseJson(text) {
@@ -243,8 +342,21 @@
 
     function closeEditor() {
         editor.hidden = true;
-        var active = document.querySelectorAll('.pb-item.editing');
+        var active = document.querySelectorAll('.pb-item.editing, .pb-section.editing');
         for (var i = 0; i < active.length; i++) active[i].classList.remove('editing');
+    }
+
+    function openEditor(elementId) {
+        var data = blocksData[elementId];
+        if (!data) return;
+        editorEid.textContent = elementId;
+        editorType.value = data.block_type;
+        editorHtml.value = data.content_html || '';
+        editorJson.value = (data.content_json && Object.keys(data.content_json).length)
+            ? JSON.stringify(data.content_json, null, 2)
+            : '';
+        editor.hidden = false;
+        editor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     function saveBlock() {
@@ -280,57 +392,98 @@
         }).catch(requestFailed);
     }
 
-    if (list) {
-        list.addEventListener('click', function (e) {
+    /* ------------------------------------------------------------------ */
+    /* Soft-confirmation delete modal                                      */
+    /* ------------------------------------------------------------------ */
+    function openDeleteConfirm(pk, elementId) {
+        pendingDelete = { pk: pk, elementId: elementId };
+        confirmTarget.textContent = elementId;
+        openModal(confirmModal);
+    }
+
+    if (confirmDeleteBtn) {
+        confirmDeleteBtn.addEventListener('click', function () {
+            if (!pendingDelete) return;
+            var pk = pendingDelete.pk;
+            confirmDeleteBtn.disabled = true;
+            postJson(blockDeleteUrl(pk), {}).then(function (_a) {
+                confirmDeleteBtn.disabled = false;
+                if (!_a.ok) {
+                    showToast((_a.data && _a.data.message) || 'Could not delete section.', true);
+                    return;
+                }
+                closeAllModals();
+                pendingDelete = null;
+                showToast('Section deleted.');
+                location.reload();
+            }).catch(function () {
+                confirmDeleteBtn.disabled = false;
+                requestFailed();
+            });
+        });
+    }
+
+    var confirmCancel = document.getElementById('pb-confirm-cancel');
+    if (confirmCancel) confirmCancel.addEventListener('click', function () {
+        closeModal(confirmModal);
+        pendingDelete = null;
+    });
+
+    /* ------------------------------------------------------------------ */
+    /* Canvas + left-panel toolbar actions (edit / delete)                 */
+    /* ------------------------------------------------------------------ */
+    function handleToolbarClick(container, rowSelector) {
+        container.addEventListener('click', function (e) {
             var btn = e.target.closest('.pb-icon-btn');
             if (!btn) return;
-            var item = e.target.closest('.pb-item');
-            if (!item) return;
-            var elementId = item.dataset.blockId;
+            var row = e.target.closest(rowSelector);
+            if (!row) return;
+            var elementId = row.dataset.blockId;
             var action = btn.dataset.action;
-
-            if (action === 'delete') {
-                if (!window.confirm('Delete block "' + elementId + '"? This cannot be undone.')) return;
-                postJson(URLS.blocksSave, {
-                    page_slug: PAGE_SLUG,
-                    element_id: elementId,
-                    delete: true,
-                }).then(function (_a) {
-                    if (!_a.ok) {
-                        showToast((_a.data && _a.data.message) || 'Delete failed.', true);
-                        return;
-                    }
-                    showToast('Block deleted.');
-                    location.reload();
-                }).catch(requestFailed);
-                return;
-            }
-
             if (action === 'edit') {
-                var data = blocksData[elementId];
-                if (!data) return;
-                editorEid.textContent = elementId;
-                editorType.value = data.block_type;
-                editorHtml.value = data.content_html || '';
-                editorJson.value = (data.content_json && Object.keys(data.content_json).length)
-                    ? JSON.stringify(data.content_json, null, 2)
-                    : '';
-                editor.hidden = false;
-                item.classList.add('editing');
-                editor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                openEditor(elementId);
+            } else if (action === 'delete') {
+                openDeleteConfirm(row.dataset.blockPk, elementId);
             }
         });
     }
 
+    if (canvas) handleToolbarClick(canvas, '.pb-section');
+    if (list) handleToolbarClick(list, '.pb-item');
+
+    /* ------------------------------------------------------------------ */
+    /* Canvas / Live Preview tabs                                          */
+    /* ------------------------------------------------------------------ */
+    var canvasWrap = document.getElementById('pb-canvas-wrap');
+    var previewWrap = document.getElementById('pb-preview-wrap');
+    var tabCanvas = document.getElementById('pb-tab-canvas');
+    var tabPreview = document.getElementById('pb-tab-preview');
+
+    function setView(tab) {
+        var isCanvas = tab === 'canvas';
+        if (canvasWrap) canvasWrap.hidden = !isCanvas;
+        if (previewWrap) previewWrap.hidden = isCanvas;
+        if (tabCanvas) {
+            tabCanvas.classList.toggle('active', isCanvas);
+            tabCanvas.setAttribute('aria-selected', isCanvas ? 'true' : 'false');
+        }
+        if (tabPreview) {
+            tabPreview.classList.toggle('active', !isCanvas);
+            tabPreview.setAttribute('aria-selected', isCanvas ? 'false' : 'true');
+        }
+        if (!isCanvas) refreshPreview(); // fresh when the iframe becomes visible
+    }
+
+    if (tabCanvas) tabCanvas.addEventListener('click', function () { setView('canvas'); });
+    if (tabPreview) tabPreview.addEventListener('click', function () { setView('preview'); });
+
+    /* ------------------------------------------------------------------ */
+    /* Inline editor buttons                                               */
+    /* ------------------------------------------------------------------ */
     var closeBtn = document.getElementById('pb-editor-close');
     var cancelBtn = document.getElementById('pb-editor-cancel');
     var saveBlockBtn = document.getElementById('pb-editor-save');
     if (closeBtn) closeBtn.addEventListener('click', closeEditor);
     if (cancelBtn) cancelBtn.addEventListener('click', closeEditor);
     if (saveBlockBtn) saveBlockBtn.addEventListener('click', saveBlock);
-
-    var refreshBtn = document.getElementById('pb-refresh-preview');
-    if (refreshBtn) refreshBtn.addEventListener('click', function () {
-        if (preview && preview.contentWindow) preview.contentWindow.location.reload();
-    });
 })();

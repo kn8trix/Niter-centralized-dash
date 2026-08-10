@@ -17,7 +17,7 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Max, Q
+from django.db.models import Count, F, Max, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -2996,6 +2996,7 @@ def builder_editor(request, page_slug):
         'html': 'fa-align-left',
         'hero': 'fa-bolt',
         'features': 'fa-table-cells-large',
+        'split': 'fa-image',
         'faq': 'fa-circle-question',
         'stats': 'fa-chart-column',
         'testimonials': 'fa-quote-left',
@@ -3003,12 +3004,15 @@ def builder_editor(request, page_slug):
     }
     blocks = [
         {
+            'pk': block.pk,
             'element_id': block.element_id,
             'block_type': block.block_type,
             'type_label': type_labels.get(block.block_type, block.block_type),
             'content_html': block.content_html,
             'content_json': block.content_json or {},
             'order': block.order,
+            # Server-rendered section markup for the inline canvas.
+            'rendered_html': render_block_html(block),
         }
         for block in page.content_blocks.order_by('order', 'id')
     ]
@@ -3016,6 +3020,38 @@ def builder_editor(request, page_slug):
         {'code': code, 'label': label, 'icon': block_type_icons.get(code, 'fa-cube')}
         for code, label in ContentBlock.BLOCK_TYPE_CHOICES
     ]
+    # The block library drawer (modal) — the four curated section templates.
+    # Samples are derived from ``_BLOCK_TEMPLATES`` (the same defaults the
+    # create endpoint seeds), so the preview always matches what gets created.
+    _LIBRARY_TEMPLATES = (
+        ('hero', 'Hero Section', 'Big headline, subtitle and a call-to-action button.', 'builder/blocks/hero_section.html'),
+        ('features', 'Feature Grid', 'A three-column grid of icon and text cards.', 'builder/blocks/features_grid.html'),
+        ('split', 'Text & Image Split', 'Rich text on the left with a media image on the right.', 'builder/blocks/split_section.html'),
+        ('cta', 'Announcement Banner / CTA', 'Full-width banner with a headline and action buttons.', 'builder/blocks/cta_section.html'),
+    )
+    block_templates = []
+    for code, label, description, partial in _LIBRARY_TEMPLATES:
+        sample = dict(_BLOCK_TEMPLATES.get(code, {}).get('content_json', {}))
+        if code == 'features':
+            # Richer modal preview: show the full three-column grid.
+            sample['items'] = [
+                {'icon': 'fa-star', 'title': 'Quality', 'text': 'Description one.'},
+                {'icon': 'fa-bolt', 'title': 'Speed', 'text': 'Description two.'},
+                {'icon': 'fa-heart', 'title': 'Care', 'text': 'Description three.'},
+            ]
+        block_templates.append({
+            'code': code,
+            'label': label,
+            'description': description,
+            'partial': partial,
+            'sample': sample,
+        })
+    return render(request, 'builder/edit_page.html', {
+        'page': page,
+        'blocks': blocks,
+        'block_types': block_types,
+        'block_templates': block_templates,
+    })
     return render(request, 'builder/edit_page.html', {
         'page': page,
         'blocks': blocks,
@@ -3099,6 +3135,135 @@ def _as_bool(value):
     if isinstance(value, str):
         return value.strip().lower() in ('1', 'true', 'yes', 'on')
     return bool(value)
+
+
+# Default content seeded when a block is instantiated from the library.
+# Mirrors the client-side ``DEFAULTS`` map in static/js/builder/page_manager.js
+# (keep the two in sync when a type is added).
+_BLOCK_TEMPLATES = {
+    'html': {'content_html': '<h2>New section</h2><p>Write your content here.</p>', 'content_json': {}},
+    'hero': {'content_html': '', 'content_json': {
+        'headline': 'A bold headline',
+        'subheadline': 'Supporting line',
+        'primary_label': 'Learn More',
+        'primary_url': '/departments/',
+    }},
+    'features': {'content_html': '', 'content_json': {
+        'title': 'Why choose us',
+        'items': [{'icon': 'fa-star', 'title': 'Feature', 'text': 'Describe it here.'}],
+    }},
+    'split': {'content_html': '', 'content_json': {
+        'heading': 'Our mission',
+        'text': 'Rich text content goes here.',
+        'image_url': '',
+        'image_alt': '',
+    }},
+    'faq': {'content_html': '', 'content_json': {
+        'title': 'FAQs',
+        'items': [{'question': 'A question?', 'answer': 'An answer.'}],
+    }},
+    'stats': {'content_html': '', 'content_json': {
+        'title': 'At a glance',
+        'items': [{'value': '100+', 'label': 'Highlight', 'icon': 'fa-chart-simple'}],
+    }},
+    'testimonials': {'content_html': '', 'content_json': {
+        'title': 'What people say',
+        'items': [{'quote': 'A quote worth sharing.', 'author': 'Name', 'title': 'Role'}],
+    }},
+    'cta': {'content_html': '', 'content_json': {
+        'headline': 'Ready to start?',
+        'subtext': 'Join us today.',
+        'primary_label': 'Apply Now',
+        'primary_url': '/signup/',
+    }},
+}
+
+
+@change_editablepage_required
+def builder_block_create(request):
+    """JSON API: instantiate a new ContentBlock from the block library.
+
+    Expects ``{page_id, block_type, order_index?}``. The block is seeded with
+    default content for its type (see ``_BLOCK_TEMPLATES``) and inserted at
+    ``order_index`` — existing blocks at that position and beyond shift up by
+    one inside a single transaction. Without an index the block is appended
+    to the end of the page.
+    """
+    data, error = _parse_json_body(request)
+    if error is not None:
+        return error
+
+    raw_page_id = data.get('page_id')
+    if raw_page_id in (None, ''):
+        return JsonResponse({'status': 'error', 'message': 'page_id is required'}, status=400)
+    try:
+        page = EditablePage.objects.get(pk=int(raw_page_id))
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {'status': 'error', 'message': 'page_id must be an integer'},
+            status=400,
+        )
+    except EditablePage.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Page not found'}, status=404)
+
+    block_type = (data.get('block_type') or '').strip()
+    valid_types = {code for code, _label in ContentBlock.BLOCK_TYPE_CHOICES}
+    if block_type not in valid_types:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Unknown block type: %s' % block_type},
+            status=400,
+        )
+
+    # Insert position: explicit index shifts blocks up; otherwise append.
+    order = (ContentBlock.objects.filter(page=page).aggregate(top=Max('order'))['top'] or 0) + 1
+    order_index = data.get('order_index')
+    if order_index is not None:
+        try:
+            order = max(int(order_index), 0)
+        except (TypeError, ValueError):
+            return JsonResponse(
+                {'status': 'error', 'message': 'order_index must be an integer'},
+                status=400,
+            )
+
+    defaults = _BLOCK_TEMPLATES.get(block_type, {'content_html': '', 'content_json': {}})
+    element_id = '%s-%s' % (block_type, secrets.token_hex(4))
+    with transaction.atomic():
+        # Make room at the target index (no-op when appending).
+        ContentBlock.objects.filter(page=page, order__gte=order).update(order=F('order') + 1)
+        block = ContentBlock.objects.create(
+            page=page,
+            element_id=element_id,
+            block_type=block_type,
+            content_html=defaults.get('content_html', ''),
+            content_json=defaults.get('content_json', {}),
+            order=order,
+        )
+    return JsonResponse({
+        'status': 'success',
+        'block': {
+            'id': block.pk,
+            'element_id': block.element_id,
+            'block_type': block.block_type,
+            'order': block.order,
+        },
+    })
+
+
+@change_editablepage_required
+def builder_block_delete(request, block_id):
+    """JSON API: remove a ContentBlock from the canvas by its database id.
+
+    Called by the page builder's soft-confirmation modal (POST only).
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    try:
+        block = ContentBlock.objects.get(pk=block_id)
+    except (ContentBlock.DoesNotExist, ValueError, TypeError):
+        return JsonResponse({'status': 'error', 'message': 'Block not found'}, status=404)
+    block.delete()
+    return JsonResponse({'status': 'success', 'deleted': block_id})
 
 
 @change_editablepage_required

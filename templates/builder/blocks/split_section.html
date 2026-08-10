@@ -1,0 +1,26 @@
+{% load builder_tags %}
+{% comment %}
+    Text & Image Split block — rich text on the left, a media image on the
+    right (stacking on small screens).
+    Data schema (ContentBlock.content_json), see ContentBlock.BLOCK_SCHEMAS['split']:
+        { "heading": "…", "text": "…", "image_url": "https://…", "image_alt": "…" }
+    The image URL runs through the ``safe_url`` filter so only http(s)/
+    mailto/tel/ftp and relative/# links ever reach an ``src``.
+{% endcomment %}
+<section class="builder-block split-block" data-builder-block="split">
+    <div class="split-inner">
+        <div class="split-copy">
+            {% if data.heading %}
+            <h2 class="split-heading">{{ data.heading }}</h2>
+            {% endif %}
+            {% if data.text %}
+            <p class="split-text">{{ data.text }}</p>
+            {% endif %}
+        </div>
+        {% if data.image_url %}
+        <figure class="split-media">
+            <img class="split-image" src="{{ data.image_url|safe_url }}" alt="{{ data.image_alt|default:data.heading|default:'Split image' }}" loading="lazy">
+        </figure>
+        {% endif %}
+    </div>
+</section>

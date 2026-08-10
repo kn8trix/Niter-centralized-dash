@@ -8,7 +8,7 @@
 
     <!-- Global design tokens -->
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
-    <!-- Page builder styles (toolbar + block manager + preview) -->
+    <!-- Page builder styles (toolbar + block manager + canvas + library) -->
     <link rel="stylesheet" href="{% static 'css/builder_page.css' %}">
 
     <!-- Google Fonts (Inter) -->
@@ -23,9 +23,12 @@
 <body class="page-builder"
       data-app="campusdash-admin"
       data-page-slug="{{ page.slug }}"
+      data-page-id="{{ page.pk }}"
       data-page-save-url="{% url 'builder_page_save' %}"
       data-blocks-save-url="{% url 'builder_blocks_save' %}"
-      data-blocks-reorder-url="{% url 'builder_blocks_reorder' %}">
+      data-blocks-reorder-url="{% url 'builder_blocks_reorder' %}"
+      data-block-create-url="{% url 'builder_block_create' %}"
+      data-block-delete-template="{% url 'builder_block_delete' 0 %}">
 
     <!-- ============================================================
          Top toolbar: identity + page settings + save/publish
@@ -73,7 +76,7 @@
     </header>
 
     <!-- ============================================================
-         Body: block manager (left) + live preview (right)
+         Body: block manager (left) + section canvas / preview (right)
     ============================================================ -->
     <div class="pb-body">
 
@@ -106,7 +109,7 @@
             <ol class="pb-list" id="pb-block-list">
                 {% for block in blocks %}
                 <li class="pb-item" draggable="true" data-block-id="{{ block.element_id }}"
-                    data-block-type="{{ block.block_type }}">
+                    data-block-type="{{ block.block_type }}" data-block-pk="{{ block.pk }}">
                     <span class="pb-grip" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>
                     <span class="pb-type-badge">{{ block.type_label }}</span>
                     <span class="pb-eid">#{{ block.element_id }}</span>
@@ -149,7 +152,7 @@
                 </label>
 
                 <label class="pb-field">
-                    <span>Content (JSON) <small>— for Hero / Features / FAQ / Stats / Testimonials / CTA</small></span>
+                    <span>Content (JSON) <small>— for Hero / Features / Split / FAQ / Stats / Testimonials / CTA</small></span>
                     <textarea id="pb-editor-json" rows="6" spellcheck="false"
                               placeholder='{"headline": "A bold headline", "subheadline": "…"}'></textarea>
                 </label>
@@ -163,18 +166,115 @@
             </section>
         </aside>
 
-        <!-- Right: live preview -->
-        <main class="pb-preview" aria-label="Live page preview">
+        <!-- Right: section canvas + live preview -->
+        <main class="pb-preview" aria-label="Page canvas">
             <div class="pb-preview-bar">
-                <span><i class="fa-solid fa-eye"></i> Live preview</span>
-                <button type="button" class="pb-icon-btn" id="pb-refresh-preview" title="Refresh preview" aria-label="Refresh preview">
-                    <i class="fa-solid fa-rotate"></i>
-                </button>
+                <span class="pb-tabs" role="tablist" aria-label="Editor view">
+                    <button type="button" class="pb-tab active" id="pb-tab-canvas" data-tab="canvas" role="tab" aria-selected="true">
+                        <i class="fa-solid fa-layers"></i> Canvas
+                    </button>
+                    <button type="button" class="pb-tab" id="pb-tab-preview" data-tab="preview" role="tab" aria-selected="false">
+                        <i class="fa-solid fa-eye"></i> Live Preview
+                    </button>
+                </span>
+                <span class="pb-preview-note">Sections render as they appear on /page/{{ page.slug }}/</span>
             </div>
-            <div class="pb-preview-frame">
+
+            <!-- Inline section canvas -->
+            <div class="pb-canvas-wrap" id="pb-canvas-wrap">
+                {% if page.custom_css %}<style>{{ page.custom_css|safe }}</style>{% endif %}
+                <div class="pb-canvas" id="pb-canvas">
+                    {% for block in blocks %}
+                    <section class="pb-section" data-block-id="{{ block.element_id }}"
+                             data-block-pk="{{ block.pk }}" data-order="{{ block.order }}">
+                        <div class="pb-section-toolbar">
+                            <span class="pb-type-badge">{{ block.type_label }}</span>
+                            <span class="pb-eid">#{{ block.element_id }}</span>
+                            <span class="pb-item-actions">
+                                <button type="button" class="pb-icon-btn" data-action="edit" title="Edit section" aria-label="Edit section">
+                                    <i class="fa-solid fa-pen"></i>
+                                </button>
+                                <button type="button" class="pb-icon-btn danger" data-action="delete" title="Delete section" aria-label="Delete section">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </span>
+                        </div>
+                        <div class="pb-section-body">{{ block.rendered_html|safe }}</div>
+                        <button type="button" class="pb-insert" data-order="{{ block.order|add:1 }}"
+                                title="Add a new section below this one">
+                            <i class="fa-solid fa-plus"></i> Add New Section
+                        </button>
+                    </section>
+                    {% empty %}
+                    <div class="pb-canvas-empty">
+                        <i class="fa-regular fa-pen-to-square"></i>
+                        <h3>This page has no sections yet</h3>
+                        <p>Add your first section from the block library below.</p>
+                    </div>
+                    {% endfor %}
+                    <button type="button" class="pb-insert pb-insert--bottom" id="pb-insert-bottom">
+                        <i class="fa-solid fa-plus"></i> Add New Section
+                    </button>
+                </div>
+            </div>
+
+            <!-- Live preview iframe (toggled from the tab bar) -->
+            <div class="pb-preview-frame" id="pb-preview-wrap" hidden>
                 <iframe id="pb-preview" src="{% url 'editable_page' page.slug %}" title="Live page preview"></iframe>
             </div>
         </main>
+    </div>
+
+    <!-- ============================================================
+         Block library drawer (modal)
+    ============================================================ -->
+    <div class="pb-modal-backdrop" id="pb-lib-modal" hidden>
+        <div class="pb-modal" role="dialog" aria-modal="true" aria-labelledby="pb-lib-title">
+            <div class="pb-modal-head">
+                <h3 id="pb-lib-title"><i class="fa-solid fa-book-open"></i> Block Library</h3>
+                <button type="button" class="pb-icon-btn" id="pb-lib-close" title="Close" aria-label="Close block library">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <p class="pb-modal-note">Pick a section template — it will be added at the position you chose.</p>
+            <div class="pb-lib-grid">
+                {% for t in block_templates %}
+                <div class="pb-lib-card" data-block-type="{{ t.code }}" role="button" tabindex="0"
+                     aria-label="Add {{ t.label }}">
+                    <!-- Partials are curated in builder_editor's block_templates
+                         (all four are covered by BuilderBlockLibraryDrawerTest). -->
+                    <div class="pb-lib-preview">{% include t.partial with data=t.sample %}</div>
+                    <div class="pb-lib-meta">
+                        <strong>{{ t.label }}</strong>
+                        <span>{{ t.description }}</span>
+                    </div>
+                    <span class="pb-lib-cta"><i class="fa-solid fa-plus"></i> Add Section</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         Delete confirmation modal (soft confirm)
+    ============================================================ -->
+    <div class="pb-modal-backdrop" id="pb-confirm-modal" hidden>
+        <div class="pb-modal pb-modal--sm" role="alertdialog" aria-modal="true" aria-labelledby="pb-confirm-title">
+            <div class="pb-modal-head">
+                <h3 id="pb-confirm-title"><i class="fa-solid fa-triangle-exclamation"></i> Delete Section</h3>
+                <button type="button" class="pb-icon-btn" id="pb-confirm-close" title="Close" aria-label="Cancel delete">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <p class="pb-modal-note">Delete <strong id="pb-confirm-target"></strong>? This removes the section
+                from the page and cannot be undone.</p>
+            <div class="pb-modal-actions">
+                <button type="button" class="btn pb-btn ghost" id="pb-confirm-cancel">Cancel</button>
+                <button type="button" class="btn pb-btn danger" id="pb-confirm-delete">
+                    <i class="fa-solid fa-trash"></i> Delete Section
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- Toast -->
