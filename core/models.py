@@ -128,6 +128,8 @@ class ContentBlock(models.Model):
         ('hero', 'Hero Header'),
         ('features', 'Feature Cards Grid'),
         ('split', 'Text & Image Split'),
+        ('links', 'Link Hub'),
+        ('staff', 'Staff Grid'),
         ('faq', 'FAQ Accordion'),
         ('stats', 'Stats Counter Grid'),
         ('testimonials', 'Testimonial Slider'),
@@ -170,6 +172,20 @@ class ContentBlock(models.Model):
             'text': 'Rich text content…',
             'image_url': 'https://…',
             'image_alt': 'Description',
+        },
+        'links': {
+            'title': 'Explore',
+            'subtitle': 'Optional intro line',
+            'items': [
+                {'label': 'Admissions', 'url': '/admissions/'},
+            ],
+        },
+        'staff': {
+            'title': 'Our team',
+            'subtitle': 'Optional intro line',
+            'items': [
+                {'name': 'Jane Doe', 'role': 'Dean', 'photo_url': 'https://…'},
+            ],
         },
         'testimonials': {
             'title': 'Optional heading',

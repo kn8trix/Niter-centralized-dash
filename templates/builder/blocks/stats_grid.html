@@ -10,8 +10,8 @@
 <section class="builder-block stats-block" data-builder-block="stats">
     {% if data.title %}
     <header class="bb-head">
-        <h2 class="bb-title">{{ data.title }}</h2>
-        {% if data.subtitle %}<p class="bb-subtitle">{{ data.subtitle }}</p>{% endif %}
+        <h2 class="bb-title" data-edit-field="title">{{ data.title }}</h2>
+        {% if data.subtitle %}<p class="bb-subtitle" data-edit-field="subtitle">{{ data.subtitle }}</p>{% endif %}
     </header>
     {% endif %}
 
@@ -20,8 +20,8 @@
         {% if item.value or item.label %}
         <div class="stat-card{% if item.highlight %} stat-card--highlight{% endif %}">
             {% if item.icon %}<i class="fa-solid {{ item.icon }} stat-icon" aria-hidden="true"></i>{% endif %}
-            <span class="stat-value">{{ item.value }}</span>
-            {% if item.label %}<span class="stat-label">{{ item.label }}</span>{% endif %}
+            <span class="stat-value" data-edit-field="items.{{ forloop.counter0 }}.value">{{ item.value }}</span>
+            {% if item.label %}<span class="stat-label" data-edit-field="items.{{ forloop.counter0 }}.label">{{ item.label }}</span>{% endif %}
         </div>
         {% endif %}
         {% empty %}

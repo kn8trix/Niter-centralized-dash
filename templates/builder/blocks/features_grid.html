@@ -8,8 +8,8 @@
 <section class="builder-block features-block" data-builder-block="features">
     {% if data.title %}
     <header class="bb-head">
-        <h2 class="bb-title">{{ data.title }}</h2>
-        {% if data.subtitle %}<p class="bb-subtitle">{{ data.subtitle }}</p>{% endif %}
+        <h2 class="bb-title" data-edit-field="title">{{ data.title }}</h2>
+        {% if data.subtitle %}<p class="bb-subtitle" data-edit-field="subtitle">{{ data.subtitle }}</p>{% endif %}
     </header>
     {% endif %}
 
@@ -18,8 +18,8 @@
         {% if item.title or item.text %}
         <article class="feature-card">
             {% if item.icon %}<i class="fa-solid {{ item.icon }} feature-icon" aria-hidden="true"></i>{% endif %}
-            {% if item.title %}<h3 class="feature-title">{{ item.title }}</h3>{% endif %}
-            {% if item.text %}<p class="feature-text">{{ item.text }}</p>{% endif %}
+            {% if item.title %}<h3 class="feature-title" data-edit-field="items.{{ forloop.counter0 }}.title">{{ item.title }}</h3>{% endif %}
+            {% if item.text %}<p class="feature-text" data-edit-field="items.{{ forloop.counter0 }}.text">{{ item.text }}</p>{% endif %}
         </article>
         {% endif %}
         {% empty %}

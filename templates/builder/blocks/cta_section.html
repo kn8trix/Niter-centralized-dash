@@ -12,18 +12,18 @@
 <section class="builder-block cta-block" data-builder-block="cta">
     <div class="cta-inner">
         {% if data.headline %}
-        <h2 class="cta-headline">{{ data.headline }}</h2>
+        <h2 class="cta-headline" data-edit-field="headline">{{ data.headline }}</h2>
         {% endif %}
         {% if data.subtext %}
-        <p class="cta-subtext">{{ data.subtext }}</p>
+        <p class="cta-subtext" data-edit-field="subtext">{{ data.subtext }}</p>
         {% endif %}
         {% if data.primary_label or data.secondary_label %}
         <div class="cta-actions">
             {% if data.primary_label and data.primary_url %}
-            <a class="bb-btn bb-btn--primary" href="{{ data.primary_url|safe_url }}">{{ data.primary_label }}</a>
+            <a class="bb-btn bb-btn--primary" href="{{ data.primary_url|safe_url }}" data-edit-field="primary_label">{{ data.primary_label }}</a>
             {% endif %}
             {% if data.secondary_label and data.secondary_url %}
-            <a class="bb-btn bb-btn--secondary" href="{{ data.secondary_url|safe_url }}">{{ data.secondary_label }}</a>
+            <a class="bb-btn bb-btn--secondary" href="{{ data.secondary_url|safe_url }}" data-edit-field="secondary_label">{{ data.secondary_label }}</a>
             {% endif %}
         </div>
         {% endif %}

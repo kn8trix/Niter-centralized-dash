@@ -191,6 +191,9 @@
                             <span class="pb-type-badge">{{ block.type_label }}</span>
                             <span class="pb-eid">#{{ block.element_id }}</span>
                             <span class="pb-item-actions">
+                                <button type="button" class="pb-icon-btn" data-action="style" title="Section style (colors)" aria-label="Section style">
+                                    <i class="fa-solid fa-palette"></i>
+                                </button>
                                 <button type="button" class="pb-icon-btn" data-action="edit" title="Edit section" aria-label="Edit section">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
@@ -199,7 +202,7 @@
                                 </button>
                             </span>
                         </div>
-                        <div class="pb-section-body">{{ block.rendered_html|safe }}</div>
+                        <div class="pb-section-body"{% if block.style_attr %} style="{{ block.style_attr }}"{% endif %}{% if block.block_type == 'html' %} data-edit-html{% endif %}>{{ block.rendered_html|safe }}</div>
                         <button type="button" class="pb-insert" data-order="{{ block.order|add:1 }}"
                                 title="Add a new section below this one">
                             <i class="fa-solid fa-plus"></i> Add New Section
@@ -252,6 +255,35 @@
                 </div>
                 {% endfor %}
             </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         Section style popover (64-colour text + background pickers)
+    ============================================================ -->
+    <div class="pb-style-pop" id="pb-style-pop" hidden>
+        <div class="pb-style-head">
+            <strong><i class="fa-solid fa-palette"></i> Section style</strong>
+            <span id="pb-style-target" class="pb-style-target"></span>
+        </div>
+        <div class="pb-style-group">
+            <span class="pb-style-label"><i class="fa-solid fa-font"></i> Text color</span>
+            <div class="pb-swatches" id="pb-text-swatches">
+                {% for color in color_palette %}
+                <button type="button" class="pb-swatch" data-color="{{ color }}" style="background: {{ color }}" title="{{ color }}" aria-label="Text color {{ color }}"></button>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="pb-style-group">
+            <span class="pb-style-label"><i class="fa-solid fa-fill-drip"></i> Background color</span>
+            <div class="pb-swatches" id="pb-bg-swatches">
+                {% for color in color_palette %}
+                <button type="button" class="pb-swatch" data-color="{{ color }}" style="background: {{ color }}" title="{{ color }}" aria-label="Background color {{ color }}"></button>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="pb-style-actions">
+            <button type="button" class="btn pb-btn ghost" id="pb-style-reset">Reset colors</button>
         </div>
     </div>
 

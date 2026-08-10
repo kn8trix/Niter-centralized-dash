@@ -1,0 +1,30 @@
+{% load builder_tags %}
+{% comment %}
+    Link Hub block — heading plus a responsive grid of labeled links.
+    Data schema (ContentBlock.content_json), see ContentBlock.BLOCK_SCHEMAS['links']:
+        { "title": "…", "subtitle": "…", "items": [{"label": "…", "url": "…"}] }
+    Link URLs run through the ``safe_url`` filter so only http(s)/mailto/
+    tel/ftp and relative/# links ever reach an ``href``. Text fields carry
+    ``data-edit-field`` so the builder canvas can edit them inline.
+{% endcomment %}
+<section class="builder-block links-block" data-builder-block="links">
+    {% if data.title %}
+    <header class="bb-head">
+        <h2 class="bb-title" data-edit-field="title">{{ data.title }}</h2>
+        {% if data.subtitle %}<p class="bb-subtitle" data-edit-field="subtitle">{{ data.subtitle }}</p>{% endif %}
+    </header>
+    {% endif %}
+
+    <div class="links-grid">
+        {% for item in data.items %}
+        {% if item.label or item.url %}
+        <a class="link-card" href="{{ item.url|safe_url }}">
+            <span class="link-card-label" data-edit-field="items.{{ forloop.counter0 }}.label">{{ item.label }}</span>
+            <i class="fa-solid fa-arrow-right link-card-arrow" aria-hidden="true"></i>
+        </a>
+        {% endif %}
+        {% empty %}
+        <p class="bb-empty">No links have been added yet.</p>
+        {% endfor %}
+    </div>
+</section>

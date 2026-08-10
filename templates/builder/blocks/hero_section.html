@@ -13,14 +13,14 @@
     <div class="hero-inner">
         <div class="hero-copy">
             {% if data.headline %}
-            <h2 class="hero-headline">{{ data.headline }}</h2>
+            <h2 class="hero-headline" data-edit-field="headline">{{ data.headline }}</h2>
             {% endif %}
             {% if data.subheadline %}
-            <p class="hero-subheadline">{{ data.subheadline }}</p>
+            <p class="hero-subheadline" data-edit-field="subheadline">{{ data.subheadline }}</p>
             {% endif %}
             {% if data.primary_label and data.primary_url %}
             <div class="hero-actions">
-                <a class="bb-btn bb-btn--primary" href="{{ data.primary_url|safe_url }}">{{ data.primary_label }}</a>
+                <a class="bb-btn bb-btn--primary" href="{{ data.primary_url|safe_url }}" data-edit-field="primary_label">{{ data.primary_label }}</a>
             </div>
             {% endif %}
         </div>

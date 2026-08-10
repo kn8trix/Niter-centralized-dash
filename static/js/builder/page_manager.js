@@ -111,6 +111,7 @@
     function closeAllModals() {
         closeModal(libModal);
         closeModal(confirmModal);
+        closeStylePopover();
         pendingOrder = null;
         pendingDelete = null;
     }
@@ -444,12 +445,183 @@
                 openEditor(elementId);
             } else if (action === 'delete') {
                 openDeleteConfirm(row.dataset.blockPk, elementId);
+            } else if (action === 'style') {
+                openStylePopover(btn, row);
             }
         });
     }
 
     if (canvas) handleToolbarClick(canvas, '.pb-section');
     if (list) handleToolbarClick(list, '.pb-item');
+
+    /* ------------------------------------------------------------------ */
+    /* Inline contenteditable editing + 64-colour style picker             */
+    /* ------------------------------------------------------------------ */
+    function deepCopy(obj) {
+        return JSON.parse(JSON.stringify(obj || {}));
+    }
+
+    function setPath(obj, path, value) {
+        var parts = path.split('.');
+        var node = obj;
+        for (var i = 0; i < parts.length - 1; i++) {
+            var key = parts[i];
+            if (node[key] == null || typeof node[key] !== 'object') node[key] = {};
+            node = node[key];
+        }
+        node[parts[parts.length - 1]] = value;
+        return obj;
+    }
+
+    function persistFieldEdit(el) {
+        var section = el.closest('.pb-section');
+        if (!section) return;
+        var elementId = section.dataset.blockId;
+        var block = blocksData[elementId];
+        if (!block) return;
+
+        if (el.hasAttribute('data-edit-html')) {
+            // Whole-body rich-text edit on a Text Block → save content_html.
+            postJson(URLS.blocksSave, {
+                page_slug: PAGE_SLUG,
+                element_id: elementId,
+                block_type: block.block_type,
+                content_html: el.innerHTML,
+            }).then(function (_a) {
+                if (!_a.ok) {
+                    showToast((_a.data && _a.data.message) || 'Could not save edit.', true);
+                    return;
+                }
+                block.content_html = el.innerHTML;
+                showToast('Saved.');
+            }).catch(requestFailed);
+            return;
+        }
+
+        var fieldPath = el.getAttribute('data-edit-field');
+        if (!fieldPath) return;
+        var newJson = deepCopy(block.content_json);
+        setPath(newJson, fieldPath, el.innerText.trim());
+        postJson(URLS.blocksSave, {
+            page_slug: PAGE_SLUG,
+            element_id: elementId,
+            block_type: block.block_type,
+            content_json: newJson,
+        }).then(function (_a) {
+            if (!_a.ok) {
+                showToast((_a.data && _a.data.message) || 'Could not save edit.', true);
+                return;
+            }
+            blocksData[elementId].content_json = newJson;
+            showToast('Saved.');
+        }).catch(requestFailed);
+    }
+
+    // Every canvas field that carries a binding becomes directly editable.
+    document.querySelectorAll('#pb-canvas [data-edit-field], #pb-canvas [data-edit-html]').forEach(function (el) {
+        el.setAttribute('contenteditable', 'true');
+        el.setAttribute('spellcheck', 'false');
+        el.addEventListener('blur', function () {
+            // Debounce so rapid field-to-field edits coalesce into one save.
+            clearTimeout(window.__pbFieldSaveTimer);
+            window.__pbFieldSaveTimer = setTimeout(function () {
+                persistFieldEdit(el);
+            }, 350);
+        });
+    });
+
+    /* Style popover (64-swatch text + background pickers) */
+    var stylePop = document.getElementById('pb-style-pop');
+    var styleTarget = document.getElementById('pb-style-target');
+    var styleSection = null;
+
+    function openStylePopover(btn, section) {
+        styleSection = section;
+        styleTarget.textContent = '#' + section.dataset.blockId;
+        stylePop.hidden = false;
+        var rect = btn.getBoundingClientRect();
+        var left = Math.max(8, Math.min(rect.left, window.innerWidth - (stylePop.offsetWidth || 288) - 8));
+        var top = rect.top - (stylePop.offsetHeight || 360) - 10;
+        if (top < 8) top = rect.bottom + 10;
+        stylePop.style.left = left + 'px';
+        stylePop.style.top = top + 'px';
+    }
+
+    function closeStylePopover() {
+        if (stylePop) stylePop.hidden = true;
+        styleSection = null;
+    }
+
+    function applyStyleToSection(section, styleJson) {
+        var bodyEl = section.querySelector('.pb-section-body');
+        if (!bodyEl) return;
+        bodyEl.style.background = styleJson.background || '';
+        bodyEl.style.color = styleJson.color || '';
+    }
+
+    function saveStyle(kind, color) {
+        if (!styleSection) return;
+        var elementId = styleSection.dataset.blockId;
+        var block = blocksData[elementId];
+        if (!block) return;
+        var styleJson = deepCopy(block.style_json || {});
+        if (kind === 'text') styleJson.color = color;
+        else styleJson.background = color;
+        postJson(URLS.blocksSave, {
+            page_slug: PAGE_SLUG,
+            element_id: elementId,
+            block_type: block.block_type,
+            style_json: styleJson,
+        }).then(function (_a) {
+            if (!_a.ok) {
+                showToast((_a.data && _a.data.message) || 'Could not save style.', true);
+                return;
+            }
+            blocksData[elementId].style_json = styleJson;
+            applyStyleToSection(styleSection, styleJson);
+            showToast(kind === 'text' ? 'Text colour saved.' : 'Background colour saved.');
+        }).catch(requestFailed);
+    }
+
+    document.querySelectorAll('#pb-text-swatches .pb-swatch').forEach(function (sw) {
+        sw.addEventListener('click', function () { saveStyle('text', sw.dataset.color); });
+    });
+    document.querySelectorAll('#pb-bg-swatches .pb-swatch').forEach(function (sw) {
+        sw.addEventListener('click', function () { saveStyle('background', sw.dataset.color); });
+    });
+
+    var styleReset = document.getElementById('pb-style-reset');
+    if (styleReset) {
+        styleReset.addEventListener('click', function () {
+            if (!styleSection) return;
+            var elementId = styleSection.dataset.blockId;
+            var block = blocksData[elementId];
+            if (!block) return;
+            var styleJson = deepCopy(block.style_json || {});
+            delete styleJson.color;
+            delete styleJson.background;
+            postJson(URLS.blocksSave, {
+                page_slug: PAGE_SLUG,
+                element_id: elementId,
+                block_type: block.block_type,
+                style_json: styleJson,
+            }).then(function (_a) {
+                if (!_a.ok) {
+                    showToast((_a.data && _a.data.message) || 'Could not reset style.', true);
+                    return;
+                }
+                blocksData[elementId].style_json = styleJson;
+                applyStyleToSection(styleSection, styleJson);
+                showToast('Colours reset.');
+            }).catch(requestFailed);
+        });
+    }
+
+    document.addEventListener('click', function (e) {
+        if (!stylePop || stylePop.hidden) return;
+        if (stylePop.contains(e.target)) return;
+        closeStylePopover();
+    });
 
     /* ------------------------------------------------------------------ */
     /* Canvas / Live Preview tabs                                          */

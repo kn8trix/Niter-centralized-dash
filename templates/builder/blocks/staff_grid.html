@@ -1,0 +1,35 @@
+{% load builder_tags %}
+{% comment %}
+    Staff Grid block — heading plus a responsive grid of staff cards.
+    Data schema (ContentBlock.content_json), see ContentBlock.BLOCK_SCHEMAS['staff']:
+        { "title": "…", "subtitle": "…",
+          "items": [{"name": "Jane Doe", "role": "Dean", "photo_url": "https://…"}] }
+    Photos run through the ``safe_url`` filter. Text fields carry
+    ``data-edit-field`` so the builder canvas can edit them inline.
+{% endcomment %}
+<section class="builder-block staff-block" data-builder-block="staff">
+    {% if data.title %}
+    <header class="bb-head">
+        <h2 class="bb-title" data-edit-field="title">{{ data.title }}</h2>
+        {% if data.subtitle %}<p class="bb-subtitle" data-edit-field="subtitle">{{ data.subtitle }}</p>{% endif %}
+    </header>
+    {% endif %}
+
+    <div class="staff-grid">
+        {% for item in data.items %}
+        {% if item.name or item.role or item.photo_url %}
+        <article class="staff-card">
+            {% if item.photo_url %}
+            <img class="staff-photo" src="{{ item.photo_url|safe_url }}" alt="{{ item.name|default:'Staff member' }}" loading="lazy">
+            {% else %}
+            <span class="staff-photo staff-photo--initials" aria-hidden="true">{{ item.name|default:'?'|slice:":1" }}</span>
+            {% endif %}
+            <h3 class="staff-name" data-edit-field="items.{{ forloop.counter0 }}.name">{{ item.name }}</h3>
+            {% if item.role %}<span class="staff-role" data-edit-field="items.{{ forloop.counter0 }}.role">{{ item.role }}</span>{% endif %}
+        </article>
+        {% endif %}
+        {% empty %}
+        <p class="bb-empty">No staff members have been added yet.</p>
+        {% endfor %}
+    </div>
+</section>

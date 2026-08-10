@@ -2450,3 +2450,59 @@ create endpoint and a delete-by-id endpoint with a soft-confirmation modal.
 - Live check: 4 canvas sections + insert handles render, library drawer
   shows 4 template cards, create (insert at index 1) and delete both return
   success.
+
+---
+
+## 56. Complete Dynamic Rendering & Inline Editing for All Page Templates
+
+**Date:** 11 August 2026  
+**Branch:** main
+
+### Overview
+
+Completed the frontend/backend integration for the premade page templates:
+added the last two section types (Link Hub, Staff Grid), bound every template
+field to ``data-edit-field`` for ``contenteditable`` inline editing, added a
+64-colour style picker, and made the block-save API safe for complex array
+payloads and partial (field/style-only) updates.
+
+### Completed Work
+
+1. **Two new block types (`core/models.py`, migration 0022)**
+   - ``links`` (Link Hub) — labelled grid of internal/external links.
+   - ``staff`` (Staff Grid) — photo/name/role cards.
+   - Schemas documented in ``BLOCK_SCHEMAS``; partials registered in
+     ``_BLOCK_PARTIALS`` (``links_grid.html``, ``staff_grid.html``). The
+     library drawer now offers **six** template cards.
+
+2. **Field-level edit bindings (all 9 structured partials)**
+   - Headings, subtitles, body text, buttons and array items
+     (``items.N.field`` dot-paths) all carry ``data-edit-field``; Text Blocks
+     render a ``data-edit-html`` whole-body surface.
+   - ``page_manager.js`` makes bound elements ``contenteditable`` and saves on
+     blur via ``setPath``/``deepCopy`` against ``content_json`` (array-safe).
+
+3. **64-colour style picker (`core/views.py`, `edit_page.html`)**
+   - ``COLOR_PALETTE`` (8×8 swatches) server-rendered into the style popover;
+     text-colour and background-colour groups save into ``style_json`` and are
+     applied live to the section body and on the public page via
+     ``_style_attr`` (camelCase → kebab-case CSS properties).
+
+4. **Partial-save safety (`_save_content_block_data`)**
+   - Payload keys are now written only when present: a style-only or
+     field-only save no longer wipes ``content_html`` / ``content_json`` /
+     ``style_json``. Complex array content (feature cards, staff grid items)
+     round-trips losslessly.
+
+5. **Tests (`BuilderDynamicRenderEditTest`, 8 new)**
+   - links/staff choices + schemas + live rendering; complex-array round-trip;
+     partial-save field retention; inline style on the public render; canvas
+     edit bindings + 128 swatches + text-block HTML surface. Library drawer
+     test updated to six cards.
+
+### Verification
+
+- ``manage.py check`` — clean · migrations consistent (0022 applied)
+- Builder tests — **98 OK** · full suite — **435 OK** · ``node --check`` clean
+- Live check — 78 edit-field bindings, 128 swatches, style popover, six
+  library cards, staff block create + public render verified

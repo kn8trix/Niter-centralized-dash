@@ -7,8 +7,8 @@
 <section class="builder-block faq-block" data-builder-block="faq">
     {% if data.title %}
     <header class="bb-head">
-        <h2 class="bb-title">{{ data.title }}</h2>
-        {% if data.subtitle %}<p class="bb-subtitle">{{ data.subtitle }}</p>{% endif %}
+        <h2 class="bb-title" data-edit-field="title">{{ data.title }}</h2>
+        {% if data.subtitle %}<p class="bb-subtitle" data-edit-field="subtitle">{{ data.subtitle }}</p>{% endif %}
     </header>
     {% endif %}
 
@@ -17,10 +17,10 @@
         {% if item.question or item.answer %}
         <details class="faq-item"{% if forloop.first %} open{% endif %}>
             <summary class="faq-question">
-                <span class="faq-q-text">{{ item.question }}</span>
+                <span class="faq-q-text" data-edit-field="items.{{ forloop.counter0 }}.question">{{ item.question }}</span>
                 <i class="fa-solid fa-chevron-down faq-chevron" aria-hidden="true"></i>
             </summary>
-            <div class="faq-answer">{{ item.answer|linebreaksbr }}</div>
+            <div class="faq-answer" data-edit-field="items.{{ forloop.counter0 }}.answer">{{ item.answer|linebreaksbr }}</div>
         </details>
         {% endif %}
         {% empty %}

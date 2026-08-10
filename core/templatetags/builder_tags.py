@@ -33,6 +33,8 @@ _BLOCK_PARTIALS = {
     'hero': 'builder/blocks/hero_section.html',
     'features': 'builder/blocks/features_grid.html',
     'split': 'builder/blocks/split_section.html',
+    'links': 'builder/blocks/links_grid.html',
+    'staff': 'builder/blocks/staff_grid.html',
     'faq': 'builder/blocks/faq_accordion.html',
     'stats': 'builder/blocks/stats_grid.html',
     'testimonials': 'builder/blocks/testimonial_slider.html',

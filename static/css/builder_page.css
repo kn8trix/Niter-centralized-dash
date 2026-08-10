@@ -674,3 +674,120 @@ body.page-builder {
     gap: 0.5rem;
     margin-top: 0.4rem;
 }
+
+/* ---------------------------------------------------------------------------
+   7. Inline contenteditable editing + 64-color style picker
+--------------------------------------------------------------------------- */
+[contenteditable='true'] {
+    outline: 2px dashed rgba(120, 90, 40, 0.55);
+    outline-offset: 3px;
+    border-radius: 4px;
+    min-width: 1ch;
+    cursor: text;
+    transition: outline-color 0.15s ease, background 0.15s ease;
+}
+
+[contenteditable='true']:hover {
+    outline-color: rgba(120, 90, 40, 0.85);
+    background: rgba(120, 90, 40, 0.06);
+}
+
+[contenteditable='true']:focus {
+    outline: 2px solid #8a6d3b;
+    outline-offset: 3px;
+    background: rgba(255, 255, 255, 0.7);
+    box-shadow: 0 2px 10px rgba(120, 90, 40, 0.15);
+}
+
+/* Style picker popover */
+.pb-style-pop {
+    position: absolute;
+    z-index: 1100;
+    width: 288px;
+    background: #ffffff;
+    border: 1px solid #eee5d3;
+    border-radius: 14px;
+    box-shadow: 0 16px 40px rgba(60, 40, 10, 0.22);
+    padding: 0.9rem;
+}
+
+.pb-style-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.6rem;
+}
+
+.pb-style-head strong {
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #8a6d3b;
+}
+
+.pb-style-target {
+    font-family: ui-monospace, monospace;
+    font-size: 0.7rem;
+    color: #9ca3af;
+}
+
+.pb-style-group {
+    margin-bottom: 0.7rem;
+}
+
+.pb-style-label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #6b7280;
+    margin-bottom: 0.35rem;
+}
+
+.pb-swatches {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 6px;
+}
+
+.pb-swatch {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.pb-swatch:hover {
+    transform: scale(1.18);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+}
+
+.pb-swatch.active {
+    border-color: #111827;
+    box-shadow: 0 0 0 2px #ffffff inset;
+}
+
+.pb-style-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+}
+
+.pb-style-actions .btn { flex: 1; justify-content: center; }
+
+/* Canvas section interactions */
+.pb-section-body a, .pb-section-body button {
+    pointer-events: none;
+}
+
+.pb-section-body {
+    position: relative;
+    cursor: default;
+}
+
+.pb-section-body:focus-within {
+    box-shadow: 0 0 0 3px rgba(120, 90, 40, 0.25);
+    border-radius: 10px;
+}

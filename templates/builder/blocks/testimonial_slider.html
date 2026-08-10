@@ -9,7 +9,7 @@
 <section class="builder-block testimonials-block" data-builder-block="testimonials">
     {% if data.title %}
     <header class="bb-head">
-        <h2 class="bb-title">{{ data.title }}</h2>
+        <h2 class="bb-title" data-edit-field="title">{{ data.title }}</h2>
     </header>
     {% endif %}
 
@@ -18,7 +18,7 @@
             {% for item in data.items %}
             {% if item.quote %}
             <figure class="tsl-slide">
-                <blockquote class="tsl-quote">“{{ item.quote }}”</blockquote>
+                <blockquote class="tsl-quote" data-edit-field="items.{{ forloop.counter0 }}.quote">“{{ item.quote }}”</blockquote>
                 <figcaption class="tsl-author">
                     {% if item.avatar %}
                     <img class="tsl-avatar" src="{{ item.avatar }}" alt="{{ item.author|default:'Testimonial author' }}" loading="lazy">
@@ -26,7 +26,7 @@
                     <span class="tsl-avatar tsl-avatar--initials" aria-hidden="true">{{ item.author|default:'?'|slice:":1" }}</span>
                     {% endif %}
                     <span class="tsl-author-meta">
-                        <strong class="tsl-name">{{ item.author }}</strong>
+                        <strong class="tsl-name" data-edit-field="items.{{ forloop.counter0 }}.author">{{ item.author }}</strong>
                         {% if item.title %}<span class="tsl-role">{{ item.title }}</span>{% endif %}
                     </span>
                 </figcaption>

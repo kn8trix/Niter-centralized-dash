@@ -4634,9 +4634,10 @@ class BuilderBlockLibraryDrawerTest(TestCase):
         # Canvas sections carry pk + order for the toolbar/insert actions.
         self.assertIn('data-block-pk="%s"' % self.hero.pk, html)
         self.assertIn('data-order="1"', html)  # insert handle after the first block
-        # The library drawer renders all four template cards with previews.
-        for code in ('hero', 'features', 'split', 'cta'):
+        # The library drawer renders all six template cards with previews.
+        for code in ('hero', 'features', 'split', 'cta', 'links', 'staff'):
             self.assertIn('data-block-type="%s"' % code, html)
+        self.assertEqual(html.count('pb-lib-card'), 6)
         self.assertIn('id="pb-lib-modal"', html)
         self.assertIn('id="pb-confirm-modal"', html)
         # The canvas renders the block's partial markup server-side.
@@ -4652,3 +4653,189 @@ class BuilderBlockLibraryDrawerTest(TestCase):
         self.assertIn('data-builder-block="split"', html)
         self.assertIn('Our mission', html)
         self.assertIn('Body copy.', html)
+
+
+class BuilderDynamicRenderEditTest(TestCase):
+    """Dynamic rendering + inline editing for all page template block types.
+
+    Covers the Link Hub + Staff Grid types on the live page, complex-array
+    content round-tripping through the block-save API (feature cards, staff
+    grid items), inline style_json on the public render, and the editable
+    canvas markup (data-edit-field bindings, 64-swatch palette,
+    data-edit-html for text blocks).
+    """
+
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(
+            username='root_dyn', email='rd@niter.edu.bd', password='rootpass123',
+        )
+        self.page = EditablePage.objects.create(title='Dynamic', slug='dynamic-page')
+        self.client.force_login(self.superuser)
+
+    def _post_json(self, payload):
+        return self.client.post(
+            reverse('builder_blocks_save'),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+    # ------------------------------------------------------------------
+    # New types: Link Hub + Staff Grid render on the live page
+    # ------------------------------------------------------------------
+    def test_links_and_staff_types_in_choices_and_schemas(self):
+        codes = {code for code, _label in ContentBlock.BLOCK_TYPE_CHOICES}
+        self.assertIn('links', codes)
+        self.assertIn('staff', codes)
+        self.assertIn('items', ContentBlock.BLOCK_SCHEMAS['links'])
+        self.assertIn('items', ContentBlock.BLOCK_SCHEMAS['staff'])
+
+    def test_links_grid_renders_on_live_page(self):
+        ContentBlock.objects.create(
+            page=self.page, element_id='links1', block_type='links', order=0,
+            content_json={
+                'title': 'Explore NITER',
+                'items': [
+                    {'label': 'Admissions', 'url': '/admissions/'},
+                    {'label': 'Departments', 'url': '/departments/'},
+                ],
+            },
+        )
+        html = self.client.get(
+            reverse('editable_page', args=[self.page.slug])
+        ).content.decode()
+        self.assertIn('data-builder-block="links"', html)
+        self.assertIn('Explore NITER', html)
+        self.assertIn('Admissions', html)
+        self.assertIn('href="/admissions/"', html)
+
+    def test_staff_grid_renders_on_live_page(self):
+        ContentBlock.objects.create(
+            page=self.page, element_id='staff1', block_type='staff', order=0,
+            content_json={
+                'title': 'Leadership',
+                'items': [
+                    {'name': 'Jane Doe', 'role': 'Dean', 'photo_url': ''},
+                    {'name': 'John Roe', 'role': 'Registrar', 'photo_url': ''},
+                ],
+            },
+        )
+        html = self.client.get(
+            reverse('editable_page', args=[self.page.slug])
+        ).content.decode()
+        self.assertIn('data-builder-block="staff"', html)
+        self.assertIn('Leadership', html)
+        self.assertIn('Jane Doe', html)
+        self.assertIn('Registrar', html)
+
+    # ------------------------------------------------------------------
+    # Complex-array content round-trip through the save API
+    # ------------------------------------------------------------------
+    def test_save_round_trips_complex_array_content(self):
+        staff_items = [
+            {'name': 'A', 'role': 'Dean', 'photo_url': 'https://example.com/a.jpg'},
+            {'name': 'B', 'role': 'Registrar', 'photo_url': ''},
+            {'name': 'C', 'role': 'Proctor', 'photo_url': 'https://example.com/c.jpg'},
+        ]
+        response = self._post_json({
+            'page_slug': self.page.slug,
+            'element_id': 'staff-multi',
+            'block_type': 'staff',
+            'content_json': {'title': 'Team', 'items': staff_items},
+        })
+        self.assertEqual(response.status_code, 200)
+        block = ContentBlock.objects.get(page=self.page, element_id='staff-multi')
+        self.assertEqual(block.content_json['items'], staff_items)
+
+        features_items = [
+            {'icon': 'fa-a', 'title': 'One', 'text': 'First'},
+            {'icon': 'fa-b', 'title': 'Two', 'text': 'Second'},
+        ]
+        self._post_json({
+            'page_slug': self.page.slug,
+            'element_id': 'feat-multi',
+            'block_type': 'features',
+            'content_json': {'title': 'Why us', 'items': features_items},
+        })
+        block = ContentBlock.objects.get(page=self.page, element_id='feat-multi')
+        self.assertEqual(len(block.content_json['items']), 2)
+        self.assertEqual(block.content_json['items'][1]['title'], 'Two')
+
+    def test_partial_save_keeps_untouched_fields(self):
+        # Style-only save must not wipe content_json; field-only save must not
+        # wipe style_json (the JS sends partial payloads per edit action).
+        self._post_json({
+            'page_slug': self.page.slug,
+            'element_id': 'hero1',
+            'block_type': 'hero',
+            'content_json': {'headline': 'Hi', 'primary_label': 'Go', 'primary_url': '/departments/'},
+            'style_json': {'color': '#1d4ed8'},
+        })
+        response = self._post_json({
+            'page_slug': self.page.slug,
+            'element_id': 'hero1',
+            'style_json': {'color': '#1d4ed8', 'backgroundColor': '#111827'},
+        })
+        self.assertEqual(response.status_code, 200)
+        block = ContentBlock.objects.get(page=self.page, element_id='hero1')
+        self.assertEqual(block.content_json['headline'], 'Hi')
+        self.assertEqual(block.style_json.get('color'), '#1d4ed8')
+        self.assertEqual(block.style_json.get('backgroundColor'), '#111827')
+        # Field-only save keeps the style untouched.
+        self._post_json({
+            'page_slug': self.page.slug,
+            'element_id': 'hero1',
+            'content_json': {'headline': 'Hi there'},
+        })
+        block.refresh_from_db()
+        self.assertEqual(block.style_json.get('color'), '#1d4ed8')
+        self.assertEqual(block.content_json['headline'], 'Hi there')
+
+    # ------------------------------------------------------------------
+    # Inline style_json on the public render
+    # ------------------------------------------------------------------
+    def test_style_json_applies_inline_on_live_page(self):
+        block = ContentBlock.objects.create(
+            page=self.page, element_id='hero-styled', block_type='hero', order=0,
+            content_json={'headline': 'Styled', 'primary_label': 'Go', 'primary_url': '/departments/'},
+            style_json={'backgroundColor': '#111827', 'color': '#f9fafb'},
+        )
+        html = self.client.get(
+            reverse('editable_page', args=[self.page.slug])
+        ).content.decode()
+        # The block wrapper carries the flattened inline style on the live page.
+        self.assertRegex(html, r'style="[^"]*background-color:\s*#111827')
+        self.assertRegex(html, r'style="[^"]*color:\s*#f9fafb')
+        # The rendered block itself is present.
+        self.assertIn('Styled', html)
+
+    # ------------------------------------------------------------------
+    # Editable canvas markup
+    # ------------------------------------------------------------------
+    def test_canvas_has_inline_edit_bindings_and_style_palette(self):
+        ContentBlock.objects.create(
+            page=self.page, element_id='hero-canvas', block_type='hero', order=0,
+            content_json={'headline': 'Canvas hero', 'primary_label': 'Go', 'primary_url': '/departments/'},
+        )
+        html = self.client.get(
+            reverse('builder_editor', args=[self.page.slug])
+        ).content.decode()
+        # Section wrapper carries the block style + edit target for the JS.
+        self.assertIn('data-block-pk="%s"' % ContentBlock.objects.get(element_id='hero-canvas').pk, html)
+        self.assertIn('data-edit-field="headline"', html)
+        self.assertIn('data-edit-field="primary_label"', html)
+        # The 64-swatch style picker popover is present (text + background groups).
+        self.assertEqual(html.count('pb-swatches'), 2)
+        self.assertEqual(html.count('class="pb-swatch"'), 128)  # 64 swatches x 2 groups
+        self.assertIn('id="pb-style-pop"', html)
+
+    def test_text_block_gets_html_edit_surface(self):
+        ContentBlock.objects.create(
+            page=self.page, element_id='body1', block_type='html', order=0,
+            content_html='<p>Raw paragraph</p>',
+        )
+        html = self.client.get(
+            reverse('builder_editor', args=[self.page.slug])
+        ).content.decode()
+        # A Text Block's section body becomes the raw-HTML edit surface.
+        self.assertIn('data-edit-html', html)
+        self.assertIn('Raw paragraph', html)

@@ -1,3 +1,4 @@
+import colorsys
 import html
 import html.parser
 import json
@@ -2557,6 +2558,35 @@ def _style_attr(style_json):
     return '; '.join(parts)
 
 
+def _color_palette():
+    """64 curated swatches for the canvas style picker: 8 colour families
+    (red, orange, amber, green, teal, blue, violet, neutral grey) x 8
+    lightness steps from light to dark."""
+    def _hsl_to_hex(hue, sat, light):
+        r, g, b = colorsys.hls_to_rgb(hue / 360.0, light, sat)
+        return '#%02x%02x%02x' % (round(r * 255), round(g * 255), round(b * 255))
+
+    families = [
+        (0, 0.62),     # red
+        (30, 0.72),    # orange
+        (48, 0.82),    # amber
+        (125, 0.48),   # green
+        (172, 0.55),   # teal
+        (212, 0.62),   # blue
+        (262, 0.58),   # violet
+        (0, 0.0),      # neutral grey
+    ]
+    shades = (0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.28, 0.14)
+    return [
+        _hsl_to_hex(hue, sat, light)
+        for hue, sat in families
+        for light in shades
+    ]
+
+
+COLOR_PALETTE = _color_palette()
+
+
 def editable_page_view(request, slug):
     """Public renderer for a builder-authored page and its ContentBlocks.
 
@@ -2930,14 +2960,14 @@ def _save_content_block_data(page, data):
         deleted = ContentBlock.objects.filter(page=page, element_id=element_id).delete()[0]
         return JsonResponse({'status': 'success', 'deleted': deleted})
 
-    style_json = data.get('style_json') or {}
+    existing = ContentBlock.objects.filter(page=page, element_id=element_id).first()
+
+    # Only the keys present in the payload are written; a partial update (an
+    # inline style pick or a single edited field) must never wipe the rest.
+    style_json = data.get('style_json') if 'style_json' in data else (existing.style_json if existing else {})
     if not isinstance(style_json, dict):
         style_json = {}
 
-    # Structured-block fields are only written when the payload explicitly
-    # sends them; a plain HTML edit must never silently convert a structured
-    # block back to ``html`` or wipe its ``content_json``.
-    existing = ContentBlock.objects.filter(page=page, element_id=element_id).first()
     valid_types = {code for code, _label in ContentBlock.BLOCK_TYPE_CHOICES}
     block_type = data.get('block_type')
     if block_type is not None:
@@ -2952,7 +2982,7 @@ def _save_content_block_data(page, data):
 
     defaults = {
         'block_type': block_type,
-        'content_html': sanitize_html(data.get('content_html', '')),
+        'content_html': sanitize_html(data.get('content_html', '')) if 'content_html' in data else (existing.content_html if existing else ''),
         'content_json': content_json,
         'style_json': style_json,
     }
@@ -2997,6 +3027,8 @@ def builder_editor(request, page_slug):
         'hero': 'fa-bolt',
         'features': 'fa-table-cells-large',
         'split': 'fa-image',
+        'links': 'fa-link',
+        'staff': 'fa-user-tie',
         'faq': 'fa-circle-question',
         'stats': 'fa-chart-column',
         'testimonials': 'fa-quote-left',
@@ -3013,6 +3045,8 @@ def builder_editor(request, page_slug):
             'order': block.order,
             # Server-rendered section markup for the inline canvas.
             'rendered_html': render_block_html(block),
+            # Flattened style_json (color / background / …) for the canvas.
+            'style_attr': _style_attr(block.style_json),
         }
         for block in page.content_blocks.order_by('order', 'id')
     ]
@@ -3027,6 +3061,8 @@ def builder_editor(request, page_slug):
         ('hero', 'Hero Section', 'Big headline, subtitle and a call-to-action button.', 'builder/blocks/hero_section.html'),
         ('features', 'Feature Grid', 'A three-column grid of icon and text cards.', 'builder/blocks/features_grid.html'),
         ('split', 'Text & Image Split', 'Rich text on the left with a media image on the right.', 'builder/blocks/split_section.html'),
+        ('links', 'Link Hub', 'A grid of quick links to pages across the portal.', 'builder/blocks/links_grid.html'),
+        ('staff', 'Staff Grid', 'A grid of staff cards with photos, names and roles.', 'builder/blocks/staff_grid.html'),
         ('cta', 'Announcement Banner / CTA', 'Full-width banner with a headline and action buttons.', 'builder/blocks/cta_section.html'),
     )
     block_templates = []
@@ -3051,6 +3087,7 @@ def builder_editor(request, page_slug):
         'blocks': blocks,
         'block_types': block_types,
         'block_templates': block_templates,
+        'color_palette': COLOR_PALETTE,
     })
     return render(request, 'builder/edit_page.html', {
         'page': page,
@@ -3157,6 +3194,24 @@ _BLOCK_TEMPLATES = {
         'text': 'Rich text content goes here.',
         'image_url': '',
         'image_alt': '',
+    }},
+    'links': {'content_html': '', 'content_json': {
+        'title': 'Explore',
+        'subtitle': 'Quick links across the portal.',
+        'items': [
+            {'label': 'Admissions', 'url': '/admissions/'},
+            {'label': 'Departments', 'url': '/departments/'},
+            {'label': 'Notices', 'url': '/notices/'},
+        ],
+    }},
+    'staff': {'content_html': '', 'content_json': {
+        'title': 'Our team',
+        'subtitle': 'Meet the people behind the campus.',
+        'items': [
+            {'name': 'Jane Doe', 'role': 'Dean', 'photo_url': ''},
+            {'name': 'John Smith', 'role': 'Registrar', 'photo_url': ''},
+            {'name': 'Sam Lee', 'role': 'Librarian', 'photo_url': ''},
+        ],
     }},
     'faq': {'content_html': '', 'content_json': {
         'title': 'FAQs',

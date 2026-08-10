@@ -11,10 +11,10 @@
     <div class="split-inner">
         <div class="split-copy">
             {% if data.heading %}
-            <h2 class="split-heading">{{ data.heading }}</h2>
+            <h2 class="split-heading" data-edit-field="heading">{{ data.heading }}</h2>
             {% endif %}
             {% if data.text %}
-            <p class="split-text">{{ data.text }}</p>
+            <p class="split-text" data-edit-field="text">{{ data.text }}</p>
             {% endif %}
         </div>
         {% if data.image_url %}
