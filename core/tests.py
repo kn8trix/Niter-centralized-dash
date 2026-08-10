@@ -124,6 +124,11 @@ class UnifiedHeaderTest(TestCase):
                 self.assertContains(response, 'data-component="topbar"')
                 self.assertContains(response, 'class="navlinks"')
                 self.assertContains(response, 'class="profile-actions"')
+                # Top-left header group: profile avatar is anchored next to the brand
+                self.assertContains(response, 'class="topbar-row"')
+                self.assertContains(response, 'class="topbar-left"')
+                # The standalone top-right settings gear is gone
+                self.assertNotContains(response, 'class="settings-link"')
 
     def test_active_pill_tracks_current_page(self):
         expected = {
@@ -158,6 +163,9 @@ class ProfilePopoverAuthTest(TestCase):
         self.assertIn('Switch Account', html)
         self.assertIn('href="' + reverse('settings') + '"', html)
         self.assertIn('href="' + reverse('signup') + '"', html)
+        # Notifications entry opens the bell dropdown from the profile menu
+        self.assertIn('Notifications', html)
+        self.assertIn('id="profile-notif-link"', html)
 
     def test_popover_shows_guest_and_sign_in_when_anonymous(self):
         html = self.client.get(reverse('medical')).content.decode()
@@ -167,6 +175,9 @@ class ProfilePopoverAuthTest(TestCase):
         self.assertIn('> Sign Up</a>', html)
         self.assertIn('href="' + reverse('settings') + '"', html)
         self.assertIn('href="' + reverse('signup') + '"', html)
+        # Guests have no bell, so the Notifications entry is not rendered in
+        # the profile menu (only the JS helper references the id).
+        self.assertNotIn('class="profile-notif-link"', html)
 
 
 class CheckoutPageTest(TestCase):

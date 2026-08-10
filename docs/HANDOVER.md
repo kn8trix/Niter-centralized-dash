@@ -1927,3 +1927,50 @@ presence in the current top-pill architecture and confirms the checks pass.
 - `python manage.py check` — no issues
 - `python manage.py test core.tests.SettingsPreferencesTest
   core.tests.AccountAndAdminPagesTest` — 22 tests, OK
+
+## 47. Header Layout Fix — Profile Menu Moved Top-Left, Gear Icon Removed
+
+Replaces the standalone settings gear icon with a cleaner top-left header
+group. The profile avatar is now anchored directly beside the **CampusDash**
+brand, and the desktop nav pills sit on a second row beneath the header.
+
+### Topbar structure (`templates/partials/topbar.html`)
+
+- **Row 1 (`div.topbar-row`)** — brand + profile avatar grouped in
+  `div.topbar-left` on the left; the notification bell stays on the right
+  (authenticated users only).
+- **Row 2 (`nav.navlinks`)** — the horizontal top-pill navigation bar
+  (Dashboard, Academic Notes, Departments, Research AI, Notices, Transport,
+  Meals, Medical, Clubs) aligned beneath the header row.
+- **Standalone gear removed** — no more `a.settings-link` next to the brand;
+  Settings is reachable from the profile menu's *Settings* item (gear icon
+  inside the popover) at `/settings/`.
+- **Profile popover** — clicking the avatar still opens the menu with user
+  info, page links (mobile), and account actions: a new *Notifications* item
+  (opens the bell dropdown, authenticated only), *Settings*, *Switch
+  Account*, and *Sign Out*.
+- Popover now anchors with `left: 0` since the avatar sits at the far left.
+
+### CSS (`static/css/topbar.css`)
+
+- `.topbar` switched to a column flex (two rows) with `gap: 1rem`.
+- Added `.topbar-row` / `.topbar-left`; removed the `.settings-link` rules
+  and its `:focus-visible` entry; `.profile-popover` re-anchored to `left`.
+
+### Tests (`core/tests.py`)
+
+- `UnifiedHeaderTest` asserts the `topbar-row`/`topbar-left` group exists on
+  every public page and that the standalone `class="settings-link"` is **gone**.
+- `ProfilePopoverAuthTest` asserts the *Notifications* entry
+  (`id="profile-notif-link"`) renders for authenticated users and is
+  **not** rendered for guests.
+
+### Verification
+
+- `python manage.py check` — no issues
+- `python manage.py test core.tests.UnifiedHeaderTest
+  core.tests.ProfilePopoverAuthTest` — 4 tests, OK
+- Full suite — **377 tests, OK**
+- Live checks on `/dashboard/`, `/transport/`, `/medical/`, `/clubs/`,
+  `/notes/` all serve the two-row header (`topbar-row` + `topbar-left`
+  present, `settings-link` count 0, `avatar-btn` present).

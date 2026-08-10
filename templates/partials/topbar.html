@@ -4,26 +4,109 @@ CampusDash — Shared Top Navigation Header
 --------------------------------------------------------------------------
 Used by every standalone public page (dashboard, departments, transport,
 meals, clubs, medical, notices, notes, research ai). One source of truth
-for the header so all pages stay in sync: brand, desktop nav pills (active
-pill highlighted #e8e2d8), and the mobile profile popover with user info,
-page links, and account actions.
+for the header so all pages stay in sync: the brand + user profile avatar
+anchored together in the top-left, the notification bell on the right of
+the header row, and the desktop nav pills (active pill highlighted
+#e8e2d8) on a second row beneath. The profile popover holds user info,
+page links, and account actions — including Settings and Sign Out.
 
 Usage:  {% include 'partials/topbar.html' with active='transport' %}
 active: dashboard | notes | departments | research | notices | transport | meals | medical | clubs
 ============================================================================
 {% endcomment %}
 <header class="topbar" data-component="topbar">
-    <a href="{% url 'dashboard' %}" class="brand" data-component="brand">
-        <span class="brand-icon"><i class="fa-solid fa-graduation-cap"></i></span>
-        <span>CampusDash</span>
-    </a>
+    <!-- Row 1: brand + profile avatar on the left, notification bell on the right -->
+    <div class="topbar-row">
+        <div class="topbar-left">
+            <a href="{% url 'dashboard' %}" class="brand" data-component="brand">
+                <span class="brand-icon"><i class="fa-solid fa-graduation-cap"></i></span>
+                <span>CampusDash</span>
+            </a>
 
-    <!-- Settings gear — always visible next to the brand -->
-    <a href="{% url 'settings' %}" class="settings-link" data-component="settings-link" aria-label="Settings">
-        <i class="fa-solid fa-gear"></i>
-    </a>
+            <!-- User profile avatar — anchored right next to the brand -->
+            <div class="profile" data-component="profile-menu">
+                <button type="button" class="avatar-btn" id="avatar-btn" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
+                    <i class="fa-solid fa-user"></i>
+                </button>
 
-    <!-- Desktop navigation pills (hidden on mobile, see topbar.css) -->
+                <div class="profile-popover" id="profile-popover" aria-label="Profile menu">
+                    <!-- User header info (name + email) -->
+                    <div class="profile-head">
+                        <span class="profile-avatar"><i class="fa-solid fa-user"></i></span>
+                        <div class="profile-id">
+                            <strong>{{ user.get_full_name|default:user.username|default:"Guest" }}</strong>
+                            <span>{% if user.is_authenticated %}{{ user.email|default:user.username }}{% else %}Not signed in{% endif %}</span>
+                        </div>
+                    </div>
+
+                    <!--
+                      Page links — mobile only. Hidden on desktop (>= 768px) via
+                      topbar.css since the top bar already shows them; the account
+                      actions below remain visible at every size.
+                    -->
+                    <nav class="profile-links" aria-label="Page links">
+                        <a href="{% url 'dashboard' %}" class="{% if active == 'dashboard' %}active{% endif %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+                        <a href="{% url 'notes' %}" class="{% if active == 'notes' %}active{% endif %}"><i class="fa-solid fa-book-open"></i> Academic Notes</a>
+                        <a href="{% url 'departments' %}" class="{% if active == 'departments' %}active{% endif %}"><i class="fa-solid fa-building-columns"></i> Departments</a>
+                        <a href="{% url 'research_ai' %}" class="{% if active == 'research' %}active{% endif %}"><i class="fa-solid fa-robot"></i> Research AI</a>
+                        <a href="{% url 'notices' %}" class="{% if active == 'notices' %}active{% endif %}"><i class="fa-solid fa-bullhorn"></i> Notices</a>
+                        <a href="{% url 'transport_dashboard' %}" class="{% if active == 'transport' %}active{% endif %}"><i class="fa-solid fa-bus"></i> Transport</a>
+                        <a href="{% url 'meal_dashboard' %}" class="{% if active == 'meals' %}active{% endif %}"><i class="fa-solid fa-utensils"></i> Meals</a>
+                        <a href="{% url 'medical' %}" class="{% if active == 'medical' %}active{% endif %}"><i class="fa-solid fa-stethoscope"></i> Medical</a>
+                        <a href="{% url 'clubs_dashboard' %}" class="{% if active == 'clubs' %}active{% endif %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
+                        <a href="{% url 'tickets' %}"><i class="fa-solid fa-ticket"></i> Tickets</a>
+                    </nav>
+
+                    <!-- Account actions (separated by a #f0ebe1 divider on mobile) -->
+                    <div class="profile-actions">
+                        {% if user.is_authenticated %}
+                        <button type="button" class="profile-notif-link" id="profile-notif-link"><i class="fa-solid fa-bell"></i> Notifications</button>
+                        {% endif %}
+                        <a href="{% url 'settings' %}"><i class="fa-solid fa-gear"></i> Settings</a>
+                        {% if user.is_authenticated %}
+                        <a href="{% url 'signup' %}"><i class="fa-solid fa-arrows-rotate"></i> Switch Account</a>
+                        {% else %}
+                        <a href="{% url 'signup' %}"><i class="fa-solid fa-user-plus"></i> Sign Up</a>
+                        {% endif %}
+                        {% if user.is_authenticated %}
+                        <form method="post" action="{% url 'logout' %}">
+                            {% csrf_token %}
+                            <button type="submit"><i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out</button>
+                        </form>
+                        {% else %}
+                        <a href="{% url 'login' %}"><i class="fa-solid fa-arrow-right-to-bracket"></i> Sign In</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Real-time notification bell (REST list + WebSocket live alerts) -->
+        {% if user.is_authenticated %}
+        <div class="bell" data-component="notification-bell">
+            <button type="button" class="bell-btn" id="bell-btn" aria-haspopup="true" aria-expanded="false" aria-label="Notifications">
+                <i class="fa-solid fa-bell"></i>
+                <span class="bell-badge" id="bell-badge" hidden>0</span>
+            </button>
+
+            <div class="bell-popover" id="bell-popover" aria-label="Notifications">
+                <div class="bell-head">
+                    <strong>Notifications</strong>
+                    <span class="bell-count" id="bell-count">0 unread</span>
+                </div>
+                <div class="bell-list" id="bell-list">
+                    <div class="bell-empty">No notifications yet.</div>
+                </div>
+            </div>
+        </div>
+        <!-- Rendered for authenticated users so the CSRF cookie is always
+             present for the bell's mark-as-read + the campus-service AJAX
+             calls made from pages sharing this header. -->
+        {% csrf_token %}
+        {% endif %}
+    </div>
+
+    <!-- Row 2: Desktop navigation pills (hidden on mobile, see topbar.css) -->
     <nav class="navlinks" aria-label="Primary navigation">
         <a href="{% url 'dashboard' %}" class="{% if active == 'dashboard' %}active{% endif %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
         <a href="{% url 'notes' %}" class="{% if active == 'notes' %}active{% endif %}"><i class="fa-solid fa-book-open"></i> Academic Notes</a>
@@ -35,84 +118,6 @@ active: dashboard | notes | departments | research | notices | transport | meals
         <a href="{% url 'medical' %}" class="{% if active == 'medical' %}active{% endif %}"><i class="fa-solid fa-stethoscope"></i> Medical</a>
         <a href="{% url 'clubs_dashboard' %}" class="{% if active == 'clubs' %}active{% endif %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
     </nav>
-
-    <!-- Real-time notification bell (REST list + WebSocket live alerts) -->
-    {% if user.is_authenticated %}
-    <div class="bell" data-component="notification-bell">
-        <button type="button" class="bell-btn" id="bell-btn" aria-haspopup="true" aria-expanded="false" aria-label="Notifications">
-            <i class="fa-solid fa-bell"></i>
-            <span class="bell-badge" id="bell-badge" hidden>0</span>
-        </button>
-
-        <div class="bell-popover" id="bell-popover" aria-label="Notifications">
-            <div class="bell-head">
-                <strong>Notifications</strong>
-                <span class="bell-count" id="bell-count">0 unread</span>
-            </div>
-            <div class="bell-list" id="bell-list">
-                <div class="bell-empty">No notifications yet.</div>
-            </div>
-        </div>
-    </div>
-    <!-- Rendered for authenticated users so the CSRF cookie is always
-         present for the bell's mark-as-read + the campus-service AJAX
-         calls made from pages sharing this header. -->
-    {% csrf_token %}
-    {% endif %}
-
-    <!-- User profile avatar + popover -->
-    <div class="profile" data-component="profile-menu">
-        <button type="button" class="avatar-btn" id="avatar-btn" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
-            <i class="fa-solid fa-user"></i>
-        </button>
-
-        <div class="profile-popover" id="profile-popover" aria-label="Profile menu">
-            <!-- User header info (name + email) -->
-            <div class="profile-head">
-                <span class="profile-avatar"><i class="fa-solid fa-user"></i></span>
-                <div class="profile-id">
-                    <strong>{{ user.get_full_name|default:user.username|default:"Guest" }}</strong>
-                    <span>{% if user.is_authenticated %}{{ user.email|default:user.username }}{% else %}Not signed in{% endif %}</span>
-                </div>
-            </div>
-
-            <!--
-              Page links — mobile only. Hidden on desktop (>= 768px) via
-              topbar.css since the top bar already shows them; the account
-              actions below remain visible at every size.
-            -->
-            <nav class="profile-links" aria-label="Page links">
-                <a href="{% url 'dashboard' %}" class="{% if active == 'dashboard' %}active{% endif %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
-                <a href="{% url 'notes' %}" class="{% if active == 'notes' %}active{% endif %}"><i class="fa-solid fa-book-open"></i> Academic Notes</a>
-                <a href="{% url 'departments' %}" class="{% if active == 'departments' %}active{% endif %}"><i class="fa-solid fa-building-columns"></i> Departments</a>
-                <a href="{% url 'research_ai' %}" class="{% if active == 'research' %}active{% endif %}"><i class="fa-solid fa-robot"></i> Research AI</a>
-                <a href="{% url 'notices' %}" class="{% if active == 'notices' %}active{% endif %}"><i class="fa-solid fa-bullhorn"></i> Notices</a>
-                <a href="{% url 'transport_dashboard' %}" class="{% if active == 'transport' %}active{% endif %}"><i class="fa-solid fa-bus"></i> Transport</a>
-                <a href="{% url 'meal_dashboard' %}" class="{% if active == 'meals' %}active{% endif %}"><i class="fa-solid fa-utensils"></i> Meals</a>
-                <a href="{% url 'medical' %}" class="{% if active == 'medical' %}active{% endif %}"><i class="fa-solid fa-stethoscope"></i> Medical</a>
-                <a href="{% url 'clubs_dashboard' %}" class="{% if active == 'clubs' %}active{% endif %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
-                <a href="{% url 'tickets' %}"><i class="fa-solid fa-ticket"></i> Tickets</a>
-            </nav>
-
-            <!-- Account actions (separated by a #f0ebe1 divider on mobile) -->
-            <div class="profile-actions">
-                <a href="{% url 'settings' %}"><i class="fa-solid fa-gear"></i> Settings</a>
-                {% if user.is_authenticated %}
-                <a href="{% url 'signup' %}"><i class="fa-solid fa-arrows-rotate"></i> Switch Account</a>
-                {% else %}
-                <a href="{% url 'signup' %}"><i class="fa-solid fa-user-plus"></i> Sign Up</a>
-                {% endif %}
-                {% if user.is_authenticated %}
-                <form method="post" action="{% url 'logout' %}">
-                    {% csrf_token %}
-                    <button type="submit"><i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out</button>
-                </form>
-                {% else %}
-                <a href="{% url 'login' %}"><i class="fa-solid fa-arrow-right-to-bracket"></i> Sign In</a>
-                {% endif %}
-            </div>
-        </div>
-    </div>
 </header>
 
 <script>
@@ -141,6 +146,18 @@ active: dashboard | notes | departments | research | notices | transport | meals
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') setOpen(false);
         });
+
+        // "Notifications" inside the profile menu opens the bell dropdown
+        // (the bell lives in the header row for authenticated users).
+        const notifLink = document.getElementById('profile-notif-link');
+        const bellBtn = document.getElementById('bell-btn');
+        if (notifLink && bellBtn) {
+            notifLink.addEventListener('click', (e) => {
+                e.stopPropagation();
+                setOpen(false); // close the profile menu first
+                bellBtn.click();
+            });
+        }
     })();
 </script>
 
