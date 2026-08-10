@@ -125,10 +125,10 @@ class UnifiedHeaderTest(TestCase):
                 self.assertContains(response, 'data-component="topbar"')
                 self.assertContains(response, 'class="navlinks"')
                 self.assertContains(response, 'class="profile-actions"')
-                # Top-left header group: profile avatar is anchored next to the brand
+                # Top-right header group: profile avatar + bell away from the brand
                 self.assertContains(response, 'class="topbar-row"')
-                self.assertContains(response, 'class="topbar-left"')
-                # The standalone top-right settings gear is gone
+                self.assertContains(response, 'class="topbar-right"')
+                # The standalone settings gear is gone
                 self.assertNotContains(response, 'class="settings-link"')
 
     def test_active_pill_tracks_current_page(self):

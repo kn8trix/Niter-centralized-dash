@@ -3,10 +3,10 @@
    ----------------------------------------------------------------------------
    Single source of truth for the header used by every standalone public
    page (transport, meals, clubs, medical, notices, notes). Layout is two
-   rows: row 1 = brand + profile avatar (left) and the notification bell
-   (right); row 2 = the desktop nav pills (active = #e8e2d8). Includes the
-   mobile user-profile popover, the centered intro hero, and the shared
-   toast component.
+   rows: row 1 = brand (top-left) and the notification bell + user profile
+   avatar (top-right); row 2 = the desktop nav pills (active = #e8e2d8).
+   Includes the mobile user-profile popover, the centered intro hero, and
+   the shared toast component.
 
    Palette: bg #faf9f6 · card #ffffff · border #f0ebe1 · accent #e8e2d8
             (hover #dfd7cb) · text #1f2937 · muted #6b7280
@@ -20,7 +20,7 @@
    ========================================================================== */
 
 /* ---------------------------------------------------------------------------
-   1. Top bar (two rows: brand + profile avatar + bell, then nav pills)
+   1. Top bar (two rows: brand top-left + bell/profile top-right, then pills)
 --------------------------------------------------------------------------- */
 .topbar {
     display: flex;
@@ -29,7 +29,7 @@
     margin-bottom: 1.6rem;
 }
 
-/* Row 1 — brand + profile avatar (left) and the notification bell (right) */
+/* Row 1 — brand in the top-left corner, the right group in the top-right */
 .topbar-row {
     display: flex;
     align-items: center;
@@ -38,11 +38,11 @@
     flex-wrap: wrap;
 }
 
-/* Left group: brand title with the user profile avatar anchored beside it */
-.topbar-left {
+/* Right group: notification bell + user profile avatar (top-right corner) */
+.topbar-right {
     display: flex;
     align-items: center;
-    gap: 0.8rem;
+    gap: 0.6rem;
     min-width: 0;
 }
 
@@ -132,7 +132,7 @@
 .profile-popover {
     position: absolute;
     top: calc(100% + 10px);
-    left: 0;
+    right: 0;
     width: min(282px, 86vw);
     background: var(--bg-card);
     border: 1px solid var(--border-color);
@@ -530,18 +530,6 @@
     /* Horizontal page buttons collapse into the avatar profile popover */
     .navlinks {
         display: none;
-    }
-
-    /* The avatar now sits mid-screen right after the brand, so a popover
-       anchored to it would overflow the right edge of narrow viewports.
-       Re-anchor the mobile menu to the header group (which starts at the
-       viewport edge) so it always fits on screen. */
-    .profile {
-        position: static;
-    }
-
-    .topbar-left {
-        position: relative;
     }
 }
 

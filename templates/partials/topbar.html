@@ -4,26 +4,51 @@ CampusDash — Shared Top Navigation Header
 --------------------------------------------------------------------------
 Used by every standalone public page (dashboard, departments, transport,
 meals, clubs, medical, notices, notes, research ai). One source of truth
-for the header so all pages stay in sync: the brand + user profile avatar
-anchored together in the top-left, the notification bell on the right of
-the header row, and the desktop nav pills (active pill highlighted
-#e8e2d8) on a second row beneath. The profile popover holds user info,
-page links, and account actions — including Settings and Sign Out.
+for the header so all pages stay in sync: the brand sits cleanly in the
+top-left corner, the notification bell + user profile avatar sit in the
+top-right corner of the header row, and the desktop nav pills (active pill
+highlighted #e8e2d8) sit on a second row beneath. The profile popover
+holds user info, page links, and account actions — including Settings and
+Sign Out.
 
 Usage:  {% include 'partials/topbar.html' with active='transport' %}
 active: dashboard | notes | departments | research | notices | transport | meals | medical | clubs
 ============================================================================
 {% endcomment %}
 <header class="topbar" data-component="topbar">
-    <!-- Row 1: brand + profile avatar on the left, notification bell on the right -->
+    <!-- Row 1: brand top-left · notification bell + profile avatar top-right -->
     <div class="topbar-row">
-        <div class="topbar-left">
-            <a href="{% url 'dashboard' %}" class="brand" data-component="brand">
-                <span class="brand-icon"><i class="fa-solid fa-graduation-cap"></i></span>
-                <span>CampusDash</span>
-            </a>
+        <a href="{% url 'dashboard' %}" class="brand" data-component="brand">
+            <span class="brand-icon"><i class="fa-solid fa-graduation-cap"></i></span>
+            <span>CampusDash</span>
+        </a>
 
-            <!-- User profile avatar — anchored right next to the brand -->
+        <div class="topbar-right">
+            <!-- Real-time notification bell (REST list + WebSocket live alerts) -->
+            {% if user.is_authenticated %}
+            <div class="bell" data-component="notification-bell">
+                <button type="button" class="bell-btn" id="bell-btn" aria-haspopup="true" aria-expanded="false" aria-label="Notifications">
+                    <i class="fa-solid fa-bell"></i>
+                    <span class="bell-badge" id="bell-badge" hidden>0</span>
+                </button>
+
+                <div class="bell-popover" id="bell-popover" aria-label="Notifications">
+                    <div class="bell-head">
+                        <strong>Notifications</strong>
+                        <span class="bell-count" id="bell-count">0 unread</span>
+                    </div>
+                    <div class="bell-list" id="bell-list">
+                        <div class="bell-empty">No notifications yet.</div>
+                    </div>
+                </div>
+            </div>
+            <!-- Rendered for authenticated users so the CSRF cookie is always
+                 present for the bell's mark-as-read + the campus-service AJAX
+                 calls made from pages sharing this header. -->
+            {% csrf_token %}
+            {% endif %}
+
+            <!-- User profile avatar — top-right corner; opens the profile menu -->
             <div class="profile" data-component="profile-menu">
                 <button type="button" class="avatar-btn" id="avatar-btn" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
                     <i class="fa-solid fa-user"></i>
@@ -80,30 +105,6 @@ active: dashboard | notes | departments | research | notices | transport | meals
                 </div>
             </div>
         </div>
-
-        <!-- Real-time notification bell (REST list + WebSocket live alerts) -->
-        {% if user.is_authenticated %}
-        <div class="bell" data-component="notification-bell">
-            <button type="button" class="bell-btn" id="bell-btn" aria-haspopup="true" aria-expanded="false" aria-label="Notifications">
-                <i class="fa-solid fa-bell"></i>
-                <span class="bell-badge" id="bell-badge" hidden>0</span>
-            </button>
-
-            <div class="bell-popover" id="bell-popover" aria-label="Notifications">
-                <div class="bell-head">
-                    <strong>Notifications</strong>
-                    <span class="bell-count" id="bell-count">0 unread</span>
-                </div>
-                <div class="bell-list" id="bell-list">
-                    <div class="bell-empty">No notifications yet.</div>
-                </div>
-            </div>
-        </div>
-        <!-- Rendered for authenticated users so the CSRF cookie is always
-             present for the bell's mark-as-read + the campus-service AJAX
-             calls made from pages sharing this header. -->
-        {% csrf_token %}
-        {% endif %}
     </div>
 
     <!-- Row 2: Desktop navigation pills (hidden on mobile, see topbar.css) -->

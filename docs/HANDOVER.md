@@ -2028,3 +2028,45 @@ validation into a clean, reusable form and added the missing cross-links.
 - Live E2E (curl): POST `/signup/` → 302 to `/dashboard/`; user persisted with
   `pbkdf2_sha256`; `authenticate()` returns the user; duplicate-ID POST rejected
   (CSRF token rotates on login — Django security default).
+
+## 49. Header Layout — Profile Menu Moved to Top-Right Corner
+
+Supersedes the top-left placement from section 47: the brand sits cleanly in
+**top-left**, and the user profile avatar + notification bell are grouped in
+the **top-right** corner of the header row, with the nav pills on the second
+row beneath.
+
+### Topbar structure (`templates/partials/topbar.html`)
+
+- **Row 1 (`div.topbar-row`, `justify-content: space-between`)** — brand
+  (`a.brand`) is now a direct child on the left; a new `div.topbar-right`
+  group on the right holds the notification bell (authenticated only) then
+  the user profile avatar (rightmost).
+- **Row 2 (`nav.navlinks`)** — unchanged pill bar beneath the header row.
+- Profile popover unchanged: user info, page links (mobile), and account
+  actions (Notifications → opens bell, Settings, Switch Account, Sign Out).
+- Removed the now-unused `.topbar-left` wrapper.
+
+### CSS (`static/css/topbar.css`)
+
+- `.topbar-left` replaced by `.topbar-right` (flex, `gap: 0.6rem`).
+- `.profile-popover` re-anchored to `right: 0` (avatar is back at the far
+  right, so the dropdown extends leftward and always fits on screen).
+- Dropped the mobile `position: static` / `.topbar-left` anchoring hack from
+  section 47 — no longer needed.
+
+### Tests (`core/tests.py`)
+
+- `UnifiedHeaderTest` now asserts `class="topbar-right"` (instead of
+  `topbar-left`) and still asserts the standalone gear is gone.
+
+### Verification
+
+- `python manage.py check` — no issues
+- `core.tests.UnifiedHeaderTest` + `ProfilePopoverAuthTest` + header
+  dependents — 18 tests, OK
+- Full suite — **384 tests, OK**
+- Live checks: every public page serves `topbar-right` (and no
+  `topbar-left`/`settings-link`); authenticated render confirms DOM order
+  bell → profile inside `.topbar-right`, brand inside `.topbar-row`, and
+  `profile-notif-link` still present.
