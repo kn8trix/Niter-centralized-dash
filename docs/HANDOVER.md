@@ -1956,6 +1956,10 @@ brand, and the desktop nav pills sit on a second row beneath the header.
 - `.topbar` switched to a column flex (two rows) with `gap: 1rem`.
 - Added `.topbar-row` / `.topbar-left`; removed the `.settings-link` rules
   and its `:focus-visible` entry; `.profile-popover` re-anchored to `left`.
+- Mobile (`<768px`): the popover re-anchors to the header group
+  (`.profile { position: static }` + `.topbar-left { position: relative }`)
+  so the full-page menu opens from the viewport edge and never overflows
+  narrow screens.
 
 ### Tests (`core/tests.py`)
 

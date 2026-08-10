@@ -531,6 +531,18 @@
     .navlinks {
         display: none;
     }
+
+    /* The avatar now sits mid-screen right after the brand, so a popover
+       anchored to it would overflow the right edge of narrow viewports.
+       Re-anchor the mobile menu to the header group (which starts at the
+       viewport edge) so it always fits on screen. */
+    .profile {
+        position: static;
+    }
+
+    .topbar-left {
+        position: relative;
+    }
 }
 
 @media (min-width: 768px) {

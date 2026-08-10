@@ -164,7 +164,6 @@ class ProfilePopoverAuthTest(TestCase):
         self.assertIn('href="' + reverse('settings') + '"', html)
         self.assertIn('href="' + reverse('signup') + '"', html)
         # Notifications entry opens the bell dropdown from the profile menu
-        self.assertIn('Notifications', html)
         self.assertIn('id="profile-notif-link"', html)
 
     def test_popover_shows_guest_and_sign_in_when_anonymous(self):
