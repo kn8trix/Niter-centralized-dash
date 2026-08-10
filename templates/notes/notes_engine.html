@@ -1,11 +1,79 @@
-{% extends "base.html" %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes Engine — Niter Hub</title>
+    <meta name="description" content="Markdown notes engine — course folders, Google Drive uploads, AI summaries, keyword extraction, and export.">
 
-{% block title %}Notes Engine{% endblock %}
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Notes engine page styles -->
+    <link rel="stylesheet" href="{% static 'css/notes.css' %}">
 
-{% block header %}Notes Engine{% endblock %}
+    <!-- Tailwind CSS via CDN (wired to the theme tokens below) -->
+    <script src="https://cdn.tailwindcss.com"></script>
 
-{% block content %}
-<div data-widget="notes-engine" data-component="workspace" class="flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-160px)] bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        base: 'rgb(var(--color-base, 251 249 245) / <alpha-value>)',
+                        card: 'rgb(var(--color-card, 255 255 255) / <alpha-value>)',
+                        border: 'rgb(var(--color-border, 235 230 223) / <alpha-value>)',
+                        main: 'rgb(var(--color-main, 43 41 39) / <alpha-value>)',
+                        accent: 'rgb(var(--color-accent, 234 220 201) / <alpha-value>)',
+                        accentHover: 'rgb(var(--color-accent-hover, 216 202 180) / <alpha-value>)',
+                        chip: 'rgb(var(--color-chip, 240 235 225) / <alpha-value>)',
+                        success: 'rgb(var(--color-success, 22 163 74) / <alpha-value>)',
+                        danger: 'rgb(var(--color-danger, 220 38 38) / <alpha-value>)',
+                    },
+                    fontFamily: {
+                        sans: ['var(--font-main, "Inter", sans-serif)'],
+                    },
+                    borderRadius: {
+                        DEFAULT: 'var(--radius, 0.25rem)',
+                        sm: 'var(--radius-sm, 0.125rem)',
+                        md: 'var(--radius-md, 0.375rem)',
+                        lg: 'var(--radius-lg, 0.5rem)',
+                        xl: 'var(--radius-xl, 0.75rem)',
+                        '2xl': 'var(--radius-2xl, 1rem)',
+                        '3xl': 'var(--radius-3xl, 1.5rem)',
+                        full: 'var(--radius-full, 9999px)',
+                    },
+                }
+            }
+        }
+    </script>
+</head>
+
+<body class="notes" data-app="campusdash-public">
+
+    <div class="shell">
+
+        {% include 'partials/topbar.html' with active='notes' %}
+
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <div class="intro">
+            <h1>Notes Engine</h1>
+            <p>Browse course folders, edit markdown notes, and run AI summaries — all from one workspace.</p>
+        </div>
+
+<div data-widget="notes-engine" data-component="workspace" class="flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-200px)] bg-card rounded-xl border border-border shadow-sm overflow-hidden">
 
     <!-- Left Column: File Browser -->
     <div data-region="file-browser" class="w-full lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-border bg-card flex flex-col max-h-[45vh] lg:max-h-none">
@@ -167,7 +235,7 @@
 
 </div>
 
-<!-- Hidden CSRF token so the csrftoken cookie is set on this page (base.html has no forms) -->
+<!-- Hidden CSRF token so the csrftoken cookie is set for the notes API calls -->
 <div class="hidden">{% csrf_token %}</div>
 
 <!-- Upload toast -->
@@ -582,4 +650,5 @@
         }
     })();
 </script>
-{% endblock %}
+</body>
+</html>

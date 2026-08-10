@@ -2493,6 +2493,16 @@ class NotesEnginePageTest(TestCase):
         self.assertContains(response, 'Computer Science &amp; Engineering')
         self.assertContains(response, '1 course')
 
+    def test_uses_campusdash_top_pill_header(self):
+        # The Notes Engine shares the standalone CampusDash top-pill layout
+        # (topbar partial, no left sidebar).
+        response = self.client.get(reverse('notes'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-component="topbar"')
+        self.assertContains(response, 'CampusDash')
+        self.assertContains(response, 'id="avatar-btn"')
+        self.assertNotContains(response, 'data-region="sidebar"')
+
     def test_renders_live_materials_with_course_metadata(self):
         material = CourseMaterial.objects.create(
             course=self.course, title='Lecture 1 Slides',

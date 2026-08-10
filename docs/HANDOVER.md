@@ -1831,3 +1831,53 @@ endpoint lets students disconnect their Google account.
 - `python manage.py check` — no issues
 - `python manage.py test core.tests.SettingsPreferencesTest` — 9 tests, OK
 - Full suite — **376 tests, OK** (3 new)
+
+---
+
+## 45. Notes Engine Converted to CampusDash Top-Pill Layout (sidebar refactor reverted)
+
+**Date:** 10 August 2026  
+**Branch:** main (committed & pushed)
+
+### Overview
+
+The left-sidebar "Niter Hub" refactor from an earlier session was **reverted**
+and the app is back on the standalone **CampusDash top-pill** layout for every
+student page. The Notes Engine — the last page still rendering inside the
+left-sidebar shell — was converted to the shared top-pill layout so it matches
+`dashboard.html` / `notices.html`.
+
+### Reverts
+
+- `71df21b` — reverted a HANDOVER doc-tweak commit (`641acaf`).
+- `e117180` — reverted `b2404c3` (the left-sidebar refactor): the 9 student
+templates are standalone again, `core/tests.py` is a single test module once
+more, and `core/tests/test_navigation.py` was removed.
+
+### Notes Engine (`templates/notes/notes_engine.html`, `/notes/`)
+
+- **Removed the left vertical sidebar** — the template no longer extends
+  `base.html` (no `Niter Hub` sidebar column, no mobile drawer).
+- **Includes `partials/topbar.html`** (`active='notes'`) at the top of the
+  standard `.shell` container, exactly like `dashboard.html` / `notices.html`.
+- Added the shared `.intro` header (styled by `topbar.css`).
+- The workspace (folder list, markdown editor, AI summary preview) renders
+  unchanged inside the shell; the Tailwind CDN + theme-token config from the
+  sidebar version were kept so the `bg-card` / `border-border` / `bg-accent`
+  classes still work, alongside `notes.css` for `body.notes` + `.shell`.
+- Workspace desktop height retuned to `lg:h-[calc(100vh-200px)]` to fit below
+  the topbar + intro chrome.
+
+### Tests (`core/tests.py`)
+
+- `NotesEnginePageTest.test_uses_campusdash_top_pill_header` — asserts the
+  topbar partial (`data-component="topbar"`), the `CampusDash` brand, the
+  profile `avatar-btn`, and **no** `data-region="sidebar"` on `/notes/`.
+
+### Verification
+
+- `python manage.py check` — no issues
+- `python manage.py test core.tests.NotesEnginePageTest` — 4 tests, OK
+- `python manage.py test core.tests.UnifiedHeaderTest` — 2 tests, OK
+- Full suite — **377 tests, OK** (376 + the new topbar assertion)
+- Live check of `/notes/`: topbar renders, sidebar absent, workspace present.
