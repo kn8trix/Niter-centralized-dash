@@ -126,20 +126,20 @@ Staff view of medical appointments with:
 - **Summary Cards:** Total, Pending, Confirmed, Completed, Cancelled, and Today's Queue counts.
 - **Search & Filter Bar:** Search by student name/ID plus status filter (All, Today, Pending, Confirmed, Completed, Cancelled).
 - **Appointments Table:** Student details, doctor, date/time, reason, status badge, and inline actions (View, Edit, Assign, Confirm, Return, Cancel, Mark Completed).
-- **Mock actions** via query params with Django `messages` feedback (no DB changes yet).
+- **Real appointment data + status actions** — queries live `MedicalAppointment` rows (see section 36): Confirm / Cancel / Mark Completed POST to `/api/medical/appointments/<id>/status/`, which persists the state change and pushes a real-time `Notification` to the student.
 
 ### 4.9 Medical Admin Dashboard (`templates/host/medical/admin_dashboard.html`)
 Admin-only medical management interface at `/medical/admin/` with:
 - **Summary Cards:** Total, Pending, Confirmed, and Cancelled appointment counts.
-- **Appointment Management:** Multi-field filter form (keyword, student name, student ID, date, status, department, doctor) and a table with Confirm / Cancel / View Details actions.
+- **Appointment Management (real):** Multi-field filter form (keyword, student name, student ID, date, status, department, doctor) querying live `MedicalAppointment` rows; table with Confirm / Cancel / View Details actions wired to the persistent status endpoint.
 - **Appointment Details Panel:** Full student and appointment info (contact, reason, doctor, booking time).
-- **Medical Chat Management:** Mock chat threads with statuses (Active, Waiting, Resolved).
-- **Doctor Schedule:** Doctor list with specialty, working days, and availability status.
-- **Medical Content Management:** Mock content sections (Health Tips, Disease Awareness, First Aid, Medical Facilities, Emergency Contacts, Medical News).
-- **Home Page Medical Information:** Mock editable sections for the medical center's public pages.
+- **Medical Chat Management:** Mock chat threads with statuses (Active, Waiting, Resolved) — **backend pending**.
+- **Doctor Schedule:** Doctor list with specialty, working days, and availability status — **backend pending**.
+- **Medical Content Management:** Mock content sections (Health Tips, Disease Awareness, First Aid, Medical Facilities, Emergency Contacts, Medical News) — **backend pending**.
+- **Home Page Medical Information:** Mock editable sections for the medical center's public pages — **backend pending**.
 
 ### 4.10 Clubs & Events (`templates/clubs.html`)
-Frontend-only Club & Event dashboard at `/clubs/` — a standalone page (own `clubs.css`, exact warm palette `#faf9f6` / `#ffffff` / `#f0ebe1` / `#e8e2d8`) driven entirely by mock JavaScript data (no backend/database):
+Frontend-only Club & Event **student view** at `/clubs/` — a standalone page (own `clubs.css`, exact warm palette `#faf9f6` / `#ffffff` / `#f0ebe1` / `#e8e2d8`) driven entirely by mock JavaScript data (no backend/database). The **executive workspace is now real**: `/clubs/manage/` (`club_admin.html`) syncs registrations/members from the linked Google Sheet and verifies bKash/Nagad TrxIDs against the sheet with real-time notifications (see section 36).
 - **Student View:**
     - Featured clubs showcase (Computer Club, Electronics Club, Cultural Society, Sports Club) rendered from JS with active status badges and member counts.
     - Upcoming events grid (date, time, location, description, fee tags "Free" / "৳200 BDT") with a "Register Now" button that opens a mock registration modal (Student Name, Student ID, Payment Method bKash/Nagad, Trx ID).
@@ -150,14 +150,14 @@ Frontend-only Club & Event dashboard at `/clubs/` — a standalone page (own `cl
 - The view (`clubs_dashboard`) is a pure stub rendering `clubs.html`; toggle + modal + toast are client-side vanilla JS with mock data arrays in the template.
 
 ### 4.11 Transport Online Ticket System (`templates/transport.html`)
-Standalone frontend-only transport booking dashboard at `/transport/` (`static/css/transport.css`, mock JS data):
+Transport booking dashboard at `/transport/` (`static/css/transport.css`) — **booking is backend-wired** (see section 35): the seat form POSTs to `/book-transport/` and renders the real QR boarding pass; the route catalog / live bus status tracker remain mock JS data.
 - **Live Status Tracker** — pulsing status badges per route ("On Time" green, "In Transit" blue, "Arriving in 10 mins" amber).
 - **Bus Routes & Schedules** — route cards (Route 1: Campus → Town Center, etc.) with driver info, departure times, and color-coded live seats badges ("12 / 40 seats left").
 - **Seat Selector / Booking Form** — route dropdown, trip-time chips, passenger name, and a clickable 40-seat grid (booked seats disabled); "Book Seat" validates and generates the pass, then live-updates seats-left on the route cards.
 - **Digital Boarding Pass** — visual QR ticket (deterministic SVG QR placeholder) showing passenger, route, assigned seat, departure time, and token.
 
 ### 4.12 Online Meal Ticket System (`templates/meals.html`)
-Standalone frontend-only meal ticket dashboard at `/meals/` (`static/css/meals.css`, mock JS data):
+Meal ticket dashboard at `/meals/` (`static/css/meals.css`) — **claiming is backend-wired** (see section 35): "Claim Meal Ticket" POSTs to `/claim-meal/` and renders the backend-issued `#MEAL-XXXX` pass; the supply stat cards / progress ring seed values remain mock JS data.
 - **Live Meal Ratio Counter** — animated SVG progress ring (142 / 200 slots claimed, 58 remaining).
 - **Meal Booking & Claim Card** — Lunch/Dinner selector chips, date picker, and a "Claim Meal Ticket" button that issues a pass and live-updates the ring + supply stats.
 - **Active Digital Meal Pass** — coupon-style card (perforated edges) with token (`#MEAL-8921`), student name, meal type, date, and a "Mark as Redeemed" toggle (Unused → Redeemed).
@@ -200,7 +200,10 @@ To create a new page, extend the base template:
 - Use `focus:ring-2 focus:ring-accent` for focus states.
 
 ## 6. Technical Stack
-- **Backend:** Django 6.0
+- **Backend:** Django 4.2 (`requirements.txt` pins `django>=4.2,<5.0`)
+- **Real-time:** Django Channels 4 + Daphne (ASGI — WebSockets for live notifications)
+- **Auth:** django-allauth (Google OAuth) + Django sessions
+- **Google APIs:** `google-api-python-client`, `gspread` (Drive notes upload, club sheets)
 - **Frontend Styling:** Tailwind CSS (via CDN for rapid development)
 - **Icons:** Heroicons (SVG) for a consistent, clean look.
 - **Fonts:** Inter (Google Fonts)
@@ -257,6 +260,11 @@ python manage.py runserver 0.0.0.0:8000
 | **System Admin** | [http://127.0.0.1:8000/admin-dashboard/](http://127.0.0.1:8000/admin-dashboard/) | Staff-only dashboard (users, notices, transport, security) |
 | **Cafeteria Admin** | [http://127.0.0.1:8000/cafeteria/admin/](http://127.0.0.1:8000/cafeteria/admin/) | Staff-only meal slots, inventory, QR redemption |
 | **Club Management** | [http://127.0.0.1:8000/clubs/manage/](http://127.0.0.1:8000/clubs/manage/) | Staff-only club executive workspace |
+| **Checkout** | [http://127.0.0.1:8000/checkout/](http://127.0.0.1:8000/checkout/) | Payment gateway (bKash/Nagad/Rocket) for events, transport, meals |
+| **Research AI** | [http://127.0.0.1:8000/research-ai/](http://127.0.0.1:8000/research-ai/) | Academic research & thesis assistant (frontend-only) |
+| **Departments** | [http://127.0.0.1:8000/departments/](http://127.0.0.1:8000/departments/) | Department directory & hub (`/departments/<slug>/`) |
+| **Builder** | [http://127.0.0.1:8000/builder/](http://127.0.0.1:8000/builder/) | Website Builder dashboard (super-admin) + `/builder/edit/<slug>/` editor |
+| **Builder Pages** | [http://127.0.0.1:8000/page/<slug>/](http://127.0.0.1:8000/page/<slug>/) | Public render of builder-authored pages (e.g. `/page/research-ai/`) |
 
 ### Troubleshooting
 - **Port already in use:** Use `python manage.py runserver 8080` to run on a different port.
@@ -272,17 +280,34 @@ Niter-centralized-dash/
 ├── venv/                        # Virtual environment (not in git)
 ├── config/
 │   ├── __init__.py
-│   ├── settings.py              # Django settings
+│   ├── settings.py              # Django settings (channels, allauth, ASGI, CHANNEL_LAYERS)
 │   ├── urls.py                  # Main URL configuration
-│   └── wsgi.py                  # WSGI application
+│   ├── wsgi.py                  # WSGI application
+│   └── asgi.py                  # ASGI application (HTTP + WebSockets via Channels)
 ├── core/
 │   ├── __init__.py
-│   ├── models.py                # StudentProfile (student ID + department, 1:1 User)
-│   ├── views.py                 # View functions
+│   ├── models.py                # StudentProfile, PageTemplate/EditablePage/ContentBlock,
+│   │                            # GoogleUserToken, Notification, MealSubscription/MealTicket,
+│   │                            # TransportBooking, MedicalAppointment
+│   ├── views.py                 # View functions (incl. claim_meal/book_transport/book_appointment)
+│   │                            # + staff endpoints: redeem_meal_ticket, update_appointment_status,
+│   │                            #   verify_club_transaction_view, update_user_role
 │   ├── urls.py                  # App URL routes
+│   ├── consumers.py             # NotificationConsumer (WebSocket, user_<id> groups) + notify_user
+│   ├── routing.py               # WebSocket URL routing (ws/notifications/)
+│   ├── admin.py                 # Admin registrations (builder + Google + notifications + services)
+│   ├── decorators.py            # superuser_required etc.
+│   ├── google_service.py        # Google Drive/Sheets service layer (incl. verify_club_transaction)
 │   ├── context_processors.py    # Centralized ENDPOINTS registry
+│   ├── templatetags/
+│   │   └── builder_tags.py      # render_block template tag
 │   └── migrations/
-│       └── 0001_initial.py      # StudentProfile
+│       ├── 0001_initial.py      # StudentProfile
+│       ├── 0002_*.py            # PageTemplate/EditablePage/ContentBlock
+│       ├── 0003_googleusertoken.py
+│       ├── 0004_notification.py
+│       ├── 0005_*.py            # MealSubscription/MealTicket/TransportBooking/MedicalAppointment
+│       └── 0006_*.py            # MealTicket.redeemed_at + Notification 'club' category
 ├── host/
 │   ├── __init__.py
 │   ├── views.py                 # Host portal views (medical host + admin dashboards)
@@ -346,11 +371,17 @@ Niter-centralized-dash/
 ### Key Settings (`config/settings.py`)
 - **DEBUG:** `True` (development mode)
 - **ALLOWED_HOSTS:** `[]` (add your domain in production)
-- **INSTALLED_APPS:** `django.contrib.staticfiles`, `django.contrib.contenttypes`, `django.contrib.auth`, `django.contrib.sessions`, `core`
-- **MIDDLEWARE:** Security, Session, Common, Csrf, Auth
-- **TEMPLATES DIRS:** `[BASE_DIR / 'templates']`
+- **INSTALLED_APPS:** `daphne` (first, so `runserver` serves ASGI), `django.contrib.admin/auth/contenttypes/sessions/messages/staticfiles/sites`, `channels`, allauth (`allauth`, `allauth.account`, `allauth.socialaccount` + Google provider), `core`
+- **MIDDLEWARE:** Security, Session, Common, Csrf, Auth, `allauth.account.middleware.AccountMiddleware`, Messages
+- **TEMPLATES DIRS:** `[BASE_DIR / 'templates']` — context processors include `auth`, `messages`, and `core.context_processors.endpoints`
 - **DATABASES:** SQLite (`db.sqlite3`) — required for Django auth (run `manage.py migrate` first)
 - **AUTH SETTINGS:** `LOGIN_URL='/login/'`, `LOGIN_REDIRECT_URL='/dashboard/'`, `LOGOUT_REDIRECT_URL='/'`
+- **REAL-TIME:** `ASGI_APPLICATION = 'config.asgi.application'`; `CHANNEL_LAYERS` uses `channels.layers.InMemoryChannelLayer` (dev/tests — switch to `channels_redis` for multi-process production)
+- **GOOGLE OAUTH:** `SITE_ID = 1`; `SOCIALACCOUNT_PROVIDERS['google']` scopes profile/email + Drive (app-data) + Sheets with offline/consent auth params (refresh tokens persisted in `GoogleUserToken`)
+- **STATIC:** `STATICFILES_DIRS = [BASE_DIR / 'static']`
+
+### Run the ASGI/dev server
+Because `daphne` is first in `INSTALLED_APPS`, `python manage.py runserver` serves both HTTP and WebSockets — no extra `--asgi` flag needed.
 
 ### Environment Variables (Recommended for Production)
 Create a `.env` file in the root directory:
@@ -369,18 +400,31 @@ DATABASE_URL=postgres://user:pass@localhost:5432/niter_db
 ## 11. API Endpoints
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| POST | `/claim-meal/` | Claim a meal ticket |
-| POST | `/book-transport/` | Book a transport ticket |
-| POST | `/book-appointment/` | Schedule a medical appointment |
-| GET | `/api/notices/` | Fetch official notices |
-| GET | `/api/courses/` | Fetch course materials |
+| POST | `/claim-meal/` | Claim a meal ticket (`claim_meal`, `@login_required`, atomic — validates subscription, daily capacity, generates `#MEAL-XXXX`, pushes notification) |
+| POST | `/book-transport/` | Book a transport seat (`book_transport`, `@login_required`, atomic — seat conflicts → 409, QR token, notification) |
+| POST | `/book-appointment/` | Schedule a medical appointment (`book_appointment`, `@login_required`, atomic — slot double-booking → 409, notification) |
+| GET | `/api/notifications/` | Fetch unread count + 10 most recent notifications (`fetch_notifications`, `@login_required`) |
+| POST | `/api/notifications/<id>/read/` | Mark one of the user's notifications as read (`mark_notification_read`, `@login_required`) |
+| WS | `ws/notifications/` | Real-time notification stream (`NotificationConsumer`, joins `user_<id>` group) |
+| GET | `/api/notes/upload/` | Upload a note to the user's Google Drive (`@login_required`) |
+| GET | `/api/clubs/sheet/` | Fetch club Google Sheet records (`@login_required`) |
+| POST | `/api/clubs/sheet/append/` | Append a row to the club Google Sheet (`@login_required`) |
+| GET | `/api/builder/create-page/` | Super-admin: create a builder page |
+| POST | `/api/builder/save-block/` | Super-admin: save a ContentBlock |
+| POST | `/api/builder/save-css/` | Super-admin: save page custom CSS |
+| POST | `/api/cafeteria/redeem/` | Staff: validate a `#MEAL-XXXX` token, mark `is_redeemed=True` + `redeemed_at` (`redeem_meal_ticket`) |
+| POST | `/api/medical/appointments/<id>/status/` | Staff: persist appointment status changes + notify the student (`update_appointment_status`) |
+| POST | `/api/clubs/verify-transaction/` | Staff: mark a TrxID **Verified** in the club Google Sheet + notify the student (`verify_club_transaction_view`) |
+| POST | `/api/admin/update-role/` | Superuser: toggle `is_staff` / `is_superuser` with self-demotion + last-superuser guards (`update_user_role`) |
+| GET | `/api/notices/` | **Planned** — notice feed endpoint (does not exist yet; notices are mock JS) |
+| GET | `/api/courses/` | **Planned** — course materials endpoint (does not exist yet; notes are mock JS) |
 | GET | `/` | Public homepage (glassmorphism landing page) |
 | GET | `/dashboard/` | Student dashboard (moved from `/`) |
-| GET | `/clubs/` | Clubs & Events (frontend-only) |
-| GET | `/transport/` | Transport ticket system (frontend-only) |
-| GET | `/meals/` | Meal ticket system (frontend-only) |
-| GET | `/medical/admin/` | Medical admin dashboard (implemented) |
-| GET | `/host/medical/` | Medical host dashboard (implemented) |
+| GET | `/clubs/` | Clubs & Events (frontend-only student view) |
+| GET | `/transport/` | Transport ticket system (booking backend-wired, section 35) |
+| GET | `/meals/` | Meal ticket system (claiming backend-wired, section 35) |
+| GET | `/medical/admin/` | Medical admin dashboard (real appointments, section 36) |
+| GET | `/host/medical/` | Medical host dashboard (real appointments, section 36) |
 | GET | `/host/` | Host portal index (redirects to medical host dashboard) |
 | POST | `/login/` | Sign in (Django `LoginView`, redirects to `/dashboard/`) |
 | POST | `/logout/` | Sign out (Django `LogoutView`, redirects to `/`) |
@@ -393,19 +437,28 @@ DATABASE_URL=postgres://user:pass@localhost:5432/niter_db
 
 ## 12. Next Steps
 
-### Remaining Internal Pages (UI)
-1. **5 Department Student Dashboards** - one dashboard per department (CSE, TEX, IPE, FD, EEE).
-2. ~~**Club Admin Dashboard**~~ — **done (see section 31):** `/clubs/manage/` now provides the role-gated club executive workspace.
-3. ~~**Meal System (Admin/Kitchen side)**~~ — **done (see section 31):** `/cafeteria/admin/` covers meal slots, kitchen inventory, and QR redemption.
-4. **Visual Builder / Editor Integration** - the public homepage is now fully tagged with `data-widget-id` / `data-editable-field`; wire the standalone WYSIWYG editor to it and the app templates (`data-widget`/`data-component` tags) next.
+### Backend Status Summary
 
-### Backend & Infrastructure
-5. **Backend Integration:** Connect templates to Django views and models (most flows are still mock-only).
-6. **Database Models:** Design models for users, courses, tickets, and appointments.
-7. **Role-based Access Control:** Login/logout (section 20) plus `@login_required` on `/profile/` + `/settings/` and `@staff_member_required` on `/admin-dashboard/`, `/cafeteria/admin/`, `/clubs/manage/` (section 31). Remaining: host-portal gating and a full student/staff/admin permission model.
-8. **API Development:** Create endpoints for meal claims, transport bookings, and appointments.
-9. **Real-time Updates:** WebSocket for live notifications and seat availability.
-10. **Deployment:** Configure for production (env vars, ALLOWED_HOSTS, static files).
+**Backend live:** auth + accounts (login/signup/settings/profile), campus-service models & handlers (meal/transport/medical, sections 34–35), real-time notification engine (section 33), Website Builder backend (section 30+), Google Drive/Sheets layer, and the staff/admin/host dashboards (section 36: cafeteria redemption, appointment status, club sheet verification, role management).
+
+**Still frontend-only (needs backend):** see the priority list below. The most impactful items are flagged **HIGH**.
+
+### Backend To-Do List (priority order)
+
+1. **HIGH — Profile booking history** (`core/views.py::profile_view`): the "Booking & Activity History" tab still renders hardcoded mock lists, but `MealTicket`, `TransportBooking`, and `MedicalAppointment` models now exist — swap the mocks for real per-user queries.
+2. **HIGH — Official Notices** (`/notices/` + System Admin tab 2): `NOTICES` is mock JS; there is **no `Notice` model** and the `/api/notices/` endpoint in this table is planned, not implemented. Needs model, publish CRUD (staff), and a student feed endpoint.
+3. **HIGH — Academic Notes / Course Materials** (`/academic-notes/` + System Admin tab 2): folders/documents are mock JS; `/api/courses/` is planned only. Needs course/material models (or a Google-Drive-backed listing) + upload/download endpoints (the `/api/notes/upload/` Drive endpoint exists for the Notes Engine only).
+4. **HIGH — Department Directory & Detail Hubs** (`/departments/`, `/departments/<slug>/`): 5 departments with HODs, faculty, schedules, and notes are all mock JS (`DEPT_DATA`). Needs Department/Faculty/Routine/Notes models + endpoints (or reuse `EditablePage` with `page_type='department'`).
+5. **MEDIUM — Club student view** (`/clubs/`): `CLUBS`/`EVENTS`/`REGISTRATIONS` are mock JS; "Register Now" routes to `/checkout/` with no persisted registration. Needs Club/Event/Registration models + student registration endpoint. (The executive workspace at `/clubs/manage/` is already real via Google Sheets.)
+6. **MEDIUM — Checkout / payments** (`/checkout/`): the bKash/Nagad/Rocket flow is a simulated 1.4s mock — no transaction is persisted and no gateway callback exists. Needs a `Payment`/`Order` model and real gateway integration (or at least a persisted order + verification hook into `/api/clubs/verify-transaction/`).
+7. **MEDIUM — Research AI** (`/research-ai/`): canned mock responses. Needs a real LLM/summarization endpoint, upload storage, and persisted threads.
+8. **MEDIUM — Dashboard live widgets** (`/dashboard/`): meal ratio (140/200), route seats, doctor availability, and notices feed are hardcoded — derive from the real models now that they exist.
+9. **MEDIUM — Settings notification preferences** (`/settings/`): toggles persist to `localStorage` only. Needs a `NotificationPreference` model + API.
+10. **MEDIUM — Transport live status / route catalog**: `TRANSPORT_ROUTES` is a hardcoded constant and the "Live Bus Status" tracker is mock — move to DB-backed routes + a status endpoint for real-time seat availability.
+11. **MEDIUM — Cafeteria kitchen inventory + System Admin driver/scan tables**: still mock forms ("Saved (demo — no backend changes yet)") — needs inventory/driver/scan models + staff CRUD.
+12. **LOW — Medical admin chat/doctor-schedule/content sections**: mock (see 4.9) — needs models + staff CRUD.
+13. **LOW — Notes Engine AI actions** (`/notes/`): "Generate AI Summary" / "Extract Keywords" / "Export as PDF" are client-side mocks; upload-to-Drive is real.
+14. **Deployment:** configure production env vars, `ALLOWED_HOSTS`, static files, `channels_redis` (currently in-memory).
 
 ## 13. Update by Tajkia Tasnim
 
@@ -1080,3 +1133,164 @@ Removed the **"Seat Allocations"** card from the System Admin dashboard's Transp
 
 - The student `/profile/` page's Booking & Activity History still shows transport tickets with seat numbers (`transport_tickets` in `profile_view`) — that is the student's own booking history, a separate feature from the admin Seat Allocations table, and was intentionally left intact.
 - Verified over HTTP: `/departments/` and all 5 `/departments/<slug>/` pages return 200; unknown slug renders the fallback; all inline scripts pass `node --check`.
+
+---
+
+## 33. Google OAuth Expiry Fix + Real-Time Notification & System Alert Engine
+
+**Date:** 10 August 2026
+
+### Overview
+
+Two backend milestones landed together: (1) finalized the **Google OAuth token expiry fix** (the last failing test from the previous session) and (2) built the **Real-Time Notification & System Alert Engine** — a persisted `Notification` model, JSON APIs, and a Django Channels WebSocket consumer that pushes alerts to `user_<id>` groups in real time.
+
+### Google OAuth Token Expiry Fix (`core/google_service.py`)
+
+- `get_google_credentials` previously called `timezone.localtime(creds.expiry)` unconditionally, which raised `ValueError: localtime() cannot be applied to a naive datetime` whenever google-auth handed back a naive expiry (the project runs `USE_TZ=False`, so `timezone.now()` is naive local time).
+- **Fix:** branch on `timezone.is_aware(creds.expiry)` — aware UTC expiries are normalized with `localtime()`; naive values are stored untouched (they are already in the project's local-time convention). `GoogleUserToken.is_expired` keeps comparing like with like.
+- All 117 existing tests (incl. the previously failing `test_get_google_credentials_refreshes_expired_token_and_persists`) pass after the fix.
+
+### Notification Model (`core/models.py` → migration `0004_notification`)
+
+- **`Notification`** — `user` (FK, `related_name='notifications'`), `title`, `message`, `category` (`urgent` / `academic` / `meal` / `transport` / `medical`), `is_read` (default `False`), `created_at` (`auto_now_add`). Ordered newest-first (`['-created_at', '-id']`).
+- Registered in `core/admin.py` (`NotificationAdmin`).
+
+### Notification APIs (`core/views.py`, `core/urls.py`)
+
+| Method | Endpoint | View | Description |
+| :--- | :--- | :--- | :--- |
+| GET | `/api/notifications/` | `fetch_notifications` | `@login_required` — returns `unread_count` + the 10 most recent notifications for `request.user` |
+| POST | `/api/notifications/<id>/read/` | `mark_notification_read` | `@login_required` — marks the user's own notification read (others' IDs 404); returns `{'status': 'success'}` |
+
+### WebSocket / Real-Time Layer (Django Channels)
+
+- **`core/consumers.py`** — `NotificationConsumer` (`AsyncJsonWebsocketConsumer`) joins group `user_<user_id>` on connect (anonymous sockets rejected), leaves on disconnect, and relays `{'type': 'notification', 'payload': {...}}` messages. Also exposes a sync `notify_user(user_id, payload)` helper for views/commands.
+- **`core/routing.py`** — `ws/notifications/` WebSocket route.
+- **`config/asgi.py`** (new) — `ProtocolTypeRouter` (HTTP via Django ASGI + WebSockets through `AuthMiddlewareStack`/`URLRouter`).
+- **`config/settings.py`** — `daphne` (first) + `channels` in `INSTALLED_APPS`, `ASGI_APPLICATION = 'config.asgi.application'`, `CHANNEL_LAYERS` = in-memory (swap for `channels_redis` in multi-process production).
+- **`requirements.txt`** — added `channels>=4.0,<5.0` and `daphne>=4.0,<5.0`.
+
+### Tests
+
+- Added `NotificationModelTest`, `NotificationApiTest`, and `NotificationConsumerTest` (async consumer tests share one event loop; `notify_user` tested with an `AsyncMock`).
+- `python manage.py check` ✔ · `python manage.py test` ✔ (**139 tests**).
+
+---
+
+## 34. Production Campus-Service Models, Atomic Handlers & APIs
+
+**Date:** 10 August 2026
+
+### Overview
+
+Turned the three placeholder booking stubs (`claim_meal_ticket`, `book_transport_ticket`, `book_appointment`) into **production backend handlers**: real models, `transaction.atomic()` actions with `IntegrityError` handling, real-time notifications on every successful booking, and a full test suite (meal capacity, transport seat conflicts, medical slot double-booking).
+
+### Models (`core/models.py` → migration `0005_*`)
+
+| Model | Key fields | Constraints |
+| :--- | :--- | :--- |
+| `MealSubscription` | `user` (OneToOne, `meal_subscription`), `is_active`, `expires_at`, `created_at`; `is_expired` property | — |
+| `MealTicket` | `user` (FK, `meal_tickets`), `meal_type` (`breakfast`/`lunch`/`dinner`), `ticket_token` (`#MEAL-XXXX`), `is_redeemed`, `claimed_at` | `ticket_token` unique |
+| `TransportBooking` | `user` (FK, `transport_bookings`), `route_name`, `departure_time`, `seat_number` (1–40), `qr_token`, `booked_at` | `qr_token` unique; `unique_together (route_name, departure_time, seat_number)` — the DB is the seat-availability arbiter |
+| `MedicalAppointment` | `user` (FK, `medical_appointments`), `doctor_name`, `appointment_date`, `time_slot`, `reason`, `status` (default `pending`), `created_at` | `unique_together (doctor_name, appointment_date, time_slot)` — prevents doctor double-booking |
+
+All four registered in `core/admin.py`.
+
+### Views (`core/views.py`)
+
+- **`claim_meal`** — POST + `@login_required`. Validates `meal_type`, verifies an active, non-expired `MealSubscription` (403 otherwise), enforces the **one ticket per user per meal per day** rule (409), checks **remaining daily capacity** (`DAILY_MEAL_CAPACITY`, 429 when full), generates a unique `#MEAL-XXXX` token, and atomically creates the `MealTicket` + a `meal` `Notification`. Broadcasts over WebSocket after commit.
+- **`book_transport`** — POST + `@login_required`. Resolves `route_id` via the `TRANSPORT_ROUTES` catalog (or explicit `route_name`/`departure_time`), validates `seat_number` (1–40), then creates the `TransportBooking` inside `transaction.atomic()`. A concurrent/taken seat raises `IntegrityError` → **409 "already taken"** (no partial write, no notification).
+- **`book_appointment`** — POST + `@login_required`. Resolves `doctor` id via the `DOCTORS` catalog (or explicit `doctor_name`), validates the `YYYY-MM-DD` date, and atomically creates a `pending` `MedicalAppointment`. A double-booked slot raises `IntegrityError` → **409 "already booked"**.
+- Shared helpers: `_generate_meal_token`, `_generate_qr_token` (e.g. `TR-4F2A1C`), `_broadcast_notification` (calls `notify_user` only after the atomic block commits).
+- View functions renamed (`claim_meal_ticket` → `claim_meal`, `book_transport_ticket` → `book_transport`); **URL names are unchanged** (`claim_meal_ticket`, `book_transport_ticket`, `book_appointment`) so templates, `ENDPOINTS`, and existing tests keep working.
+
+### URLs (`core/urls.py`)
+
+- `/claim-meal/`, `/book-transport/`, `/book-appointment/` — same paths/names, now backed by the production handlers. The existing frontend forms (meal `meal_type`, transport `route_id`, medical `doctor`/`appointment_date`/`time_slot`/`reason`) submit directly to these endpoints.
+
+### Tests
+
+- New suites: `MealSubscriptionModelTest`, `ClaimMealApiTest` (subscription guards, capacity, token uniqueness), `TransportBookingModelTest` + `BookTransportApiTest` (seat race / duplicate blocking → 409), `MedicalAppointmentModelTest` + `BookAppointmentApiTest` (slot double-booking → 409).
+
+---
+
+## 35. Student Frontend → Backend Wiring + Real-Time Notification Bell
+
+**Date:** 10 August 2026  
+**Branch:** main (working tree)
+
+### Overview
+
+Connected the student frontend dashboards to the production campus-service APIs (section 34) and wired the real-time notification bell into the shared topbar. The mock-JS seat/pass UI flows now issue real async POSTs with CSRF and render backend responses.
+
+### Transport (`templates/transport.html`)
+- Seat-selection form now POSTs `route_id`, `seat_number`, `departure_time` to `/book-transport/` with `X-CSRFToken`.
+- **200:** renders the real backend `qr_token` + boarding pass details; marks the chosen seat booked in the 40-seat grid.
+- **409:** error toast "Seat already taken by another passenger…" and refreshes seat availability.
+
+### Meals (`templates/meals.html`)
+- Meal chips use backend keys (breakfast/lunch/dinner); "Claim Meal Ticket" POSTs to `/claim-meal/`.
+- **200:** active digital meal pass updates with the backend `#MEAL-XXXX` token; the slot counter + progress ring decrement.
+- **403/409/429:** inline alerts (403 includes a "pay now" checkout link for missing subscriptions).
+
+### Medical (`templates/medical/booking.html`)
+- Form POSTs `doctor`, `appointment_date`, `time_slot`, `reason` to `/book-appointment/`.
+- **200:** appointment prepended to "Upcoming Appointments" with a Pending badge + success alert.
+- **409:** inline error alert for already-booked doctor slots.
+
+### Real-Time Notification Bell (`templates/partials/topbar.html` + `static/css/topbar.css`)
+- Initial `GET /api/notifications/` on page load sets the unread badge + populates the dropdown.
+- WebSocket client to `ws/notifications/` (authenticated only): each payload increments the badge and slides in a top-right toast (title + message); reconnect capped to avoid infinite loops.
+- Click-to-mark-read via `POST /api/notifications/<id>/read/`; bell toggle mirrors the profile popover.
+- A `{% csrf_token %}` renders for logged-in users so the CSRF cookie exists on pages without forms (required by all the new AJAX calls).
+
+### Testing
+- `python manage.py check` ✔ · `python manage.py test` ✔ (**187 tests**).
+- Verified end-to-end against the running server (authenticated curl): transport 200 (`TR-…`) + 409 on re-book; meal 200 (`#MEAL-…`) + 409 on re-claim; appointment 200 (pending) + 409 on re-book; `/api/notifications/` returns `unread_count` with all alert types. Bell markup renders for logged-in users, absent for guests.
+
+---
+
+## 36. Staff / Admin / Host Dashboards → Real Models & Persistent Endpoints
+
+**Date:** 10 August 2026  
+**Branch:** main (working tree)
+
+### Overview
+
+Connected all four staff/admin/host dashboards to real database models and persistent service endpoints. Added `MealTicket.redeemed_at`, a `club` Notification category, the `verify_club_transaction` Sheets helper, and 4 new API routes.
+
+### Models (`core/models.py` → migration `0006_*`)
+- `MealTicket.redeemed_at` (DateTimeField, null) — set when a ticket is redeemed.
+- `Notification.category` gains a **`club`** choice (club payment/verification alerts).
+
+### Cafeteria Admin (`/cafeteria/admin/`)
+- `cafeteria_admin_view` now queries live `MealSubscription` counts, today's `MealTicket` claims per meal against capacity caps (Breakfast 80 / Lunch 200 / Dinner 160).
+- New **`POST /api/cafeteria/redeem/`** (`redeem_meal_ticket`): validates `#MEAL-XXXX` tokens, sets `is_redeemed=True` + `redeemed_at`, returns ticket details; 409 on double redemption; the redeem JS auto-refreshes the supply counters. Redemptions table shows real tickets with an empty state.
+
+### Medical Admin & Host (`/medical/admin/`, `/host/medical/`)
+- Both views serve real `MedicalAppointment` rows (`select_related('user')`) with filters for student name/ID, status, department, doctor, date — protected by `staff_member_required`.
+- New **`POST /api/medical/appointments/<id>/status/`** (`update_appointment_status`): persists status transitions (pending → confirmed/completed/cancelled), creates a `Notification`, and pushes it via `notify_user` (JSON for AJAX, redirect-with-message for form POSTs). Old mock `?action=` links are now real POST forms.
+
+### Club Executive (`/clubs/manage/`)
+- `club_admin_view` syncs pending registrations, member rosters, and transactions from the linked Google Sheet via the `gspread` layer when `?sheet_url=` is present (friendly error if Google isn't connected); "Connect" redirects to the synced URL.
+- New **`POST /api/clubs/verify-transaction/`** (`verify_club_transaction_view`): marks the matching TrxID row **Verified** in the sheet (find-based lookup — robust to blank rows) and pushes a `club`-category real-time `Notification` to the student.
+
+### System Admin (`/admin-dashboard/`)
+- Live `User`/`StudentProfile` counts + stat cards, real `TransportBooking` route aggregates & boarding scans, and a security log synthesized from recent meal/transport/medical activity.
+- New **`POST /api/admin/update-role/`** (`update_user_role`, superuser-only): toggles `is_staff` / `is_superuser` with guards (no self-demotion, last superuser never demoted); per-staff role forms wired to it.
+
+### Service layer (`core/google_service.py`)
+- New `verify_club_transaction(sheet_url, user, trx_id)` — find-based row lookup, marks the transaction cell **Verified**, returns student email for the notification.
+
+### Templates
+- `cafeteria_admin.html` — real redemption fetch + live subscription/supply stats.
+- `sys_admin.html` — stat cards + role forms wired to `/api/admin/update-role/`.
+- `club_admin.html` — verify-transaction fetch + sheet-error display + post-connect roster sync.
+- `host/medical/admin_dashboard.html` + `host/medical/dashboard.html` — status action POST forms.
+- `templates/partials/topbar.html` — `club` category icon for the bell.
+
+### Testing
+- `python manage.py check` ✔ · `python manage.py test` ✔ (**215 tests**).
+- New `StaffAdminBackendTest` (permissions, redemption, status transitions + notifications, sheet verification, role updates) and rewritten `host/tests.py` with staff-gated access tests.
+- Verified end-to-end against the running server: all five dashboards 200 for staff; redeem/status/verify/role flows round-trip with notifications; wrong-role access blocked.
+- `python manage.py check` ✔ · `python manage.py makemigrations --check` (no drift) ✔ · `python manage.py test` ✔ (**187 tests**).

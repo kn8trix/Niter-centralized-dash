@@ -1,0 +1,708 @@
+/* ============================================================================
+   CampusDash — Website Builder Visual Editor (Split-Screen)
+   ----------------------------------------------------------------------------
+   Styles for templates/builder/editor.html — a full-height editing app:
+   top bar (identity + viewport switcher + live preview + save all), a
+   collapsible left inspector, and a responsive iframe canvas.
+
+   Palette: bg #faf9f6 · card #ffffff · border #f0ebe1 · accent #e8e2d8
+            (hover #dfd7cb) · text #1f2937 · muted #6b7280
+
+   Sections:
+     1. Tokens & base
+     2. Top bar
+     3. Inspector sidebar (sections, fields, block cards)
+     4. Canvas & viewport frames
+     5. Collapse toggle
+     6. Toast
+     7. Responsive & motion
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   1. Tokens & base
+--------------------------------------------------------------------------- */
+:root {
+    --bg-main: #faf9f6;
+    --bg-card: #ffffff;
+    --bg-subtle: #f7f4ef;
+
+    --text-primary: #1f2937;
+    --text-muted: #6b7280;
+
+    --border-color: #f0ebe1;
+    --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.03);
+    --shadow-hover: 0 14px 36px rgba(0, 0, 0, 0.10);
+
+    --accent-primary: #e8e2d8;
+    --accent-primary-hover: #dfd7cb;
+    --accent-dark: #27272a;
+
+    --editor-font: var(--font-main, 'Inter', system-ui, sans-serif);
+    --topbar-h: 64px;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body.editor-app {
+    margin: 0;
+    height: 100vh;
+    overflow: hidden;
+    font-family: var(--editor-font);
+    background: var(--bg-main);
+    color: var(--text-primary);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+/* ---------------------------------------------------------------------------
+   2. Top bar
+--------------------------------------------------------------------------- */
+.editor-topbar {
+    height: var(--topbar-h);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0 1rem 0 0.75rem;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
+    z-index: 20;
+}
+
+.editor-identity {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    min-width: 0;
+}
+
+.editor-back {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 0.7rem;
+    border: 1px solid var(--border-color);
+    background: var(--bg-subtle);
+    color: var(--text-primary);
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.editor-back:hover {
+    background: var(--accent-primary);
+    transform: translateX(-2px);
+}
+
+.editor-title h1 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.editor-title .slug {
+    margin: 0;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.page-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.22rem 0.7rem;
+    border-radius: 999px;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--accent-dark);
+}
+
+.editor-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+}
+
+/* Viewport switcher */
+.viewport-switcher {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    border-radius: 0.8rem;
+}
+
+.viewport-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.42rem 0.8rem;
+    border: none;
+    border-radius: 0.55rem;
+    background: transparent;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.viewport-btn:hover {
+    color: var(--text-primary);
+}
+
+.viewport-btn.active {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-card);
+}
+
+/* Live preview toggle */
+.live-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.live-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.live-toggle input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-track {
+    width: 40px;
+    height: 22px;
+    border-radius: 999px;
+    background: var(--border-color);
+    border: 1px solid var(--border-color);
+    position: relative;
+    transition: background 0.25s ease;
+}
+
+.toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--bg-card);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    transition: transform 0.25s ease;
+}
+
+.live-toggle input:checked + .toggle-track {
+    background: var(--accent-dark);
+    border-color: var(--accent-dark);
+}
+
+.live-toggle input:checked + .toggle-track .toggle-thumb {
+    transform: translateX(18px);
+}
+
+.live-toggle input:focus-visible + .toggle-track {
+    outline: 2px solid var(--accent-dark);
+    outline-offset: 2px;
+}
+
+/* Save all button */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.55rem 1.1rem;
+    border-radius: 0.7rem;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn:hover {
+    background: var(--bg-subtle);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.07);
+}
+
+.btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.btn.primary {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+}
+
+.btn.primary:hover {
+    background: var(--accent-primary-hover);
+    border-color: var(--accent-primary-hover);
+}
+
+.btn:focus-visible {
+    outline: 2px solid var(--accent-dark);
+    outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   3. Inspector sidebar
+--------------------------------------------------------------------------- */
+.editor-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    position: relative;
+}
+
+.inspector {
+    width: 340px;
+    flex-shrink: 0;
+    background: var(--bg-card);
+    border-right: 1px solid var(--border-color);
+    overflow: hidden;
+    transition: width 0.28s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.editor-body.inspector-collapsed .inspector {
+    width: 0;
+    border-right-width: 0;
+}
+
+.inspector-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem 1.1rem 2.5rem;
+    min-width: 340px; /* keeps content readable while the aside collapses */
+}
+
+.inspector-section {
+    margin-bottom: 1.6rem;
+}
+
+.inspector-section-head {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin-bottom: 0.9rem;
+}
+
+.inspector-section-head h2 {
+    margin: 0;
+    font-size: 0.92rem;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    color: var(--text-primary);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.inspector-section-head h2 i {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.count-badge {
+    margin-left: auto;
+    min-width: 1.6rem;
+    height: 1.6rem;
+    padding: 0 0.45rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+
+.inspector-hint {
+    margin: -0.4rem 0 0.9rem;
+    font-size: 0.76rem;
+    color: var(--text-muted);
+}
+
+.inspector-field {
+    display: block;
+    margin-bottom: 0.85rem;
+}
+
+.inspector-field > span {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+
+.inspector-field > span small {
+    font-weight: 500;
+    color: var(--text-muted);
+    opacity: 0.8;
+}
+
+.css-input,
+.inspector-field textarea,
+.inspector-styles input[type="number"],
+.inspector-styles input[type="text"],
+.inspector-styles select {
+    width: 100%;
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-primary);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    border-radius: 0.6rem;
+    padding: 0.6rem 0.7rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.inspector-field textarea {
+    resize: vertical;
+    min-height: 64px;
+}
+
+.inspector-styles select {
+    font-family: var(--editor-font);
+}
+
+.inspector-styles input[type="number"],
+.inspector-styles input[type="text"] {
+    font-family: var(--editor-font);
+}
+
+.css-input:focus,
+.inspector-field textarea:focus,
+.inspector-styles input:focus,
+.inspector-styles select:focus {
+    outline: none;
+    border-color: var(--accent-dark);
+    background: var(--bg-card);
+    box-shadow: 0 0 0 3px rgba(39, 39, 42, 0.08);
+}
+
+.inspector-colors {
+    display: flex;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+}
+
+.color-field {
+    flex: 1;
+    min-width: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.45rem 0.6rem;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    border-radius: 0.6rem;
+    cursor: pointer;
+}
+
+.color-field span {
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.color-field input[type="color"] {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 0.45rem;
+    background: var(--bg-card);
+    cursor: pointer;
+}
+
+/* Block inspector cards */
+.inspector-block {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    border-radius: 0.8rem;
+    padding: 0.85rem 0.9rem;
+    margin-bottom: 0.8rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.inspector-block.active {
+    border-color: var(--accent-dark);
+    box-shadow: 0 0 0 3px rgba(39, 39, 42, 0.08);
+}
+
+.inspector-block-head {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.7rem;
+}
+
+.block-id {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--accent-dark);
+}
+
+.inspector-styles {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.55rem;
+}
+
+.inline-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.inline-field span {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+
+.inline-field input[type="color"] {
+    height: 34px;
+    padding: 2px;
+    border: 1px solid var(--border-color);
+    border-radius: 0.55rem;
+    background: var(--bg-card);
+    cursor: pointer;
+}
+
+.empty-note {
+    text-align: center;
+    color: var(--text-muted);
+    background: var(--bg-subtle);
+    border: 1px dashed var(--border-color);
+    border-radius: 0.8rem;
+    padding: 1.4rem 0.9rem;
+    font-size: 0.82rem;
+}
+
+/* ---------------------------------------------------------------------------
+   4. Canvas & viewport frames
+--------------------------------------------------------------------------- */
+.canvas-wrap {
+    flex: 1;
+    min-width: 0;
+    overflow: auto;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 1.2rem;
+    background:
+        radial-gradient(900px 460px at 85% -10%, rgba(232, 226, 216, 0.5), transparent 60%),
+        radial-gradient(700px 380px at 5% 12%, rgba(240, 235, 225, 0.55), transparent 55%),
+        var(--bg-main);
+}
+
+.canvas-frame {
+    width: 100%;
+    max-width: 100%;
+    height: calc(100vh - var(--topbar-h) - 2.4rem);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 0.9rem;
+    box-shadow: var(--shadow-hover);
+    overflow: hidden;
+    transition: max-width 0.35s ease, width 0.35s ease;
+}
+
+.canvas-frame[data-viewport="tablet"] {
+    max-width: 768px;
+}
+
+.canvas-frame[data-viewport="mobile"] {
+    max-width: 390px;
+}
+
+#page-preview {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+    background: var(--bg-card);
+}
+
+/* ---------------------------------------------------------------------------
+   5. Collapse toggle
+--------------------------------------------------------------------------- */
+.inspector-toggle {
+    position: absolute;
+    top: 0.9rem;
+    left: 348px;
+    z-index: 15;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 0.55rem;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-muted);
+    cursor: pointer;
+    box-shadow: var(--shadow-card);
+    transition: left 0.28s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.inspector-toggle:hover {
+    background: var(--accent-primary);
+    color: var(--text-primary);
+}
+
+.editor-body.inspector-collapsed .inspector-toggle {
+    left: 0.75rem;
+}
+
+/* ---------------------------------------------------------------------------
+   6. Toast
+--------------------------------------------------------------------------- */
+.builder-toast {
+    position: fixed;
+    bottom: 1.4rem;
+    left: 50%;
+    transform: translateX(-50%) translateY(12px);
+    z-index: 80;
+    max-width: min(90vw, 520px);
+    padding: 0.8rem 1.3rem;
+    border-radius: 999px;
+    background: var(--accent-dark);
+    color: #ffffff;
+    font-size: 0.86rem;
+    font-weight: 600;
+    text-align: center;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.builder-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.builder-toast.ok {
+    background: #14532d;
+}
+
+.builder-toast.err {
+    background: #7f1d1d;
+}
+
+/* ---------------------------------------------------------------------------
+   7. Responsive & motion
+--------------------------------------------------------------------------- */
+@media (max-width: 960px) {
+    .inspector {
+        width: 300px;
+    }
+
+    .inspector-scroll {
+        min-width: 300px;
+    }
+
+    .inspector-toggle {
+        left: 308px;
+    }
+
+    .viewport-btn {
+        padding: 0.42rem 0.55rem;
+    }
+
+    .viewport-btn .fa-solid {
+        margin-right: 0;
+    }
+}
+
+@media (max-width: 720px) {
+    .editor-topbar {
+        flex-direction: column;
+        height: auto;
+        padding: 0.7rem;
+        gap: 0.6rem;
+    }
+
+    .editor-controls {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    .viewport-switcher {
+        flex: 1;
+    }
+
+    .canvas-frame {
+        height: calc(100vh - 132px - 2.4rem);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .inspector,
+    .inspector-toggle,
+    .canvas-frame,
+    .toggle-track,
+    .toggle-thumb,
+    .builder-toast {
+        transition: none;
+    }
+}

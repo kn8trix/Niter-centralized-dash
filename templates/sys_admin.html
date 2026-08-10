@@ -60,6 +60,29 @@
         ============================================================ -->
         <section class="admin-panel active" id="panel-users" role="tabpanel">
 
+            <div class="stat-cards">
+                <div class="stat-card">
+                    <span class="stat-icon"><i class="fa-solid fa-user-graduate"></i></span>
+                    <strong class="stat-value">{{ stats.students }}</strong>
+                    <span class="stat-sub">Registered students</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-icon"><i class="fa-solid fa-user-tie"></i></span>
+                    <strong class="stat-value">{{ stats.staff }}</strong>
+                    <span class="stat-sub">Staff accounts</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-icon"><i class="fa-solid fa-crown"></i></span>
+                    <strong class="stat-value">{{ stats.superusers }}</strong>
+                    <span class="stat-sub">Super admins</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-icon"><i class="fa-solid fa-utensils"></i></span>
+                    <strong class="stat-value">{{ stats.subscriptions }}</strong>
+                    <span class="stat-sub">Active meal subscriptions</span>
+                </div>
+            </div>
+
             <div class="card">
                 <h2 class="section-title"><i class="fa-solid fa-user-graduate"></i> Students</h2>
                 <p class="section-subtitle">Manage student accounts and status.</p>
@@ -98,6 +121,7 @@
                                 <th>Role</th>
                                 <th>Department</th>
                                 <th>Status</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -107,6 +131,18 @@
                                 <td>{{ member.role }}</td>
                                 <td>{{ member.department }}</td>
                                 <td><span class="badge {{ member.status|lower }}">{{ member.status }}</span></td>
+                                <td>
+                                    <form method="post" class="role-form" data-role-form action="{% url 'api_admin_update_role' %}">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="user_id" value="{{ member.user_id }}">
+                                        <select name="role" class="role-select" aria-label="Role for {{ member.name }}">
+                                            <option value="staff" {% if member.role == 'Staff' %}selected{% endif %}>Staff</option>
+                                            <option value="superuser" {% if member.role == 'System Admin' %}selected{% endif %}>Super Admin</option>
+                                            <option value="student">Student</option>
+                                        </select>
+                                        <button type="submit" class="btn-small save"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+                                    </form>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -452,6 +488,49 @@
                     e.preventDefault();
                     show('Saved (demo — no backend changes yet).');
                     form.reset();
+                });
+            });
+
+            // User role updates — POST to /api/admin/update-role/
+            function getCookie(name) {
+                if (!document.cookie || document.cookie === '') return null;
+                for (const part of document.cookie.split(';')) {
+                    const pair = part.trim();
+                    if (pair.startsWith(name + '=')) {
+                        return decodeURIComponent(pair.slice(name.length + 1));
+                    }
+                }
+                return null;
+            }
+
+            document.querySelectorAll('form[data-role-form]').forEach((roleForm) => {
+                roleForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const btn = roleForm.querySelector('button[type="submit"]');
+                    btn.disabled = true;
+                    try {
+                        const resp = await fetch(roleForm.action, {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                            body: new URLSearchParams(new FormData(roleForm)).toString(),
+                        });
+                        const data = await resp.json();
+                        if (data.status === 'success') {
+                            show('Role updated for ' + roleForm.querySelector('input[name="user_id"]').value + '.');
+                            const row = roleForm.closest('tr');
+                            const roleCell = row ? row.cells[1] : null;
+                            if (roleCell) {
+                                roleCell.textContent = data.role === 'superuser' ? 'System Admin' : (data.role === 'staff' ? 'Staff' : 'Student');
+                            }
+                        } else {
+                            show(data.message || 'Could not update role.');
+                        }
+                    } catch (err) {
+                        show('Could not update role.');
+                    } finally {
+                        btn.disabled = false;
+                    }
                 });
             });
         })();

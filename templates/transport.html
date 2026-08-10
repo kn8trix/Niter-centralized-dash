@@ -140,9 +140,13 @@
 
     <script>
         // ====================================================================
-        // Mock JavaScript data (frontend-only)
+        // Backend wiring
         // ====================================================================
-        // Payment gateway — seat booking routes through /checkout/ first.
+        // Seat confirmations go straight to the campus transport API; the
+        // returned QR token is the boarding pass. (CHECKOUT_URL is retained
+        // for the transport cell's out-of-band bKash/Nagad fee settlement.)
+        const BOOK_URL = '{% url "book_transport_ticket" %}';
+        const LOGIN_URL = '{% url "login" %}';
         const CHECKOUT_URL = '{% url "checkout" %}';
 
         const ROUTES = [
@@ -315,6 +319,51 @@
         }
 
         // ====================================================================
+        // Backend helpers
+        // ====================================================================
+        function getCookie(name) {
+            if (!document.cookie || document.cookie === '') return null;
+            for (const part of document.cookie.split(';')) {
+                const pair = part.trim();
+                if (pair.startsWith(name + '=')) {
+                    return decodeURIComponent(pair.slice(name.length + 1));
+                }
+            }
+            return null;
+        }
+
+        // POST to /book-transport/ with the CSRF header. If the backend bounces
+        // an anonymous user to the login page (non-JSON reply), redirect there.
+        function postBooking(payload) {
+            return fetch(BOOK_URL, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: new URLSearchParams(payload).toString(),
+            }).then(async (resp) => {
+                const ct = resp.headers.get('content-type') || '';
+                if (!ct.includes('application/json')) {
+                    window.location.href = LOGIN_URL; // @login_required bounce
+                    return null;
+                }
+                const body = await resp.json();
+                return { ok: resp.ok, status: resp.status, body };
+            });
+        }
+
+        function markSeatBooked(route, seatIndex) {
+            if (!route.bookedSet.has(seatIndex)) {
+                route.booked += 1;
+                route.bookedSet.add(seatIndex);
+            }
+            renderRoutes();
+            renderSeats();
+        }
+
+        // ====================================================================
         // Interactions
         // ====================================================================
         routeSelect.addEventListener('change', () => {
@@ -339,49 +388,54 @@
             renderSeats();
         });
 
-        function completeBooking(route, seatNo, time, name) {
-            const token = 'TRP-' + route.id + '-' + String(seatNo).padStart(2, '0') + '-' + (route.booked + 1);
-
-            updatePass({
-                token, name,
-                route: route.name,
-                seat: 'Seat ' + seatNo,
-                time: time,
-            });
-
-            // Update live seats (cache the newly booked seat in the route's set)
-            const idx = seatNo - 1;
-            if (!route.bookedSet.has(idx)) {
-                route.booked += 1;
-                route.bookedSet.add(idx);
-            }
-            renderRoutes();
-            renderSeats();
-
-            showToast('Seat ' + seatNo + ' booked on Route ' + route.id + ' — payment verified, boarding pass generated.');
-        }
-
-        // Book Seat → pay on /checkout/ → return here with the pass ready.
-        bookBtn.addEventListener('click', () => {
+        // Book Seat → confirm via /book-transport/ → boarding pass from the API.
+        bookBtn.addEventListener('click', async () => {
             if (selectedSeat === null) { showToast('Please select a seat first.'); return; }
             if (seatsLeft(currentRoute()) <= 0) { showToast('This bus is fully booked.'); return; }
 
             const route = currentRoute();
             const seatNo = selectedSeat + 1;
+            const seatIndex = selectedSeat;
             const name = document.getElementById('passenger-name').value.trim() || 'Rifat Hasan';
 
-            const qs = new URLSearchParams({
-                type: 'transport',
-                item: route.name,
-                issuer: 'NITER Transport Cell',
-                fee: '30',
-                meta: selectedTime + ' · Seat ' + seatNo,
-                route: String(route.id),
-                seat: String(seatNo),
-                time: selectedTime,
-                name: name,
+            bookBtn.disabled = true;
+            const result = await postBooking({
+                route_id: String(route.id),
+                seat_number: String(seatNo),
+                departure_time: selectedTime,
             });
-            window.location.href = CHECKOUT_URL + '?' + qs.toString();
+            bookBtn.disabled = false;
+            if (!result) return; // redirected to login
+
+            if (!result.ok) {
+                if (result.status === 409) {
+                    // Seat conflict — someone else took it. Mark it booked so
+                    // the grid reflects real availability, then clear the pick.
+                    markSeatBooked(route, seatIndex);
+                    showToast('Seat already taken by another passenger. Please select a different seat.');
+                } else {
+                    showToast((result.body && result.body.message) || 'Booking failed. Please try again.');
+                }
+                selectedSeat = null;
+                renderSeats();
+                return;
+            }
+
+            const data = result.body;
+
+            // Real backend boarding pass — QR token + route/time from the API.
+            updatePass({
+                token: data.qr_token,
+                name: name,
+                route: data.route_name,
+                seat: 'Seat ' + data.seat_number,
+                time: data.departure_time,
+            });
+
+            markSeatBooked(route, seatIndex);
+            selectedSeat = null;
+            renderSeats();
+            showToast(data.message || ('Seat ' + seatNo + ' booked — boarding pass generated.'));
         });
 
         // ====================================================================
@@ -392,30 +446,6 @@
         renderRouteSelect();
         renderTimeChips();
         renderSeats();
-
-        // If the user just paid on /checkout/, land back with the pass already
-        // generated for the seat they selected (frontend-only mock flow).
-        (function resumeFromCheckout() {
-            const q = new URLSearchParams(window.location.search);
-            if (q.get('booked') !== '1') return;
-
-            const routeId = Number(q.get('route')) || 1;
-            const route = ROUTES.find(r => r.id === routeId) || ROUTES[0];
-            const seatNo = Math.min(Number(q.get('seat')) || 1, route.total);
-            let time = q.get('time') || route.departures[0];
-            if (!route.departures.includes(time)) time = route.departures[0];
-            const name = q.get('name') || 'Rifat Hasan';
-
-            selectedRouteId = route.id;
-            selectedTime = time;
-            selectedSeat = seatNo - 1;
-            document.getElementById('passenger-name').value = name;
-
-            renderRouteSelect();
-            renderTimeChips();
-            renderSeats();
-            completeBooking(route, seatNo, time, name);
-        })();
     </script>
 </body>
 </html>

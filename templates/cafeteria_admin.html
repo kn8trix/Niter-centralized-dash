@@ -43,6 +43,19 @@
         <h2 class="section-title"><i class="fa-solid fa-utensils"></i> Daily Meal Slot Capacity</h2>
         <p class="section-subtitle">Live claim counts for today's meal services.</p>
 
+        <div class="stat-cards">
+            <div class="stat-card">
+                <span class="stat-icon"><i class="fa-solid fa-id-card"></i></span>
+                <strong class="stat-value">{{ subscriptions.active }}</strong>
+                <span class="stat-sub">Active meal subscriptions</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-icon"><i class="fa-solid fa-users"></i></span>
+                <strong class="stat-value">{{ subscriptions.total }}</strong>
+                <span class="stat-sub">Total subscriptions</span>
+            </div>
+        </div>
+
         <div class="slot-grid">
             {% for slot in slots %}
             <div class="card slot-card">
@@ -153,6 +166,10 @@
                             <td class="mono">{{ redemption.time }}</td>
                             <td><span class="badge {{ redemption.status|lower }}">{{ redemption.status }}</span></td>
                         </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="empty-sheet">No tickets claimed yet — redemptions will appear here.</td>
+                        </tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -191,14 +208,31 @@
             });
 
             // ================================================================
-            // QR coupon redemption (mock validation)
+            // QR coupon redemption — POST to /api/cafeteria/redeem/
             // ================================================================
             const form = document.getElementById('redeem-form');
             const input = document.getElementById('redeem-token');
             const result = document.getElementById('redeem-result');
             const body = document.getElementById('redemptions-body');
 
-            form.addEventListener('submit', (e) => {
+            function getCookie(name) {
+                if (!document.cookie || document.cookie === '') return null;
+                for (const part of document.cookie.split(';')) {
+                    const pair = part.trim();
+                    if (pair.startsWith(name + '=')) {
+                        return decodeURIComponent(pair.slice(name.length + 1));
+                    }
+                }
+                return null;
+            }
+
+            function escapeHtml(value) {
+                const div = document.createElement('div');
+                div.textContent = value == null ? '' : String(value);
+                return div.innerHTML;
+            }
+
+            form.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const token = input.value.trim().toUpperCase();
 
@@ -209,22 +243,41 @@
                     return;
                 }
 
-                const now = new Date();
-                const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                try {
+                    const resp = await fetch('{% url "api_cafeteria_redeem" %}', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                        body: new URLSearchParams({ token: token }).toString(),
+                    });
+                    const data = await resp.json();
 
-                result.className = 'alert success';
-                result.innerHTML = '<i class="fa-solid fa-circle-check"></i><span>Coupon ' + token + ' redeemed successfully.</span>';
-                result.hidden = false;
+                    if (resp.ok) {
+                        result.className = 'alert success';
+                        result.innerHTML = '<i class="fa-solid fa-circle-check"></i><span>' + escapeHtml(data.message) + '</span>';
+                        result.hidden = false;
 
-                const tr = document.createElement('tr');
-                tr.innerHTML =
-                    '<td class="mono">' + token + '</td>' +
-                    '<td>Walk-in</td>' +
-                    '<td>Lunch</td>' +
-                    '<td class="mono">' + time + '</td>' +
-                    '<td><span class="badge redeemed">Redeemed</span></td>';
-                body.prepend(tr);
-                input.value = '';
+                        const tr = document.createElement('tr');
+                        tr.innerHTML =
+                            '<td class="mono">' + escapeHtml(data.token) + '</td>' +
+                            '<td>' + escapeHtml(data.student) + '</td>' +
+                            '<td>' + escapeHtml(data.meal) + '</td>' +
+                            '<td class="mono">' + new Date(data.redeemed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '</td>' +
+                            '<td><span class="badge redeemed">Redeemed</span></td>';
+                        body.prepend(tr);
+                        input.value = '';
+                        // Refresh the live slot/supply counters from the server.
+                        setTimeout(() => window.location.reload(), 900);
+                    } else {
+                        result.className = 'alert error';
+                        result.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>' + escapeHtml(data.message || 'Redemption failed.') + '</span>';
+                        result.hidden = false;
+                    }
+                } catch (err) {
+                    result.className = 'alert error';
+                    result.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>Could not reach the redemption service.</span>';
+                    result.hidden = false;
+                }
             });
         })();
     </script>

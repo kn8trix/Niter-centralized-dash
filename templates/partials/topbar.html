@@ -31,6 +31,30 @@ active: dashboard | notes | departments | research | notices | transport | meals
         <a href="{% url 'clubs_dashboard' %}" class="{% if active == 'clubs' %}active{% endif %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
     </nav>
 
+    <!-- Real-time notification bell (REST list + WebSocket live alerts) -->
+    {% if user.is_authenticated %}
+    <div class="bell" data-component="notification-bell">
+        <button type="button" class="bell-btn" id="bell-btn" aria-haspopup="true" aria-expanded="false" aria-label="Notifications">
+            <i class="fa-solid fa-bell"></i>
+            <span class="bell-badge" id="bell-badge" hidden>0</span>
+        </button>
+
+        <div class="bell-popover" id="bell-popover" aria-label="Notifications">
+            <div class="bell-head">
+                <strong>Notifications</strong>
+                <span class="bell-count" id="bell-count">0 unread</span>
+            </div>
+            <div class="bell-list" id="bell-list">
+                <div class="bell-empty">No notifications yet.</div>
+            </div>
+        </div>
+    </div>
+    <!-- Rendered for authenticated users so the CSRF cookie is always
+         present for the bell's mark-as-read + the campus-service AJAX
+         calls made from pages sharing this header. -->
+    {% csrf_token %}
+    {% endif %}
+
     <!-- User profile avatar + popover -->
     <div class="profile" data-component="profile-menu">
         <button type="button" class="avatar-btn" id="avatar-btn" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
@@ -114,3 +138,226 @@ active: dashboard | notes | departments | research | notices | transport | meals
         });
     })();
 </script>
+
+{% if user.is_authenticated %}
+<script>
+    // Real-time notification bell — initial REST fetch + live WebSocket alerts.
+    (function () {
+        const bellBtn = document.getElementById('bell-btn');
+        const bellPop = document.getElementById('bell-popover');
+        const bellList = document.getElementById('bell-list');
+        const bellBadge = document.getElementById('bell-badge');
+        const bellCount = document.getElementById('bell-count');
+        const NOTIFICATIONS_URL = '{% url "api_notifications" %}';
+        const READ_URL_TEMPLATE = '{% url "api_notification_read" 0 %}';
+
+        if (!bellBtn || !bellPop) return;
+
+        function getCookie(name) {
+            if (!document.cookie || document.cookie === '') return null;
+            for (const part of document.cookie.split(';')) {
+                const pair = part.trim();
+                if (pair.startsWith(name + '=')) {
+                    return decodeURIComponent(pair.slice(name.length + 1));
+                }
+            }
+            return null;
+        }
+
+        let notifications = [];
+        let unreadCount = 0;
+
+        function setBadge(count) {
+            unreadCount = count;
+            bellBadge.hidden = count <= 0;
+            bellBadge.textContent = count > 99 ? '99+' : String(count);
+            bellCount.textContent = count + ' unread';
+        }
+
+        function categoryIcon(category) {
+            return {
+                urgent: 'fa-triangle-exclamation',
+                academic: 'fa-book-open',
+                meal: 'fa-utensils',
+                transport: 'fa-bus',
+                medical: 'fa-stethoscope',
+                club: 'fa-user-group',
+            }[category] || 'fa-bell';
+        }
+
+        function escapeHtml(value) {
+            const div = document.createElement('div');
+            div.textContent = value == null ? '' : String(value);
+            return div.innerHTML;
+        }
+
+        function formatTime(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (isNaN(d)) return iso;
+            return d.toLocaleString(undefined, {
+                day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
+            });
+        }
+
+        function renderList() {
+            bellList.innerHTML = '';
+            if (!notifications.length) {
+                const empty = document.createElement('div');
+                empty.className = 'bell-empty';
+                empty.textContent = 'No notifications yet.';
+                bellList.appendChild(empty);
+                return;
+            }
+            notifications.forEach((n) => {
+                const item = document.createElement('div');
+                item.className = 'bell-item' + (n.is_read ? ' is-read' : '');
+                item.dataset.id = n.id;
+                item.innerHTML =
+                    '<span class="bell-item-icon"><i class="fa-solid ' + categoryIcon(n.category) + '"></i></span>' +
+                    '<div class="bell-item-body">' +
+                        '<strong>' + escapeHtml(n.title) + '</strong>' +
+                        '<span>' + escapeHtml(n.message) + '</span>' +
+                        '<small>' + escapeHtml(formatTime(n.created_at)) + '</small>' +
+                    '</div>' +
+                    (n.is_read ? '' : '<span class="bell-dot"></span>');
+                item.addEventListener('click', () => markRead(n.id));
+                bellList.appendChild(item);
+            });
+        }
+
+        // Initial GET — populate the unread badge + dropdown list.
+        function loadNotifications() {
+            fetch(NOTIFICATIONS_URL, { credentials: 'same-origin' })
+                .then((r) => r.json())
+                .then((data) => {
+                    if (!data || data.status !== 'success') return;
+                    notifications = data.notifications || [];
+                    setBadge(data.unread_count || 0);
+                    renderList();
+                })
+                .catch(() => {});
+        }
+
+        // POST mark-as-read — decrements the badge and re-renders the item.
+        function markRead(id) {
+            const url = READ_URL_TEMPLATE.replace('/0/read/', '/' + id + '/read/');
+            fetch(url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') },
+            })
+                .then((r) => r.json())
+                .then((data) => {
+                    if (!data || data.status !== 'success') return;
+                    const item = notifications.find((n) => n.id === id);
+                    if (item && !item.is_read) {
+                        item.is_read = true;
+                        setBadge(Math.max(0, unreadCount - 1));
+                        renderList();
+                    }
+                })
+                .catch(() => {});
+        }
+
+        // Slide-in toast (top-right) for live WebSocket alerts.
+        function showNotifToast(title, message) {
+            let toast = document.getElementById('notif-toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'notif-toast';
+                toast.className = 'notif-toast';
+                toast.setAttribute('role', 'status');
+                toast.setAttribute('aria-live', 'polite');
+                document.body.appendChild(toast);
+            }
+            toast.innerHTML =
+                '<span class="notif-toast-icon"><i class="fa-solid fa-bell"></i></span>' +
+                '<div class="notif-toast-body">' +
+                    '<strong>' + escapeHtml(title) + '</strong>' +
+                    '<span>' + escapeHtml(message || '') + '</span>' +
+                '</div>';
+            toast.classList.add('show');
+            clearTimeout(window.__notifToastTimer);
+            window.__notifToastTimer = setTimeout(() => toast.classList.remove('show'), 5000);
+        }
+
+        // Live WebSocket stream — connect once, auto-reconnect with a retry
+        // cap so a non-WebSocket (plain WSGI) server never spams connections.
+        let wsRetries = 0;
+        const WS_MAX_RETRIES = 5;
+
+        function connectSocket() {
+            if (typeof WebSocket === 'undefined') return;
+            if (wsRetries >= WS_MAX_RETRIES) return;
+            const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+            let socket;
+            try {
+                socket = new WebSocket(proto + location.host + '/ws/notifications/');
+            } catch (err) {
+                return;
+            }
+            socket.onopen = () => { wsRetries = 0; };
+            socket.onmessage = (event) => {
+                let payload;
+                try { payload = JSON.parse(event.data); } catch (err) { return; }
+                if (!payload || !payload.title) return;
+
+                const existing = notifications.find((n) => n.id === payload.id);
+                if (existing) {
+                    existing.title = payload.title;
+                    existing.message = payload.message || '';
+                    existing.category = payload.category || 'urgent';
+                    existing.created_at = payload.created_at;
+                    if (existing.is_read) {
+                        existing.is_read = false;
+                        setBadge(unreadCount + 1);
+                    }
+                } else {
+                    notifications.unshift({
+                        id: payload.id,
+                        title: payload.title,
+                        message: payload.message || '',
+                        category: payload.category || 'urgent',
+                        is_read: false,
+                        created_at: payload.created_at,
+                    });
+                    notifications = notifications.slice(0, 20);
+                    setBadge(unreadCount + 1);
+                }
+                renderList();
+                showNotifToast(payload.title, payload.message);
+            };
+            socket.onclose = () => {
+                wsRetries += 1;
+                setTimeout(connectSocket, 3000);
+            };
+        }
+
+        // Bell popover toggle — mirrors the profile popover behaviour.
+        bellBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const open = bellPop.classList.toggle('open');
+            bellBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) loadNotifications(); // refresh the list when opened
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!bellPop.classList.contains('open')) return;
+            if (bellPop.contains(e.target) || bellBtn.contains(e.target)) return;
+            bellPop.classList.remove('open');
+            bellBtn.setAttribute('aria-expanded', 'false');
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                bellPop.classList.remove('open');
+                bellBtn.setAttribute('aria-expanded', 'false');
+            }
+        });
+
+        loadNotifications();
+        connectSocket();
+    })();
+</script>
+{% endif %}

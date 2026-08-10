@@ -38,6 +38,11 @@ def endpoints(request):
             'book_transport_ticket': reverse('book_transport_ticket'),
             'book_appointment': reverse('book_appointment'),
 
+            # Staff / admin persistent action endpoints
+            'api_cafeteria_redeem': reverse('api_cafeteria_redeem'),
+            'api_club_verify_transaction': reverse('api_club_verify_transaction'),
+            'api_admin_update_role': reverse('api_admin_update_role'),
+
             # Authentication
             'login': reverse('login'),
             'logout': reverse('logout'),

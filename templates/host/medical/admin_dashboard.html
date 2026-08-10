@@ -113,18 +113,43 @@
                         <span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">PENDING</span>
                         {% elif appointment.status == 'Confirmed' %}
                         <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">CONFIRMED</span>
-                        {% else %}
+                        {% elif appointment.status == 'Completed' %}
+                        <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">COMPLETED</span>
+                        {% elif appointment.status == 'Cancelled' %}
                         <span class="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700">CANCELLED</span>
+                        {% else %}
+                        <span class="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700">{{ appointment.status|upper }}</span>
                         {% endif %}
                     </td>
                     <td class="px-3 py-3">
                         <div class="flex flex-wrap gap-2">
-                            {% if appointment.status == 'Pending' %}
-                            <a href="?action=confirm&id={{ appointment.id }}" class="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white">Confirm</a>
-                            <a href="?action=cancel&id={{ appointment.id }}" class="rounded bg-red-600 px-2.5 py-1 text-xs font-medium text-white">Cancel</a>
-                            {% elif appointment.status == 'Confirmed' %}
+                            {% if appointment.status_code == 'pending' %}
+                            <form method="post" action="{% url 'api_appointment_status' appointment.id %}" class="inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="status" value="confirmed">
+                                <input type="hidden" name="next" value="{{ ENDPOINTS.medical_admin_dashboard }}">
+                                <button type="submit" class="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white">Confirm</button>
+                            </form>
+                            <form method="post" action="{% url 'api_appointment_status' appointment.id %}" class="inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="status" value="cancelled">
+                                <input type="hidden" name="next" value="{{ ENDPOINTS.medical_admin_dashboard }}">
+                                <button type="submit" class="rounded bg-red-600 px-2.5 py-1 text-xs font-medium text-white">Cancel</button>
+                            </form>
+                            {% elif appointment.status_code == 'confirmed' %}
                             <a href="?action=view&id={{ appointment.id }}" class="rounded bg-accent px-2.5 py-1 text-xs font-medium text-main">View Details</a>
-                            <a href="?action=cancel&id={{ appointment.id }}" class="rounded bg-red-600 px-2.5 py-1 text-xs font-medium text-white">Cancel</a>
+                            <form method="post" action="{% url 'api_appointment_status' appointment.id %}" class="inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="status" value="completed">
+                                <input type="hidden" name="next" value="{{ ENDPOINTS.medical_admin_dashboard }}">
+                                <button type="submit" class="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white">Mark Completed</button>
+                            </form>
+                            <form method="post" action="{% url 'api_appointment_status' appointment.id %}" class="inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="status" value="cancelled">
+                                <input type="hidden" name="next" value="{{ ENDPOINTS.medical_admin_dashboard }}">
+                                <button type="submit" class="rounded bg-red-600 px-2.5 py-1 text-xs font-medium text-white">Cancel</button>
+                            </form>
                             {% else %}
                             <a href="?action=view&id={{ appointment.id }}" class="rounded bg-accent px-2.5 py-1 text-xs font-medium text-main">View Details</a>
                             {% endif %}

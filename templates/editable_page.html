@@ -1,0 +1,68 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page.title }} — CampusDash</title>
+    <meta name="description" content="{{ page.title }} — a dynamic page published through the CampusDash Website Builder.">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Dynamic page styles -->
+    <link rel="stylesheet" href="{% static 'css/editable_page.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+
+    {% if page.custom_css %}
+    <!-- Theme style overrides authored in the Website Builder -->
+    <style>{{ page.custom_css|safe }}</style>
+    {% endif %}
+</head>
+
+<body class="editable-page" data-app="campusdash-public" data-page-slug="{{ page.slug }}">
+
+    <div class="shell">
+
+        {% include 'partials/topbar.html' %}
+
+        <!-- ============================================================
+             Page header (type badge + title)
+        ============================================================ -->
+        <header class="page-intro">
+            <span class="page-badge"><i class="fa-solid fa-layer-group"></i> {{ page.get_page_type_display }}</span>
+            <h1>{{ page.title }}</h1>
+            {% if page.template %}
+            <p class="page-template"><i class="fa-regular fa-clone"></i> Built from <strong>{{ page.template.name }}</strong></p>
+            {% endif %}
+        </header>
+
+        <!-- ============================================================
+             Content blocks — admin-authored HTML rendered as-is
+             (same trust model as the Django admin)
+        ============================================================ -->
+        <main class="blocks" id="page-blocks">
+            {% for block in blocks %}
+            <section class="content-block" id="{{ block.element_id }}" data-block="{{ block.element_id }}" data-editable-id="{{ block.element_id }}"{% if block.style_attr %} style="{{ block.style_attr }}"{% endif %}>
+                {{ block.content_html|safe }}
+            </section>
+            {% empty %}
+            <div class="blocks-empty">
+                <i class="fa-regular fa-pen-to-square"></i>
+                <h2>This page has no content yet</h2>
+                <p>Add ContentBlocks for “{{ page.title }}” in the Django admin — they will render here automatically.</p>
+            </div>
+            {% endfor %}
+        </main>
+
+    </div>
+</body>
+</html>

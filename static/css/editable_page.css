@@ -1,0 +1,278 @@
+/* ============================================================================
+   CampusDash — Dynamic Editable Page (Warm Light Theme)
+   ----------------------------------------------------------------------------
+   Standalone styles for templates/editable_page.html — the public renderer
+   for builder-authored pages (EditablePage + ContentBlock). Blocks render as
+   cards with their per-block style_json applied inline.
+
+   Palette: bg #faf9f6 · card #ffffff · border #f0ebe1 · accent #e8e2d8
+            (hover #dfd7cb) · text #1f2937 · muted #6b7280
+
+   Sections:
+     1. Tokens (shared with the topbar)
+     2. Base
+     3. Page intro header
+     4. Content blocks
+     5. Empty state
+     6. Responsive & motion
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   1. Tokens
+--------------------------------------------------------------------------- */
+:root {
+    --bg-main: #faf9f6;
+    --bg-card: #ffffff;
+    --bg-subtle: #f7f4ef;
+
+    --text-primary: #1f2937;
+    --text-muted: #6b7280;
+
+    --border-color: #f0ebe1;
+    --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.03);
+    --shadow-hover: 0 14px 36px rgba(0, 0, 0, 0.10);
+
+    --accent-primary: #e8e2d8;
+    --accent-primary-hover: #dfd7cb;
+    --accent-dark: #27272a;
+
+    --editable-font: var(--font-main, 'Inter', system-ui, sans-serif);
+}
+
+/* ---------------------------------------------------------------------------
+   2. Base
+--------------------------------------------------------------------------- */
+body.editable-page {
+    margin: 0;
+    min-height: 100vh;
+    font-family: var(--editable-font);
+    background:
+        radial-gradient(1000px 520px at 85% -10%, rgba(232, 226, 216, 0.55), transparent 60%),
+        radial-gradient(800px 420px at 5% 12%, rgba(240, 235, 225, 0.6), transparent 55%),
+        var(--bg-main);
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+}
+
+body.editable-page *,
+body.editable-page *::before,
+body.editable-page *::after {
+    box-sizing: border-box;
+}
+
+body.editable-page a {
+    color: inherit;
+}
+
+.shell {
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: 1.5rem clamp(1.1rem, 4vw, 2.5rem) 4rem;
+}
+
+/* ---------------------------------------------------------------------------
+   3. Page intro header
+--------------------------------------------------------------------------- */
+.page-intro {
+    text-align: center;
+    margin-bottom: 1.8rem;
+}
+
+.page-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.3rem 0.95rem;
+    border-radius: 999px;
+    background: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--accent-dark);
+    margin-bottom: 0.9rem;
+}
+
+.page-intro h1 {
+    margin: 0 0 0.45rem;
+    font-size: clamp(1.7rem, 4.2vw, 2.3rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+}
+
+.page-template {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.page-template strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
+   4. Content blocks
+--------------------------------------------------------------------------- */
+.blocks {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+}
+
+.content-block {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+    padding: 1.6rem 1.8rem;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.content-block:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-hover);
+}
+
+/* Typography inside admin-authored HTML */
+.content-block h1,
+.content-block h2,
+.content-block h3,
+.content-block h4 {
+    margin: 0 0 0.6rem;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+}
+
+.content-block h1 { font-size: 1.5rem; font-weight: 800; }
+.content-block h2 { font-size: 1.25rem; font-weight: 700; }
+.content-block h3 { font-size: 1.1rem;  font-weight: 700; }
+.content-block h4 { font-size: 1rem;    font-weight: 600; }
+
+.content-block p {
+    margin: 0 0 0.9rem;
+    color: var(--text-primary);
+}
+
+.content-block p:last-child {
+    margin-bottom: 0;
+}
+
+.content-block a {
+    color: #2563eb;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.content-block ul,
+.content-block ol {
+    margin: 0 0 0.9rem;
+    padding-left: 1.4rem;
+}
+
+.content-block li {
+    margin-bottom: 0.3rem;
+}
+
+.content-block blockquote {
+    margin: 0 0 0.9rem;
+    padding: 0.7rem 1rem;
+    border-left: 3px solid var(--accent-primary);
+    background: var(--bg-subtle);
+    border-radius: 0.5rem;
+    color: var(--text-muted);
+}
+
+.content-block img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.75rem;
+}
+
+.content-block pre {
+    margin: 0 0 0.9rem;
+    padding: 1rem;
+    border-radius: 0.75rem;
+    background: var(--accent-dark);
+    color: #faf9f6;
+    overflow-x: auto;
+    font-size: 0.85rem;
+}
+
+.content-block code {
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+}
+
+.content-block table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 0 0.9rem;
+    font-size: 0.9rem;
+}
+
+.content-block th,
+.content-block td {
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border-color);
+    text-align: left;
+}
+
+.content-block th {
+    background: var(--bg-subtle);
+    font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
+   5. Empty state
+--------------------------------------------------------------------------- */
+.blocks-empty {
+    text-align: center;
+    padding: 3.5rem 1.5rem;
+    background: var(--bg-card);
+    border: 1px dashed var(--border-color);
+    border-radius: 1rem;
+    color: var(--text-muted);
+}
+
+.blocks-empty i {
+    font-size: 2rem;
+    color: var(--accent-primary-hover);
+    margin-bottom: 0.9rem;
+}
+
+.blocks-empty h2 {
+    margin: 0 0 0.4rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.blocks-empty p {
+    margin: 0;
+    font-size: 0.9rem;
+    max-width: 420px;
+    margin-inline: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   6. Responsive & motion
+--------------------------------------------------------------------------- */
+@media (max-width: 560px) {
+    .content-block {
+        padding: 1.2rem 1.2rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .content-block {
+        transition: none;
+    }
+}

@@ -21,16 +21,18 @@
 
         <!-- Upload Button -->
         <div class="p-4 border-b border-border">
-            <button class="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accentHover text-main font-medium py-2 rounded-lg text-sm transition-colors border border-border">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button type="button" id="upload-notes-btn" class="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accentHover disabled:opacity-60 text-main font-medium py-2 rounded-lg text-sm transition-colors border border-border">
+                <svg id="upload-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
                 </svg>
-                Upload Notes
+                <span id="upload-label">Upload Notes</span>
             </button>
+            <input type="file" id="note-file-input" class="hidden" accept=".pdf,.docx,.txt,.md,.pptx,.xlsx" multiple>
+            <p class="text-[10px] text-main/40 text-center mt-2">Saved to your Google Drive — drop files anywhere here</p>
         </div>
 
-        <!-- Folder/File List -->
-        <div class="flex-1 overflow-y-auto p-2 space-y-1">
+        <!-- Folder/File List (dropzone) -->
+        <div id="dropzone" class="flex-1 overflow-y-auto p-2 space-y-1 transition-colors rounded-b-xl">
             <p class="text-xs font-medium text-main/40 uppercase tracking-wider px-3 mb-2 mt-2">Folders</p>
             
             <div class="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer">
@@ -48,34 +50,36 @@
             </div>
 
             <p class="text-xs font-medium text-main/40 uppercase tracking-wider px-3 mb-2 mt-4">Recent PDFs</p>
-            
-            <div class="group flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/30 transition-colors cursor-pointer border-l-2 border-main">
-                <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                </svg>
-                <div class="flex-1 min-w-0">
-                    <p class="text-sm text-main font-medium truncate">Lecture_05_Notes.pdf</p>
-                    <p class="text-[10px] text-main/50">2.4 MB • Dec 18</p>
-                </div>
-            </div>
 
-            <div class="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer">
-                <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                </svg>
-                <div class="flex-1 min-w-0">
-                    <p class="text-sm text-main truncate">Assignment_03_Guide.pdf</p>
-                    <p class="text-[10px] text-main/50">1.1 MB • Dec 15</p>
+            <div id="pdf-list" class="space-y-1">
+                <div class="group flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/30 transition-colors cursor-pointer border-l-2 border-main">
+                    <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                    </svg>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm text-main font-medium truncate">Lecture_05_Notes.pdf</p>
+                        <p class="text-[10px] text-main/50">2.4 MB • Dec 18</p>
+                    </div>
                 </div>
-            </div>
-            
-            <div class="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer">
-                <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                </svg>
-                <div class="flex-1 min-w-0">
-                    <p class="text-sm text-main truncate">Research_Paper_Final.pdf</p>
-                    <p class="text-[10px] text-main/50">4.2 MB • Dec 12</p>
+
+                <div class="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer">
+                    <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                    </svg>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm text-main truncate">Assignment_03_Guide.pdf</p>
+                        <p class="text-[10px] text-main/50">1.1 MB • Dec 15</p>
+                    </div>
+                </div>
+                
+                <div class="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer">
+                    <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                    </svg>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm text-main truncate">Research_Paper_Final.pdf</p>
+                        <p class="text-[10px] text-main/50">4.2 MB • Dec 12</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -153,4 +157,183 @@
     </div>
 
 </div>
+
+<!-- Hidden CSRF token so the csrftoken cookie is set on this page (base.html has no forms) -->
+<div class="hidden">{% csrf_token %}</div>
+
+<!-- Upload toast -->
+<div id="notes-toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-full text-sm font-medium shadow-lg text-white transition-opacity duration-300 opacity-0 pointer-events-none max-w-[90vw] text-center"></div>
+
+<!-- Google re-auth modal (shown when the upload API answers auth_required) -->
+<div id="reauth-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 backdrop-blur-sm p-4" role="dialog" aria-modal="true" aria-labelledby="reauth-title">
+    <div class="bg-card border border-border rounded-2xl shadow-2xl max-w-sm w-full p-6">
+        <div class="flex items-start justify-between mb-4">
+            <div class="w-10 h-10 rounded-full bg-accent/50 flex items-center justify-center">
+                <svg class="w-5 h-5 text-main" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81z"/>
+                </svg>
+            </div>
+            <button type="button" id="reauth-close" class="text-main/40 hover:text-main transition-colors" aria-label="Close modal">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <h3 id="reauth-title" class="text-lg font-bold text-main">Google access required</h3>
+        <p class="text-sm text-main/70 mt-1 mb-6">Google Drive/Sheets access required or session expired. Connect your Google account to continue.</p>
+        <div class="flex gap-3">
+            <button type="button" id="reauth-later" class="flex-1 py-2 rounded-lg border border-border text-sm font-medium text-main hover:bg-base transition-colors">Later</button>
+            <a href="{% url 'google_login' %}" target="_blank" rel="noopener" class="flex-1 py-2 rounded-lg bg-accent hover:bg-accentHover text-main text-sm font-medium text-center transition-colors">Connect Google Account</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ====================================================================
+    // Notes Engine — Google Drive upload (Phase 5)
+    // ====================================================================
+    (function () {
+        const uploadBtn = document.getElementById('upload-notes-btn');
+        const fileInput = document.getElementById('note-file-input');
+        const dropzone = document.getElementById('dropzone');
+        const pdfList = document.getElementById('pdf-list');
+        const toast = document.getElementById('notes-toast');
+        const uploadLabel = document.getElementById('upload-label');
+        const uploadIcon = document.getElementById('upload-icon');
+        const reauthModal = document.getElementById('reauth-modal');
+        const reauthClose = document.getElementById('reauth-close');
+        const reauthLater = document.getElementById('reauth-later');
+        let toastTimer;
+
+        function getCookie(name) {
+            let value = null;
+            if (document.cookie && document.cookie !== '') {
+                for (const part of document.cookie.split(';')) {
+                    const cookie = part.trim();
+                    if (cookie.startsWith(name + '=')) {
+                        value = decodeURIComponent(cookie.slice(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return value;
+        }
+
+        function showToast(message, ok) {
+            toast.textContent = message;
+            toast.classList.remove('bg-main');
+            toast.classList.toggle('bg-success', !!ok);
+            toast.classList.toggle('bg-danger', !ok);
+            toast.style.opacity = '1';
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { toast.style.opacity = '0'; }, 3600);
+        }
+
+        function setUploading(on) {
+            uploadBtn.disabled = on;
+            uploadLabel.textContent = on ? 'Uploading…' : 'Upload Notes';
+            uploadIcon.classList.toggle('animate-spin', on);
+        }
+
+        function showReauthModal() {
+            if (!reauthModal) return;
+            reauthModal.classList.remove('hidden');
+            reauthModal.classList.add('flex');
+        }
+
+        function hideReauthModal() {
+            if (!reauthModal) return;
+            reauthModal.classList.add('hidden');
+            reauthModal.classList.remove('flex');
+        }
+
+        function escapeHtml(value) {
+            return String(value).replace(/[&<>"']/g, (c) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+            }[c]));
+        }
+
+        // Append the uploaded file to the Recent PDFs sidebar with a Drive link.
+        function appendPdfItem(name, fileId, webLink) {
+            const item = document.createElement('a');
+            item.href = webLink || ('https://drive.google.com/file/d/' + fileId + '/view');
+            item.target = '_blank';
+            item.rel = 'noopener';
+            item.className = 'group flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/30 transition-colors cursor-pointer border-l-2 border-main';
+            item.innerHTML =
+                '<svg class="w-4 h-4 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>' +
+                '<div class="flex-1 min-w-0">' +
+                '<p class="text-sm text-main font-medium truncate">' + escapeHtml(name) + '</p>' +
+                '<p class="text-[10px] text-main/50">Google Drive</p></div>' +
+                '<svg class="w-3 h-3 text-main/40 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>';
+            pdfList.prepend(item);
+        }
+
+        async function uploadNoteToDrive(file) {
+            setUploading(true);
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                const response = await fetch("{% url 'api_upload_note' %}", {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                    body: formData,
+                });
+                const data = await response.json().catch(() => ({}));
+                if (data.status === 'auth_required') {
+                    showReauthModal();
+                    return;
+                }
+                if (!response.ok || data.status !== 'success') {
+                    throw new Error(data.message || 'Upload failed (HTTP ' + response.status + ').');
+                }
+                appendPdfItem(file.name, data.file_id, data.web_link);
+                showToast(file.name + ' uploaded to Google Drive ✓', true);
+            } catch (err) {
+                showToast(err.message || 'Upload failed — is Google connected?', false);
+            } finally {
+                setUploading(false);
+            }
+        }
+
+        // Button + hidden input
+        uploadBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => {
+            Array.from(fileInput.files || []).forEach(uploadNoteToDrive);
+            fileInput.value = '';
+        });
+
+        // Drag & drop over the file browser
+        ['dragenter', 'dragover'].forEach((evt) => {
+            dropzone.addEventListener(evt, (e) => {
+                e.preventDefault();
+                dropzone.classList.add('ring-2', 'ring-accent', 'bg-accent/20');
+            });
+        });
+        ['dragleave', 'drop'].forEach((evt) => {
+            dropzone.addEventListener(evt, (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('ring-2', 'ring-accent', 'bg-accent/20');
+            });
+        });
+        dropzone.addEventListener('drop', (e) => {
+            Array.from((e.dataTransfer && e.dataTransfer.files) || []).forEach(uploadNoteToDrive);
+        });
+
+        // Prevent accidental page navigation when a file is dropped elsewhere
+        window.addEventListener('dragover', (e) => e.preventDefault());
+        window.addEventListener('drop', (e) => e.preventDefault());
+
+        // Re-auth modal controls
+        if (reauthClose) reauthClose.addEventListener('click', hideReauthModal);
+        if (reauthLater) reauthLater.addEventListener('click', hideReauthModal);
+        if (reauthModal) {
+            reauthModal.addEventListener('click', (e) => {
+                if (e.target === reauthModal) hideReauthModal();
+            });
+        }
+    })();
+</script>
 {% endblock %}

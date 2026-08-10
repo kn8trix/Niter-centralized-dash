@@ -107,17 +107,37 @@
                                 <a href="?action=view&id={{ a.id }}" class="text-main/60 hover:text-main">View</a>
                                 <a href="?action=edit&id={{ a.id }}" class="text-main/60 hover:text-main">Edit</a>
                                 <a href="?action=assign&id={{ a.id }}" class="text-main/60 hover:text-main">Assign</a>
-                                {% if a.status != 'Confirmed' and a.status != 'Completed' %}
-                                <a href="?action=confirm&id={{ a.id }}" class="text-green-600 hover:underline">Confirm</a>
+                                {% if a.status_code != 'confirmed' and a.status_code != 'completed' %}
+                                <form method="post" action="{% url 'api_appointment_status' a.id %}" class="inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="status" value="confirmed">
+                                    <input type="hidden" name="next" value="{{ ENDPOINTS.host_medical_dashboard }}">
+                                    <button type="submit" class="text-green-600 hover:underline">Confirm</button>
+                                </form>
                                 {% endif %}
-                                {% if a.status != 'Pending' and a.status != 'Completed' %}
-                                <a href="?action=return_pending&id={{ a.id }}" class="text-orange-600 hover:underline">Return</a>
+                                {% if a.status_code != 'pending' and a.status_code != 'completed' %}
+                                <form method="post" action="{% url 'api_appointment_status' a.id %}" class="inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="status" value="pending">
+                                    <input type="hidden" name="next" value="{{ ENDPOINTS.host_medical_dashboard }}">
+                                    <button type="submit" class="text-orange-600 hover:underline">Return</button>
+                                </form>
                                 {% endif %}
-                                {% if a.status != 'Cancelled' and a.status != 'Completed' %}
-                                <a href="?action=cancel&id={{ a.id }}" class="text-red-600 hover:underline">Cancel</a>
+                                {% if a.status_code != 'cancelled' and a.status_code != 'completed' %}
+                                <form method="post" action="{% url 'api_appointment_status' a.id %}" class="inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="status" value="cancelled">
+                                    <input type="hidden" name="next" value="{{ ENDPOINTS.host_medical_dashboard }}">
+                                    <button type="submit" class="text-red-600 hover:underline">Cancel</button>
+                                </form>
                                 {% endif %}
-                                {% if a.status != 'Completed' %}
-                                <a href="?action=complete&id={{ a.id }}" class="text-gray-700 hover:underline">Mark Completed</a>
+                                {% if a.status_code != 'completed' %}
+                                <form method="post" action="{% url 'api_appointment_status' a.id %}" class="inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="status" value="completed">
+                                    <input type="hidden" name="next" value="{{ ENDPOINTS.host_medical_dashboard }}">
+                                    <button type="submit" class="text-gray-700 hover:underline">Mark Completed</button>
+                                </form>
                                 {% endif %}
                             </div>
                         </td>

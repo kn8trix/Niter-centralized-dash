@@ -81,8 +81,9 @@
                 <div class="field">
                     <span class="field-label">Meal Type</span>
                     <div class="meal-chips">
-                        <button type="button" class="meal-chip selected" data-meal="Lunch" aria-pressed="true"><i class="fa-solid fa-sun"></i> Lunch</button>
-                        <button type="button" class="meal-chip" data-meal="Dinner" aria-pressed="false"><i class="fa-solid fa-moon"></i> Dinner</button>
+                        <button type="button" class="meal-chip" data-meal="breakfast" aria-pressed="false"><i class="fa-solid fa-mug-saucer"></i> Breakfast</button>
+                        <button type="button" class="meal-chip selected" data-meal="lunch" aria-pressed="true"><i class="fa-solid fa-sun"></i> Lunch</button>
+                        <button type="button" class="meal-chip" data-meal="dinner" aria-pressed="false"><i class="fa-solid fa-moon"></i> Dinner</button>
                     </div>
                 </div>
 
@@ -95,6 +96,9 @@
                     <i class="fa-solid fa-ticket" id="claim-icon"></i>
                     <span id="claim-label">Claim Meal Ticket</span>
                 </button>
+
+                <!-- Inline errors: subscription / duplicate claim / capacity -->
+                <div class="meal-alert" id="meal-alert" role="alert" hidden></div>
             </div>
 
         </div>
@@ -174,22 +178,21 @@
 
     <script>
         // ====================================================================
-        // Mock state (frontend-only)
+        // State + backend wiring
         // ====================================================================
         const state = {
             total: 200,
             claimed: 142,
             prepared: 500,
-            mealType: 'Lunch',
-            token: 8921,
+            mealType: 'lunch',
         };
 
-        // Payment gateway — meal claims require an active monthly subscription
-        // paid through /checkout/ (bKash / Nagad / Rocket).
-        const CHECKOUT_URL = '{% url "checkout" %}';
-        const MEAL_MONTHLY_FEE = 2000; // ৳/month — mock cafeteria fee (adjust here)
+        const CLAIM_URL = '{% url "claim_meal_ticket" %}';
+        const LOGIN_URL = '{% url "login" %}';
+        const MEAL_MONTHLY_FEE = 2000; // ৳/month — cafeteria subscription fee
 
-        let subscribed = sessionStorage.getItem('meal_subscribed') === '1';
+        // Payment gateway — the monthly subscription is paid via /checkout/.
+        const CHECKOUT_URL = '{% url "checkout" %}';
 
         const ringBar = document.getElementById('ring-bar');
         const R = 88;
@@ -214,6 +217,31 @@
             const d = new Date(value + 'T00:00:00');
             if (isNaN(d)) return value;
             return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        }
+
+        function mealLabel(key) {
+            return { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner' }[key] || key;
+        }
+
+        function getCookie(name) {
+            if (!document.cookie || document.cookie === '') return null;
+            for (const part of document.cookie.split(';')) {
+                const pair = part.trim();
+                if (pair.startsWith(name + '=')) {
+                    return decodeURIComponent(pair.slice(name.length + 1));
+                }
+            }
+            return null;
+        }
+
+        function showMealAlert(message) {
+            const alert = document.getElementById('meal-alert');
+            alert.hidden = false;
+            alert.innerHTML = message;
+        }
+
+        function hideMealAlert() {
+            document.getElementById('meal-alert').hidden = true;
         }
 
         // ====================================================================
@@ -252,68 +280,66 @@
             chip.addEventListener('click', () => selectMeal(chip.dataset.meal));
         });
 
-        function claimTicket(message) {
-            state.claimed += 1;
-            state.token += 1;
-
-            document.getElementById('pass-token').textContent = '#MEAL-' + state.token;
+        // Render the backend-issued pass into the digital meal pass card.
+        function applyTicket(ticket) {
+            document.getElementById('pass-token').textContent = ticket.ticket_token;
             document.getElementById('pass-name').textContent = 'Rifat Hasan';
-            document.getElementById('pass-type').textContent = state.mealType;
+            document.getElementById('pass-type').textContent = mealLabel(ticket.meal_type);
             document.getElementById('pass-date').textContent = fmtDate(dateInput.value);
             resetPass();
-
-            updateRing();
-            showToast(message || (state.mealType + ' ticket claimed — #MEAL-' + state.token + ' is ready to use.'));
         }
 
-        function renderSubscription() {
-            const sub = document.getElementById('meal-sub');
-            const icon = document.getElementById('meal-sub-icon');
-            const title = document.getElementById('meal-sub-title');
-            const text = document.getElementById('meal-sub-text');
-            const label = document.getElementById('claim-label');
-
-            if (subscribed) {
-                sub.classList.remove('inactive');
-                sub.classList.add('active');
-                icon.className = 'fa-solid fa-circle-check';
-                title.textContent = 'Monthly subscription active';
-                const now = new Date();
-                text.textContent = 'Paid ৳' + MEAL_MONTHLY_FEE + ' — valid through ' + now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-                label.textContent = 'Claim Meal Ticket';
-            } else {
-                sub.classList.remove('active');
-                sub.classList.add('inactive');
-                icon.className = 'fa-solid fa-circle-exclamation';
-                title.textContent = 'Monthly subscription inactive';
-                text.textContent = 'Pay ৳' + MEAL_MONTHLY_FEE + ' via bKash / Nagad / Rocket to claim tickets this month.';
-                label.textContent = 'Pay Monthly Fee & Claim';
-            }
-        }
-
-        document.getElementById('claim-btn').addEventListener('click', () => {
+        document.getElementById('claim-btn').addEventListener('click', async () => {
+            hideMealAlert();
             if (state.claimed >= state.total) {
                 showToast('All ' + state.total + ' slots are claimed for today.');
                 return;
             }
 
-            if (!subscribed) {
-                // Not subscribed yet — route through the payment gateway first.
-                const qs = new URLSearchParams({
-                    type: 'meal',
-                    item: 'Monthly Meal Subscription',
-                    issuer: 'NITER Cafeteria',
-                    fee: String(MEAL_MONTHLY_FEE),
-                    meta: state.mealType + ' · ' + fmtDate(dateInput.value),
-                    meal: state.mealType,
-                    date: dateInput.value,
-                    name: 'Rifat Hasan',
+            const claimBtn = document.getElementById('claim-btn');
+            claimBtn.disabled = true;
+            let result = null;
+            try {
+                const resp = await fetch(CLAIM_URL, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'X-CSRFToken': getCookie('csrftoken'),
+                    },
+                    body: new URLSearchParams({ meal_type: state.mealType }).toString(),
                 });
-                window.location.href = CHECKOUT_URL + '?' + qs.toString();
+                const ct = resp.headers.get('content-type') || '';
+                if (!ct.includes('application/json')) {
+                    window.location.href = LOGIN_URL; // @login_required bounce
+                    return;
+                }
+                result = { ok: resp.ok, status: resp.status, body: await resp.json() };
+            } finally {
+                claimBtn.disabled = false;
+            }
+            if (!result) return;
+
+            if (result.ok) {
+                // Backend-issued #MEAL-XXXX token — refresh the pass + live slots.
+                state.claimed += 1;
+                applyTicket(result.body);
+                updateRing();
+                showToast(result.body.message || (mealLabel(state.mealType) + ' ticket claimed — ' + result.body.ticket_token + ' is ready to use.'));
                 return;
             }
 
-            claimTicket();
+            // 403 (no subscription) / 409 (duplicate) / 429 (capacity) → inline alert.
+            const message = result.body && result.body.message;
+            if (result.status === 403) {
+                showMealAlert('No active meal subscription. Pay ৳' + MEAL_MONTHLY_FEE + ' via bKash / Nagad / Rocket to claim tickets — <a href="' + CHECKOUT_URL + '?type=meal&item=Monthly%20Meal%20Subscription&issuer=NITER%20Cafeteria&fee=' + MEAL_MONTHLY_FEE + '">pay now</a>.');
+            } else if (result.status === 409) {
+                showMealAlert('You already claimed ' + mealLabel(state.mealType) + ' today. One ticket per meal per day.');
+            } else if (result.status === 429) {
+                showMealAlert('Daily capacity reached for ' + mealLabel(state.mealType) + '. Please try another meal or come back tomorrow.');
+            } else {
+                showMealAlert(message || 'Could not claim the meal ticket. Please try again.');
+            }
         });
 
         document.getElementById('redeem-btn').addEventListener('click', () => {
@@ -329,35 +355,6 @@
         // ====================================================================
         updateRing();
         document.getElementById('pass-date').textContent = fmtDate(dateInput.value);
-        renderSubscription();
-
-        // If the user just paid on /checkout/, land back with the subscription
-        // active and the chosen meal pass already generated (frontend-only mock).
-        (function resumeFromCheckout() {
-            const q = new URLSearchParams(window.location.search);
-            if (q.get('claimed') !== '1') return;
-
-            // Idempotent: only claim once per return URL, so refreshing the
-            // success page never claims a duplicate ticket (mirrors the
-            // transport flow's booked-seat guard).
-            if (sessionStorage.getItem('meal_last_return') === window.location.search) return;
-            sessionStorage.setItem('meal_last_return', window.location.search);
-
-            subscribed = true;
-            sessionStorage.setItem('meal_subscribed', '1');
-
-            const meal = q.get('meal');
-            if (meal === 'Lunch' || meal === 'Dinner') selectMeal(meal);
-            const d = q.get('date');
-            if (d) dateInput.value = d;
-
-            renderSubscription();
-            if (state.claimed >= state.total) {
-                showToast('Payment verified — but all ' + state.total + ' slots are claimed for today.');
-            } else {
-                claimTicket('Payment verified — monthly subscription active. ' + state.mealType + ' ticket claimed.');
-            }
-        })();
     </script>
 </body>
 </html>

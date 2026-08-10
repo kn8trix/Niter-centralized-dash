@@ -1,0 +1,272 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Website Builder — CampusDash</title>
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Builder console styles -->
+    <link rel="stylesheet" href="{% static 'css/builder.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="builder" data-app="campusdash-admin">
+
+    <div class="shell">
+
+        {% include 'partials/topbar.html' %}
+
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <header class="builder-intro">
+            <span class="page-badge"><i class="fa-solid fa-wand-magic-sparkles"></i> Super Admin</span>
+            <h1>Website Builder</h1>
+            <p>Manage live pages, create new ones from blueprints, and open the visual editor.</p>
+        </header>
+
+        <!-- ============================================================
+             Editable pages
+        ============================================================ -->
+        <section class="panel">
+            <div class="panel-head">
+                <h2><i class="fa-solid fa-file-lines"></i> Editable Pages</h2>
+                <button type="button" class="btn primary panel-btn" id="open-create-modal">
+                    <i class="fa-solid fa-plus"></i> New Page
+                </button>
+                <span class="count-badge">{{ pages|length }}</span>
+            </div>
+
+            <div class="page-grid">
+                {% for page in pages %}
+                <article class="page-card">
+                    <div class="page-card-top">
+                        <span class="type-badge">{{ page.get_page_type_display }}</span>
+                        {% if page.is_published %}
+                        <span class="pub-badge pub"><i class="fa-solid fa-circle-check"></i> Published</span>
+                        {% else %}
+                        <span class="pub-badge draft"><i class="fa-regular fa-circle"></i> Draft</span>
+                        {% endif %}
+                    </div>
+
+                    <h3>{{ page.title }}</h3>
+                    <p class="slug">/page/{{ page.slug }}/</p>
+
+                    <div class="page-meta">
+                        <span title="Template"><i class="fa-regular fa-clone"></i> {{ page.template.name|default:"No template" }}</span>
+                        <span title="Content blocks"><i class="fa-regular fa-square"></i> {{ page.block_count }} blocks</span>
+                    </div>
+
+                    <div class="page-actions">
+                        <a class="btn primary" href="{% url 'visual_editor' page.slug %}">
+                            <i class="fa-solid fa-pen"></i> Edit Page
+                        </a>
+                        <a class="btn ghost" href="{% url 'editable_page' page.slug %}" target="_blank" rel="noopener">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i> View
+                        </a>
+                    </div>
+                </article>
+                {% empty %}
+                <p class="empty-note">No pages yet — create your first page with <em>New Page</em> above.</p>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- ============================================================
+             Page templates (blueprints)
+        ============================================================ -->
+        <section class="panel">
+            <div class="panel-head">
+                <h2><i class="fa-regular fa-copy"></i> Template Blueprints</h2>
+                <span class="count-badge">{{ templates|length }}</span>
+            </div>
+
+            <div class="template-grid">
+                {% for template in templates %}
+                <article class="template-card">
+                    <h3><i class="fa-regular fa-layer-group"></i> {{ template.name }}</h3>
+                    <p class="template-desc">{{ template.description|default:"No description" }}</p>
+                    <p class="template-meta">
+                        <span>Created {{ template.created_at|date:"M j, Y" }}</span>
+                        <span><i class="fa-regular fa-rectangle-list"></i> {{ template.layout_json.sections|length }} sections</span>
+                    </p>
+                </article>
+                {% empty %}
+                <p class="empty-note">No templates yet — create blueprints under <em>Core → Page templates</em> in the Django admin.</p>
+                {% endfor %}
+            </div>
+        </section>
+
+    </div>
+
+    <!-- ============================================================
+         Create New Page modal
+    ============================================================ -->
+    <div class="modal-overlay hidden" id="create-page-modal" role="dialog" aria-modal="true" aria-labelledby="create-page-title">
+        <div class="modal">
+            <div class="modal-head">
+                <h3 id="create-page-title"><i class="fa-solid fa-file-circle-plus"></i> Create New Page</h3>
+                <button type="button" class="modal-close" id="create-page-close" aria-label="Close modal">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <form id="create-page-form" novalidate>
+                <label class="modal-field" for="page-title">
+                    <span>Page Title</span>
+                    <input type="text" id="page-title" name="title" required maxlength="200" placeholder="e.g. About Us">
+                </label>
+
+                <label class="modal-field" for="page-slug">
+                    <span>Slug <small>URL endpoint — lowercase, dashes</small></span>
+                    <input type="text" id="page-slug" name="slug" required maxlength="100"
+                           pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+                           placeholder="about-us"
+                           title="Lowercase letters, numbers and dashes only">
+                </label>
+
+                <label class="modal-field" for="page-template">
+                    <span>Template Blueprint</span>
+                    <select id="page-template" name="template_id">
+                        <option value="">— No template —</option>
+                        {% for template in templates %}
+                        <option value="{{ template.id }}">{{ template.name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+
+                <p class="modal-error hidden" id="create-page-error" role="alert"></p>
+
+                <div class="modal-foot">
+                    <button type="button" class="btn ghost" data-close-modal>Cancel</button>
+                    <button type="submit" class="btn primary" id="create-page-submit">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Create Page
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% csrf_token %}
+
+    <script>
+        (function () {
+            const modal = document.getElementById('create-page-modal');
+            const form = document.getElementById('create-page-form');
+            const errorEl = document.getElementById('create-page-error');
+            const submitBtn = document.getElementById('create-page-submit');
+            const slugInput = document.getElementById('page-slug');
+            const titleInput = document.getElementById('page-title');
+            const createUrl = "{% url 'create_page' %}";
+
+            function getCookie(name) {
+                let value = null;
+                if (document.cookie && document.cookie !== '') {
+                    for (const part of document.cookie.split(';')) {
+                        const cookie = part.trim();
+                        if (cookie.startsWith(name + '=')) {
+                            value = decodeURIComponent(cookie.slice(name.length + 1));
+                            break;
+                        }
+                    }
+                }
+                return value;
+            }
+
+            function openModal() {
+                modal.classList.remove('hidden');
+                errorEl.classList.add('hidden');
+                titleInput.focus();
+            }
+
+            function closeModal() {
+                modal.classList.add('hidden');
+                form.reset();
+                delete slugInput.dataset.touched; // re-enable slug autofill next time
+            }
+
+            function setError(message) {
+                errorEl.textContent = message;
+                errorEl.classList.remove('hidden');
+            }
+
+            // Simple slug auto-suggestion from the title (editable afterwards)
+            titleInput.addEventListener('input', function () {
+                if (slugInput.dataset.touched) return;
+                const slug = titleInput.value
+                    .toLowerCase()
+                    .trim()
+                    .replace(/[^a-z0-9\s-]/g, '')
+                    .replace(/[\s_]+/g, '-')
+                    .replace(/-+/g, '-')
+                    .replace(/^-|-$/g, '');
+                slugInput.value = slug;
+            });
+            slugInput.addEventListener('input', function () { slugInput.dataset.touched = '1'; });
+
+            document.getElementById('open-create-modal').addEventListener('click', openModal);
+            document.getElementById('create-page-close').addEventListener('click', closeModal);
+            document.querySelectorAll('[data-close-modal]').forEach(function (btn) {
+                btn.addEventListener('click', closeModal);
+            });
+            modal.addEventListener('click', function (e) {
+                if (e.target === modal) closeModal();
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
+            });
+
+            form.addEventListener('submit', async function (e) {
+                e.preventDefault();
+                const title = titleInput.value.trim();
+                const slug = slugInput.value.trim();
+                const templateId = document.getElementById('page-template').value;
+
+                if (!title) return setError('Please enter a page title.');
+                if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+                    return setError('Slug must be lowercase letters, numbers and dashes (e.g. about-us).');
+                }
+
+                submitBtn.disabled = true;
+                let res;
+                try {
+                    const response = await fetch(createUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCookie('csrftoken'),
+                        },
+                        body: JSON.stringify({
+                            title: title,
+                            slug: slug,
+                            template_id: templateId || null,
+                        }),
+                    });
+                    res = await response.json();
+                } catch (err) {
+                    res = { status: 'error', message: 'Network error — try again.' };
+                }
+                submitBtn.disabled = false;
+
+                if (res.status === 'success' && res.edit_url) {
+                    window.location.href = res.edit_url; // jump into the visual editor
+                } else {
+                    setError(res.message || 'Could not create the page.');
+                }
+            });
+        })();
+    </script>
+</body>
+</html>

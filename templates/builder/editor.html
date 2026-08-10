@@ -1,0 +1,179 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editing {{ page.title }} — Website Builder</title>
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Builder editor styles (split-screen app) -->
+    <link rel="stylesheet" href="{% static 'css/builder_editor.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="editor-app"
+      data-app="campusdash-admin"
+      data-page-slug="{{ page.slug }}"
+      data-save-block-url="{% url 'save_content_block' %}"
+      data-save-css-url="{% url 'save_page_css' %}">
+
+    <!-- ============================================================
+         Top bar
+    ============================================================ -->
+    <header class="editor-topbar">
+        <div class="editor-identity">
+            <a class="editor-back" href="{% url 'builder_dashboard' %}" title="Back to builder">
+                <i class="fa-solid fa-arrow-left"></i>
+            </a>
+            <div class="editor-title">
+                <span class="page-badge">{{ page.get_page_type_display }}</span>
+                <h1>Editing {{ page.title }}</h1>
+                <p class="slug">/page/{{ page.slug }}/</p>
+            </div>
+        </div>
+
+        <div class="editor-controls">
+            <!-- Viewport switcher -->
+            <div class="viewport-switcher" role="group" aria-label="Preview viewport">
+                <button type="button" class="viewport-btn active" data-viewport="desktop" title="Desktop">
+                    <i class="fa-solid fa-display"></i> Desktop
+                </button>
+                <button type="button" class="viewport-btn" data-viewport="tablet" title="Tablet">
+                    <i class="fa-solid fa-tablet-screen-button"></i> Tablet
+                </button>
+                <button type="button" class="viewport-btn" data-viewport="mobile" title="Mobile">
+                    <i class="fa-solid fa-mobile-screen-button"></i> Mobile
+                </button>
+            </div>
+
+            <!-- Live preview toggle -->
+            <label class="live-toggle" title="Toggle edit highlights vs. clean preview">
+                <span class="live-label">Live Preview</span>
+                <input type="checkbox" id="live-preview" role="switch">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            </label>
+
+            <!-- Save all -->
+            <button type="button" class="btn primary save-all" id="save-all">
+                <i class="fa-solid fa-floppy-disk"></i> Publish / Save All
+            </button>
+        </div>
+    </header>
+
+    <!-- ============================================================
+         Body: inspector + canvas
+    ============================================================ -->
+    <div class="editor-body" id="editor-body">
+
+        <!-- Left control sidebar -->
+        <aside class="inspector" id="inspector" aria-label="Page inspector">
+            <div class="inspector-scroll">
+
+                <!-- Section 1: Page style inspector -->
+                <section class="inspector-section">
+                    <div class="inspector-section-head">
+                        <h2><i class="fa-solid fa-palette"></i> Page Style Inspector</h2>
+                    </div>
+
+                    <label class="inspector-field">
+                        <span>Custom CSS <small>injected on the live page</small></span>
+                        <textarea id="custom-css" class="css-input" rows="7" spellcheck="false"
+                                  placeholder=".content-block { padding: 2rem; }">{{ page.custom_css }}</textarea>
+                    </label>
+
+                    <div class="inspector-colors">
+                        <label class="color-field" title="Body background color">
+                            <span>Page background</span>
+                            <input type="color" id="page-bg" value="#faf9f6">
+                        </label>
+                        <label class="color-field" title="Content block background color">
+                            <span>Block background</span>
+                            <input type="color" id="block-bg" value="#ffffff">
+                        </label>
+                    </div>
+                </section>
+
+                <!-- Section 2: Active blocks inspector -->
+                <section class="inspector-section">
+                    <div class="inspector-section-head">
+                        <h2><i class="fa-solid fa-cubes"></i> Active Blocks</h2>
+                        <span class="count-badge" id="block-count">{{ blocks|length }}</span>
+                    </div>
+                    <p class="inspector-hint">Click a block on the canvas to jump to it. Edits apply instantly.</p>
+
+                    <div class="inspector-blocks" id="inspector-blocks">
+                        {% for block in blocks %}
+                        <article class="inspector-block" data-block-id="{{ block.element_id }}">
+                            <div class="inspector-block-head">
+                                <span class="block-id">#{{ block.element_id }}</span>
+                            </div>
+
+                            <label class="inspector-field">
+                                <span>Content (HTML)</span>
+                                <textarea rows="3" spellcheck="false" data-edit="html">{{ block.content_html }}</textarea>
+                            </label>
+
+                            <div class="inspector-styles">
+                                <label class="inline-field">
+                                    <span>Align</span>
+                                    <select data-edit="textAlign">
+                                        <option value="" {% if not block.style.textAlign %}selected{% endif %}>Default</option>
+                                        <option value="left" {% if block.style.textAlign == 'left' %}selected{% endif %}>Left</option>
+                                        <option value="center" {% if block.style.textAlign == 'center' %}selected{% endif %}>Center</option>
+                                        <option value="right" {% if block.style.textAlign == 'right' %}selected{% endif %}>Right</option>
+                                    </select>
+                                </label>
+                                <label class="inline-field">
+                                    <span>Color</span>
+                                    <input type="color" data-edit="color" value="{{ block.style.color|default:'#1f2937' }}">
+                                </label>
+                                <label class="inline-field">
+                                    <span>Font size</span>
+                                    <input type="number" data-edit="fontSize" min="8" max="96" placeholder="18" value="{{ block.style.fontSize|default:'' }}">
+                                </label>
+                                <label class="inline-field">
+                                    <span>Padding</span>
+                                    <input type="text" data-edit="padding" placeholder="1rem" value="{{ block.style.padding|default:'' }}">
+                                </label>
+                            </div>
+                        </article>
+                        {% empty %}
+                        <p class="empty-note">No blocks on this page yet. Add ContentBlocks in the Django admin.</p>
+                        {% endfor %}
+                    </div>
+                </section>
+
+            </div>
+        </aside>
+
+        <!-- Collapse / expand toggle -->
+        <button type="button" class="inspector-toggle" id="inspector-toggle" aria-label="Toggle inspector"
+                aria-expanded="true">
+            <i class="fa-solid fa-angles-left"></i>
+        </button>
+
+        <!-- Main canvas -->
+        <main class="canvas-wrap">
+            <div class="canvas-frame" id="canvas-frame" data-viewport="desktop">
+                <iframe id="page-preview" src="{% url 'editable_page' page.slug %}" title="Live page preview"></iframe>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast -->
+    <div class="builder-toast" id="builder-toast" role="status" aria-live="polite"></div>
+
+    {% csrf_token %}
+
+    <script src="{% static 'js/builder/editor.js' %}"></script>
+</body>
+</html>

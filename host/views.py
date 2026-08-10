@@ -1,84 +1,87 @@
-from django.shortcuts import render, redirect
-from django.contrib import messages
 from datetime import date
+
+from django.contrib.admin.views.decorators import staff_member_required
+from django.db.models import Q
+from django.shortcuts import redirect, render
+
+from core.models import MedicalAppointment, StudentProfile
+
+# Fallback catalog shown in the filter dropdown when no appointments exist yet.
+DOCTOR_NAMES = [
+    'Dr. Ahmed Khan',
+    'Dr. Sarah Smith',
+    'Dr. Michael Chen',
+    'Dr. Emily Johnson',
+]
+
+
+def _serialize_appointment(appointment):
+    """Shape a MedicalAppointment row for the admin/host dashboard templates."""
+    profile = getattr(appointment.user, 'student_profile', None)
+    return {
+        'id': appointment.pk,
+        'student_name': appointment.user.get_full_name() or appointment.user.username,
+        'student_id': getattr(profile, 'student_id', appointment.user.username),
+        'department': getattr(profile, 'department', '—'),
+        'contact': '—',  # no phone field on the student profile yet
+        'phone': '—',
+        'doctor': appointment.doctor_name,
+        'date': appointment.appointment_date.isoformat(),
+        'time': appointment.time_slot,
+        'reason': appointment.reason,
+        'status': appointment.get_status_display(),
+        'status_code': appointment.status,
+        'booking_time': appointment.created_at.strftime('%Y-%m-%d %H:%M'),
+    }
+
+
+def _appointment_summaries(queryset, today):
+    """Summary counts over the *unfiltered* appointment set."""
+    return {
+        'total': queryset.count(),
+        'pending': queryset.filter(status='pending').count(),
+        'confirmed': queryset.filter(status='confirmed').count(),
+        'completed': queryset.filter(status='completed').count(),
+        'cancelled': queryset.filter(status='cancelled').count(),
+        'todays_queue': queryset.filter(
+            appointment_date=today, status__in=['pending', 'confirmed']
+        ).count(),
+    }
 
 
 def index(request):
     return redirect('host:medical_host_dashboard')
 
 
+@staff_member_required
 def medical_host_dashboard(request):
-    # Mock data for summary cards and appointments
-    today = date.today().strftime('%Y-%m-%d')
+    """Medical host dashboard — live MedicalAppointment records with search
+    and status/date filters, plus real status actions via the shared API.
+    """
+    today = date.today()
+    base = MedicalAppointment.objects.select_related('user').all()
 
-    appointments = [
-        {"id": 1, "student_name": "Alice Johnson", "student_id": "S1001", "department": "Computer Science", "phone": "0123456789", "doctor": "Dr. Ahmed Khan", "date": today, "time": "10:00", "reason": "Fever and sore throat", "status": "Pending"},
-        {"id": 2, "student_name": "Bob Williams", "student_id": "S1002", "department": "Mathematics", "phone": "0987654321", "doctor": "Dr. Sarah Smith", "date": today, "time": "11:30", "reason": "Back pain", "status": "Confirmed"},
-        {"id": 3, "student_name": "Clara Oswald", "student_id": "S1003", "department": "Physics", "phone": "0112233445", "doctor": "Dr. Mike Johnson", "date": "2024-12-20", "time": "09:00", "reason": "Skin rash", "status": "Cancelled"},
-        {"id": 4, "student_name": "David Tennant", "student_id": "S1004", "department": "Chemistry", "phone": "0223344556", "doctor": "Dr. Emily Johnson", "date": today, "time": "14:00", "reason": "Headache", "status": "Pending"},
-        {"id": 5, "student_name": "Eve Parker", "student_id": "S1005", "department": "Biology", "phone": "0334455667", "doctor": "Dr. Michael Chen", "date": "2024-12-21", "time": "15:30", "reason": "Allergic reaction", "status": "Completed"},
-    ]
-
-    # Handle actions via query params (mock only, no DB changes)
-    action = request.GET.get('action')
-    appt_id = request.GET.get('id')
-    if action and appt_id:
-        label = ''
-        if action == 'confirm':
-            label = 'Appointment Confirmed Successfully'
-            messages.success(request, label)
-        elif action == 'cancel':
-            label = 'Appointment Cancelled Successfully'
-            messages.success(request, label)
-        elif action == 'complete':
-            label = 'Appointment Marked Completed'
-            messages.success(request, label)
-        elif action == 'return_pending':
-            label = 'Appointment Returned to Pending'
-            messages.success(request, label)
-        else:
-            messages.info(request, 'Action: %s' % action)
-
-        # Redirect to clean URL (mock behavior)
-        return redirect('host:medical_host_dashboard')
-
-    # Filters and search
     q = request.GET.get('q', '').strip().lower()
-    active_filter = request.GET.get('filter', 'all')
-
-    filtered = appointments
+    queryset = base
     if q:
-        filtered = [a for a in filtered if q in a['student_name'].lower() or q in a['student_id'].lower()]
+        queryset = queryset.filter(
+            Q(user__first_name__icontains=q)
+            | Q(user__last_name__icontains=q)
+            | Q(user__username__icontains=q)
+            | Q(reason__icontains=q)
+        )
 
+    active_filter = request.GET.get('filter', 'all')
     if active_filter == 'today':
-        filtered = [a for a in filtered if a['date'] == today]
-    elif active_filter in ['pending', 'confirmed', 'completed', 'cancelled']:
-        status_map = {
-            'pending': 'Pending',
-            'confirmed': 'Confirmed',
-            'completed': 'Completed',
-            'cancelled': 'Cancelled'
-        }
-        filtered = [a for a in filtered if a['status'] == status_map.get(active_filter)]
+        queryset = queryset.filter(appointment_date=today)
+    elif active_filter in ('pending', 'confirmed', 'completed', 'cancelled'):
+        queryset = queryset.filter(status=active_filter)
 
-    # Summary counts
-    total = len(appointments)
-    pending = sum(1 for a in appointments if a['status'] == 'Pending')
-    confirmed = sum(1 for a in appointments if a['status'] == 'Confirmed')
-    completed = sum(1 for a in appointments if a['status'] == 'Completed')
-    cancelled = sum(1 for a in appointments if a['status'] == 'Cancelled')
-    todays_queue = sum(1 for a in appointments if a['date'] == today and a['status'] in ['Pending', 'Confirmed'])
+    appointments = [_serialize_appointment(a) for a in queryset]
 
     context = {
-        'summaries': {
-            'total': total,
-            'pending': pending,
-            'confirmed': confirmed,
-            'completed': completed,
-            'cancelled': cancelled,
-            'todays_queue': todays_queue,
-        },
-        'appointments': filtered,
+        'summaries': _appointment_summaries(base, today),
+        'appointments': appointments,
         'search_query': request.GET.get('q', ''),
         'active_filter': active_filter,
     }
@@ -86,39 +89,13 @@ def medical_host_dashboard(request):
     return render(request, 'host/medical/dashboard.html', context)
 
 
+@staff_member_required
 def medical_admin_dashboard(request):
-    # Mock-only admin view for now; role-based authentication can be added later.
-    today = date.today().strftime('%Y-%m-%d')
-    appointments = [
-        {"id": 1, "student_name": "Alice Johnson", "student_id": "S1001", "department": "Computer Science", "contact": "0123456789", "doctor": "Dr. Ahmed Khan", "date": today, "time": "10:00", "reason": "Fever and sore throat", "status": "Pending", "booking_time": "2026-08-07 08:15"},
-        {"id": 2, "student_name": "Bob Williams", "student_id": "S1002", "department": "Mathematics", "contact": "0987654321", "doctor": "Dr. Sarah Smith", "date": today, "time": "11:30", "reason": "Back pain", "status": "Confirmed", "booking_time": "2026-08-07 09:00"},
-        {"id": 3, "student_name": "Clara Oswald", "student_id": "S1003", "department": "Physics", "contact": "0112233445", "doctor": "Dr. Mike Johnson", "date": "2026-08-10", "time": "09:00", "reason": "Skin rash", "status": "Cancelled", "booking_time": "2026-08-06 16:40"},
-        {"id": 4, "student_name": "David Tennant", "student_id": "S1004", "department": "Chemistry", "contact": "0223344556", "doctor": "Dr. Emily Johnson", "date": today, "time": "14:00", "reason": "Headache", "status": "Pending", "booking_time": "2026-08-07 11:20"},
-        {"id": 5, "student_name": "Eve Parker", "student_id": "S1005", "department": "Biology", "contact": "0334455667", "doctor": "Dr. Michael Chen", "date": "2026-08-11", "time": "15:30", "reason": "Allergic reaction", "status": "Confirmed", "booking_time": "2026-08-06 14:10"},
-    ]
-
-    action = request.GET.get('action')
-    appt_id = request.GET.get('id')
-    selected_appointment = None
-
-    if action == 'confirm' and appt_id:
-        for appointment in appointments:
-            if str(appointment['id']) == str(appt_id):
-                appointment['status'] = 'Confirmed'
-                break
-        messages.success(request, 'Appointment confirmed successfully.')
-        return redirect('medical_admin_dashboard')
-
-    if action == 'cancel' and appt_id:
-        for appointment in appointments:
-            if str(appointment['id']) == str(appt_id):
-                appointment['status'] = 'Cancelled'
-                break
-        messages.success(request, 'Appointment cancelled successfully.')
-        return redirect('medical_admin_dashboard')
-
-    if action == 'view' and appt_id:
-        selected_appointment = next((appointment for appointment in appointments if str(appointment['id']) == str(appt_id)), None)
+    """Medical admin dashboard — live MedicalAppointment records filtered by
+    student, status, department, doctor, and date, with real status actions.
+    """
+    today = date.today()
+    base = MedicalAppointment.objects.select_related('user').all()
 
     q = request.GET.get('q', '').strip().lower()
     student_name_filter = request.GET.get('student', '').strip().lower()
@@ -128,70 +105,82 @@ def medical_admin_dashboard(request):
     doctor_filter = request.GET.get('doctor', 'all').strip().lower()
     date_filter = request.GET.get('date', '').strip()
 
-    filtered = appointments
+    queryset = base
     if q:
-        filtered = [appointment for appointment in filtered if q in appointment['student_name'].lower() or q in appointment['student_id'].lower() or q in appointment['reason'].lower()]
-
+        queryset = queryset.filter(
+            Q(user__first_name__icontains=q)
+            | Q(user__last_name__icontains=q)
+            | Q(user__username__icontains=q)
+            | Q(reason__icontains=q)
+        )
     if student_name_filter:
-        filtered = [appointment for appointment in filtered if student_name_filter in appointment['student_name'].lower()]
-
+        queryset = queryset.filter(
+            Q(user__first_name__icontains=student_name_filter)
+            | Q(user__last_name__icontains=student_name_filter)
+        )
     if student_id_filter:
-        filtered = [appointment for appointment in filtered if student_id_filter in appointment['student_id'].lower()]
-
+        queryset = queryset.filter(user__username__icontains=student_id_filter)
     if status_filter != 'all':
-        filtered = [appointment for appointment in filtered if appointment['status'].lower() == status_filter]
-
+        queryset = queryset.filter(status=status_filter)
     if department_filter != 'all':
-        filtered = [appointment for appointment in filtered if appointment['department'].lower() == department_filter]
-
+        queryset = queryset.filter(user__student_profile__department__iexact=department_filter)
     if doctor_filter != 'all':
-        filtered = [appointment for appointment in filtered if appointment['doctor'].lower() == doctor_filter]
-
+        queryset = queryset.filter(doctor_name__iexact=doctor_filter)
     if date_filter:
-        filtered = [appointment for appointment in filtered if appointment['date'] == date_filter]
+        queryset = queryset.filter(appointment_date=date_filter)
 
-    total = len(appointments)
-    pending = sum(1 for appointment in appointments if appointment['status'] == 'Pending')
-    confirmed = sum(1 for appointment in appointments if appointment['status'] == 'Confirmed')
-    cancelled = sum(1 for appointment in appointments if appointment['status'] == 'Cancelled')
+    appointments = [_serialize_appointment(a) for a in queryset]
 
+    # "View details" is read-only — status changes go through the POST API.
+    selected_appointment = None
+    view_id = request.GET.get('id')
+    if request.GET.get('action') == 'view' and view_id:
+        try:
+            selected_appointment = _serialize_appointment(
+                MedicalAppointment.objects.get(pk=view_id)
+            )
+        except (MedicalAppointment.DoesNotExist, ValueError):
+            selected_appointment = None
+
+    summaries = _appointment_summaries(base, today)
+
+    # Filter dropdown data — real doctors/departments when available.
+    real_doctors = list(
+        MedicalAppointment.objects.values_list('doctor_name', flat=True).distinct()
+    )
+    doctors_list = real_doctors or DOCTOR_NAMES
+    departments = [code for code, _label in StudentProfile.DEPARTMENT_CHOICES]
+
+    # Mock panels that have no backing models yet.
     chats = [
-        {"student_name": "Alice Johnson", "student_id": "S1001", "last_message": "Please share the prescription details.", "time": "10:15", "status": "Active"},
-        {"student_name": "David Tennant", "student_id": "S1004", "last_message": "Waiting for doctor confirmation.", "time": "09:40", "status": "Waiting"},
-        {"student_name": "Eve Parker", "student_id": "S1005", "last_message": "Thanks, the guidance was helpful.", "time": "08:20", "status": "Resolved"},
+        {'student_name': 'Alice Johnson', 'student_id': 'S1001', 'last_message': 'Please share the prescription details.', 'time': '10:15', 'status': 'Active'},
+        {'student_name': 'David Tennant', 'student_id': 'S1004', 'last_message': 'Waiting for doctor confirmation.', 'time': '09:40', 'status': 'Waiting'},
+        {'student_name': 'Eve Parker', 'student_id': 'S1005', 'last_message': 'Thanks, the guidance was helpful.', 'time': '08:20', 'status': 'Resolved'},
     ]
-
     doctors = [
-        {"name": "Dr. Ahmed Khan", "specialty": "General Physician", "days": "Sunday - Thursday", "time": "10:00 AM - 2:00 PM", "status": "Available"},
-        {"name": "Dr. Sarah Smith", "specialty": "Orthopedic", "days": "Monday - Friday", "time": "9:00 AM - 1:00 PM", "status": "Available"},
-        {"name": "Dr. Michael Chen", "specialty": "Dermatology", "days": "Tuesday - Saturday", "time": "11:00 AM - 3:00 PM", "status": "Busy"},
+        {'name': 'Dr. Ahmed Khan', 'specialty': 'General Physician', 'days': 'Sunday - Thursday', 'time': '10:00 AM - 2:00 PM', 'status': 'Available'},
+        {'name': 'Dr. Sarah Smith', 'specialty': 'Orthopedic', 'days': 'Monday - Friday', 'time': '9:00 AM - 1:00 PM', 'status': 'Available'},
+        {'name': 'Dr. Michael Chen', 'specialty': 'Dermatology', 'days': 'Tuesday - Saturday', 'time': '11:00 AM - 3:00 PM', 'status': 'Busy'},
     ]
-
     content_sections = [
-        {"title": "Health Tips", "description": "Short wellness guidance for students.", "items": 5},
-        {"title": "Disease Awareness", "description": "Seasonal and campus health alerts.", "items": 3},
-        {"title": "First Aid", "description": "Immediate care guidance for common incidents.", "items": 4},
-        {"title": "Medical Facilities", "description": "Updated campus support locations.", "items": 6},
-        {"title": "Emergency Contacts", "description": "Fast access to urgent support.", "items": 7},
-        {"title": "Medical News", "description": "Campus health updates and announcements.", "items": 2},
+        {'title': 'Health Tips', 'description': 'Short wellness guidance for students.', 'items': 5},
+        {'title': 'Disease Awareness', 'description': 'Seasonal and campus health alerts.', 'items': 3},
+        {'title': 'First Aid', 'description': 'Immediate care guidance for common incidents.', 'items': 4},
+        {'title': 'Medical Facilities', 'description': 'Updated campus support locations.', 'items': 6},
+        {'title': 'Emergency Contacts', 'description': 'Fast access to urgent support.', 'items': 7},
+        {'title': 'Medical News', 'description': 'Campus health updates and announcements.', 'items': 2},
     ]
-
     home_page_sections = [
-        {"title": "About Medical In-Charge", "detail": "Dr. Ahmed Khan leads the campus health team."},
-        {"title": "Contact Information", "detail": "Call the medical office at 0123-456789."},
-        {"title": "Medical Facilities", "detail": "Infirmary, ambulance coordination, and first aid room."},
-        {"title": "Emergency Contacts", "detail": "Campus security and nearest hospital line available."},
-        {"title": "Health Tips", "detail": "Weekly wellbeing reminders for students."},
+        {'title': 'About Medical In-Charge', 'detail': 'Dr. Ahmed Khan leads the campus health team.'},
+        {'title': 'Contact Information', 'detail': 'Call the medical office at 0123-456789.'},
+        {'title': 'Medical Facilities', 'detail': 'Infirmary, ambulance coordination, and first aid room.'},
+        {'title': 'Emergency Contacts', 'detail': 'Campus security and nearest hospital line available.'},
+        {'title': 'Health Tips', 'detail': 'Weekly wellbeing reminders for students.'},
     ]
 
     context = {
-        'summaries': {
-            'total': total,
-            'pending': pending,
-            'confirmed': confirmed,
-            'cancelled': cancelled,
-        },
-        'appointments': filtered,
+        'summaries': summaries,
+        'appointments': appointments,
         'selected_appointment': selected_appointment,
         'search_query': request.GET.get('q', ''),
         'student_name_filter': student_name_filter,
@@ -204,8 +193,8 @@ def medical_admin_dashboard(request):
         'doctors': doctors,
         'content_sections': content_sections,
         'home_page_sections': home_page_sections,
-        'departments': ['Computer Science', 'Mathematics', 'Physics', 'Chemistry', 'Biology'],
-        'doctors_list': ['Dr. Ahmed Khan', 'Dr. Sarah Smith', 'Dr. Mike Johnson', 'Dr. Emily Johnson', 'Dr. Michael Chen'],
+        'departments': departments,
+        'doctors_list': doctors_list,
     }
 
     return render(request, 'host/medical/admin_dashboard.html', context)

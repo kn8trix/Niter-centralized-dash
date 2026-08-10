@@ -83,6 +83,9 @@
                         <textarea id="reason" name="reason" class="field-textarea" placeholder="Please describe your symptoms or reason for visit..."></textarea>
                     </div>
 
+                    <!-- Inline errors: slot conflicts / validation failures -->
+                    <div class="appt-alert" id="appt-alert" role="alert" hidden></div>
+
                     <button type="submit" class="confirm-btn">
                         <i class="fa-solid fa-calendar-check"></i> Confirm Appointment
                     </button>
@@ -94,7 +97,7 @@
                 <h2 class="section-title">Upcoming Appointments</h2>
                 <p class="section-subtitle">Your scheduled visits and their status.</p>
 
-                <div class="appt-list">
+                <div class="appt-list" id="appt-list">
                     <div class="appt-item">
                         <div class="appt-head">
                             <div>
@@ -161,9 +164,132 @@
     </div>
 
     <script>
-        // Default the date picker to today (matches the meal ticket page)
+        // ====================================================================
+        // Appointment booking — async POST to /book-appointment/
+        // ====================================================================
         const dateInput = document.getElementById('appt-date');
         if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
+
+        const form = document.querySelector('[data-component="appointment-form"]');
+        const alertEl = document.getElementById('appt-alert');
+        const apptList = document.getElementById('appt-list');
+        const LOGIN_URL = '{% url "login" %}';
+
+        function getCookie(name) {
+            if (!document.cookie || document.cookie === '') return null;
+            for (const part of document.cookie.split(';')) {
+                const pair = part.trim();
+                if (pair.startsWith(name + '=')) {
+                    return decodeURIComponent(pair.slice(name.length + 1));
+                }
+            }
+            return null;
+        }
+
+        function showAlert(message, kind) {
+            alertEl.hidden = false;
+            alertEl.className = 'appt-alert ' + (kind || 'error');
+            alertEl.innerHTML = message;
+        }
+
+        function hideAlert() {
+            alertEl.hidden = true;
+        }
+
+        function escapeHtml(value) {
+            const div = document.createElement('div');
+            div.textContent = value == null ? '' : String(value);
+            return div.innerHTML;
+        }
+
+        function fmtDate(iso) {
+            if (!iso) return '';
+            const d = new Date(iso + (iso.length === 10 ? 'T00:00:00' : ''));
+            if (isNaN(d)) return iso;
+            return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        }
+
+        // '09:00' -> '09:00 AM' (matches the slot chip labels)
+        function fmtSlot(slot) {
+            const m = String(slot || '').match(/^(\d{1,2}):(\d{2})$/);
+            if (!m) return slot || '';
+            let h = Number(m[1]);
+            const suffix = h >= 12 ? 'PM' : 'AM';
+            h = h % 12 || 12;
+            return String(h).padStart(2, '0') + ':' + m[2] + ' ' + suffix;
+        }
+
+        // Pull the specialty label from the doctor <select> option text,
+        // e.g. "Dr. Ahmed Khan — General Physician" -> "General Physician".
+        function doctorSpecialty(doctorId) {
+            const opt = document.querySelector('#doctor-select option[value="' + doctorId + '"]');
+            if (!opt) return '';
+            return opt.textContent.replace(/^[^—]*—\s*/, '').trim();
+        }
+
+        // Prepend the backend-created appointment with a Pending badge.
+        function appendAppointment(appt) {
+            const select = document.querySelector('#doctor-select');
+            const spec = escapeHtml(doctorSpecialty(select ? select.value : ''));
+            const item = document.createElement('div');
+            item.className = 'appt-item';
+            item.innerHTML =
+                '<div class="appt-head">' +
+                    '<div>' +
+                        '<strong>' + escapeHtml(appt.doctor_name) + '</strong>' +
+                        (spec ? '<span class="appt-spec">' + spec + '</span>' : '') +
+                    '</div>' +
+                    '<span class="status-badge status-pending"><i class="fa-regular fa-clock"></i> Pending</span>' +
+                '</div>' +
+                '<div class="appt-meta">' +
+                    '<span><i class="fa-regular fa-calendar"></i> ' + escapeHtml(fmtDate(appt.appointment_date)) + '</span>' +
+                    '<span><i class="fa-regular fa-clock"></i> ' + escapeHtml(fmtSlot(appt.time_slot)) + '</span>' +
+                '</div>';
+            apptList.prepend(item);
+        }
+
+        if (form) {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                hideAlert();
+
+                const formData = new FormData(form);
+                if (!formData.get('doctor') || !formData.get('appointment_date') || !formData.get('time_slot')) {
+                    showAlert('Please choose a doctor, date and time slot.', 'error');
+                    return;
+                }
+
+                const btn = form.querySelector('button[type="submit"]');
+                btn.disabled = true;
+                try {
+                    const resp = await fetch(form.action, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                        body: new URLSearchParams(formData).toString(),
+                    });
+                    const ct = resp.headers.get('content-type') || '';
+                    if (!ct.includes('application/json')) {
+                        window.location.href = LOGIN_URL; // @login_required bounce
+                        return;
+                    }
+                    const body = await resp.json();
+
+                    if (resp.ok) {
+                        appendAppointment(body);
+                        form.reset();
+                        if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
+                        showAlert('Appointment booked — pending confirmation.', 'success');
+                    } else if (resp.status === 409) {
+                        showAlert('That time slot is already booked for this doctor. Please pick another slot.', 'error');
+                    } else {
+                        showAlert(body.message || 'Could not book the appointment. Please try again.', 'error');
+                    }
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+        }
     </script>
 </body>
 </html>
