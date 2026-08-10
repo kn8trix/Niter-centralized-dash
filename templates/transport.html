@@ -1,36 +1,17 @@
+{% extends "base.html" %}
 {% load static %}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transport Tickets — Niter Hub</title>
+
+{% block title %}Transport Tickets{% endblock %}
+{% block header %}Transport Tickets{% endblock %}
+{% block body_class %} transport{% endblock %}
+
+{% block extra_head %}
     <meta name="description" content="Book campus transport seats online — routes, schedules, and digital boarding passes.">
-
-    <!-- Global design tokens -->
-    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
-    <!-- Shared top navigation -->
-    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
-    <!-- Transport page styles -->
     <link rel="stylesheet" href="{% static 'css/transport.css' %}">
+{% endblock %}
 
-    <!-- Google Fonts (Inter) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
-    <!-- FontAwesome icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
-</head>
-
-<body class="transport" data-app="campusdash-public">
-
+{% block content %}
     <div class="shell">
-
-        <!-- ============================================================
-             Top bar
-        ============================================================ -->
-        {% include 'partials/topbar.html' with active='transport' %}
 
         <!-- ============================================================
              Intro
@@ -458,5 +439,4 @@
         renderTimeChips();
         renderSeats();
     </script>
-</body>
-</html>
+{% endblock %}

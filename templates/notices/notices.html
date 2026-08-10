@@ -1,33 +1,17 @@
+{% extends "base.html" %}
 {% load static %}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Official Notices — Niter Hub</title>
+
+{% block title %}Official Notices{% endblock %}
+{% block header %}Official Notices{% endblock %}
+{% block body_class %} notices{% endblock %}
+
+{% block extra_head %}
     <meta name="description" content="Official exam schedules, results, and administrative circulars for Niter students.">
-
-    <!-- Global design tokens -->
-    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
-    <!-- Shared top navigation -->
-    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
-    <!-- Notices page styles -->
     <link rel="stylesheet" href="{% static 'css/notices.css' %}">
+{% endblock %}
 
-    <!-- Google Fonts (Inter) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
-    <!-- FontAwesome icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
-</head>
-
-<body class="notices" data-app="campusdash-public">
-
+{% block content %}
     <div class="shell">
-
-        {% include 'partials/topbar.html' with active='notices' %}
 
         <!-- ============================================================
              Intro
@@ -95,5 +79,4 @@
             });
         })();
     </script>
-</body>
-</html>
+{% endblock %}

@@ -1,36 +1,17 @@
+{% extends "base.html" %}
 {% load static %}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meal Tickets — Niter Hub</title>
+
+{% block title %}Meal Tickets{% endblock %}
+{% block header %}Meal System{% endblock %}
+{% block body_class %} meals{% endblock %}
+
+{% block extra_head %}
     <meta name="description" content="Claim your campus meal ticket online — live slot ratio, meal passes, and cafeteria supply.">
-
-    <!-- Global design tokens -->
-    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
-    <!-- Shared top navigation -->
-    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
-    <!-- Meals page styles -->
     <link rel="stylesheet" href="{% static 'css/meals.css' %}">
+{% endblock %}
 
-    <!-- Google Fonts (Inter) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
-    <!-- FontAwesome icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
-</head>
-
-<body class="meals" data-app="campusdash-public">
-
+{% block content %}
     <div class="shell">
-
-        <!-- ============================================================
-             Top bar
-        ============================================================ -->
-        {% include 'partials/topbar.html' with active='meals' %}
 
         <!-- ============================================================
              Intro
@@ -356,5 +337,4 @@
         updateRing();
         document.getElementById('pass-date').textContent = fmtDate(dateInput.value);
     </script>
-</body>
-</html>
+{% endblock %}

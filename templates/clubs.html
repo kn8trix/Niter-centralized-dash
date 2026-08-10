@@ -1,36 +1,17 @@
+{% extends "base.html" %}
 {% load static %}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clubs &amp; Events — Niter Hub</title>
+
+{% block title %}Clubs &amp; Events{% endblock %}
+{% block header %}Clubs &amp; Events{% endblock %}
+{% block body_class %} clubs{% endblock %}
+
+{% block extra_head %}
     <meta name="description" content="Discover campus clubs and events, register online, and manage your club executive workspace.">
-
-    <!-- Global design tokens -->
-    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
-    <!-- Shared top navigation -->
-    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
-    <!-- Clubs & Events styles -->
     <link rel="stylesheet" href="{% static 'css/clubs.css' %}">
+{% endblock %}
 
-    <!-- Google Fonts (Inter) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
-    <!-- FontAwesome icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
-</head>
-
-<body class="clubs" data-app="campusdash-public">
-
+{% block content %}
     <div class="clubs-shell">
-
-        <!-- ============================================================
-             Top bar
-        ============================================================ -->
-        {% include 'partials/topbar.html' with active='clubs' %}
 
         <!-- ============================================================
              Intro + View toggle
@@ -327,5 +308,4 @@
         renderStats();
         renderRegistrations();
     </script>
-</body>
-</html>
+{% endblock %}
