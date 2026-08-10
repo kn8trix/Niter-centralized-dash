@@ -2475,6 +2475,43 @@ class AcademicNotesPageTest(TestCase):
         self.assertContains(response, 'No course materials uploaded yet')
 
 
+class NotesEnginePageTest(TestCase):
+    """Notes Engine sidebar is wired to live Course / Department / CourseMaterial
+    rows (same catalog as /academic-notes/)."""
+
+    def setUp(self):
+        self.course = Course.objects.create(
+            code='CS101', title='Intro to Programming', department='CSE',
+        )
+        self.user = User.objects.create_user(username='note_taker', password='x12345678')
+        self.client.login(username='note_taker', password='x12345678')
+
+    def test_renders_live_folders_with_course_counts(self):
+        response = self.client.get(reverse('notes'))
+        self.assertEqual(response.status_code, 200)
+        # Folder name comes from the seeded Department row, count from Course.
+        self.assertContains(response, 'Computer Science &amp; Engineering')
+        self.assertContains(response, '1 course')
+
+    def test_renders_live_materials_with_course_metadata(self):
+        material = CourseMaterial.objects.create(
+            course=self.course, title='Lecture 1 Slides',
+            file=SimpleUploadedFile('lec1.pdf', b'%PDF-1.4 fake', content_type='application/pdf'),
+        )
+        response = self.client.get(reverse('notes'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Lecture 1 Slides')
+        self.assertContains(response, 'CS101')  # course code chip on the PDF row
+        self.assertContains(response, material.file.url)
+
+    def test_empty_catalog_renders_empty_states(self):
+        Course.objects.all().delete()
+        response = self.client.get(reverse('notes'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'No course folders yet.')
+        self.assertContains(response, 'No course materials uploaded yet.')
+
+
 class ProfileActivityHistoryTest(TestCase):
     """Profile activity tab reflects the user's real booking rows."""
 
@@ -3088,6 +3125,27 @@ class NotesEngineApiTest(TestCase):
         note = UserNote.objects.create(user=other, title='Secret', content='private')
         response = self._post('api_note_save', note_id=str(note.pk), title='Hacked', content='x')
         self.assertEqual(response.status_code, 404)
+
+    def test_get_note_returns_owner_note(self):
+        note = UserNote.objects.create(user=self.user, title='Algorithms', content=self.SAMPLE)
+        response = self.client.get(reverse('api_note_get', args=[note.pk]))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertEqual(data['note_id'], note.pk)
+        self.assertEqual(data['title'], 'Algorithms')
+        self.assertEqual(data['content'], self.SAMPLE)
+
+    def test_get_note_scoped_to_owner(self):
+        other = User.objects.create_user(username='other_note2', password='x12345678')
+        note = UserNote.objects.create(user=other, title='Secret', content='private')
+        response = self.client.get(reverse('api_note_get', args=[note.pk]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_note_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse('api_note_get', args=[1]))
+        self.assertEqual(response.status_code, 302)
 
     def test_summarize_extracts_high_value_sentences(self):
         response = self._post('api_note_summarize', content=self.SAMPLE)

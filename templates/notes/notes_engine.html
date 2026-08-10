@@ -34,60 +34,52 @@
         <!-- Folder/File List (dropzone) -->
         <div id="dropzone" class="flex-1 overflow-y-auto p-2 space-y-1 transition-colors rounded-b-xl">
             <p class="text-xs font-medium text-main/40 uppercase tracking-wider px-3 mb-2 mt-2">Folders</p>
-            
-            <div class="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer">
-                <svg class="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path>
-                </svg>
-                <span class="text-sm text-main truncate">Computer Science</span>
-            </div>
-
-            <div class="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer">
-                <svg class="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path>
-                </svg>
-                <span class="text-sm text-main truncate">Mathematics</span>
+            <div id="folder-list" class="space-y-1">
+                {% for folder in folders %}
+                <div class="folder-item group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer"
+                     data-folder="{{ folder.code }}" title="Show {{ folder.name }} materials" tabindex="0">
+                    <svg class="w-4 h-4 text-yellow-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path>
+                    </svg>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm text-main truncate">{{ folder.name }}</p>
+                        <p class="text-[10px] text-main/50">{{ folder.count }} course{{ folder.count|pluralize }}</p>
+                    </div>
+                </div>
+                {% empty %}
+                <p class="text-xs text-main/40 px-3">No course folders yet.</p>
+                {% endfor %}
             </div>
 
             <p class="text-xs font-medium text-main/40 uppercase tracking-wider px-3 mb-2 mt-4">Recent PDFs</p>
 
             <div id="pdf-list" class="space-y-1">
-                <div class="group flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/30 transition-colors cursor-pointer border-l-2 border-main">
-                    <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {% for material in materials %}
+                <a href="{{ material.file.url }}" target="_blank" rel="noopener"
+                   class="pdf-item group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer border border-border {% if forloop.first %}bg-accent/30 border-l-2 border-main{% endif %}"
+                   data-dept="{{ material.course.department }}" data-search="{{ material.title|lower }} {{ material.course.code|lower }}">
+                    <svg class="w-4 h-4 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
                     </svg>
                     <div class="flex-1 min-w-0">
-                        <p class="text-sm text-main font-medium truncate">Lecture_05_Notes.pdf</p>
-                        <p class="text-[10px] text-main/50">2.4 MB • Dec 18</p>
+                        <p class="text-sm text-main font-medium truncate">{{ material.title }}</p>
+                        <p class="text-[10px] text-main/50">{{ material.course.code }} · {{ material.size_display }} · {{ material.uploaded_at|date:"M d" }}</p>
                     </div>
-                </div>
-
-                <div class="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer">
-                    <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                    <svg class="w-3 h-3 text-main/40 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
                     </svg>
-                    <div class="flex-1 min-w-0">
-                        <p class="text-sm text-main truncate">Assignment_03_Guide.pdf</p>
-                        <p class="text-[10px] text-main/50">1.1 MB • Dec 15</p>
-                    </div>
-                </div>
-                
-                <div class="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer">
-                    <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                    </svg>
-                    <div class="flex-1 min-w-0">
-                        <p class="text-sm text-main truncate">Research_Paper_Final.pdf</p>
-                        <p class="text-[10px] text-main/50">4.2 MB • Dec 12</p>
-                    </div>
-                </div>
+                </a>
+                {% empty %}
+                <p class="text-xs text-main/40 px-3">No course materials uploaded yet.</p>
+                {% endfor %}
+                <p class="text-xs text-main/40 px-3" id="pdf-empty" hidden>No documents match your search or folder.</p>
             </div>
 
             <p class="text-xs font-medium text-main/40 uppercase tracking-wider px-3 mb-2 mt-4">My Notes</p>
             <div id="my-notes" class="space-y-1">
                 {% for note in user_notes %}
                 <button type="button" class="note-item group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer w-full text-left border border-border"
-                        data-note-id="{{ note.pk }}" data-note-title="{{ note.title }}" data-note-content="{{ note.content }}">
+                        data-note-id="{{ note.pk }}" data-note-title="{{ note.title }}">
                     <svg class="w-4 h-4 text-sky-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                     </svg>
@@ -361,6 +353,9 @@
         const SUMMARY_URL = '{% url "api_note_summarize" %}';
         const KEYWORDS_URL = '{% url "api_note_keywords" %}';
         const EXPORT_URL = '{% url "api_note_export" %}';
+        // GET /api/notes/<id>/ — the 0 placeholder is swapped for the real id.
+        const NOTE_GET_URL = '{% url "api_note_get" 0 %}';
+        const LOGIN_URL = '{% url "login" %}?next={{ request.path|urlencode }}';
 
         const titleInput = document.getElementById('note-title');
         const contentArea = document.getElementById('note-content');
@@ -368,6 +363,9 @@
         const previewSrc = document.getElementById('ai-preview-src');
         const toast = document.getElementById('notes-toast');
         let toastTimer;
+        // The note id currently loaded in the editor — sent to save_note so a
+        // re-save updates the existing row instead of creating a duplicate.
+        let currentNoteId = null;
 
         function getCookie(name) {
             const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
@@ -407,14 +405,38 @@
             return data;
         }
 
-        // Save Note
+        // Save Note — updates the loaded note when one is open (note_id set),
+        // otherwise creates a new note and prepends it to the sidebar.
+        function addNoteItem(noteId, title, updatedAt) {
+            const emptyHint = document.querySelector('#my-notes > p');
+            if (emptyHint) emptyHint.remove();
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'note-item group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer w-full text-left border border-border';
+            btn.dataset.noteId = noteId;
+            btn.dataset.noteTitle = title;
+            btn.innerHTML =
+                '<svg class="w-4 h-4 text-sky-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>' +
+                '<div class="flex-1 min-w-0">' +
+                '<p class="text-sm text-main font-medium truncate"></p>' +
+                '<p class="text-[10px] text-main/50">Edited ' + updatedAt + '</p></div>';
+            btn.querySelector('p.text-sm').textContent = title;
+            document.getElementById('my-notes').prepend(btn);
+        }
+
         document.getElementById('save-note-btn').addEventListener('click', async () => {
+            const isNew = !currentNoteId;
             try {
                 const data = await postForm(SAVE_URL, {
+                    note_id: currentNoteId || '',
                     title: titleInput.value.trim() || 'Untitled Note',
                     content: contentArea.value,
                 });
-                if (data) showToast('Note saved ✓', true);
+                if (!data) return;
+                currentNoteId = data.note_id;
+                if (isNew) addNoteItem(data.note_id, data.title, data.updated_at);
+                showToast('Note saved ✓', true);
             } catch (err) {
                 showToast(err.message, false);
             }
@@ -484,15 +506,80 @@
             }
         });
 
-        // Click a saved note → load it into the editor
-        document.getElementById('my-notes').addEventListener('click', (e) => {
+        // Click a saved note → fetch its content from the API and load it
+        document.getElementById('my-notes').addEventListener('click', async (e) => {
             const item = e.target.closest('.note-item');
             if (!item) return;
+            const noteId = item.dataset.noteId;
             titleInput.value = item.dataset.noteTitle;
-            contentArea.value = item.dataset.noteContent;
-            previewSrc.textContent = 'Loaded: ' + item.dataset.noteTitle;
-            showToast('Note loaded ✓', true);
+            previewSrc.textContent = 'Loading: ' + item.dataset.noteTitle;
+            try {
+                const response = await fetch(NOTE_GET_URL.replace('/0/', '/' + noteId + '/'));
+                if (response.status === 302) {
+                    window.location.href = LOGIN_URL;
+                    return;
+                }
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || data.status !== 'success') {
+                    throw new Error(data.message || 'Failed to load note (HTTP ' + response.status + ').');
+                }
+                titleInput.value = data.title;
+                contentArea.value = data.content;
+                currentNoteId = data.note_id;
+                previewSrc.textContent = 'Loaded: ' + data.title;
+                showToast('Note loaded ✓', true);
+            } catch (err) {
+                previewSrc.textContent = 'Ready — pick an action above.';
+                showToast(err.message, false);
+            }
         });
+
+        // Sidebar search + folder filter: folders/notes filter by text, the
+        // Recent PDFs list filters by department (folder click) and text.
+        const sidebarSearch = document.querySelector('#dropzone input[type="text"]');
+        const folderList = document.getElementById('folder-list');
+        const pdfListEl = document.getElementById('pdf-list');
+        let folderFilter = null;
+
+        function applySidebarFilter() {
+            const q = (sidebarSearch ? (sidebarSearch.value || '') : '').trim().toLowerCase();
+            document.querySelectorAll('#dropzone .folder-item, #dropzone .note-item')
+                .forEach((el) => { el.hidden = q && !el.textContent.toLowerCase().includes(q); });
+            const emptyPdf = document.getElementById('pdf-empty');
+            if (pdfListEl) {
+                pdfListEl.querySelectorAll('.pdf-item').forEach((p) => {
+                    const matchesFolder = !folderFilter || p.dataset.dept === folderFilter;
+                    const matchesQuery = !q || (p.dataset.search || '').includes(q);
+                    p.hidden = !(matchesFolder && matchesQuery);
+                });
+                // Show a "no results" hint only when materials exist but the
+                // search/folder filter hid all of them.
+                const hasPdfs = pdfListEl.querySelector('.pdf-item') !== null;
+                const visiblePdfs = Array.from(pdfListEl.querySelectorAll('.pdf-item'))
+                    .filter((p) => !p.hidden).length;
+                if (emptyPdf) emptyPdf.hidden = !hasPdfs || visiblePdfs > 0;
+            }
+        }
+
+        if (sidebarSearch) sidebarSearch.addEventListener('input', applySidebarFilter);
+
+        if (folderList && pdfListEl) {
+            folderList.addEventListener('click', (e) => {
+                const folder = e.target.closest('.folder-item');
+                if (!folder) return;
+                const code = folder.dataset.folder;
+                folderFilter = folderFilter === code ? null : code;
+                folderList.querySelectorAll('.folder-item').forEach((f) =>
+                    f.classList.toggle('bg-accent/30', f === folder && folderFilter === code));
+                applySidebarFilter();
+            });
+            folderList.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                const folder = e.target.closest('.folder-item');
+                if (folder) folder.click();
+            });
+        }
     })();
 </script>
 {% endblock %}

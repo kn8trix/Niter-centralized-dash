@@ -167,14 +167,49 @@ def medical(request):
     return render(request, 'medical/booking.html', context)
 
 def notes(request):
-    """Notes Engine workspace — the editor plus the signed-in user's saved
-    notes (the AI summary / keywords / export actions are server-backed)."""
+    """Notes Engine workspace — the editor plus the live academic catalog.
+
+    The sidebar is wired to the same database rows as the /academic-notes/
+    drive: folder categories are built from the real ``Department`` rows that
+    own at least one ``Course`` (falling back to ``StudentProfile`` choices
+    for codes without a hub row), the Recent PDFs list shows the newest
+    ``CourseMaterial`` rows, and My Notes lists the signed-in user's saved
+    ``UserNote`` rows. The save / summarize / keywords / export actions are
+    server-backed; clicking a saved note loads it over ``GET /api/notes/<id>/``
+    (owner-scoped).
+    """
+    materials = CourseMaterial.objects.select_related('course').order_by('-uploaded_at')
+
+    # Folder categories: one per department that has at least one course,
+    # named from the real Department model, annotated with the course count
+    # (two grouped queries total, no N+1).
+    course_counts = {
+        row['department']: row['count']
+        for row in Course.objects.values('department').annotate(count=Count('id'))
+    }
+    department_names = dict(Department.objects.values_list('code', 'name'))
+    fallback_names = dict(StudentProfile.DEPARTMENT_CHOICES)
+    folders = [
+        {
+            'code': code,
+            'name': department_names.get(code) or fallback_names.get(code, code),
+            'count': count,
+            'icon': _DEPARTMENT_ICONS.get(code, 'fa-folder'),
+        }
+        for code, count in course_counts.items()
+    ]
+    folders.sort(key=lambda folder: folder['name'])
+
     user_notes = (
         request.user.notes.all()
         if request.user.is_authenticated
         else UserNote.objects.none()
     )
-    return render(request, 'notes/notes_engine.html', {'user_notes': user_notes})
+    return render(request, 'notes/notes_engine.html', {
+        'folders': folders,
+        'materials': materials,
+        'user_notes': user_notes,
+    })
 
 # Icon per department on the notes drive folder cards.
 _DEPARTMENT_ICONS = {
@@ -2098,6 +2133,27 @@ def _note_pdf_bytes(title, content):
     return b'%PDF-1.4\n' + bytes(body)
 
 
+# Timestamp format shared by the notes fetch/save API responses.
+_NOTE_TIME_FORMAT = '%Y-%m-%d %H:%M'
+
+
+@login_required
+def get_note(request, note_id):
+    """Fetch one saved UserNote for the editor sidebar (owner-scoped).
+
+    The My Notes list only carries the note id/title in the markup; the full
+    content is fetched here so large notes never bloat the page HTML.
+    """
+    note = get_object_or_404(request.user.notes, pk=note_id)
+    return JsonResponse({
+        'status': 'success',
+        'note_id': note.pk,
+        'title': note.title,
+        'content': note.content,
+        'updated_at': note.updated_at.strftime(_NOTE_TIME_FORMAT),
+    })
+
+
 @login_required
 def save_note(request):
     """Persist the Notes Engine editor contents as a UserNote.
@@ -2126,7 +2182,7 @@ def save_note(request):
         'status': 'success',
         'note_id': note.pk,
         'title': note.title,
-        'updated_at': note.updated_at.strftime('%Y-%m-%d %H:%M'),
+        'updated_at': note.updated_at.strftime(_NOTE_TIME_FORMAT),
     })
 
 

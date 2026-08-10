@@ -46,7 +46,8 @@ urlpatterns = [
     path('api/clubs/sheet/', views.fetch_club_sheet_view, name='api_club_sheet_fetch'),
     path('api/clubs/sheet/append/', views.append_club_sheet_view, name='api_club_sheet_append'),
 
-    # Notes Engine — server-side actions (save / summarize / keywords / export)
+    # Notes Engine — server-side actions (fetch one / save / summarize / keywords / export)
+    path('api/notes/<int:note_id>/', views.get_note, name='api_note_get'),
     path('api/notes/save/', views.save_note, name='api_note_save'),
     path('api/notes/summarize/', views.note_summary, name='api_note_summarize'),
     path('api/notes/keywords/', views.note_keywords, name='api_note_keywords'),

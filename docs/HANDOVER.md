@@ -103,13 +103,14 @@ Institutional announcements and events:
 ### 4.6 Notes Engine (`templates/notes/notes_engine.html`)
 Markdown notebook-style interface with:
 - **Left Sidebar (File Browser):**
-    - Search bar for filtering files.
-    - Upload button for new documents.
-    - Folder tree (Computer Science, Mathematics).
-    - Recent PDF list with metadata.
+    - Search bar filtering folders, PDFs, and notes by text.
+    - Upload button for new documents (Google Drive).
+    - Folder tree — **live** `Department`/`Course` rows: one folder per department with a course count; clicking one filters the PDF list (§43).
+    - Recent PDF list — **live** `CourseMaterial` rows (course code, size, upload date) linking to the real file (§43).
+    - My Notes — the signed-in user's `UserNote` rows; clicking one loads its content via `GET /api/notes/<id>/` instead of embedding it in the HTML.
 - **Main Pane (Markdown Editor):**
     - Title input field.
-    - Action buttons: "Generate AI Summary", "Extract Keywords", "Export as PDF".
+    - Action buttons: "Save Note", "Generate AI Summary", "Extract Keywords", "Export as PDF" — all server-backed.
     - Monospace textarea for note-taking.
 - **Bottom Preview Box:**
     - AI summary display with formatted content.
@@ -450,7 +451,8 @@ CSRF_COOKIE_SECURE=True
 | POST | `/api/notices/create/` | Staff: persist a `Notice` (published/draft); publishing broadcasts a real-time notification to every active user (`create_notice`) |
 | POST | `/api/clubs/join/` | Student: create a pending `ClubRegistration` (duplicate → 409, club lead notified) (`join_club`) |
 | POST | `/checkout/` | Student: validate wallet payment, persist a `PaymentTransaction` with a unique `NTR-` id; meal purpose activates the `MealSubscription` (`_process_checkout`) |
-| POST | `/api/notes/save/` | Student: create/update a `UserNote` (owner-scoped) |
+| GET | `/api/notes/<id>/` | Student: fetch one `UserNote` to load into the editor (owner-scoped 404) |
+| POST | `/api/notes/save/` | Student: create/update a `UserNote` (owner-scoped; `note_id` updates instead of duplicating) |
 | POST | `/api/notes/summarize/` | Student: server-side extractive TF summarization of note content |
 | POST | `/api/notes/keywords/` | Student: TF keyword ranking for note content |
 | POST/GET | `/api/notes/export/` | Student: export a `UserNote` as `.txt` or a dependency-free generated PDF |
@@ -491,7 +493,7 @@ CSRF_COOKIE_SECURE=True
 - **Checkout / payments** — `PaymentTransaction` model + server-backed `POST /checkout/` (unique `NTR-` ids, meal purpose activates `MealSubscription`)
 - **Research AI** — `POST /api/research/query/` returns structured responses with style-aware references
 - **Dashboard live widgets** — meal ratio, transport seats, medical availability + feeds computed from the database
-- **Notes Engine AI actions** — server-side save / summarize / keywords / export (.txt + PDF)
+- **Notes Engine AI actions + live sidebar** — server-side save / summarize / keywords / export (.txt + PDF); the sidebar reads the live academic catalog (`Department` folders, `CourseMaterial` PDFs, owner-scoped `UserNote` fetch via `/api/notes/<id>/`) — §43
 - **Deployment** — env-driven settings (django-environ), `DEBUG=False` + `ALLOWED_HOSTS` from env, WhiteNoise static, `channels_redis` with offline fallback, `check --deploy` clean
 - **Render Blueprint (§38)** — `render.yaml` one-click PaaS deploy (web + Postgres + Redis), `build.sh`, auto `ALLOWED_HOSTS`/CSRF for `.onrender.com`
 - **CI/CD (§39)** — GitHub Actions: full test suite on PRs to `main`, SSH auto-deploy on push to `main`
@@ -1653,6 +1655,52 @@ All component styles live in ``static/css/editable_page.css`` (§7), matching
 - **`python manage.py test` — 367 tests, OK** (18 new, 349 prior)
 - Browser smoke test of ``/page/component-demo/`` — all four components render,
   no console errors.
+
+---
+
+## 43. Notes Engine — Live Academic Catalog Wiring (`/notes/`)
+
+**Date:** 10 August 2026  
+**Branch:** main (working tree, uncommitted)
+
+### Overview
+
+The Notes Engine sidebar previously rendered hardcoded mock rows (two static
+folders, three fake PDFs). It now reads the same live academic catalog as
+`/academic-notes/` and the editor's file-selection flow uses a real API:
+
+- **Folders** — built from the real `Department` model: one folder per
+department that owns at least one `Course`, named from the hub row (falling
+back to `StudentProfile.DEPARTMENT_CHOICES` for codes without a hub),
+annotated with the course count. Clicking a folder filters the Recent PDFs
+list to that department (client-side, keyboard-accessible).
+- **Recent PDFs** — the newest `CourseMaterial` rows (`select_related` course),
+each linking to the real `file.url` with course code, size, and upload date.
+- **My Notes** — the signed-in user's `UserNote` rows (already live); note
+clicks now fetch the full content over `GET /api/notes/<id>/` (owner-scoped
+404) instead of embedding it in `data-*` attributes, and the editor tracks
+the loaded note id so **Save Note** updates the existing row rather than
+creating a duplicate.
+- The sidebar search input now actually filters folders / PDFs / notes.
+
+### Files
+
+- `core/views.py` — `notes` view context now queries `Course` / `Department` /
+  `CourseMaterial` (folders + materials + user notes); new `get_note`
+  endpoint (`GET /api/notes/<id>/`, `@login_required`, owner-scoped 404).
+- `core/urls.py` — `api/notes/<int:note_id>/` route.
+- `templates/notes/notes_engine.html` — dynamic folders/PDFs loops, fetch-
+  backed note loading, `note_id`-aware save, sidebar search + folder filter.
+- `core/tests.py` — `NotesEnginePageTest` (live folders/materials/empty
+  states) + `get_note` API tests (owner fetch, cross-user 404, login gate).
+
+### Verification
+
+- `python manage.py check` — no issues
+- `python manage.py test core.tests.AcademicNotesPageTest core.tests.NotesEnginePageTest core.tests.NotesEngineApiTest` — OK
+  (note: the literal `core.tests.test_academic_notes` label does not resolve —
+  the tests live in `core/tests.py`, same as §41's `test_builder` note)
+- Full suite — 373 tests, OK (6 new)
 
 ---
 
