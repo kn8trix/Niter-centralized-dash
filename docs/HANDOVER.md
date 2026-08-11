@@ -135,7 +135,7 @@ Admin-only medical management interface at `/medical/admin/` with:
 - **Appointment Management (real):** Multi-field filter form (keyword, student name, student ID, date, status, department, doctor) querying live `MedicalAppointment` rows; table with Confirm / Cancel / View Details actions wired to the persistent status endpoint.
 - **Appointment Details Panel:** Full student and appointment info (contact, reason, doctor, booking time).
 - **Medical Chat Management:** Mock chat threads with statuses (Active, Waiting, Resolved) — **backend pending**.
-- **Doctor Schedule:** Doctor list with specialty, working days, and availability status — **backend pending**.
+- **Doctor Schedule (real, §63):** Doctor list rendered from the persisted `Doctor` catalog with today's `DoctorSchedule` — daily **availability toggles** and **slot-cap inputs** POST to `/api/medical/doctor-availability/`; the booking flow enforces both (unavailable doctor or full daily cap → 409).
 - **Medical Content Management:** Mock content sections (Health Tips, Disease Awareness, First Aid, Medical Facilities, Emergency Contacts, Medical News) — **backend pending**.
 - **Home Page Medical Information:** Mock editable sections for the medical center's public pages — **backend pending**.
 
@@ -445,6 +445,8 @@ CSRF_COOKIE_SECURE=True
 | POST | `/api/builder/save-block/` | Super-admin: save a ContentBlock |
 | POST | `/api/builder/save-css/` | Super-admin: save page custom CSS |
 | POST | `/api/cafeteria/redeem/` | Staff: validate a `#MEAL-XXXX` token, mark `is_redeemed=True` + `redeemed_at` (`redeem_meal_ticket`) |
+| POST | `/api/cafeteria/batch-redeem/` | Staff: bulk-redeem meal coupons — `tokens` list or `all_today=true`; per-token results (`batch_redeem_meal_tickets`, §63) |
+| POST | `/api/medical/doctor-availability/` | Staff: upsert a `DoctorSchedule` row (daily availability toggle + slot cap, §63) |
 | POST | `/api/medical/appointments/<id>/status/` | Staff: persist appointment status changes + notify the student (`update_appointment_status`) |
 | POST | `/api/clubs/verify-transaction/` | Staff: mark a TrxID **Verified** in the club Google Sheet + notify the student (`verify_club_transaction_view`) |
 | POST | `/api/admin/update-role/` | Superuser: toggle `is_staff` / `is_superuser` with self-demotion + last-superuser guards (`update_user_role`) |
@@ -505,7 +507,7 @@ CSRF_COOKIE_SECURE=True
 
 1. **~~LOW — Transport live status / route catalog~~ — DONE in §39**: `TRANSPORT_ROUTES` is replaced by DB models (`TransportRoute`/`BusSchedule`/`Driver`); the transport page, dashboard widget, and booking handler read live seat counts and driver details from the database.
 2. **LOW — Cafeteria kitchen inventory + System Admin driver/scan tables**: still mock forms — needs inventory/scan models + staff CRUD (drivers themselves now live in the DB via `Driver`).
-3. **~~LOW — Medical admin chat~~ — DONE in §39**: persistent patient–doctor consultation threads (models + REST + WebSockets). The doctor-schedule and content-management panels in the admin dashboard remain mock.
+3. **~~LOW — Medical admin chat~~ — DONE in §39**: persistent patient–doctor consultation threads (models + REST + WebSockets). The doctor-schedule panel is now **real** (§63 — DB `Doctor`/`DoctorSchedule` + availability toggles + slot caps enforced at booking); only the content-management and home-page-information panels remain mock.
 4. **LOW — Research AI persisted threads & real LLM**: `/api/research/query/` is deterministic server-side (no external AI calls); persisted thread history + an actual LLM integration would be the next step.
 5. **LOW — Media at scale**: media is served by Django — swap to django-storages/CDN if uploads grow (noted in `.env.example`).
 
