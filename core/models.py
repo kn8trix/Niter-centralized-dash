@@ -439,7 +439,17 @@ class CourseMaterial(models.Model):
         db_index=True,
     )
     title = models.CharField(max_length=200)
-    file = models.FileField(upload_to='course_materials/')
+    file = models.FileField(upload_to='course_materials/', blank=True, default='')
+    drive_view_link = models.URLField(
+        blank=True,
+        default='',
+        help_text='Google Drive webViewLink for this lecture material',
+    )
+    drive_content_link = models.URLField(
+        blank=True,
+        default='',
+        help_text='Google Drive webContentLink (direct download) for this material',
+    )
     file_type = models.CharField(
         max_length=20,
         blank=True,
@@ -1222,6 +1232,16 @@ class UserNote(models.Model):
     )
     title = models.CharField(max_length=200, default='Untitled Note')
     content = models.TextField(blank=True, default='')
+    drive_view_link = models.URLField(
+        blank=True,
+        default='',
+        help_text='Google Drive webViewLink for the exported copy of this note',
+    )
+    drive_content_link = models.URLField(
+        blank=True,
+        default='',
+        help_text='Google Drive webContentLink (direct download) for this note',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True, db_index=True)
 

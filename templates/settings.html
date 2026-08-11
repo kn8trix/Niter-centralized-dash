@@ -55,6 +55,9 @@
             <button type="button" class="tab-btn{% if active_tab == 'google_sheets' %} active{% endif %}" data-tab="google_sheets" role="tab" aria-selected="{% if active_tab == 'google_sheets' %}true{% else %}false{% endif %}" aria-controls="tab-google_sheets">
                 <i class="fa-solid fa-table-cells"></i> Club Google Sheets
             </button>
+            <button type="button" class="tab-btn{% if active_tab == 'google_drive' %} active{% endif %}" data-tab="google_drive" role="tab" aria-selected="{% if active_tab == 'google_drive' %}true{% else %}false{% endif %}" aria-controls="tab-google_drive">
+                <i class="fa-brands fa-google-drive"></i> Google Drive
+            </button>
         </div>
 
         <div class="settings-layout">
@@ -260,7 +263,7 @@
                             <div class="google-status-icon"><i class="fa-brands fa-google"></i></div>
                             <div class="google-status-body">
                                 <strong>Connected</strong>
-                                <span>{{ google_social.extra_data.email|default:google_social.uid|default:"Google account" }}</span>
+                                <span>{{ google_email }}</span>
                                 <small>Drive export &amp; sheets integration are active.</small>
                             </div>
                             <button type="button" class="btn-unlink" id="google-unlink-btn" data-url="{% url 'api_google_unlink' %}">
@@ -390,7 +393,7 @@
                             <div class="google-status-icon"><i class="fa-brands fa-google"></i></div>
                             <div class="google-status-body">
                                 <strong>Connected</strong>
-                                <span>{{ google_social.extra_data.email|default:google_social.uid|default:"Google account" }}</span>
+                                <span>{{ google_email }}</span>
                                 <small>Sheets reads/writes will use this account's access.</small>
                             </div>
                         </div>
@@ -439,15 +442,22 @@
                                 <i class="fa-solid fa-table-cells"></i>
                                 <input type="text" id="club-sheet-ref" name="sheet_ref"
                                        value="{{ club_sheets.sheet_ref|default:'' }}"
-                                       placeholder="1AbC… or https://docs.google.com/spreadsheets/d/…/edit"
+                                       placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms or https://docs.google.com/spreadsheets/d/…/edit"
                                        aria-describedby="club-sheet-ref-note">
                             </div>
                             <small id="club-sheet-ref-note" class="field-note">Shared with you — open it in your browser to copy the link.</small>
                         </div>
-                        <button type="submit" class="btn-primary">
-                            <i class="fa-solid fa-floppy-disk"></i> Save Spreadsheet
-                        </button>
+                        <div class="sheet-actions">
+                            <button type="submit" class="btn-primary">
+                                <i class="fa-solid fa-floppy-disk"></i> Save Spreadsheet
+                            </button>
+                            <button type="button" class="btn-connect" id="verify-sheet-btn">
+                                <i class="fa-solid fa-circle-check"></i> Verify &amp; Connect Sheet
+                            </button>
+                        </div>
                     </form>
+
+                    <div class="alert" id="verify-sheet-result" role="status" hidden></div>
 
                     <p class="field-note" style="margin-top: 14px;">
                         <a href="{% url 'club_admin' %}" class="btn-connect">
@@ -455,6 +465,64 @@
                         </a>
                     </p>
                 </div>
+            <!-- ============================================================
+                 Tab 5: Google Drive
+            ============================================================ -->
+            <section class="card tab-panel" id="tab-google_drive" role="tabpanel" aria-labelledby="tab-google-drive-label" {% if active_tab != 'google_drive' %}hidden{% endif %}>
+                <h2 id="tab-google-drive-label" class="section-title"><i class="fa-brands fa-google-drive"></i> Google Drive</h2>
+                <p class="section-subtitle">Connect your Google Drive so academic notes and lecture PDFs save directly into your personal <strong>NITER Centralized Dash Notes</strong> folder.</p>
+
+                <div class="settings-section">
+                    <h3 class="sub-section-title"><i class="fa-solid fa-cloud"></i> Drive Connection</h3>
+                    <p class="section-subtitle">Uploads use your linked account's Drive with a dedicated notes folder.</p>
+
+                    <div class="google-card">
+                        {% if has_google_token or google_social %}
+                        <div class="google-status connected">
+                            <div class="google-status-icon"><i class="fa-brands fa-google-drive"></i></div>
+                            <div class="google-status-body">
+                                <strong>Connected</strong>
+                                <span>{{ google_email }}</span>
+                                <small>Uploads go to the “NITER Centralized Dash Notes” folder in this account's Drive.</small>
+                            </div>
+                            <button type="button" class="btn-unlink" id="google-drive-unlink-btn" data-url="{% url 'api_google_unlink' %}">
+                                <i class="fa-solid fa-link-slash"></i> Unlink
+                            </button>
+                        </div>
+                        {% else %}
+                        <div class="google-status disconnected">
+                            <div class="google-status-icon"><i class="fa-brands fa-google-drive"></i></div>
+                            <div class="google-status-body">
+                                <strong>Not connected</strong>
+                                <span>Connect your Google account to enable Drive uploads and storage info.</span>
+                            </div>
+                            <a href="{% url 'drive_connect' %}" class="btn-connect">
+                                <i class="fa-brands fa-google-drive"></i> Connect Google Drive
+                            </a>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if drive_info %}
+                <div class="settings-section">
+                    <h3 class="sub-section-title"><i class="fa-solid fa-chart-pie"></i> Storage Quota</h3>
+                    <p class="section-subtitle">Your Google Drive storage as reported by the Drive API.</p>
+
+                    <div class="quota-card">
+                        <div class="quota-row">
+                            <span>Used: <strong>{{ drive_info.quota_used|filesizeformat }}</strong></span>
+                            <span>Total: <strong>{{ drive_info.quota_total|filesizeformat }}</strong></span>
+                            <span>Free: <strong>{{ drive_info.quota_remaining|filesizeformat }}</strong></span>
+                        </div>
+                        <div class="quota-bar" role="progressbar"
+                             aria-valuenow="{{ drive_info.quota_used }}" aria-valuemin="0" aria-valuemax="{{ drive_info.quota_total }}"
+                             aria-label="Drive storage usage">
+                            <div class="quota-bar-fill" style="width: {% if drive_info.quota_total %}{% widthratio drive_info.quota_used drive_info.quota_total 100 %}{% else %}0{% endif %}%"></div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
             </section>
 
         </div>
@@ -610,13 +678,66 @@
                 });
             });
 
-            // ---- Google unlink (AJAX) ----
-            const unlinkBtn = document.getElementById('google-unlink-btn');
-            if (unlinkBtn) {
-                unlinkBtn.addEventListener('click', async () => {
+            // ---- Verify & Connect club spreadsheet (AJAX) ----
+            const verifyBtn = document.getElementById('verify-sheet-btn');
+            const verifyResult = document.getElementById('verify-sheet-result');
+            const sheetRefInput = document.getElementById('club-sheet-ref');
+            if (verifyBtn) {
+                verifyBtn.addEventListener('click', async () => {
+                    const sheetRef = (sheetRefInput ? sheetRefInput.value : '').trim();
+                    if (!sheetRef) {
+                        verifyResult.className = 'alert error';
+                        verifyResult.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>Enter your club Google Sheet ID or URL first.</span>';
+                        verifyResult.hidden = false;
+                        return;
+                    }
+                    verifyBtn.disabled = true;
+                    verifyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying…';
+                    try {
+                        const response = await fetch('{% url "api_club_sheet_verify" %}', {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': getCookie('csrftoken'),
+                            },
+                            body: JSON.stringify({ sheet_ref: sheetRef }),
+                        });
+                        const data = await response.json().catch(() => ({}));
+                        if (data.status === 'auth_required') {
+                            verifyResult.className = 'alert error';
+                            verifyResult.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>Connect your Google account first.</span>';
+                            verifyResult.hidden = false;
+                            return;
+                        }
+                        if (response.ok && data.status === 'success') {
+                            verifyResult.className = 'alert success';
+                            verifyResult.innerHTML = '<i class="fa-solid fa-circle-check"></i><span>Connected — “' + (data.title || 'Spreadsheet') + '” verified' +
+                                (data.created && data.created.length ? ' · created tabs: ' + data.created.join(', ') : '') + '. Default column headers are ready.</span>';
+                            verifyResult.hidden = false;
+                        } else {
+                            verifyResult.className = 'alert error';
+                            verifyResult.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>' + (data.message || 'Could not verify the sheet.') + '</span>';
+                            verifyResult.hidden = false;
+                        }
+                    } catch (err) {
+                        verifyResult.className = 'alert error';
+                        verifyResult.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>Could not reach the verification service.</span>';
+                        verifyResult.hidden = false;
+                    } finally {
+                        verifyBtn.disabled = false;
+                        verifyBtn.innerHTML = '<i class="fa-solid fa-circle-check"></i> Verify &amp; Connect Sheet';
+                    }
+                });
+            }
+
+            // ---- Google unlink (AJAX) — shared by Account + Drive tabs ----
+            function wireUnlink(btn) {
+                if (!btn) return;
+                btn.addEventListener('click', async () => {
                     if (!confirm('Disconnect your Google account? Drive notes upload and sheets integration will stop working.')) return;
                     try {
-                        const response = await fetch(unlinkBtn.dataset.url, {
+                        const response = await fetch(btn.dataset.url, {
                             method: 'POST',
                             headers: { 'X-CSRFToken': getCookie('csrftoken') },
                         });
@@ -631,6 +752,8 @@
                     }
                 });
             }
+            wireUnlink(document.getElementById('google-unlink-btn'));
+            wireUnlink(document.getElementById('google-drive-unlink-btn'));
         })();
     </script>
 </body>

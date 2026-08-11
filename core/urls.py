@@ -64,6 +64,12 @@ urlpatterns = [
     path('api/notes/upload/', views.upload_note_view, name='api_upload_note'),
     path('api/clubs/sheet/', views.fetch_club_sheet_view, name='api_club_sheet_fetch'),
     path('api/clubs/sheet/append/', views.append_club_sheet_view, name='api_club_sheet_append'),
+    # Verify & Connect a club spreadsheet (creates default tabs/headers)
+    path('api/clubs/sheet/verify/', views.verify_club_sheet_view, name='api_club_sheet_verify'),
+
+    # Google Drive — OAuth2 connect/callback (google_auth_oauthlib Flow)
+    path('drive/connect/', views.drive_connect, name='drive_connect'),
+    path('drive/callback/', views.drive_callback, name='drive_callback'),
 
     # Settings — Google OAuth account unlinking
     path('api/settings/google-unlink/', views.google_unlink, name='api_google_unlink'),

@@ -3123,3 +3123,93 @@ consoles.
   - `DoctorAvailabilityApiTest` — upsert, toggle, validation, and booking
     block/cap enforcement.
 - Full suite — **546 tests OK** (run via `./venv/bin/python manage.py test`).
+
+## 64. Google Drive & Sheets Integration — OAuth Flow, Encrypted Tokens, Drive Notes Upload
+
+**Goal:** Let users connect Google Drive + Sheets via a proper OAuth2 Flow and
+store credentials **encrypted at rest**; clubs sync spreadsheets through the
+Sheets v4 API and academic notes/PDFs upload into the user's own Drive folder.
+
+### Env vars (`.env.example`)
+
+```
+GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=xxx
+GOOGLE_REDIRECT_URI=https://yourdomain/drive/callback/
+# Optional: explicit Fernet key for token encryption (defaults to a stable
+# SHA-256 derivation of SECRET_KEY, so existing deployments need no new var).
+GOOGLE_TOKEN_ENCRYPTION_KEY=
+```
+
+Settings read them via `os.environ` (django-environ) in `config/settings.py`.
+Scopes configured: `drive.file` + `spreadsheets` (also mirrored in
+`SOCIALACCOUNT_PROVIDERS` so the legacy allauth path keeps working).
+
+### OAuth2 Flow (`/drive/connect/` + `/drive/callback/`)
+
+- `core/views.py::drive_connect` — builds `google_auth_oauthlib.flow.Flow` from
+  env creds, stores a CSRF `state` in the session, redirects to Google.
+- `drive_callback` — `@login_required`; validates `state` (session pop) and
+  `error` params, exchanges the code, and persists **encrypted** tokens on
+  `GoogleUserToken` (`core/crypto.py` Fernet helpers). Also mirrors into the
+  allauth `SocialToken` row (best effort — no SocialApp row required).
+- Both views log failures via `logger.exception` so prod misconfigs are visible.
+
+### Token encryption (`core/crypto.py`)
+
+- `encrypt_secret` / `decrypt_secret` wrap `cryptography.fernet`; key comes from
+  `GOOGLE_TOKEN_ENCRYPTION_KEY` or a stable `SECRET_KEY` derivation.
+- `decrypt_secret` **falls back to the raw value** for non-Fernet payloads so
+  legacy plaintext rows stay readable while new writes are always encrypted.
+- The service layer (`core/google_service.py`) decrypts on read
+  (`get_user_google_credentials` / refresh path).
+
+### Google Sheets v4 (`core/club_sheets.py`)
+
+- Rewritten internals from gspread → `googleapiclient.discovery.build('sheets',
+  'v4')` using the authenticated user's token (kept the same public API:
+  `read_rows`, `append_row`, `read_members/registrations/notices`,
+  `append_member/registration/notice`).
+- `normalize_sheet_ref` accepts a sheet **ID or full docs URL**.
+- `verify_and_setup_sheet(user, ref)` — **Verify & Connect Sheet**: opens the
+  spreadsheet and creates default tabs (Members / Registrations / Notices) with
+  column headers when missing; returns title + created tabs for the UI.
+- Error contract: `GoogleServiceError` subtypes incl. `GoogleAccountNotConnected`
+  and `GoogleReauthRequired` (expired refresh → 401 `auth_required`).
+
+### Google Drive v3 (`academic_notes/drive_service.py`)
+
+- `upload_file_to_drive` — creates/reuses the **"NITER Centralized Dash Notes"**
+  folder and uploads notes/PDFs (`drive.file` scope), returning `webViewLink` +
+  `webContentLink`.
+- `get_drive_storage_info` — account email + storage quota (limit/usage/remaining).
+- `core/views.py::upload_note_view` now saves the Drive links onto
+  `UserNote.drive_view_link` / `drive_content_link` and
+  `CourseMaterial.drive_view_link` / `drive_content_link` (new fields, migration
+  0027).
+
+### Settings tabs (`/settings/`)
+
+- **Google Drive tab** (`?tab=google_drive`): connection status, account email
+  (safe `google_email` context var — no chained template lookups on `None`),
+  storage-quota card with progress bar, unlink button.
+- **Club Google Sheets tab** (`?tab=google_sheets`): sheet ID/URL input, Save,
+  and **Verify & Connect Sheet** button → `POST /api/clubs/sheet/verify/`
+  (`verify_club_sheet_view`), which saves `ClubSheetsConfig` + sets up headers.
+
+### Tests (all offline, Google APIs mocked)
+
+- `GoogleCryptoTest` — Fernet round-trip + plaintext fallback.
+- `DriveOAuthFlowTest` — connect redirect + session state, callback state
+  mismatch / denied / success (encrypted storage) / exchange failure, and
+  login guards on both endpoints (note: test-client sessions need explicit
+  `.save()`).
+- `VerifyClubSheetApiTest` — staff/auth guards, missing ref, success saves
+  config, auth-required 401, service error 500 (mocks target
+  `core.club_sheets.verify_and_setup_sheet` — lazy import inside the view).
+- `GoogleDriveSettingsTabTest` — tab renders, quota card when connected
+  (`filesizeformat` uses `\xa0` separators), graceful failure.
+- `DriveServiceModuleTest` — folder lookup/create + upload link extraction.
+- Updated `GoogleServiceTest` / `ClubSheetsModuleTest` for the sheets-v4 mocks
+  and encrypted-token assertions.
+- Full suite — **572 tests OK** (run via `./venv/bin/python manage.py test`).

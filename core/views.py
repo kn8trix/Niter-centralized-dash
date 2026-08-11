@@ -20,6 +20,10 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+
+import logging
+
+logger = logging.getLogger(__name__)
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from google.auth.exceptions import RefreshError
@@ -39,6 +43,7 @@ from .google_service import (
     user_has_drive_access,
     verify_club_transaction,
 )
+from academic_notes.drive_service import get_drive_storage_info
 from .models import (
     ClassRoutine,
     Club,
@@ -1269,6 +1274,27 @@ def settings_view(request):
     else:
         active_tab = request.GET.get('tab', 'notifications')
 
+    # Google Drive tab — account email + storage quota (only queried when the
+    # tab is active AND the user is connected; failures render gracefully as
+    # ``None`` so the tab never hard-fails on a quota API hiccup).
+    drive_info = None
+    if active_tab == 'google_drive' and has_google_token:
+        drive_info = get_drive_storage_info(request.user)
+
+    # Safe email label for the Google-connected cards: the quota response wins,
+    # then the allauth social account, then a fallback. Computed here so the
+    # template never does a chained ``google_social.uid`` lookup on ``None``.
+    if drive_info and drive_info.get('email'):
+        google_email = drive_info['email']
+    elif google_social is not None:
+        google_email = (
+            (google_social.extra_data or {}).get('email')
+            or google_social.uid
+            or 'Google account'
+        )
+    else:
+        google_email = 'Google account'
+
     return render(request, 'settings.html', {
         'password_form': password_form,
         'password_updated': password_updated,
@@ -1277,11 +1303,13 @@ def settings_view(request):
         'profile_errors': profile_errors,
         'prefs': prefs,
         'google_social': google_social,
+        'google_email': google_email,
         'has_google_token': has_google_token,
         'has_drive_access': has_drive_access,
         'club_sheets': club_sheets,
         'sheet_saved': sheet_saved,
         'sheet_errors': sheet_errors,
+        'drive_info': drive_info,
         'active_tab': active_tab,
     })
 
@@ -2542,6 +2570,197 @@ def _note_pdf_bytes(title, content):
     return b'%PDF-1.4\n' + bytes(body)
 
 
+# ============================================================================
+# Google Drive — OAuth2 connect/callback via google_auth_oauthlib Flow
+# ============================================================================
+_DRIVE_SCOPES = [
+    'https://www.googleapis.com/auth/drive.file',
+    'https://www.googleapis.com/auth/drive.readonly',
+    'https://www.googleapis.com/auth/spreadsheets',
+]
+
+
+def _flow_client_config():
+    """Build a ``google_auth_oauthlib`` client config from settings env vars.
+
+    Raises ``GoogleServiceError`` when the Drive/Sheets application
+    credentials are not configured (client id/secret unset).
+    """
+    client_id = getattr(settings, 'GOOGLE_CLIENT_ID', '') or ''
+    client_secret = getattr(settings, 'GOOGLE_CLIENT_SECRET', '') or ''
+    if not client_id or not client_secret:
+        raise GoogleServiceError(
+            'Google application credentials are not configured. Set '
+            'GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in the environment.'
+        )
+    return {
+        'web': {
+            'client_id': client_id,
+            'client_secret': client_secret,
+            'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
+            'token_uri': 'https://oauth2.googleapis.com/token',
+            'redirect_uris': [getattr(settings, 'GOOGLE_REDIRECT_URI', '') or ''],
+        }
+    }
+
+
+@login_required
+def drive_connect(request):
+    """Start the Google Drive/Sheets OAuth2 flow (``/drive/connect/``).
+
+    Builds a ``google_auth_oauthlib.flow.Flow`` from the environment
+    ``GOOGLE_CLIENT_ID`` / ``GOOGLE_CLIENT_SECRET`` (and ``GOOGLE_REDIRECT_URI``)
+    and redirects the user to Google's consent screen with the Drive + Sheets
+    scopes. The CSRF ``state`` is stored in the session and validated by
+    ``drive_callback``.
+    """
+    try:
+        from google_auth_oauthlib.flow import Flow
+
+        redirect_uri = getattr(settings, 'GOOGLE_REDIRECT_URI', '') or request.build_absolute_uri(
+            reverse('drive_callback')
+        )
+        flow = Flow.from_client_config(
+            _flow_client_config(),
+            scopes=_DRIVE_SCOPES,
+            redirect_uri=redirect_uri,
+        )
+        authorization_url, state = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true',
+            prompt='consent',
+        )
+    except GoogleServiceError as exc:
+        messages.error(request, str(exc))
+        return redirect(reverse('settings') + '?tab=google_drive')
+    except Exception:
+        messages.error(request, 'Could not start the Google connection flow.')
+        return redirect(reverse('settings') + '?tab=google_drive')
+
+    request.session['drive_oauth_state'] = state
+    return redirect(authorization_url)
+
+
+@login_required
+def drive_callback(request):
+    """Complete the Google Drive/Sheets OAuth2 flow (``/drive/callback/``).
+
+    Exchanges the ``code`` for access + refresh tokens, validates the CSRF
+    ``state``, stores the credentials **encrypted at rest** on the user's
+    ``GoogleUserToken``, and redirects back to Settings → Google Drive.
+    """
+    expected_state = request.session.pop('drive_oauth_state', None)
+    if expected_state is None or request.GET.get('state') != expected_state:
+        messages.error(request, 'Google connection was not completed (state mismatch).')
+        return redirect(reverse('settings') + '?tab=google_drive')
+
+    error = request.GET.get('error')
+    if error:
+        messages.error(request, 'Google access was not granted.')
+        return redirect(reverse('settings') + '?tab=google_drive')
+
+    try:
+        from google_auth_oauthlib.flow import Flow
+        from .crypto import encrypt_secret
+        from .google_service import _configured_google_scopes
+
+        redirect_uri = getattr(settings, 'GOOGLE_REDIRECT_URI', '') or request.build_absolute_uri(
+            reverse('drive_callback')
+        )
+        flow = Flow.from_client_config(
+            _flow_client_config(),
+            scopes=_DRIVE_SCOPES,
+            redirect_uri=redirect_uri,
+        )
+        flow.fetch_token(authorization_response=request.build_absolute_uri())
+        creds = flow.credentials
+    except Exception as exc:
+        logger.exception('Google Drive OAuth callback failed for user %s', request.user.pk)
+        messages.error(request, 'Google could not complete the connection — try again.')
+        return redirect(reverse('settings') + '?tab=google_drive')
+
+    token, _ = GoogleUserToken.objects.update_or_create(
+        user=request.user,
+        defaults={
+            'access_token': encrypt_secret(creds.token or ''),
+            'refresh_token': encrypt_secret(creds.refresh_token or ''),
+            'token_uri': creds.token_uri or 'https://oauth2.googleapis.com/token',
+            'client_id': getattr(settings, 'GOOGLE_CLIENT_ID', ''),
+            'client_secret': encrypt_secret(getattr(settings, 'GOOGLE_CLIENT_SECRET', '')),
+            'scopes': _configured_google_scopes(),
+            'expiry': creds.expiry or timezone.now(),
+        },
+    )
+
+    # Mirror into allauth so the existing SocialToken path + settings UI see
+    # the connection (best effort — some installs have no SocialApp row).
+    try:
+        from allauth.socialaccount.models import SocialAccount, SocialApp, SocialToken
+        account = SocialAccount.objects.filter(
+            user=request.user, provider='google'
+        ).first()
+        app = SocialApp.objects.filter(provider='google').first()
+        if account is None:
+            account = SocialAccount.objects.create(
+                user=request.user, provider='google', uid='drive-flow-%s' % request.user.pk,
+                extra_data={'email': getattr(creds, 'id_token', None) or ''},
+            )
+        if app is not None:
+            SocialToken.objects.update_or_create(
+                account=account, app=app,
+                defaults={
+                    'token': creds.token or '',
+                    'token_secret': creds.refresh_token or '',
+                    'expires_at': creds.expiry or timezone.now(),
+                },
+            )
+    except Exception:
+        pass  # GoogleUserToken row is the source of truth for the service layer
+
+    messages.success(request, 'Google Drive connected — you can upload notes and sync club sheets.')
+    return redirect(reverse('settings') + '?tab=google_drive')
+
+
+@login_required
+def verify_club_sheet_view(request):
+    """Verify & Connect a club spreadsheet (Settings → Club Google Sheets).
+
+    Saves the spreadsheet reference and asks Google Sheets to create the
+    default tabs + column headers (Members / Registrations / Notices). Answers
+    JSON with the sheet title + created tabs so the settings UI can confirm.
+    """
+    data, error = _parse_json_body(request)
+    if error is not None:
+        return error
+
+    sheet_ref = (data.get('sheet_ref') or '').strip()
+    if not sheet_ref:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Enter your club Google Sheet ID or URL first.'},
+            status=400,
+        )
+
+    try:
+        from .club_sheets import verify_and_setup_sheet
+        summary = verify_and_setup_sheet(request.user, sheet_ref)
+    except (GoogleAccountNotConnected, GoogleReauthRequired, RefreshError):
+        return _auth_required_response()
+    except GoogleServiceError as exc:
+        return _google_error_response(exc)
+
+    config, _ = ClubSheetsConfig.objects.update_or_create(
+        user=request.user,
+        defaults={'sheet_ref': sheet_ref},
+    )
+    return JsonResponse({
+        'status': 'success',
+        'title': summary.get('title'),
+        'tabs': summary.get('tabs'),
+        'created': summary.get('created'),
+        'sheet_ref': config.sheet_ref,
+    })
+
+
 def google_unlink(request):
     """Disconnect the signed-in user's Google account (Drive/sheets backends).
 
@@ -3614,7 +3833,14 @@ def _google_error_response(exc):
 
 @login_required
 def upload_note_view(request):
-    """Upload a note file to the user's Google Drive (CampusDash Notes folder)."""
+    """Upload a note file into the user's Google Drive notes folder.
+
+    Uses ``academic_notes.drive_service`` (Drive v3 API) which stores the file
+    in the dedicated ``NITER Centralized Dash Notes`` folder and returns both
+    the ``webViewLink`` and ``webContentLink``. When a ``note_id`` (UserNote)
+    or ``material_id`` (CourseMaterial) is provided, the links are persisted
+    onto that row so students can open/download from the drive.
+    """
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
 
@@ -3628,16 +3854,43 @@ def upload_note_view(request):
         return JsonResponse({'status': 'error', 'message': 'The uploaded file is empty.'}, status=400)
 
     try:
-        result = upload_note_to_user_drive(request.user, file_obj)
+        from academic_notes.drive_service import upload_file_to_drive
+        result = upload_file_to_drive(request.user, file_obj)
     except (GoogleAccountNotConnected, GoogleReauthRequired, RefreshError):
         return _auth_required_response()
     except GoogleServiceError as exc:
         return _google_error_response(exc)
 
+    view_link = result.get('web_view_link') or ''
+    content_link = result.get('web_content_link') or ''
+
+    # Persist the Drive links onto the referenced Note / CourseMaterial row
+    # (best effort — the upload succeeds even when no row id is supplied).
+    note_id = (request.POST.get('note_id') or '').strip()
+    if note_id:
+        try:
+            note = UserNote.objects.get(pk=note_id, user=request.user)
+            note.drive_view_link = view_link
+            note.drive_content_link = content_link
+            note.save(update_fields=['drive_view_link', 'drive_content_link'])
+        except (UserNote.DoesNotExist, ValueError):
+            pass
+
+    material_id = (request.POST.get('material_id') or '').strip()
+    if material_id:
+        try:
+            material = CourseMaterial.objects.get(pk=material_id)
+            material.drive_view_link = view_link
+            material.drive_content_link = content_link
+            material.save(update_fields=['drive_view_link', 'drive_content_link'])
+        except (CourseMaterial.DoesNotExist, ValueError):
+            pass
+
     return JsonResponse({
         'status': 'success',
         'file_id': result.get('file_id'),
-        'web_link': result.get('web_link'),
+        'web_view_link': view_link,
+        'web_content_link': content_link,
     })
 
 

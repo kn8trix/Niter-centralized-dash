@@ -206,7 +206,29 @@ DATABASES = _build_databases()
 # django.contrib.sites — required by allauth social accounts
 SITE_ID = 1
 
-# Google OAuth (allauth) — Phase 1
+# Google OAuth — application credentials
+# --------------------------------------------------------------------------
+# The Drive/Sheets integration has two OAuth paths that share these values:
+#
+#   * allauth's ``google_login`` (social sign-in + token mirroring) reads the
+#     ``APP`` block below when present, otherwise falls back to a DB
+#     ``SocialApp`` row (configured in the Django admin).
+#   * The dedicated Flow-based endpoints (``/drive/connect/`` +
+#     ``/drive/callback/``) build ``google_auth_oauthlib.flow.Flow`` directly
+#     from ``GOOGLE_CLIENT_ID`` / ``GOOGLE_CLIENT_SECRET`` /
+#     ``GOOGLE_REDIRECT_URI``.
+#
+# All three variables are optional in development — leave unset to keep using
+# the admin-configured allauth SocialApp only.
+GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
+GOOGLE_CLIENT_SECRET = env('GOOGLE_CLIENT_SECRET', default='')
+GOOGLE_REDIRECT_URI = env('GOOGLE_REDIRECT_URI', default='')
+
+# Fernet key used to encrypt Google OAuth tokens at rest (``core/crypto.py``).
+# When unset, a stable key is derived from ``SECRET_KEY`` — set an explicit
+# value to rotate token encryption independently of the session secret.
+GOOGLE_TOKEN_ENCRYPTION_KEY = env('GOOGLE_TOKEN_ENCRYPTION_KEY', default='')
+
 # Scopes request openid/profile/email plus Google Drive (app-data + read-only
 # browsing) and Sheets access; AUTH_PARAMS request an offline refresh token so
 # long-lived tokens can be stored for background Drive/Sheets operations.
@@ -229,6 +251,15 @@ SOCIALACCOUNT_PROVIDERS = {
         },
     },
 }
+
+# Point allauth at the env-var client when it is provided (avoids needing a
+# DB SocialApp row and keeps one source of truth for the OAuth credentials).
+if GOOGLE_CLIENT_ID:
+    SOCIALACCOUNT_PROVIDERS['google']['APP'] = {
+        'client_id': GOOGLE_CLIENT_ID,
+        'secret': GOOGLE_CLIENT_SECRET,
+        'key': '',
+    }
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

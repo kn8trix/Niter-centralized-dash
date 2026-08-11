@@ -14,7 +14,6 @@ Missing tokens and underlying Google API failures are both surfaced as
 
 import io
 
-import gspread
 from django.utils import timezone
 from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request as GoogleAuthRequest
@@ -22,6 +21,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
+from .crypto import decrypt_secret, encrypt_secret
 from .models import GoogleUserToken
 
 FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder'
@@ -71,11 +71,13 @@ def get_google_credentials(user):
         # which also mirrors a fresh GoogleUserToken row for future calls.
         return get_user_google_credentials(user)
     creds = Credentials(
-        token=token.access_token,
-        refresh_token=token.refresh_token,
+        # Tokens are encrypted at rest (``core.crypto``); decrypt on read.
+        # ``decrypt_secret`` returns legacy plaintext rows unchanged.
+        token=decrypt_secret(token.access_token),
+        refresh_token=decrypt_secret(token.refresh_token),
         token_uri=token.token_uri,
         client_id=token.client_id,
-        client_secret=token.client_secret,
+        client_secret=decrypt_secret(token.client_secret),
         scopes=token.scopes,
         # Lets google-auth refresh proactively instead of waiting for a 401.
         expiry=token.expiry,
@@ -104,7 +106,7 @@ def get_google_credentials(user):
             'Connect Google again to continue.'
         ) from exc
 
-    token.access_token = creds.token
+    token.access_token = encrypt_secret(creds.token)
     # google-auth normally hands back an aware UTC expiry — normalize it to the
     # project's stored convention (local time) so ``is_expired`` keeps comparing
     # like with like. Some callers (tests, offline flows) leave ``creds.expiry``
@@ -154,14 +156,15 @@ def _persist_google_user_token(user, social_token, creds):
         expiry = timezone.localtime(creds.expiry)
     else:
         expiry = creds.expiry
+    # Tokens are encrypted at rest before hitting the database.
     GoogleUserToken.objects.update_or_create(
         user=user,
         defaults={
-            'access_token': creds.token or '',
-            'refresh_token': creds.refresh_token or social_token.token_secret or '',
+            'access_token': encrypt_secret(creds.token or ''),
+            'refresh_token': encrypt_secret(creds.refresh_token or social_token.token_secret or ''),
             'token_uri': 'https://oauth2.googleapis.com/token',
             'client_id': getattr(app, 'client_id', '') or '',
-            'client_secret': getattr(app, 'secret', '') or '',
+            'client_secret': encrypt_secret(getattr(app, 'secret', '') or ''),
             'scopes': _configured_google_scopes(),
             'expiry': expiry or timezone.now(),
         },
@@ -325,101 +328,29 @@ def upload_note_to_user_drive(user, uploaded_file, folder_name=DEFAULT_FOLDER_NA
 
 
 # ---------------------------------------------------------------------------
-# 3. Google Sheets service layer for clubs
+# 3. Google Sheets service layer for clubs (delegates to the Sheets v4 layer
+#    in ``core/club_sheets.py`` — lazy imports avoid a circular dependency
+#    since club_sheets imports ``get_google_credentials`` from this module).
 # ---------------------------------------------------------------------------
-def _first_worksheet(spreadsheet):
-    """gspread 6.x dropped the ``sheet1`` shortcut — keep both working."""
-    sheet1 = getattr(spreadsheet, 'sheet1', None)
-    return sheet1 if sheet1 is not None else spreadsheet.get_worksheet(0)
-
-
-def _get_gspread_client(user):
-    return gspread.authorize(get_google_credentials(user))
-
-
 def get_club_sheet_data(sheet_url, user):
-    """Return every row of the club sheet, keyed by its header row."""
-    try:
-        client = _get_gspread_client(user)
-        worksheet = _first_worksheet(client.open_by_url(sheet_url))
-        return worksheet.get_all_records()
-    except RefreshError as exc:  # lazy refresh during the API call failed
-        raise GoogleReauthRequired(
-            'Your Google session has expired — reconnect Google to continue.'
-        ) from exc
-    except GoogleServiceError:
-        raise
-    except Exception as exc:
-        raise GoogleServiceError('Could not read Google Sheet: %s' % exc) from exc
+    """Return every row of the club sheet, keyed by its header row.
+
+    Delegates to :func:`core.club_sheets.read_rows` (Sheets v4 API).
+    """
+    from .club_sheets import read_rows
+    return read_rows(user, sheet_url)
 
 
 def append_club_sheet_row(sheet_url, row_data, user):
     """Append ``row_data`` (a list of cell values) to the club sheet."""
-    try:
-        client = _get_gspread_client(user)
-        worksheet = _first_worksheet(client.open_by_url(sheet_url))
-        worksheet.append_row(row_data)
-    except RefreshError as exc:  # lazy refresh during the API call failed
-        raise GoogleReauthRequired(
-            'Your Google session has expired — reconnect Google to continue.'
-        ) from exc
-    except GoogleServiceError:
-        raise
-    except Exception as exc:
-        raise GoogleServiceError('Could not append to Google Sheet: %s' % exc) from exc
+    from .club_sheets import append_rows
+    return append_rows(user, sheet_url, [row_data])
 
 
 def verify_club_transaction(sheet_url, trx_id, user, new_status='Verified'):
     """Mark the sheet row matching ``trx_id`` as ``new_status`` in place.
 
-    Locates the header columns for the transaction id and status, finds the
-    physical row whose transaction id matches (case-insensitive, via
-    ``gspread``'s own ``find``), and overwrites its status cell. Returns the
-    matched row as a header-keyed dict so the caller can notify the student
-    it belongs to.
-
-    Raises :class:`GoogleServiceError` when the sheet is missing the required
-    columns, no row matches ``trx_id``, or the Google API call itself fails.
+    Delegates to :func:`core.club_sheets.verify_club_transaction` (Sheets v4).
     """
-    try:
-        client = _get_gspread_client(user)
-        worksheet = _first_worksheet(client.open_by_url(sheet_url))
-        headers = worksheet.row_values(1)
-    except RefreshError as exc:  # lazy refresh during the API call failed
-        raise GoogleReauthRequired(
-            'Your Google session has expired — reconnect Google to continue.'
-        ) from exc
-    except GoogleServiceError:
-        raise
-    except Exception as exc:
-        raise GoogleServiceError('Could not read the Google Sheet: %s' % exc) from exc
-
-    trx_col = next(
-        (index for index, header in enumerate(headers)
-         if 'trx' in header.lower() or 'transaction' in header.lower() or header.lower() in ('id', 'trxid')),
-        None,
-    )
-    status_col = next(
-        (index for index, header in enumerate(headers) if 'status' in header.lower()),
-        None,
-    )
-    if trx_col is None or status_col is None:
-        raise GoogleServiceError(
-            'The sheet needs TrxID and Status columns to verify payments.'
-        )
-
-    try:
-        cell = worksheet.find(str(trx_id).strip(), in_column=trx_col + 1)
-    except gspread.exceptions.CellNotFound:
-        raise GoogleServiceError('No transaction with TrxID %s found in the sheet.' % trx_id)
-    except Exception as exc:  # any other gspread/API failure
-        raise GoogleServiceError('Could not search the Google Sheet: %s' % exc) from exc
-
-    try:
-        worksheet.update_cell(cell.row, status_col + 1, new_status)
-    except Exception as exc:
-        raise GoogleServiceError('Could not update the Google Sheet: %s' % exc) from exc
-
-    # Re-read the verified row as a header-keyed dict for the caller.
-    values = worksheet.row_values(cell.row)
-    return {header: values[index] if index < len(values) else '' for index, header in enumerate(headers)}
+    from .club_sheets import verify_club_transaction as _verify
+    return _verify(sheet_url, trx_id, user, new_status)

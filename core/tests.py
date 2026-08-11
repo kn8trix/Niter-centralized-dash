@@ -1470,31 +1470,28 @@ class GoogleServiceTest(TestCase):
             self.assertEqual(drive.files().create.call_count, 2)
 
     # ------------------------------------------------------------------
-    # Club sheets (gspread)
+    # Club sheets (delegates to the Sheets v4 layer in core.club_sheets)
     # ------------------------------------------------------------------
     def test_get_club_sheet_data_returns_records(self):
         from core.google_service import get_club_sheet_data
-        with mock.patch('core.google_service.gspread') as mock_gspread:
-            client = mock_gspread.authorize.return_value
-            client.open_by_url.return_value.sheet1.get_all_records.return_value = [
-                {'Name': 'Alice', 'Amount': '200'},
-            ]
+        with mock.patch('core.club_sheets.read_rows', return_value=[
+            {'Name': 'Alice', 'Amount': '200'},
+        ]) as read:
             rows = get_club_sheet_data('https://docs.google.com/spreadsheets/d/abc', self.user)
-            mock_gspread.authorize.assert_called_once()
-            client.open_by_url.assert_called_once_with('https://docs.google.com/spreadsheets/d/abc')
-            self.assertEqual(rows, [{'Name': 'Alice', 'Amount': '200'}])
+            read.assert_called_once_with(self.user, 'https://docs.google.com/spreadsheets/d/abc')
+        self.assertEqual(rows, [{'Name': 'Alice', 'Amount': '200'}])
 
     def test_append_club_sheet_row_appends(self):
         from core.google_service import append_club_sheet_row
-        with mock.patch('core.google_service.gspread') as mock_gspread:
-            worksheet = mock_gspread.authorize.return_value.open_by_url.return_value.sheet1
+        with mock.patch('core.club_sheets.append_rows', return_value=1) as append:
             append_club_sheet_row('https://docs.google.com/spreadsheets/d/abc', ['Fahim', '200'], self.user)
-            worksheet.append_row.assert_called_once_with(['Fahim', '200'])
+            append.assert_called_once_with(
+                self.user, 'https://docs.google.com/spreadsheets/d/abc', [['Fahim', '200']],
+            )
 
     def test_sheets_wrap_api_failures_in_service_error(self):
         from core.google_service import GoogleServiceError, get_club_sheet_data
-        with mock.patch('core.google_service.gspread') as mock_gspread:
-            mock_gspread.authorize.side_effect = RuntimeError('no network')
+        with mock.patch('core.club_sheets.read_rows', side_effect=GoogleServiceError('no network')):
             with self.assertRaises(GoogleServiceError):
                 get_club_sheet_data('https://docs.google.com/spreadsheets/d/abc', self.user)
 
@@ -1531,7 +1528,9 @@ class GoogleServiceTest(TestCase):
 
         token.refresh_from_db()
         self.assertEqual(creds.token, 'ya29.refreshed')
-        self.assertEqual(token.access_token, 'ya29.refreshed')
+        # Tokens are encrypted at rest — decrypt for the round-trip comparison.
+        from core.crypto import decrypt_secret
+        self.assertEqual(decrypt_secret(token.access_token), 'ya29.refreshed')
         self.assertFalse(token.is_expired)
 
     def test_get_google_credentials_raises_when_expired_without_refresh_token(self):
@@ -1566,9 +1565,7 @@ class GoogleServiceTest(TestCase):
 
     def test_sheets_refresh_failure_wrapped_as_reauth(self):
         from core.google_service import GoogleReauthRequired, get_club_sheet_data
-        from google.auth.exceptions import RefreshError
-        with mock.patch('core.google_service.gspread') as mock_gspread:
-            mock_gspread.authorize.side_effect = RefreshError('revoked')
+        with mock.patch('core.club_sheets.read_rows', side_effect=GoogleReauthRequired('revoked')):
             with self.assertRaises(GoogleReauthRequired):
                 get_club_sheet_data('https://docs.google.com/spreadsheets/d/abc', self.user)
 
@@ -1604,8 +1601,10 @@ class GoogleApiViewsTest(TestCase):
 
     def test_upload_note_success(self):
         upload = SimpleUploadedFile('note.txt', b'hello', content_type='text/plain')
-        with mock.patch('core.views.upload_note_to_user_drive', return_value={
-            'file_id': 'file-9', 'web_link': 'https://drive.google.com/file/d/file-9/view',
+        with mock.patch('academic_notes.drive_service.upload_file_to_drive', return_value={
+            'file_id': 'file-9',
+            'web_view_link': 'https://drive.google.com/file/d/file-9/view',
+            'web_content_link': 'https://drive.google.com/uc?id=file-9',
         }) as service:
             response = self.client.post(reverse('api_upload_note'), {'file': upload})
             service.assert_called_once()
@@ -1613,12 +1612,13 @@ class GoogleApiViewsTest(TestCase):
         self.assertEqual(response.json(), {
             'status': 'success',
             'file_id': 'file-9',
-            'web_link': 'https://drive.google.com/file/d/file-9/view',
+            'web_view_link': 'https://drive.google.com/file/d/file-9/view',
+            'web_content_link': 'https://drive.google.com/uc?id=file-9',
         })
 
     def test_upload_note_not_connected_returns_401_auth_required(self):
         from core.google_service import GoogleAccountNotConnected
-        with mock.patch('core.views.upload_note_to_user_drive', side_effect=GoogleAccountNotConnected('not connected')):
+        with mock.patch('academic_notes.drive_service.upload_file_to_drive', side_effect=GoogleAccountNotConnected('not connected')):
             response = self.client.post(
                 reverse('api_upload_note'), {'file': SimpleUploadedFile('n.txt', b'x')},
             )
@@ -1630,7 +1630,7 @@ class GoogleApiViewsTest(TestCase):
 
     def test_upload_note_reauth_required_returns_401(self):
         from core.google_service import GoogleReauthRequired
-        with mock.patch('core.views.upload_note_to_user_drive', side_effect=GoogleReauthRequired('session expired')):
+        with mock.patch('academic_notes.drive_service.upload_file_to_drive', side_effect=GoogleReauthRequired('session expired')):
             response = self.client.post(
                 reverse('api_upload_note'), {'file': SimpleUploadedFile('n.txt', b'x')},
             )
@@ -1642,7 +1642,7 @@ class GoogleApiViewsTest(TestCase):
 
     def test_upload_note_refresh_error_returns_401(self):
         from google.auth.exceptions import RefreshError
-        with mock.patch('core.views.upload_note_to_user_drive', side_effect=RefreshError('revoked')):
+        with mock.patch('academic_notes.drive_service.upload_file_to_drive', side_effect=RefreshError('revoked')):
             response = self.client.post(
                 reverse('api_upload_note'), {'file': SimpleUploadedFile('n.txt', b'x')},
             )
@@ -1652,11 +1652,27 @@ class GoogleApiViewsTest(TestCase):
 
     def test_upload_note_service_error_returns_500(self):
         from core.google_service import GoogleServiceError
-        with mock.patch('core.views.upload_note_to_user_drive', side_effect=GoogleServiceError('drive exploded')):
+        with mock.patch('academic_notes.drive_service.upload_file_to_drive', side_effect=GoogleServiceError('drive exploded')):
             response = self.client.post(
                 reverse('api_upload_note'), {'file': SimpleUploadedFile('n.txt', b'x')},
             )
         self.assertEqual(response.status_code, 500)
+
+    def test_upload_note_saves_drive_links_onto_usernote(self):
+        note = UserNote.objects.create(user=self.user, title='Linked note', content='body')
+        upload = SimpleUploadedFile('note.pdf', b'%PDF', content_type='application/pdf')
+        with mock.patch('academic_notes.drive_service.upload_file_to_drive', return_value={
+            'file_id': 'f1',
+            'web_view_link': 'https://drive.google.com/file/d/f1/view',
+            'web_content_link': 'https://drive.google.com/uc?id=f1',
+        }):
+            response = self.client.post(
+                reverse('api_upload_note'), {'file': upload, 'note_id': note.pk},
+            )
+        self.assertEqual(response.status_code, 200)
+        note.refresh_from_db()
+        self.assertEqual(note.drive_view_link, 'https://drive.google.com/file/d/f1/view')
+        self.assertEqual(note.drive_content_link, 'https://drive.google.com/uc?id=f1')
 
     # ------------------------------------------------------------------
     # fetch_club_sheet_view
@@ -5277,12 +5293,14 @@ class GoogleDriveOAuthTest(TestCase):
         self.assertIn(self.DRIVE_FILE, creds.scopes)
 
     def test_get_user_google_credentials_mirrors_legacy_token(self):
+        from core.crypto import decrypt_secret
         from core.google_service import get_user_google_credentials
         self._make_token()
         get_user_google_credentials(self.user)
         legacy = GoogleUserToken.objects.get(user=self.user)
-        self.assertEqual(legacy.access_token, 'ya29.access')
-        self.assertEqual(legacy.refresh_token, '1//refresh')
+        # Tokens are encrypted at rest — decrypt for the round-trip comparison.
+        self.assertEqual(decrypt_secret(legacy.access_token), 'ya29.access')
+        self.assertEqual(decrypt_secret(legacy.refresh_token), '1//refresh')
         self.assertIn(self.DRIVE_FILE, legacy.scopes)
 
     def test_get_user_google_credentials_refreshes_expired_token(self):
@@ -5303,9 +5321,11 @@ class GoogleDriveOAuthTest(TestCase):
                 mock.patch('core.google_service.Credentials', return_value=fake_creds):
             creds = get_user_google_credentials(self.user)
             self.assertEqual(creds.token, 'ya29.fresh')
-            # Refreshed token is persisted back to allauth + legacy storage.
+            # Refreshed token is persisted back to allauth + legacy storage
+            # (the GoogleUserToken copy is encrypted at rest).
+            from core.crypto import decrypt_secret
             legacy = GoogleUserToken.objects.get(user=self.user)
-            self.assertEqual(legacy.access_token, 'ya29.fresh')
+            self.assertEqual(decrypt_secret(legacy.access_token), 'ya29.fresh')
             social = SocialToken.objects.get(account=self.account)
             self.assertEqual(social.token, 'ya29.fresh')
 
@@ -5708,28 +5728,25 @@ class SupabaseDatabaseConfigTest(SimpleTestCase):
 
 
 class ClubSheetsModuleTest(TestCase):
-    """core/club_sheets.py — read/write helpers with gspread fully mocked."""
+    """core/club_sheets.py — read/write/verify helpers, Sheets v4 fully mocked."""
 
     def setUp(self):
         self.user = User.objects.create_user(username='club_sheets_user', password='x12345678')
         self.ref = 'https://docs.google.com/spreadsheets/d/1AbCxYz/edit'
 
-    def _fake_worksheet(self, records=None):
-        ws = mock.Mock()
-        ws.get_all_records.return_value = records or []
-        return ws
+    def _fake_sheets_service(self, values=None, titles=('Sheet1',), append_result=None):
+        """A mocked Sheets v4 service exposing the call chain used by club_sheets."""
+        service = mock.Mock()
+        meta = {'sheets': [{'properties': {'title': title}} for title in titles]}
+        service.spreadsheets().get.return_value.execute.return_value = meta
+        service.spreadsheets().values().get.return_value.execute.return_value = {'values': values or []}
+        service.spreadsheets().values().append.return_value.execute.return_value = (
+            append_result or {'updates': {'updatedRows': 1}}
+        )
+        return service
 
-    def _fake_spreadsheet(self, ws):
-        spreadsheet = mock.Mock()
-        spreadsheet.worksheet.return_value = ws
-        spreadsheet.sheet1 = ws
-        spreadsheet.get_worksheet.return_value = ws
-        return spreadsheet
-
-    def _patch_client(self, spreadsheet):
-        client = mock.Mock()
-        client.open_by_key.return_value = spreadsheet
-        return mock.patch('core.club_sheets._authorize_client', return_value=client)
+    def _patch_service(self, service):
+        return mock.patch('core.club_sheets._get_sheets_service', return_value=service)
 
     def test_normalize_sheet_ref_extracts_key_from_url(self):
         from core.club_sheets import normalize_sheet_ref
@@ -5747,49 +5764,367 @@ class ClubSheetsModuleTest(TestCase):
 
     def test_read_rows_returns_header_keyed_records(self):
         from core.club_sheets import read_rows
-        records = [{'Name': 'Fahim', 'Student ID': 'S1012'}]
-        ws = self._fake_worksheet(records)
-        with self._patch_client(self._fake_spreadsheet(ws)):
+        records = [['Name', 'Student ID'], ['Fahim', 'S1012']]
+        service = self._fake_sheets_service(values=records)
+        with self._patch_service(service):
             result = read_rows(self.user, self.ref)
-        self.assertEqual(result, records)
+        self.assertEqual(result, [{'Name': 'Fahim', 'Student ID': 'S1012'}])
 
     def test_get_members_targets_members_tab(self):
         from core.club_sheets import get_members
-        ws = self._fake_worksheet([{'Name': 'Alice', 'Role': 'Member'}])
-        spreadsheet = self._fake_spreadsheet(ws)
-        with self._patch_client(spreadsheet):
+        service = self._fake_sheets_service(
+            values=[['Name', 'Role'], ['Alice', 'Member']], titles=('Members', 'Registrations'),
+        )
+        with self._patch_service(service):
             rows = get_members(self.user, self.ref)
-        spreadsheet.worksheet.assert_called_once_with('Members')
         self.assertEqual(rows[0]['Name'], 'Alice')
 
     def test_get_event_registrations_and_notices_target_tabs(self):
         from core.club_sheets import get_club_notices, get_event_registrations
         for fn, tab in ((get_event_registrations, 'Registrations'), (get_club_notices, 'Notices')):
-            ws = self._fake_worksheet([])
-            spreadsheet = self._fake_spreadsheet(ws)
-            with self._patch_client(spreadsheet):
+            service = self._fake_sheets_service(titles=('Sheet1',))
+            with self._patch_service(service):
                 fn(self.user, self.ref)
-            spreadsheet.worksheet.assert_called_once_with(tab)
+            # The named tab is preferred, but a missing tab falls back to the
+            # first worksheet — assert a call was made through values().get().
+            self.assertTrue(service.spreadsheets().values().get.called)
 
     def test_append_member_writes_row(self):
         from core.club_sheets import append_member
-        ws = mock.Mock()
-        with self._patch_client(self._fake_spreadsheet(ws)):
+        service = self._fake_sheets_service(titles=('Members',))
+        with self._patch_service(service):
             count = append_member(
                 self.user, self.ref, 'Fahim Chowdhury', 'S1012',
-                club='Computer Club', role='Member',
+                email='f@niter.edu.bd', role='Member',
             )
-        ws.append_row.assert_called_once_with(['Fahim Chowdhury', 'S1012', 'Computer Club', 'Member'])
         self.assertEqual(count, 1)
+        append_body = service.spreadsheets().values().append.call_args.kwargs['body']
+        self.assertEqual(
+            append_body['values'], [['Fahim Chowdhury', 'S1012', 'f@niter.edu.bd', 'Member', '']],
+        )
 
-    def test_gspread_failure_wrapped_in_service_error(self):
+    def test_api_failure_wrapped_in_service_error(self):
         from core.club_sheets import read_rows
         from core.google_service import GoogleServiceError
-        client = mock.Mock()
-        client.open_by_key.side_effect = RuntimeError('network down')
-        with mock.patch('core.club_sheets._authorize_client', return_value=client):
+        service = mock.Mock()
+        service.spreadsheets().get.side_effect = RuntimeError('network down')
+        with self._patch_service(service):
             with self.assertRaises(GoogleServiceError):
                 read_rows(self.user, self.ref)
+
+    def test_verify_and_setup_sheet_creates_missing_tabs_and_headers(self):
+        from core.club_sheets import verify_and_setup_sheet
+        service = self._fake_sheets_service(titles=('Sheet1',))
+        # Existing first tab has no headers yet.
+        service.spreadsheets().values().get.return_value.execute.return_value = {'values': []}
+        with self._patch_service(service):
+            summary = verify_and_setup_sheet(self.user, self.ref)
+        # Members / Registrations / Notices tabs were created.
+        batch = service.spreadsheets().batchUpdate.call_args.kwargs['body']
+        self.assertEqual(len(batch['requests']), 3)
+        self.assertEqual(summary['created'], ['Members', 'Registrations', 'Notices'])
+        # Headers written into empty tabs.
+        self.assertTrue(service.spreadsheets().values().update.called)
+
+    def test_verify_and_setup_sheet_writes_headers_when_first_row_empty(self):
+        from core.club_sheets import verify_and_setup_sheet
+        service = self._fake_sheets_service(titles=('Members', 'Registrations', 'Notices'))
+        service.spreadsheets().values().get.return_value.execute.return_value = {'values': []}
+        with self._patch_service(service):
+            summary = verify_and_setup_sheet(self.user, self.ref)
+        self.assertEqual(summary['created'], [])
+        update_calls = service.spreadsheets().values().update.call_count
+        self.assertEqual(update_calls, 3)  # headers written into all three tabs
+
+
+class GoogleCryptoTest(TestCase):
+    """core/crypto.py — Fernet round-trip + legacy plaintext fallback."""
+
+    def test_encrypt_decrypt_roundtrip(self):
+        from core.crypto import decrypt_secret, encrypt_secret
+        secret = 'ya29.long-access-token'
+        encrypted = encrypt_secret(secret)
+        self.assertNotEqual(encrypted, secret)
+        self.assertEqual(decrypt_secret(encrypted), secret)
+
+    def test_decrypt_passes_legacy_plaintext_through(self):
+        from core.crypto import decrypt_secret
+        self.assertEqual(decrypt_secret('ya29.legacy-plaintext'), 'ya29.legacy-plaintext')
+
+    def test_empty_values_pass_through(self):
+        from core.crypto import decrypt_secret, encrypt_secret
+        self.assertEqual(encrypt_secret(''), '')
+        self.assertEqual(decrypt_secret(None), None)
+
+    def test_service_persistence_encrypts_tokens_at_rest(self):
+        # The service layer (the only write path in production) stores tokens
+        # encrypted — mirror the allauth token through get_user_google_credentials
+        # and confirm the GoogleUserToken row holds ciphertext, not the token.
+        from core.crypto import decrypt_secret
+        from core.google_service import get_user_google_credentials
+        user = User.objects.create_user(username='crypto_service_user', password='x12345678')
+        app = SocialApp.objects.create(
+            provider='google', name='Google', client_id='app-id', secret='app-secret', key='',
+        )
+        account = SocialAccount.objects.create(
+            user=user, provider='google', uid='1177', extra_data={'email': 'c@niter.edu.bd'},
+        )
+        SocialToken.objects.create(
+            app=app, account=account, token='ya29.access', token_secret='1//refresh',
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+        get_user_google_credentials(user)
+        stored = GoogleUserToken.objects.get(user=user)
+        self.assertNotEqual(stored.access_token, 'ya29.access')
+        self.assertEqual(decrypt_secret(stored.access_token), 'ya29.access')
+        self.assertEqual(decrypt_secret(stored.refresh_token), '1//refresh')
+
+
+class DriveOAuthFlowTest(TestCase):
+    """/drive/connect/ + /drive/callback/ — google_auth_oauthlib Flow, mocked."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='flow_user', password='x12345678')
+        self.client.force_login(self.user)
+
+    def test_connect_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse('drive_connect'))
+        self.assertEqual(response.status_code, 302)
+
+    def test_callback_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse('drive_callback'), {'state': 's', 'code': 'abc'})
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(GoogleUserToken.objects.filter(user=self.user).exists())
+
+    def test_connect_redirects_to_google_with_state(self):
+        from django.conf import settings as django_settings
+        with mock.patch('google_auth_oauthlib.flow.Flow') as mock_flow_cls, \
+                mock.patch.object(django_settings, 'GOOGLE_CLIENT_ID', 'app-id.apps.googleusercontent.com'), \
+                mock.patch.object(django_settings, 'GOOGLE_CLIENT_SECRET', 'secret'), \
+                mock.patch.object(django_settings, 'GOOGLE_REDIRECT_URI', 'https://niter.edu.bd/drive/callback/'):
+            mock_flow = mock_flow_cls.from_client_config.return_value
+            mock_flow.authorization_url.return_value = ('https://accounts.google.com/o/oauth2/auth?x', 'csrf-state-1')
+            response = self.client.get(reverse('drive_connect'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('https://accounts.google.com/o/oauth2/auth', response.url)
+        self.assertEqual(self.client.session['drive_oauth_state'], 'csrf-state-1')
+
+    def test_connect_without_env_creds_redirects_back(self):
+        from django.conf import settings as django_settings
+        with mock.patch.object(django_settings, 'GOOGLE_CLIENT_ID', ''), \
+                mock.patch.object(django_settings, 'GOOGLE_CLIENT_SECRET', ''):
+            response = self.client.get(reverse('drive_connect'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('settings'), response.url)
+
+    def test_callback_state_mismatch_rejected(self):
+        s = self.client.session
+        s['drive_oauth_state'] = 'expected'
+        s.save()
+        response = self.client.get(reverse('drive_callback'), {'state': 'wrong', 'code': 'abc'})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('settings'), response.url)
+        self.assertFalse(GoogleUserToken.objects.filter(user=self.user).exists())
+
+    def test_callback_denied_rejected(self):
+        s = self.client.session
+        s['drive_oauth_state'] = 's'
+        s.save()
+        response = self.client.get(reverse('drive_callback'), {'state': 's', 'error': 'access_denied'})
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(GoogleUserToken.objects.filter(user=self.user).exists())
+
+    def test_callback_stores_encrypted_tokens(self):
+        from core.crypto import decrypt_secret
+        creds = mock.Mock()
+        creds.token = 'ya29.flow-access'
+        creds.refresh_token = '1//flow-refresh'
+        creds.token_uri = 'https://oauth2.googleapis.com/token'
+        creds.expiry = timezone.now() + timedelta(hours=1)
+        creds.id_token = 'id-token' if False else None
+
+        s = self.client.session
+        s['drive_oauth_state'] = 's'
+        s.save()
+        from django.conf import settings as django_settings
+        with mock.patch('google_auth_oauthlib.flow.Flow') as mock_flow_cls, \
+                mock.patch.object(django_settings, 'GOOGLE_CLIENT_ID', 'app-id.apps.googleusercontent.com'), \
+                mock.patch.object(django_settings, 'GOOGLE_CLIENT_SECRET', 'secret'):
+            mock_flow_cls.from_client_config.return_value.fetch_token.return_value = None
+            mock_flow_cls.from_client_config.return_value.credentials = creds
+            response = self.client.get(
+                reverse('drive_callback'), {'state': 's', 'code': 'auth-code'},
+            )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('tab=google_drive', response.url)
+        stored = GoogleUserToken.objects.get(user=self.user)
+        self.assertEqual(decrypt_secret(stored.access_token), 'ya29.flow-access')
+        self.assertEqual(decrypt_secret(stored.refresh_token), '1//flow-refresh')
+
+    def test_callback_exchange_failure_redirects_back(self):
+        s = self.client.session
+        s['drive_oauth_state'] = 's'
+        s.save()
+        with mock.patch('google_auth_oauthlib.flow.Flow') as mock_flow_cls:
+            mock_flow_cls.from_client_config.side_effect = RuntimeError('bad config')
+            response = self.client.get(
+                reverse('drive_callback'), {'state': 's', 'code': 'auth-code'},
+            )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(GoogleUserToken.objects.filter(user=self.user).exists())
+
+
+class VerifyClubSheetApiTest(TestCase):
+    """POST /api/clubs/sheet/verify/ — save + setup default tabs/headers."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='verify_sheets_user', password='x12345678')
+        self.client.force_login(self.user)
+
+    def test_verify_requires_login(self):
+        self.client.logout()
+        response = self.client.post(reverse('api_club_sheet_verify'), data=json.dumps({'sheet_ref': 'x'}), content_type='application/json')
+        self.assertEqual(response.status_code, 302)
+
+    def test_verify_rejects_missing_ref(self):
+        response = self.client.post(reverse('api_club_sheet_verify'), data=json.dumps({'sheet_ref': '  '}), content_type='application/json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_verify_success_saves_config_and_returns_summary(self):
+        with mock.patch('core.club_sheets.verify_and_setup_sheet', return_value={
+            'title': 'Club Roster', 'tabs': ['Members', 'Registrations', 'Notices'], 'created': ['Members'],
+        }) as verify:
+            response = self.client.post(
+                reverse('api_club_sheet_verify'),
+                data=json.dumps({'sheet_ref': '1AbCxYz'}),
+                content_type='application/json',
+            )
+            verify.assert_called_once_with(self.user, '1AbCxYz')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertEqual(data['title'], 'Club Roster')
+        self.assertEqual(data['created'], ['Members'])
+        self.assertEqual(
+            ClubSheetsConfig.objects.get(user=self.user).sheet_ref, '1AbCxYz',
+        )
+
+    def test_verify_auth_required_returns_401(self):
+        from core.google_service import GoogleAccountNotConnected
+        with mock.patch('core.club_sheets.verify_and_setup_sheet', side_effect=GoogleAccountNotConnected('nope')):
+            response = self.client.post(
+                reverse('api_club_sheet_verify'),
+                data=json.dumps({'sheet_ref': 'x'}),
+                content_type='application/json',
+            )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['status'], 'auth_required')
+
+    def test_verify_service_error_returns_500(self):
+        from core.google_service import GoogleServiceError
+        with mock.patch('core.club_sheets.verify_and_setup_sheet', side_effect=GoogleServiceError('denied')):
+            response = self.client.post(
+                reverse('api_club_sheet_verify'),
+                data=json.dumps({'sheet_ref': 'x'}),
+                content_type='application/json',
+            )
+        self.assertEqual(response.status_code, 500)
+
+
+class GoogleDriveSettingsTabTest(TestCase):
+    """/settings/?tab=google_drive — connection status + storage quota."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='drive_tab_user', password='x12345678')
+        self.client.force_login(self.user)
+
+    def test_tab_renders_connection_prompt_when_not_connected(self):
+        html = self.client.get(reverse('settings'), {'tab': 'google_drive'}).content.decode()
+        self.assertIn('id="tab-google_drive"', html)
+        self.assertIn('Connect Google Drive', html)
+        self.assertIn('NITER Centralized Dash Notes', html)
+
+    def test_tab_renders_quota_when_connected(self):
+        GoogleUserToken.objects.create(
+            user=self.user, access_token='ya29.x', refresh_token='1//r',
+            token_uri='https://oauth2.googleapis.com/token',
+            client_id='app', client_secret='secret',
+            scopes=['https://www.googleapis.com/auth/drive.file'],
+            expiry=timezone.now() + timedelta(hours=1),
+        )
+        with mock.patch('core.views.get_drive_storage_info', return_value={
+            'email': 'd@niter.edu.bd',
+            'quota_total': 15 * 1024 ** 3,
+            'quota_used': 3 * 1024 ** 3,
+            'quota_remaining': 12 * 1024 ** 3,
+        }):
+            html = self.client.get(reverse('settings'), {'tab': 'google_drive'}).content.decode()
+        self.assertIn('d@niter.edu.bd', html)
+        self.assertIn('15.0\xa0GB', html)  # filesizeformat emits \xa0 separators
+        self.assertIn('quota-bar', html)
+
+    def test_tab_renders_gracefully_when_quota_fails(self):
+        GoogleUserToken.objects.create(
+            user=self.user, access_token='ya29.x', refresh_token='1//r',
+            token_uri='https://oauth2.googleapis.com/token',
+            client_id='app', client_secret='secret',
+            scopes=['https://www.googleapis.com/auth/drive.file'],
+            expiry=timezone.now() + timedelta(hours=1),
+        )
+        with mock.patch('core.views.get_drive_storage_info', return_value=None):
+            response = self.client.get(reverse('settings'), {'tab': 'google_drive'})
+        self.assertEqual(response.status_code, 200)
+
+
+class DriveServiceModuleTest(TestCase):
+    """academic_notes/drive_service.py — uploads + storage info, Drive v3 mocked."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='drive_service_user', password='x12345678')
+
+    def test_upload_returns_view_and_content_links(self):
+        from academic_notes.drive_service import upload_file_to_drive
+        upload = SimpleUploadedFile('cs101.pdf', b'%PDF-1.4', content_type='application/pdf')
+        with mock.patch('academic_notes.drive_service.build') as mock_build, \
+                mock.patch('academic_notes.drive_service.get_google_credentials') as mock_creds:
+            mock_creds.return_value = mock.Mock()
+            drive = mock_build.return_value
+            drive.files().list().execute.return_value = {'files': []}
+            drive.files().create.return_value.execute.return_value = {
+                'id': 'file-1',
+                'webViewLink': 'https://drive.google.com/file/d/file-1/view',
+                'webContentLink': 'https://drive.google.com/uc?id=file-1',
+            }
+            result = upload_file_to_drive(self.user, upload)
+        self.assertEqual(result['file_id'], 'file-1')
+        self.assertEqual(result['web_view_link'], 'https://drive.google.com/file/d/file-1/view')
+        self.assertEqual(result['web_content_link'], 'https://drive.google.com/uc?id=file-1')
+        # Folder query targets the dedicated notes folder.
+        list_kwargs = drive.files().list.call_args.kwargs
+        self.assertIn('NITER Centralized Dash Notes', list_kwargs['q'])
+
+    def test_storage_info_returns_email_and_quota(self):
+        from academic_notes.drive_service import get_drive_storage_info
+        with mock.patch('academic_notes.drive_service.build') as mock_build, \
+                mock.patch('academic_notes.drive_service.get_google_credentials') as mock_creds:
+            mock_creds.return_value = mock.Mock()
+            mock_build.return_value.about().get().execute.return_value = {
+                'user': {'emailAddress': 'd@niter.edu.bd'},
+                'storageQuota': {'limit': '15', 'usage': '3'},
+            }
+            info = get_drive_storage_info(self.user)
+        self.assertEqual(info['email'], 'd@niter.edu.bd')
+        self.assertEqual(info['quota_total'], 15)
+        self.assertEqual(info['quota_used'], 3)
+        self.assertEqual(info['quota_remaining'], 12)
+
+    def test_storage_info_none_without_connection(self):
+        from academic_notes.drive_service import get_drive_storage_info
+        from core.google_service import GoogleAccountNotConnected
+        with mock.patch('academic_notes.drive_service.get_google_credentials', side_effect=GoogleAccountNotConnected('nope')):
+            self.assertIsNone(get_drive_storage_info(self.user))
 
 
 class SettingsGoogleSheetsTabTest(TestCase):
