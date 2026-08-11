@@ -3413,6 +3413,165 @@ class SettingsPreferencesTest(TestCase):
         self.assertEqual(response.status_code, 401)
 
 
+class DisplayPreferencesIntegrationTest(TestCase):
+    """Global display preferences — context processor, partial, and middleware.
+
+    The Display tab (/settings/?tab=display) persists theme / timezone /
+    density to ``UserNotificationPreference``; the ``display_prefs`` context
+    processor + ``UserDisplayPreferencesMiddleware`` then serve those to every
+    page (including the Website Builder and builder-authored public pages) via
+    the ``partials/display_prefs.html`` no-flash driver.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='prefs_global', password='x12345678')
+        self.client.force_login(self.user)
+
+    def test_context_processor_exposes_saved_prefs(self):
+        prefs = self.user.notification_prefs
+        prefs.theme = 'dark'
+        prefs.timezone = 'UTC'
+        prefs.compact_layout = True
+        prefs.save()
+
+        response = self.client.get(reverse('dashboard'))
+        data = response.context['DISPLAY_PREFS']
+        self.assertEqual(data['theme'], 'dark')
+        self.assertEqual(data['timezone'], 'UTC')
+        self.assertEqual(data['density'], 'compact')
+        self.assertTrue(data['authenticated'])
+        self.assertEqual(data['saveUrl'], reverse('settings'))
+
+        # The no-flash config payload is embedded for the driver.
+        html = response.content.decode()
+        self.assertIn('id="display-prefs-config"', html)
+        self.assertIn('"theme": "dark"', html)
+        self.assertIn('"density": "compact"', html)
+        self.assertIn('"timezone": "UTC"', html)
+        self.assertIn('js/display-preferences.js', html)
+
+    def test_context_processor_defaults_for_rowless_user(self):
+        orphan = User.objects.create_user(username='no_prefs_row', password='x12345678')
+        UserNotificationPreference.objects.filter(user=orphan).delete()
+        self.client.force_login(orphan)
+        response = self.client.get(reverse('dashboard'))
+        data = response.context['DISPLAY_PREFS']
+        self.assertEqual(data['theme'], 'light')
+        self.assertEqual(data['density'], 'comfortable')
+        self.assertTrue(data['authenticated'])
+
+    def test_anonymous_visitors_keep_device_local_prefs(self):
+        self.client.logout()
+        response = self.client.get(reverse('transport_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        # No account payload → the driver falls back to localStorage.
+        self.assertNotIn('authenticated', response.context['DISPLAY_PREFS'])
+        html = response.content.decode()
+        self.assertIn('id="display-prefs-config"', html)
+        self.assertIn('js/display-preferences.js', html)
+
+    def test_settings_page_includes_the_global_driver(self):
+        response = self.client.get(reverse('settings') + '?tab=display')
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('id="display-prefs-config"', html)
+        self.assertIn('js/display-preferences.js', html)
+        # The settings UI still offers the tri-state theme options.
+        self.assertIn('data-theme="dark" data-pref="theme" data-value="dark"', html)
+        self.assertIn('data-pref="timezone"', html)
+        self.assertIn('data-pref="compact_layout"', html)
+
+    def test_builder_and_public_pages_include_the_driver(self):
+        template = PageTemplate.objects.create(
+            name='Prefs Page', layout_json={'sections': [{'name': 'hero'}]},
+        )
+        page = EditablePage.objects.create(
+            title='Display Prefs Page', slug='display-prefs-page', template=template,
+        )
+        ContentBlock.objects.create(
+            page=page, element_id='hero', content_html='<h1>Prefs aware</h1>',
+        )
+        # Public page (/pages/<slug>/) — the Website Builder's live canvas.
+        response = self.client.get(reverse('editable_page_public', args=[page.slug]))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('id="display-prefs-config"', html)
+        self.assertIn('js/display-preferences.js', html)
+        # Builder consoles carry the driver too.
+        self.client.force_login(User.objects.create_superuser(
+            username='prefs_root', email='pr@niter.edu.bd', password='rootpass123',
+        ))
+        for name, kwargs in [
+            ('builder_dashboard', {}),
+            ('builder_editor', {'page_slug': page.slug}),
+            ('visual_editor', {'page_slug': page.slug}),
+        ]:
+            response = self.client.get(reverse(name, kwargs=kwargs))
+            self.assertEqual(response.status_code, 200, msg=name)
+            html = response.content.decode()
+            self.assertIn('id="display-prefs-config"', html, msg=name)
+            self.assertIn('js/display-preferences.js', html, msg=name)
+
+    def test_settings_json_save_still_survives(self):
+        # The driver persists through the existing /settings/ JSON endpoint.
+        response = self.client.post(
+            reverse('settings'),
+            data=json.dumps({'theme': 'system', 'timezone': 'Asia/Kolkata', 'compact_layout': False}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'success')
+        prefs = self.user.notification_prefs
+        prefs.refresh_from_db()
+        self.assertEqual(prefs.theme, 'system')
+        self.assertEqual(prefs.timezone, 'Asia/Kolkata')
+        self.assertFalse(prefs.compact_layout)
+
+
+class UserTimezoneMiddlewareTest(TestCase):
+    """UserDisplayPreferencesMiddleware — per-request timezone activation."""
+
+    def test_activates_the_users_timezone_during_the_request(self):
+        from django.http import HttpResponse
+        from core.middleware import UserDisplayPreferencesMiddleware
+
+        user = User.objects.create_user(username='tz_user', password='x12345678')
+        prefs = user.notification_prefs
+        prefs.timezone = 'UTC'
+        prefs.save()
+
+        request = RequestFactory().get('/')
+        request.user = user
+        captured = {}
+
+        def get_response(req):
+            captured['zone'] = str(timezone.get_current_timezone())
+            return HttpResponse('ok')
+
+        response = UserDisplayPreferencesMiddleware(get_response)(request)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(captured['zone'], 'UTC')
+        # request.display_prefs is cached for the context processor.
+        self.assertEqual(request.display_prefs['timezone'], 'UTC')
+        self.assertEqual(request.display_prefs['theme'], 'light')
+        self.assertEqual(request.display_prefs['density'], 'comfortable')
+
+    def test_anonymous_requests_are_left_untouched(self):
+        from django.contrib.auth.models import AnonymousUser
+        from django.http import HttpResponse
+        from core.middleware import UserDisplayPreferencesMiddleware
+
+        request = RequestFactory().get('/')
+        request.user = AnonymousUser()
+
+        def get_response(req):
+            return HttpResponse('ok')
+
+        response = UserDisplayPreferencesMiddleware(get_response)(request)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(request.display_prefs['timezone'], None)
+
+
 class NotesEngineApiTest(TestCase):
     """Notes Engine server-side actions — save / summarize / keywords / export."""
 

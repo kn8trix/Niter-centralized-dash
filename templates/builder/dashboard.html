@@ -8,6 +8,8 @@
 
     <!-- Global design tokens -->
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Global display preferences (theme / timezone / density) -- no-flash driver -->
+    {% include 'partials/display_prefs.html' %}
     <!-- Shared top navigation -->
     <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
     <!-- Builder console styles -->

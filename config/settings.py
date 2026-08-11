@@ -134,6 +134,9 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'allauth.account.middleware.AccountMiddleware',
+    # Per-user display prefs (theme / timezone / density) — activates the
+    # user's timezone for aware datetime handling + caches prefs on the request.
+    'core.middleware.UserDisplayPreferencesMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     # Sends the X-Frame-Options: DENY header (paired with X_FRAME_OPTIONS below).
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -156,6 +159,8 @@ TEMPLATES = [
                 'core.context_processors.endpoints',
                 # Published builder pages flagged for the top navigation
                 'core.context_processors.custom_pages_nav',
+                # Global display preferences (theme / timezone / density)
+                'core.context_processors.display_prefs',
             ],
         },
     },

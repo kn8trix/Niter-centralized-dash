@@ -2781,3 +2781,107 @@ success through the generic route, unknown gateway 404, cross-provider 400.
 broadcast push now lives in the task module).
 - Full suite — **509 tests OK** · `manage.py check` clean · `node --check`
 clean on all JS (incl. `sw.js` / `pwa-register.js`) · PNG icons validated.
+
+---
+
+## 60. Global Display Preferences — Theme / Timezone / Density
+
+**Date:** 11 August 2026
+
+### Overview
+
+The Display tab (`/settings/?tab=display`) now actually persists **and applies
+globally across the portal**, including the Website Builder and the public
+pages it renders. Theme (Light / Dark / System), Timezone and Layout Density
+(Comfortable / Compact) are driven by one client-side engine backed by a
+per-user account row (`UserNotificationPreference`) + device `localStorage`.
+
+### How it works
+
+1. **Global JS driver — `static/js/display-preferences.js`**
+   - Loaded (deferred) on **every** page via `partials/display_prefs.html`
+     (included in `<head>` right after `theme.css` in `base.html`, the builder
+     consoles, `settings.html`, `editable_page.html` and every standalone
+     service page).
+   - Exposes `window.DisplayPrefs` (`get` / `set` / `apply`). `set()` applies
+     instantly, persists to `localStorage` (`niter.display.prefs`), fires a
+     `display-prefs-change` event, and — for signed-in users — syncs the
+     account copy via AJAX to `/settings/` (the existing JSON endpoint).
+     The `density` key is translated to the backend's `compact_layout` boolean
+     on the wire.
+   - Theme application: toggles a `dark` class on `<html>`/`<body>` and stamps
+     `data-theme="dark|light"`, `data-theme-mode="…"` and
+     `data-density="compact|comfortable"`. `system` mode follows
+     `prefers-color-scheme` live via `matchMedia`.
+   - **No-flash:** the partial's tiny inline script runs synchronously in
+     `<head>` (before first paint) and stamps the same attributes from the
+     server-rendered `DISPLAY_PREFS` payload merged with `localStorage`.
+     Signed-in users get their **account** prefs (follow them across devices);
+     anonymous visitors keep their **device** prefs.
+
+2. **Server plumbing**
+   - `core/middleware.py` — `UserDisplayPreferencesMiddleware`: one query per
+     authenticated request, caches `request.display_prefs`, and activates the
+     user's timezone via `django.utils.timezone.activate()`.
+   - `core/context_processors.py` — `display_prefs`: exposes `DISPLAY_PREFS`
+     (theme/timezone/density + `saveUrl`/`authenticated`) to every template;
+     serialised into the no-flash config via `{{ DISPLAY_PREFS|json_script }}`.
+   - `config/settings.py` — middleware registered after `AuthenticationMiddleware`;
+     context processor registered.
+
+3. **Dark mode styling — `static/css/theme.css`**
+   - `html[data-theme='dark']` flips the Tailwind rgb-triplet tokens
+     (`--color-base/card/border/main/accent/…`) **and** the standalone-page
+     hex tokens (`--bg-main/card/subtle`, `--text-primary/muted`,
+     `--border-color`, `--accent-primary/-hover`, `--accent-dark`, semantic
+     status soft-colors) — so the app shell, service pages, builder and
+     editable pages all darken without touching component CSS.
+   - `--accent-dark` is redefined to a light ink in dark mode; a repair block
+     keeps the components that use it as a *background* dark (primary buttons,
+     toasts, selected seats, toggles, `.btn-emergency`, `.redeem-btn`, etc.).
+   - Landing-page glass panels/overlays get targeted dark overrides.
+
+4. **Layout density — `html[data-density='compact']`**
+   - Trims chrome padding/gaps across the Tailwind shell (`[data-region]`),
+     standalone service pages (`.shell`, `.content-block`, `.topbar`) and the
+     builder (`.pb-topbar`, `.pb-blocks`, `.pb-section-body`, `.pb-canvas`,
+     `.pb-item`, `.pb-lib-card`) plus the settings page cards/toggles.
+
+5. **Website Builder & public pages**
+   - `editable_page.html` (the `/pages/<slug>/` renderer and the visual
+     editor's live iframe canvas) includes the partial, so the builder canvas
+     and published pages respect the active theme + density immediately.
+   - Builder consoles (`builder/dashboard.html`, `builder/editor.html`,
+     `builder/edit_page.html`) carry the driver too.
+
+6. **Timezone in the UI**
+   - `partials/topbar.html` `formatTime()` now applies the saved timezone
+     (`Intl` `timeZone`) to *aware* ISO timestamps in the notification bell;
+     naive timestamps are left untouched.
+   - **Known limitation:** the project runs with `USE_TZ=False` (naive
+     server-local datetimes), so `timezone.activate()` only affects aware
+     datetime handling and `|localtime`. Fully honouring the timezone for
+     server-rendered `|date` filters requires enabling `USE_TZ=True` (a
+     follow-up; the preference itself persists and applies client-side).
+
+7. **PWA** — `sw.js` bumped to `v2`, precaches `display-preferences.js`.
+
+### Files
+
+- **New:** `core/middleware.py`, `templates/partials/display_prefs.html`,
+  `static/js/display-preferences.js`
+- **Modified:** `config/settings.py`, `core/context_processors.py`,
+  `static/css/theme.css`, `templates/settings.html`, `templates/base.html`,
+  `templates/partials/topbar.html`, `static/js/sw.js`, `core/tests.py`, and
+  the `display_prefs` partial include added to ~23 standalone templates
+  (public pages, admin consoles, builder, auth).
+
+### Tests
+
+- New `DisplayPreferencesIntegrationTest` (7) — context processor payloads
+  (authenticated / anonymous / rowless user), partial + driver presence on
+  settings, public pages and all three builder consoles, and the JSON save
+  round-trip.
+- New `UserTimezoneMiddlewareTest` (2) — timezone activated during the
+  request for a UTC-pref user; anonymous requests untouched.
+- Full suite — **517 tests OK** · `manage.py check` clean.

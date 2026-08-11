@@ -13,7 +13,7 @@
  *
  * Bump VERSION when the precache list or caching rules change.
  */
-var VERSION = 'v1';
+var VERSION = 'v2';
 var CACHE = 'niterhub-' + VERSION;
 
 var PRECACHE = [
@@ -30,6 +30,7 @@ var PRECACHE = [
   '/static/css/transport.css',
   '/static/css/notices.css',
   '/static/css/editable_page.css',
+  '/static/js/display-preferences.js',
   '/static/pwa/icon-192.png',
   '/static/pwa/icon-512.png',
 ];

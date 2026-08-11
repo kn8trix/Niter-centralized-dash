@@ -6,9 +6,43 @@ endpoint map in one place so the Visual Builder can remap/override routes
 without touching template HTML.
 """
 
+import json
+
 from django.urls import reverse
 
-from core.models import EditablePage
+from core.models import EditablePage, UserNotificationPreference
+
+
+def display_prefs(request):
+    """Expose the signed-in user's display preferences to every template.
+
+    The per-request values are cached on ``request.display_prefs`` by
+    ``core.middleware.UserDisplayPreferencesMiddleware`` (one DB query per
+    authenticated request); this processor re-wraps them in a JSON-safe dict
+    plus the settings save endpoint so ``partials/display_prefs.html`` can
+    apply the saved theme / density before first paint (no flash) and the
+    global ``display-preferences.js`` driver can persist changes back.
+
+    Anonymous visitors get an empty payload — the driver then falls back to
+    their device's ``localStorage`` choices.
+    """
+    data = dict(getattr(request, 'display_prefs', None) or {})
+    if request.user.is_authenticated:
+        if not data:
+            # Middleware-less render path (tests / shortcuts): fetch directly.
+            try:
+                row = UserNotificationPreference.objects.get(user=request.user)
+                data = {
+                    'theme': row.theme,
+                    'timezone': row.timezone or None,
+                    'density': 'compact' if row.compact_layout else 'comfortable',
+                }
+            except UserNotificationPreference.DoesNotExist:
+                data = {}
+        data['authenticated'] = True
+        data['saveUrl'] = reverse('settings')
+    # Serialised by the template via ``{{ DISPLAY_PREFS|json_script }}``.
+    return {'DISPLAY_PREFS': data}
 
 
 def custom_pages_nav(request):

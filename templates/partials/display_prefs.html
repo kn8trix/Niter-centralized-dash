@@ -1,0 +1,78 @@
+{% load static %}
+{% comment %}
+============================================================================
+CampusDash — Global Display Preferences (theme / timezone / density)
+--------------------------------------------------------------------------
+Include this partial in <head> right after the theme.css <link> on every
+page that should honour the user's Display preferences:
+
+    {% include 'partials/display_prefs.html' %}
+
+It does two jobs:
+
+1. A tiny inline script runs synchronously during parsing — before first
+   paint — reading the server-rendered DISPLAY_PREFS payload (signed-in
+   users) merged with the device's localStorage copy (anonymous visitors)
+   and stamps <html data-theme data-theme-mode data-density> plus the
+   `dark` class. This is what makes the chosen theme apply with zero flash.
+
+2. It then defers static/js/display-preferences.js, the global driver that
+   owns persistence (localStorage + AJAX to /settings/), live 'system'
+   mode via matchMedia, and a `display-prefs-change` event other scripts
+   (e.g. the settings page, notification bell) can listen to.
+
+The DISPLAY_PREFS payload comes from core.context_processors.display_prefs
+(backed by core.middleware.UserDisplayPreferencesMiddleware) and includes
+the save endpoint + authenticated flag for logged-in users.
+============================================================================
+{% endcomment %}
+{{ DISPLAY_PREFS|json_script:"display-prefs-config" }}
+<script>
+    // No-flash display prefs: apply saved theme + density before first paint.
+    (function () {
+        var CONFIG_KEY = 'niter.display.prefs';
+        var config = null;
+        try {
+            config = JSON.parse(document.getElementById('display-prefs-config').textContent || 'null');
+        } catch (e) { /* missing/invalid config → device localStorage only */ }
+        if (!config || typeof config !== 'object') config = {};
+
+        var stored = null;
+        try { stored = JSON.parse(localStorage.getItem(CONFIG_KEY) || 'null'); } catch (e) {}
+
+        var prefs = {};
+        if (stored && typeof stored === 'object') {
+            prefs.theme = stored.theme;
+            prefs.density = stored.density;
+            prefs.timezone = stored.timezone;
+        }
+        // Server (account) prefs win for signed-in users — they follow the
+        // user across devices instead of the local browser. Anonymous visitors
+        // keep their device-local (localStorage) choices.
+        if (config.authenticated) {
+            if (config.theme) prefs.theme = config.theme;
+            if (config.density) prefs.density = config.density;
+            if (config.timezone) prefs.timezone = config.timezone;
+        }
+
+        var mode = prefs.theme === 'dark' || prefs.theme === 'system' ? prefs.theme : 'light';
+        var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+        var resolved = mode === 'system' ? (mq && mq.matches ? 'dark' : 'light') : mode;
+        var density = prefs.density === 'compact' ? 'compact' : 'comfortable';
+
+        var root = document.documentElement;
+        root.setAttribute('data-theme', resolved);
+        root.setAttribute('data-theme-mode', mode);
+        root.setAttribute('data-density', density);
+        root.classList.toggle('dark', resolved === 'dark');
+
+        // Snapshot for the deferred driver + any inline scripts (settings UI).
+        window.__displayPrefsInitial = {
+            theme: mode,
+            resolvedTheme: resolved,
+            density: density,
+            timezone: prefs.timezone || null,
+        };
+    })();
+</script>
+<script src="{% static 'js/display-preferences.js' %}" defer></script>

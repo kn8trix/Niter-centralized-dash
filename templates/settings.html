@@ -9,6 +9,8 @@
 
     <!-- Global design tokens -->
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Global display preferences (theme / timezone / density) — no-flash driver -->
+    {% include 'partials/display_prefs.html' %}
     <!-- Shared top navigation -->
     <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
     <!-- Settings page styles -->
@@ -457,69 +459,66 @@
                 });
             });
 
-            // ---- Theme grid → theme (light / dark / system) ----
-            const systemQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+            // ---- Theme / timezone / density → global DisplayPrefs driver ----
+            // The shared driver (partials/display_prefs.html) already applied
+            // the saved prefs on load and persists every change to localStorage
+            // + the account copy via AJAX. This UI reflects the driver state and
+            // forwards user choices to it — one source of truth portal-wide.
 
-            function resolveTheme(theme) {
-                if (theme === 'system') {
-                    return systemQuery && systemQuery.matches ? 'dark' : 'light';
-                }
-                return theme;
-            }
+            const initialPrefs = window.__displayPrefsInitial || {};
 
-            function applyTheme(theme) {
-                document.documentElement.dataset.theme = resolveTheme(theme);
+            function syncThemeUI(mode) {
                 options.forEach((opt) => {
-                    const pressed = opt.dataset.theme === theme;
+                    const pressed = opt.dataset.theme === mode;
                     opt.setAttribute('aria-pressed', pressed ? 'true' : 'false');
                     opt.classList.toggle('selected', pressed);
                 });
             }
 
-            applyTheme('{{ prefs.theme }}');
-            if (systemQuery) {
-                const onSystemChange = () => applyTheme('{{ prefs.theme }}');
-                if (systemQuery.addEventListener) {
-                    systemQuery.addEventListener('change', onSystemChange);
-                } else if (systemQuery.addListener) {
-                    systemQuery.addListener(onSystemChange); // Safari < 14
-                }
+            function syncLayoutUI(density) {
+                layoutOptions.forEach((opt) => {
+                    const pressed = opt.dataset.value === (density === 'compact' ? '1' : '0');
+                    opt.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+                    opt.classList.toggle('selected', pressed);
+                });
+                // Legacy body class — settings.css compact rules key off it.
+                document.body.classList.toggle('layout-compact', density === 'compact');
             }
 
+            function syncTzUI(tz) {
+                if (tzSelect && tz) tzSelect.value = tz;
+            }
+
+            syncThemeUI(initialPrefs.theme || 'light');
+            syncLayoutUI(initialPrefs.density || 'comfortable');
+            syncTzUI(initialPrefs.timezone);
+
+            document.addEventListener('display-prefs-change', (e) => {
+                syncThemeUI(e.detail.theme);
+                syncLayoutUI(e.detail.density);
+                syncTzUI(e.detail.timezone);
+                showSaved();
+            });
+
             options.forEach((opt) => {
-                opt.addEventListener('click', async () => {
-                    applyTheme(opt.dataset.theme);
-                    const data = await savePrefs({ theme: opt.dataset.value });
-                    if (data.status === 'success') showSaved();
+                opt.addEventListener('click', () => {
+                    if (window.DisplayPrefs) window.DisplayPrefs.set({ theme: opt.dataset.value });
                 });
             });
 
-            // ---- Timezone selector → DB ----
             if (tzSelect) {
-                tzSelect.addEventListener('change', async () => {
-                    const data = await savePrefs({ timezone: tzSelect.value });
-                    if (data.status === 'success') showSaved();
+                tzSelect.addEventListener('change', () => {
+                    if (window.DisplayPrefs) window.DisplayPrefs.set({ timezone: tzSelect.value });
                 });
             }
-
-            // ---- Layout density (comfortable / compact) → DB ----
-            function applyLayout(compact) {
-                document.body.classList.toggle('layout-compact', compact);
-                layoutOptions.forEach((opt) => {
-                    const pressed = opt.dataset.value === (compact ? '1' : '0');
-                    opt.setAttribute('aria-pressed', pressed ? 'true' : 'false');
-                    opt.classList.toggle('selected', pressed);
-                });
-            }
-
-            applyLayout({{ prefs.compact_layout|yesno:"true,false" }});
 
             layoutOptions.forEach((opt) => {
-                opt.addEventListener('click', async () => {
-                    const compact = opt.dataset.value === '1';
-                    applyLayout(compact);
-                    const data = await savePrefs({ compact_layout: compact });
-                    if (data.status === 'success') showSaved();
+                opt.addEventListener('click', () => {
+                    if (window.DisplayPrefs) {
+                        window.DisplayPrefs.set({
+                            density: opt.dataset.value === '1' ? 'compact' : 'comfortable',
+                        });
+                    }
                 });
             });
 
