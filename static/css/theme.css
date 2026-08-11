@@ -205,14 +205,14 @@ html[data-theme='dark'] .navbar.scrolled {
 }
 
 /* ----------------------------------------------------------------------------
-   Dark-mode page glows
+   Dark-mode flat backgrounds
    ----------------------------------------------------------------------------
-   Every standalone page (dashboard, meals, transport, medical, …) paints a
-   pair of warm-cream radial gradients in the top corners of <body> as a soft
-   hero glow. Those hardcoded cream values stay bright on the dark canvas, so
-   in dark mode they are swapped for faint amber tints — the corner glows are
-   kept (position + softness preserved) but the white-blob glare disappears.
-   Also covers the Website Builder canvas and the editable-page CTA highlight.
+   Every standalone page (dashboard, meals, transport, medical, …) previously
+   painted a pair of warm-cream radial gradients in the top corners of <body>
+   as a soft hero glow. Those decorative blobs are now removed for a flat,
+   clean canvas, so in dark mode the page background is simply the dark canvas
+   colour (--bg-main). Also covers the Website Builder canvas and the
+   editable-page CTA section.
    ------------------------------------------------------------------------- */
 html[data-theme='dark'] body.dashboard,
 html[data-theme='dark'] body.landing,
@@ -234,16 +234,11 @@ html[data-theme='dark'] body.sys-admin,
 html[data-theme='dark'] body.cafeteria-admin,
 html[data-theme='dark'] body.club-admin,
 html[data-theme='dark'] .canvas-wrap {
-    background:
-        radial-gradient(1000px 520px at 85% -10%, rgba(217, 119, 6, 0.06), transparent 60%),
-        radial-gradient(800px 420px at 5% 12%, rgba(180, 83, 9, 0.07), transparent 55%),
-        var(--bg-main);
+    background: var(--bg-main);
 }
 
 html[data-theme='dark'] .cta-block {
-    background:
-        radial-gradient(520px 300px at 15% 0%, rgba(255, 255, 255, 0.08), transparent 60%),
-        linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
 }
 
 /* ============================================================================

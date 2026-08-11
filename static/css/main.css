@@ -62,10 +62,7 @@ html {
 body.landing {
     margin: 0;
     font-family: var(--landing-font);
-    background:
-        radial-gradient(1200px 600px at 85% -10%, rgba(232, 226, 216, 0.55), transparent 60%),
-        radial-gradient(1000px 500px at 5% 5%, rgba(240, 235, 225, 0.6), transparent 55%),
-        var(--bg-main);
+    background: var(--bg-main);
     color: var(--text-primary);
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;

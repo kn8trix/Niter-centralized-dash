@@ -46,10 +46,7 @@ body.editable-page {
     margin: 0;
     min-height: 100vh;
     font-family: var(--editable-font);
-    background:
-        radial-gradient(1000px 520px at 85% -10%, rgba(232, 226, 216, 0.55), transparent 60%),
-        radial-gradient(800px 420px at 5% 12%, rgba(240, 235, 225, 0.6), transparent 55%),
-        var(--bg-main);
+    background: var(--bg-main);
     color: var(--text-primary);
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
@@ -550,9 +547,7 @@ body.editable-page a {
     text-align: center;
     border: 1px solid var(--border-color);
     border-radius: 1.1rem;
-    background:
-        radial-gradient(520px 300px at 15% 0%, rgba(255, 255, 255, 0.35), transparent 60%),
-        linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
     padding: clamp(2rem, 5vw, 3.2rem) clamp(1.2rem, 4vw, 3rem);
 }
 

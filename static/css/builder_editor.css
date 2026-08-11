@@ -628,10 +628,7 @@ a {
     justify-content: center;
     align-items: flex-start;
     padding: 1.2rem;
-    background:
-        radial-gradient(900px 460px at 85% -10%, rgba(232, 226, 216, 0.5), transparent 60%),
-        radial-gradient(700px 380px at 5% 12%, rgba(240, 235, 225, 0.55), transparent 55%),
-        var(--bg-main);
+    background: var(--bg-main);
 }
 
 .canvas-frame {
