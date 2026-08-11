@@ -39,7 +39,7 @@
     --success: #166534;
     --success-soft: #dcfce7;
     --success-border: #bbf7d0;
-    --warning: #b45309;
+    --warning: #92400e;
     --warning-soft: #fef3c7;
     --warning-border: #fde68a;
 
@@ -321,6 +321,15 @@ body.meals a {
     border: 1px solid var(--warning-border);
     color: var(--warning);
 }
+
+/* High-contrast banner text (WCAG AA) — light tints use dark amber ink, and
+   dark mode (via the --warning tokens in theme.css) flips to amber-200/300. */
+.meal-sub.inactive strong { color: #78350f; } /* amber-900 on amber-100  */
+.meal-sub.inactive span  { color: #92400e; } /* amber-800 on amber-100  */
+.meal-sub.active span    { color: var(--success); } /* green-800 on green-100 */
+
+html[data-theme='dark'] .meal-sub.inactive strong { color: #fde68a; } /* amber-200 on amber-950 */
+html[data-theme='dark'] .meal-sub.inactive span  { color: #fcd34d; } /* amber-300 on amber-950 */
 
 /* Inline claim errors (subscription / duplicate / capacity) */
 .meal-alert {

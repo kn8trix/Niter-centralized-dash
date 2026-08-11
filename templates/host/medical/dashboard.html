@@ -52,7 +52,7 @@
                     <span class="truncate">{{ item.student_name }} <span class="text-xs text-main/50">({{ item.student_id }})</span></span>
                 </span>
                 <span class="text-main/60">{{ item.doctor }} · {{ item.time }}</span>
-                <span class="rounded-full px-2.5 py-1 text-xs font-medium {% if item.status == 'pending' %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">{{ item.status_label }}</span>
+                <span class="rounded-full px-2.5 py-1 text-xs font-medium {% if item.status == 'pending' %}bg-amber-100 text-amber-800{% else %}bg-emerald-100 text-emerald-800{% endif %}">{{ item.status_label }}</span>
             </li>
             {% empty %}
             <li class="rounded-lg border border-border bg-base px-3 py-2 text-sm text-main/50">No appointments in today's queue.</li>
@@ -118,11 +118,11 @@
                         <td class="px-3 py-2">{{ a.reason }}</td>
                         <td class="px-3 py-2"> 
                             {% if a.status == 'Pending' %}
-                                <span class="px-2 py-1 rounded text-xs bg-orange-50 text-orange-700">Pending</span>
+                                <span class="px-2 py-1 rounded text-xs bg-orange-50 text-orange-800">Pending</span>
                             {% elif a.status == 'Confirmed' %}
-                                <span class="px-2 py-1 rounded text-xs bg-green-50 text-green-700">Confirmed</span>
+                                <span class="px-2 py-1 rounded text-xs bg-green-50 text-green-800">Confirmed</span>
                             {% elif a.status == 'Cancelled' %}
-                                <span class="px-2 py-1 rounded text-xs bg-red-50 text-red-700">Cancelled</span>
+                                <span class="px-2 py-1 rounded text-xs bg-red-50 text-red-800">Cancelled</span>
                             {% else %}
                                 <span class="px-2 py-1 rounded text-xs bg-base text-main">{{ a.status }}</span>
                             {% endif %}
@@ -190,8 +190,8 @@
     if (!listEl) return;
 
     const statusClass = (s) => s === 'pending'
-        ? 'bg-amber-100 text-amber-700'
-        : 'bg-emerald-100 text-emerald-700';
+        ? 'bg-amber-100 text-amber-800'
+        : 'bg-emerald-100 text-emerald-800';
     const statusLabel = (s) => s === 'pending' ? 'Pending' : 'Confirmed';
     const esc = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
 

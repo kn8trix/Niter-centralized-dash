@@ -2890,6 +2890,11 @@ per-user account row (`UserNotificationPreference`) + device `localStorage`.
 
 ## 61. Dark-Mode Hero Glow Fix — No More White Corner Blobs
 
+> **⚠ Superseded (§61.1):** The amber-tint approach below was replaced the
+> next day by **removing the corner glows entirely** — every standalone page
+> now uses a flat `background: var(--bg-main)` in both themes (see §62 note),
+> so the `radial-gradient` overrides documented here no longer exist.
+
 **Date:** 11 August 2026
 
 ### Overview
@@ -2944,3 +2949,86 @@ html[data-theme='dark'] .cta-block {
 
 - Full suite — **517 tests OK** · `manage.py check` clean · CSS braces
   balanced.
+
+---
+
+## 62. WCAG AA Contrast Pass — Light Elements in Dark Mode
+
+**Date:** 12 August 2026
+
+### Overview
+
+Fixed text legibility for **light-colored elements that stayed bright in dark
+mode** — the classic “light ink on light tint” failure. Audited alert boxes,
+warning banners, primary/secondary action buttons, status badges and auth
+elements in **both** themes against WCAG AA (≥ 4.5:1 for small text).
+
+### Root cause
+
+`theme.css`’s `html[data-theme='dark']` block already redefined the
+`--success` and `--danger` families for the standalone page tokens, but the
+**`--warning` and `--info` families were missing**. Every component built on
+`var(--warning-soft)` (meal subscription banner, inline meal alerts, checkout
+security note, amber badges/chips) therefore kept its **light-cream `#fef3c7`
+background with light text** on top in dark mode — unreadable. The Tailwind
+“-100 bg / -700 text” badge pattern (host medical + tickets) also sits just
+below AA (≈ 4.3:1) on small text.
+
+### Fixes
+
+1. **Dark tokens added (`static/css/theme.css`)** — the missing semantic
+   families for standalone pages:
+   - `--warning: #fbbf24` · `--warning-soft: #422006` · `--warning-border: #78350f`
+   - `--info: #93c5fd` · `--info-soft: #172554` · `--info-border: #1e40af`
+   - This single change flips **every** warning/info component to a dark
+     amber/blue surface with high-contrast text in dark mode (meal-sub,
+     meal-alert, security-note, admin/dashboard/clubs/departments/medical
+     badges, ring/chip statuses, stat values).
+
+2. **Auth dark overrides (`theme.css`)** — `.auth-alert` (error box) and
+   `.auth-back-link` get dark-adapted surfaces (`rgba(248,113,113,…)` /
+   `#27272a`) with `#fca5a5` / `#d4d4d8` text instead of light-on-light.
+
+3. **Notes Engine light buttons (`templates/notes/notes_engine.html`)** —
+   Extract Keywords / Save Note / Export as PDF changed from
+   `bg-card hover:bg-white text-main` (hover = white bg + light text in dark
+   mode) to the explicitly high-contrast light button pattern
+   `bg-white hover:bg-gray-200 text-gray-900 font-semibold`.
+
+4. **Monthly Meal Subscription banner (`static/css/meals.css`)** —
+   high-contrast amber ink on the light tint: title `#78350f` (amber-900),
+   subtitle `#92400e` (amber-800); dark mode uses `#fde68a`/`#fcd34d` on the
+   new amber-950 surface. Active-state subtitle now uses the success green.
+
+5. **Light-mode `--warning` token** bumped `#b45309` (amber-700 → 4.3:1) to
+   `#92400e` (amber-800 → 6.3:1) in all **9** standalone stylesheets
+   (meals, checkout, admin, dashboard, transport, departments, clubs,
+   medical, research_ai) so amber text passes AA on `amber-100` tints.
+
+6. **Status badge text shades** — hardcoded Tailwind badges in
+   `host/medical/dashboard.html`, `host/medical/admin_dashboard.html` and
+   `ticketing/tickets.html` bumped from `-700` to `-800` (amber / emerald /
+   red / orange / green / gray) so they clear 4.5:1 in light mode and stay
+   legible on light chips in dark mode.
+
+### Files changed
+
+- `static/css/theme.css` (dark warning/info tokens + auth overrides)
+- `static/css/meals.css` (banner ink + `--warning` bump)
+- `static/css/checkout.css`, `admin.css`, `dashboard.css`, `transport.css`,
+  `departments.css`, `clubs.css`, `medical.css`, `research_ai.css`
+  (`--warning` bump)
+- `templates/notes/notes_engine.html` (light buttons)
+- `templates/host/medical/dashboard.html`, `templates/host/medical/admin_dashboard.html`,
+  `templates/ticketing/tickets.html` (badge text shades)
+
+### Related
+
+- §61 documents the hero glow treatment; its amber-tint approach was later
+  replaced by a **flat clean background** (corner glow divs/gradients removed
+  entirely, `background: var(--bg-main)`) — see commit “Remove decorative
+  glow blobs: flat clean page backgrounds”.
+
+### Tests
+
+- Full suite — **517 tests OK** (run via `./venv/bin/python manage.py test`).

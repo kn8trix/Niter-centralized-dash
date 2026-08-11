@@ -122,9 +122,15 @@ html[data-theme='dark'] {
     --success: #4ade80;
     --success-soft: #14331f;
     --success-border: #1f4d2e;
+    --warning: #fbbf24;
+    --warning-soft: #422006;
+    --warning-border: #78350f;
     --danger: #f87171;
     --danger-soft: #451c1c;
     --danger-border: #6b2626;
+    --info: #93c5fd;
+    --info-soft: #172554;
+    --info-border: #1e40af;
 }
 
 /* Dark-mode repairs — keep “dark ink” components dark even though
@@ -202,6 +208,20 @@ html[data-theme='dark'] .hero-card-deck {
 
 html[data-theme='dark'] .navbar.scrolled {
     background: rgba(39, 39, 42, 0.9);
+}
+
+/* Auth screen — the error alert and back link are light elements; in dark mode
+   they get dark-adapted surfaces with high-contrast text (WCAG AA). */
+html[data-theme='dark'] .auth-alert {
+    background: rgba(248, 113, 113, 0.10);
+    border-color: rgba(248, 113, 113, 0.35);
+    color: #fca5a5;
+}
+
+html[data-theme='dark'] .auth-back-link {
+    background: rgba(39, 39, 42, 0.85);
+    border-color: #3f3f46;
+    color: #d4d4d8;
 }
 
 /* ----------------------------------------------------------------------------

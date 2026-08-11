@@ -78,7 +78,7 @@
     {% if messages %}
     <div class="space-y-2">
         {% for message in messages %}
-        <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{{ message }}</div>
+        <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ message }}</div>
         {% endfor %}
     </div>
     {% endif %}
@@ -110,15 +110,15 @@
                     <td class="px-3 py-3">{{ appointment.doctor }}</td>
                     <td class="px-3 py-3">
                         {% if appointment.status == 'Pending' %}
-                        <span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">PENDING</span>
+                        <span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">PENDING</span>
                         {% elif appointment.status == 'Confirmed' %}
-                        <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">CONFIRMED</span>
+                        <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800">CONFIRMED</span>
                         {% elif appointment.status == 'Completed' %}
-                        <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">COMPLETED</span>
+                        <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-800">COMPLETED</span>
                         {% elif appointment.status == 'Cancelled' %}
-                        <span class="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700">CANCELLED</span>
+                        <span class="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-800">CANCELLED</span>
                         {% else %}
-                        <span class="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700">{{ appointment.status|upper }}</span>
+                        <span class="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-800">{{ appointment.status|upper }}</span>
                         {% endif %}
                     </td>
                     <td class="px-3 py-3">
@@ -220,7 +220,7 @@
                     <span class="flex shrink-0 items-center gap-2 text-sm">
                         <span class="text-main/50">{{ thread.doctor_name }} · {{ thread.last_time|default:"—" }}</span>
                         {% if thread.unread %}
-                        <span class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600">{{ thread.unread }} new</span>
+                        <span class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">{{ thread.unread }} new</span>
                         {% endif %}
                         <span class="rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-main">{{ thread.status_label }}</span>
                     </span>
