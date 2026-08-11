@@ -294,6 +294,33 @@ class GoogleUserToken(models.Model):
         return 'Google OAuth Token - %s' % self.user.username
 
 
+class ClubSheetsConfig(models.Model):
+    """Per-user Google Sheets connection for the Clubs module (Settings tab).
+
+    Stores the club spreadsheet reference — a bare Sheet ID (``1AbC…``) or a
+    full ``docs.google.com/spreadsheets/d/…`` URL — entered from Settings →
+    Club Google Sheets. The OAuth tokens themselves live in
+    ``GoogleUserToken`` (mirrored from allauth) and are shared by every
+    Sheets call via ``core/club_sheets.py``.
+    """
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='club_sheets_config',
+    )
+    sheet_ref = models.CharField(
+        max_length=500,
+        blank=True,
+        default='',
+        help_text='Club Google Sheet ID or full spreadsheet URL',
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return 'Club sheets - %s' % self.user.username
+
+
 class Notification(models.Model):
     """A user-facing system alert delivered via the topbar bell + WebSockets.
 
@@ -916,6 +943,56 @@ class MedicalAppointment(models.Model):
 
     def __str__(self):
         return '%s · %s %s' % (self.doctor_name, self.appointment_date, self.time_slot)
+
+
+class Doctor(models.Model):
+    """A campus doctor whose availability/schedule is managed from the Medical
+    Admin dashboard (persisted, seeded with defaults by a data migration)."""
+
+    name = models.CharField(max_length=100, unique=True)
+    specialty = models.CharField(max_length=100, blank=True, default='')
+    working_days = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text='e.g. Sunday - Thursday',
+    )
+    start_time = models.CharField(max_length=20, blank=True, default='10:00 AM')
+    end_time = models.CharField(max_length=20, blank=True, default='2:00 PM')
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class DoctorSchedule(models.Model):
+    """Daily availability + slot capacity for one doctor (one row per day).
+
+    ``is_available`` powers the daily availability toggle on the Medical Admin
+    dashboard; ``max_appointments`` is the slot-management cap enforced by the
+    booking flow. Rows are upserted lazily when staff toggle availability or a
+    student books, so the dashboard works immediately even before any row
+    exists (defaults: available, 20 appointments).
+    """
+
+    doctor = models.ForeignKey(
+        Doctor,
+        on_delete=models.CASCADE,
+        related_name='schedules',
+    )
+    date = models.DateField(db_index=True)
+    is_available = models.BooleanField(default=True)
+    max_appointments = models.PositiveIntegerField(default=20)
+
+    class Meta:
+        unique_together = ('doctor', 'date')
+        ordering = ['date']
+
+    def __str__(self):
+        return '%s · %s' % (self.doctor.name, self.date)
 
 
 class MedicalChatThread(models.Model):

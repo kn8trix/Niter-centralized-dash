@@ -44,10 +44,13 @@ from .models import (
     Club,
     ClubEvent,
     ClubRegistration,
+    ClubSheetsConfig,
     ContentBlock,
     Course,
     CourseMaterial,
     Department,
+    Doctor,
+    DoctorSchedule,
     EditablePage,
     GoogleUserToken,
     MedicalAppointment,
@@ -1105,6 +1108,32 @@ def book_appointment(request):
             status=400,
         )
 
+    # Respect the Medical Admin's daily availability toggle + slot cap.
+    schedule = DoctorSchedule.objects.filter(
+        doctor__name__iexact=doctor_name, date=appointment_date,
+    ).first()
+    if schedule is not None:
+        if not schedule.is_available:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': '%s is unavailable on %s.' % (doctor_name, appointment_date),
+                },
+                status=409,
+            )
+        booked = MedicalAppointment.objects.filter(
+            doctor_name__iexact=doctor_name,
+            appointment_date=appointment_date,
+        ).exclude(status='cancelled').count()
+        if booked >= schedule.max_appointments:
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': '%s has reached the daily appointment limit for %s.' % (doctor_name, appointment_date),
+                },
+                status=409,
+            )
+
     try:
         with transaction.atomic():
             appointment = MedicalAppointment.objects.create(
@@ -1199,11 +1228,30 @@ def settings_view(request):
     password_updated = False
     profile_updated = False
     profile_errors = []
+    sheet_saved = False
+    sheet_errors = []
     active_tab = 'notifications'
     password_form = PasswordChangeForm(request.user)
 
+    # Clubs module — the spreadsheet reference saved from the google_sheets tab.
+    # ``getattr`` is safe: the reverse OneToOne accessor raises
+    # ``RelatedObjectDoesNotExist`` (an AttributeError subclass) when missing.
+    club_sheets = getattr(request.user, 'club_sheets_config', None)
+
     if request.method == 'POST':
-        if request.POST.get('form') == 'profile':
+        if request.POST.get('form') == 'sheets':
+            # Club Google Sheets tab → save the club spreadsheet reference.
+            active_tab = 'google_sheets'
+            sheet_ref = (request.POST.get('sheet_ref') or '').strip()
+            if not sheet_ref:
+                sheet_errors.append('Enter your club Google Sheet ID or URL.')
+            else:
+                config, _ = ClubSheetsConfig.objects.get_or_create(user=request.user)
+                config.sheet_ref = sheet_ref
+                config.save(update_fields=['sheet_ref', 'updated_at'])
+                club_sheets = config
+                sheet_saved = True
+        elif request.POST.get('form') == 'profile':
             # Account & Google tab → Profile Details form (full name + email).
             active_tab = 'account'
             profile_updated, profile_errors = _save_profile_settings(request)
@@ -1231,6 +1279,9 @@ def settings_view(request):
         'google_social': google_social,
         'has_google_token': has_google_token,
         'has_drive_access': has_drive_access,
+        'club_sheets': club_sheets,
+        'sheet_saved': sheet_saved,
+        'sheet_errors': sheet_errors,
         'active_tab': active_tab,
     })
 
@@ -1663,11 +1714,102 @@ def cafeteria_admin_view(request):
         for ticket in MealTicket.objects.select_related('user').order_by('-claimed_at')[:10]
     ]
 
+    # Active (issued-but-unredeemed) passes — the counter + batch redemption.
+    active_tickets = (
+        MealTicket.objects.filter(is_redeemed=False)
+        .exclude(ticket_token__isnull=True)
+        .exclude(ticket_token='')
+        .select_related('user')
+        .order_by('-claimed_at')
+    )
+    active_passes = [
+        {
+            'token': ticket.ticket_token,
+            'student': ticket.user.get_full_name() or ticket.user.username,
+            'meal': ticket.get_meal_type_display(),
+            'date': ticket.claimed_at.strftime('%b %d'),
+            'time': ticket.claimed_at.strftime('%I:%M %p'),
+        }
+        for ticket in active_tickets[:20]
+    ]
+
+    # Token redemption counters (live from the MealTicket rows).
+    redemption_stats = {
+        'issued_today': MealTicket.objects.filter(claimed_at__date=today).count(),
+        'redeemed_today': MealTicket.objects.filter(redeemed_at__date=today).count(),
+        'active_total': active_tickets.count(),
+    }
+
     return render(request, 'cafeteria_admin.html', {
         'slots': slots,
         'subscriptions': subscriptions,
         'inventory': inventory,
         'redemptions': redemptions,
+        'active_passes': active_passes,
+        'redemption_stats': redemption_stats,
+    })
+
+
+@staff_member_required(login_url=settings.LOGIN_URL)
+def batch_redeem_meal_tickets(request):
+    """Redeem several meal coupons in one request (batch redemption).
+
+    Accepts JSON ``{'tokens': ['#MEAL-0001', …]}`` or ``all_today=true`` to
+    redeem every unused ticket claimed today. Returns per-token results plus
+    counts so the cafeteria admin UI can update the pass list in place.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+
+    tokens = []
+    redeem_all_today = False
+    try:
+        body = json.loads(request.body or b'{}')
+        tokens = body.get('tokens') or []
+        redeem_all_today = bool(body.get('all_today'))
+    except ValueError:
+        tokens = request.POST.getlist('token')
+        redeem_all_today = request.POST.get('all_today') == 'true'
+
+    if redeem_all_today:
+        today = timezone.now().date()
+        tokens = list(
+            MealTicket.objects.filter(
+                claimed_at__date=today,
+                is_redeemed=False,
+            ).exclude(ticket_token__isnull=True)
+            .exclude(ticket_token='')
+            .values_list('ticket_token', flat=True)
+        )
+
+    tokens = [str(token).strip() for token in tokens if str(token).strip()]
+    if not tokens:
+        return JsonResponse(
+            {'status': 'error', 'message': 'No valid tokens provided.'},
+            status=400,
+        )
+
+    redeemed, failed = [], []
+    for token in tokens:
+        try:
+            ticket = MealTicket.objects.get(ticket_token=token)
+        except MealTicket.DoesNotExist:
+            failed.append({'token': token, 'reason': 'not found'})
+            continue
+        if ticket.is_redeemed:
+            failed.append({'token': token, 'reason': 'already redeemed'})
+            continue
+        ticket.is_redeemed = True
+        ticket.redeemed_at = timezone.now()
+        ticket.save(update_fields=['is_redeemed', 'redeemed_at'])
+        redeemed.append(token)
+
+    return JsonResponse({
+        'status': 'success',
+        'redeemed': redeemed,
+        'failed': failed,
+        'redeemed_count': len(redeemed),
+        'failed_count': len(failed),
     })
 
 
@@ -1980,6 +2122,69 @@ def medical_queue_api(request):
     })
 
 
+@staff_member_required(login_url=settings.LOGIN_URL)
+def medical_doctor_availability(request):
+    """Set a doctor's daily availability / slot capacity (Medical Admin).
+
+    POST JSON ``{'doctor': <name>, 'date': 'YYYY-MM-DD', 'is_available': bool,
+    'max_appointments': int}`` upserts a ``DoctorSchedule`` row. The booking
+    flow reads this row to block unavailable doctors and enforce the daily cap.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+
+    try:
+        payload = json.loads(request.body or b'{}')
+    except ValueError:
+        payload = {}
+
+    doctor_name = (payload.get('doctor') or request.POST.get('doctor') or '').strip()
+    date_raw = (payload.get('date') or request.POST.get('date') or '').strip()
+    if not doctor_name or not date_raw:
+        return JsonResponse(
+            {'status': 'error', 'message': 'doctor and date are required.'},
+            status=400,
+        )
+    try:
+        schedule_date = datetime.strptime(date_raw, '%Y-%m-%d').date()
+    except ValueError:
+        return JsonResponse(
+            {'status': 'error', 'message': 'date must be YYYY-MM-DD.'},
+            status=400,
+        )
+
+    doctor = get_object_or_404(Doctor, name__iexact=doctor_name)
+
+    raw_available = payload.get('is_available', request.POST.get('is_available', 'true'))
+    if isinstance(raw_available, str):
+        is_available = raw_available.strip().lower() in ('1', 'true', 'yes', 'on')
+    else:
+        is_available = bool(raw_available)
+
+    raw_max = payload.get('max_appointments', request.POST.get('max_appointments'))
+    try:
+        max_appointments = max(1, min(int(raw_max), 100))
+    except (TypeError, ValueError):
+        max_appointments = None  # keep the existing cap
+
+    defaults = {'is_available': is_available}
+    if max_appointments is not None:
+        defaults['max_appointments'] = max_appointments
+    schedule, _created = DoctorSchedule.objects.update_or_create(
+        doctor=doctor,
+        date=schedule_date,
+        defaults=defaults,
+    )
+
+    return JsonResponse({
+        'status': 'success',
+        'doctor': doctor.name,
+        'date': schedule_date.isoformat(),
+        'is_available': schedule.is_available,
+        'max_appointments': schedule.max_appointments,
+    })
+
+
 def _sheet_cell(row, *keys):
     """Return the first non-empty string value for ``row`` under any of ``keys``."""
     for key in keys:
@@ -2235,6 +2440,12 @@ def club_admin_view(request):
     ]
 
     sheet_url = request.GET.get('sheet_url', '').strip()
+    if not sheet_url:
+        # Fall back to the spreadsheet saved in Settings → Club Google Sheets
+        # (ID or URL) so the dashboard auto-connects without typing it again.
+        saved = getattr(request.user, 'club_sheets_config', None)
+        if saved and saved.sheet_ref:
+            sheet_url = saved.sheet_ref
     sheet_error = None
     if sheet_url:
         try:

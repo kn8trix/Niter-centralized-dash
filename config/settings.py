@@ -172,11 +172,36 @@ WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
 # --- Database --------------------------------------------------------------------
-# ``DATABASE_URL`` (e.g. ``postgres://user:pass@host:5432/dbname``) drives
-# production; unset falls back to the local SQLite file for dev/tests.
-DATABASES = {
-    'default': env.db('DATABASE_URL', default='sqlite:///%s' % (BASE_DIR / 'db.sqlite3')),
-}
+# Dual-database architecture:
+#   * The main application DB is PostgreSQL — Supabase when ``SUPABASE_DB_URL``
+#     is set (``sslmode=require`` is applied automatically), otherwise the
+#     generic ``DATABASE_URL`` (e.g. Render's managed Postgres) is honoured so
+#     a Blueprint deploy keeps working unchanged.
+#   * The Clubs module keeps its own data source — a user-connected Google
+#     Sheet via the service layer in ``core/club_sheets.py`` (not a Django DB).
+#   * Neither URL set → local SQLite for dev/tests (test runner stays on SQLite).
+def _build_databases():
+    import dj_database_url
+
+    url = (env('SUPABASE_DB_URL', default='') or env('DATABASE_URL', default='')).strip()
+    if not url:
+        return {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': str(BASE_DIR / 'db.sqlite3'),
+            }
+        }
+
+    # Supabase requires TLS. Append ``sslmode=require`` to postgres URLs that
+    # don't already carry it — dj_database_url maps it into OPTIONS. Query
+    # strings with an explicit sslmode are left untouched.
+    if url.startswith('postgres') and 'sslmode' not in url:
+        url += ('&' if '?' in url else '?') + 'sslmode=require'
+
+    return {'default': dj_database_url.parse(url, conn_max_age=600)}
+
+
+DATABASES = _build_databases()
 
 # django.contrib.sites — required by allauth social accounts
 SITE_ID = 1

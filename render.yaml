@@ -67,6 +67,14 @@ services:
           type: redis
           name: niter-centralized-dash-redis
           property: connectionString
+      # Optional Supabase PostgreSQL override. When set, config/settings.py
+      # prefers SUPABASE_DB_URL over the managed DATABASE_URL above and forces
+      # sslmode=require (build.sh runs migrations against it during the build).
+      # Leave unset to keep using the managed Postgres. Add the same variable
+      # to the worker service if you switch.
+      # - key: SUPABASE_DB_URL
+      #   value: postgres://postgres:<pw>@db.<project>.supabase.co:5432/postgres
+
       # NOTE: ALLOWED_HOSTS / CSRF_TRUSTED_ORIGINS are intentionally NOT set
       # here. config/settings.py auto-appends the platform domain AND the
       # custom domain (niter.edu.bd + www) whenever RENDER=true (set by the

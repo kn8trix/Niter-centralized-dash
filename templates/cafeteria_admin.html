@@ -56,6 +56,21 @@
                 <strong class="stat-value">{{ subscriptions.total }}</strong>
                 <span class="stat-sub">Total subscriptions</span>
             </div>
+            <div class="stat-card">
+                <span class="stat-icon"><i class="fa-solid fa-ticket"></i></span>
+                <strong class="stat-value">{{ redemption_stats.issued_today }}</strong>
+                <span class="stat-sub">Tokens issued today</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-icon"><i class="fa-solid fa-circle-check"></i></span>
+                <strong class="stat-value">{{ redemption_stats.redeemed_today }}</strong>
+                <span class="stat-sub">Redeemed today</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-icon"><i class="fa-solid fa-hourglass-half"></i></span>
+                <strong class="stat-value">{{ redemption_stats.active_total }}</strong>
+                <span class="stat-sub">Active (unredeemed) passes</span>
+            </div>
         </div>
 
         <div class="slot-grid">
@@ -178,6 +193,49 @@
             </div>
         </div>
 
+        <!-- ============================================================
+             Active meal passes + batch redemption
+        ============================================================ -->
+        <div class="card">
+            <h2 class="section-title"><i class="fa-solid fa-layer-group"></i> Active Meal Passes</h2>
+            <p class="section-subtitle">Currently-issued, unredeemed meal coupons — redeem them all in one action.</p>
+
+            <div class="batch-redeem-bar">
+                <button type="button" class="btn-primary" id="batch-redeem-btn">
+                    <i class="fa-solid fa-check-double"></i> Redeem Today's Active Passes
+                </button>
+                <span class="batch-redeem-note">Redeems every unredeemed pass claimed today in one action.</span>
+            </div>
+            <div class="alert" id="batch-result" role="status" hidden></div>
+
+            <div class="table-wrap">
+                <div class="overflow-x-auto"><table>
+                    <thead>
+                        <tr>
+                            <th>Token</th>
+                            <th>Student</th>
+                            <th>Meal</th>
+                            <th>Claimed</th>
+                        </tr>
+                    </thead>
+                    <tbody id="active-passes-body">
+                        {% for pass in active_passes %}
+                        <tr data-token="{{ pass.token }}">
+                            <td class="mono">{{ pass.token }}</td>
+                            <td>{{ pass.student }}</td>
+                            <td>{{ pass.meal }}</td>
+                            <td class="mono">{{ pass.date }} · {{ pass.time }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" class="empty-sheet">No unredeemed passes right now — claim tickets appear here.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table></div>
+            </div>
+        </div>
+
     </div>
 
     <div class="toast" id="admin-toast" role="status" hidden>
@@ -281,6 +339,59 @@
                     result.hidden = false;
                 }
             });
+
+            // ================================================================
+            // Batch redemption — POST to /api/cafeteria/batch-redeem/
+            // ================================================================
+            const batchBtn = document.getElementById('batch-redeem-btn');
+            const batchResult = document.getElementById('batch-result');
+            const passesBody = document.getElementById('active-passes-body');
+
+            if (batchBtn) {
+                batchBtn.addEventListener('click', async () => {
+                    batchBtn.disabled = true;
+                    try {
+                        const resp = await fetch('{% url "api_cafeteria_batch_redeem" %}', {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': getCookie('csrftoken'),
+                            },
+                            body: JSON.stringify({ all_today: true }),
+                        });
+                        const data = await resp.json();
+
+                        if (resp.ok && data.status === 'success') {
+                            batchResult.className = 'alert success';
+                            batchResult.innerHTML = '<i class="fa-solid fa-circle-check"></i><span>' + escapeHtml(data.redeemed_count) + ' pass(es) redeemed' +
+                                (data.failed_count ? ' · ' + escapeHtml(data.failed_count) + ' skipped (not found / already redeemed).' : '.') + '</span>';
+                            batchResult.hidden = false;
+                            if (passesBody) {
+                                (data.redeemed || []).forEach((token) => {
+                                    const row = passesBody.querySelector('tr[data-token="' + token + '"]');
+                                    if (row) row.remove();
+                                });
+                                if (!passesBody.querySelector('tr[data-token]')) {
+                                    passesBody.innerHTML = '<tr><td colspan="4" class="empty-sheet">All active passes redeemed — new claims will appear here.</td></tr>';
+                                }
+                            }
+                            show('Batch redemption complete ✓');
+                            setTimeout(() => window.location.reload(), 1200);
+                        } else {
+                            batchResult.className = 'alert error';
+                            batchResult.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>' + escapeHtml(data.message || 'Batch redemption failed.') + '</span>';
+                            batchResult.hidden = false;
+                        }
+                    } catch (err) {
+                        batchResult.className = 'alert error';
+                        batchResult.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>Could not reach the batch redemption service.</span>';
+                        batchResult.hidden = false;
+                    } finally {
+                        batchBtn.disabled = false;
+                    }
+                });
+            }
         })();
     </script>
 </body>

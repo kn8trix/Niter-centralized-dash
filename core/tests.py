@@ -23,10 +23,13 @@ from core.models import (
     Club,
     ClubEvent,
     ClubRegistration,
+    ClubSheetsConfig,
     ContentBlock,
     Course,
     CourseMaterial,
     Department,
+    Doctor,
+    DoctorSchedule,
     Driver,
     EditablePage,
     FacultyMember,
@@ -5657,3 +5660,345 @@ class PwaTests(TestCase):
             html = self.client.get(url).content.decode()
             self.assertIn('rel="manifest" href="/manifest.json"', html)
             self.assertIn('pwa-register.js', html)
+
+
+class SupabaseDatabaseConfigTest(SimpleTestCase):
+    """config.settings._build_databases — SUPABASE_DB_URL wiring + sslmode."""
+
+    def _build(self, supabase_url='', db_url=''):
+        import config.settings as settings_mod
+
+        def fake_env(name, default=''):
+            if name == 'SUPABASE_DB_URL':
+                return supabase_url
+            if name == 'DATABASE_URL':
+                return db_url
+            return default
+
+        with mock.patch.object(settings_mod, 'env', side_effect=fake_env):
+            return settings_mod._build_databases()
+
+    def test_supabase_url_gets_sslmode_require(self):
+        engine = self._build(supabase_url='postgres://user:pass@host:5432/niter')['default']
+        self.assertEqual(engine['ENGINE'], 'django.db.backends.postgresql')
+        self.assertEqual(engine['NAME'], 'niter')
+        self.assertEqual(engine['OPTIONS'].get('sslmode'), 'require')
+
+    def test_supabase_takes_precedence_over_datatabase_url(self):
+        engine = self._build(
+            supabase_url='postgres://u:p@supabase-host:5432/db',
+            db_url='postgres://u:p@render-host:5432/other',
+        )['default']
+        self.assertEqual(engine['HOST'], 'supabase-host')
+
+    def test_datatabase_url_fallback_also_gets_ssl(self):
+        engine = self._build(db_url='postgres://u:p@render-host:5432/db')['default']
+        self.assertEqual(engine['ENGINE'], 'django.db.backends.postgresql')
+        self.assertEqual(engine['OPTIONS'].get('sslmode'), 'require')
+
+    def test_explicit_sslmode_is_left_untouched(self):
+        engine = self._build(
+            supabase_url='postgres://u:p@host:5432/db?sslmode=disable'
+        )['default']
+        self.assertEqual(engine['OPTIONS'].get('sslmode'), 'disable')
+
+    def test_no_urls_fall_back_to_sqlite(self):
+        engine = self._build()['default']
+        self.assertEqual(engine['ENGINE'], 'django.db.backends.sqlite3')
+
+
+class ClubSheetsModuleTest(TestCase):
+    """core/club_sheets.py — read/write helpers with gspread fully mocked."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='club_sheets_user', password='x12345678')
+        self.ref = 'https://docs.google.com/spreadsheets/d/1AbCxYz/edit'
+
+    def _fake_worksheet(self, records=None):
+        ws = mock.Mock()
+        ws.get_all_records.return_value = records or []
+        return ws
+
+    def _fake_spreadsheet(self, ws):
+        spreadsheet = mock.Mock()
+        spreadsheet.worksheet.return_value = ws
+        spreadsheet.sheet1 = ws
+        spreadsheet.get_worksheet.return_value = ws
+        return spreadsheet
+
+    def _patch_client(self, spreadsheet):
+        client = mock.Mock()
+        client.open_by_key.return_value = spreadsheet
+        return mock.patch('core.club_sheets._authorize_client', return_value=client)
+
+    def test_normalize_sheet_ref_extracts_key_from_url(self):
+        from core.club_sheets import normalize_sheet_ref
+        self.assertEqual(normalize_sheet_ref(self.ref), '1AbCxYz')
+
+    def test_normalize_sheet_ref_accepts_bare_id(self):
+        from core.club_sheets import normalize_sheet_ref
+        self.assertEqual(normalize_sheet_ref('1AbCxYz'), '1AbCxYz')
+
+    def test_normalize_sheet_ref_rejects_empty(self):
+        from core.club_sheets import normalize_sheet_ref
+        from core.google_service import GoogleServiceError
+        with self.assertRaises(GoogleServiceError):
+            normalize_sheet_ref('   ')
+
+    def test_read_rows_returns_header_keyed_records(self):
+        from core.club_sheets import read_rows
+        records = [{'Name': 'Fahim', 'Student ID': 'S1012'}]
+        ws = self._fake_worksheet(records)
+        with self._patch_client(self._fake_spreadsheet(ws)):
+            result = read_rows(self.user, self.ref)
+        self.assertEqual(result, records)
+
+    def test_get_members_targets_members_tab(self):
+        from core.club_sheets import get_members
+        ws = self._fake_worksheet([{'Name': 'Alice', 'Role': 'Member'}])
+        spreadsheet = self._fake_spreadsheet(ws)
+        with self._patch_client(spreadsheet):
+            rows = get_members(self.user, self.ref)
+        spreadsheet.worksheet.assert_called_once_with('Members')
+        self.assertEqual(rows[0]['Name'], 'Alice')
+
+    def test_get_event_registrations_and_notices_target_tabs(self):
+        from core.club_sheets import get_club_notices, get_event_registrations
+        for fn, tab in ((get_event_registrations, 'Registrations'), (get_club_notices, 'Notices')):
+            ws = self._fake_worksheet([])
+            spreadsheet = self._fake_spreadsheet(ws)
+            with self._patch_client(spreadsheet):
+                fn(self.user, self.ref)
+            spreadsheet.worksheet.assert_called_once_with(tab)
+
+    def test_append_member_writes_row(self):
+        from core.club_sheets import append_member
+        ws = mock.Mock()
+        with self._patch_client(self._fake_spreadsheet(ws)):
+            count = append_member(
+                self.user, self.ref, 'Fahim Chowdhury', 'S1012',
+                club='Computer Club', role='Member',
+            )
+        ws.append_row.assert_called_once_with(['Fahim Chowdhury', 'S1012', 'Computer Club', 'Member'])
+        self.assertEqual(count, 1)
+
+    def test_gspread_failure_wrapped_in_service_error(self):
+        from core.club_sheets import read_rows
+        from core.google_service import GoogleServiceError
+        client = mock.Mock()
+        client.open_by_key.side_effect = RuntimeError('network down')
+        with mock.patch('core.club_sheets._authorize_client', return_value=client):
+            with self.assertRaises(GoogleServiceError):
+                read_rows(self.user, self.ref)
+
+
+class SettingsGoogleSheetsTabTest(TestCase):
+    """Settings → Club Google Sheets tab — save/validate the sheet reference."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='sheets_tab_user', password='x12345678')
+        self.client.force_login(self.user)
+
+    def test_post_saves_sheet_reference(self):
+        response = self.client.post(reverse('settings'), {
+            'form': 'sheets',
+            'sheet_ref': 'https://docs.google.com/spreadsheets/d/1AbCxYz/edit',
+        })
+        self.assertEqual(response.status_code, 200)
+        config = ClubSheetsConfig.objects.get(user=self.user)
+        self.assertEqual(config.sheet_ref, 'https://docs.google.com/spreadsheets/d/1AbCxYz/edit')
+        self.assertContains(response, 'Club spreadsheet saved')
+
+    def test_post_rejects_empty_reference(self):
+        response = self.client.post(reverse('settings'), {'form': 'sheets', 'sheet_ref': '   '})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(ClubSheetsConfig.objects.filter(user=self.user).exists())
+        self.assertContains(response, 'Enter your club Google Sheet ID or URL.')
+
+    def test_get_with_tab_renders_sheets_panel(self):
+        response = self.client.get(reverse('settings'), {'tab': 'google_sheets'})
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('id="tab-google_sheets"', html)
+        self.assertIn('Club Google Sheets', html)
+
+    def test_club_admin_prefills_saved_sheet(self):
+        ClubSheetsConfig.objects.create(user=self.user, sheet_ref='1AbCxYz')
+        self.user.is_staff = True
+        self.user.save()
+        html = self.client.get(reverse('club_admin')).content.decode()
+        self.assertIn('value="1AbCxYz"', html)
+
+
+class BatchRedemptionApiTest(TestCase):
+    """/api/cafeteria/batch-redeem/ — bulk redemption of meal coupons."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(username='batch_staff', password='x12345678', is_staff=True)
+        self.student = User.objects.create_user(username='batch_student', password='x12345678')
+
+    def _make_ticket(self, token, **kwargs):
+        defaults = {
+            'user': self.student,
+            'meal_type': 'lunch',
+            'ticket_token': token,
+            'claimed_at': timezone.now(),
+        }
+        defaults.update(kwargs)
+        return MealTicket.objects.create(**defaults)
+
+    def test_batch_redeem_requires_staff(self):
+        response = self.client.post(
+            reverse('api_cafeteria_batch_redeem'),
+            data=json.dumps({'all_today': True}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 302)
+
+    def test_batch_redeem_all_today_marks_tickets_redeemed(self):
+        self._make_ticket('#MEAL-0001')
+        self._make_ticket('#MEAL-0002')
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse('api_cafeteria_batch_redeem'),
+            data=json.dumps({'all_today': True}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertEqual(data['redeemed_count'], 2)
+        self.assertTrue(
+            MealTicket.objects.get(ticket_token='#MEAL-0001').is_redeemed
+        )
+        self.assertTrue(
+            MealTicket.objects.get(ticket_token='#MEAL-0002').is_redeemed
+        )
+
+    def test_batch_redeem_explicit_tokens(self):
+        self._make_ticket('#MEAL-0011')
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse('api_cafeteria_batch_redeem'),
+            data=json.dumps({'tokens': ['#MEAL-0011', '#MEAL-9999']}),
+            content_type='application/json',
+        )
+        data = response.json()
+        self.assertEqual(data['redeemed'], ['#MEAL-0011'])
+        self.assertEqual(data['failed'][0]['reason'], 'not found')
+
+    def test_batch_redeem_skips_already_redeemed(self):
+        self._make_ticket('#MEAL-0021', is_redeemed=True, redeemed_at=timezone.now())
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse('api_cafeteria_batch_redeem'),
+            data=json.dumps({'tokens': ['#MEAL-0021']}),
+            content_type='application/json',
+        )
+        data = response.json()
+        self.assertEqual(data['failed_count'], 1)
+        self.assertEqual(data['failed'][0]['reason'], 'already redeemed')
+
+    def test_batch_redeem_empty_tokens_returns_400(self):
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse('api_cafeteria_batch_redeem'),
+            data=json.dumps({'tokens': []}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 400)
+
+
+class DoctorAvailabilityApiTest(TestCase):
+    """/api/medical/doctor-availability/ — daily availability + slot caps."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(username='med_staff', password='x12345678', is_staff=True)
+        self.student = User.objects.create_user(username='med_student', password='x12345678')
+        self.doctor = Doctor.objects.create(
+            name='Dr. Ava Testing',
+            specialty='General Physician',
+            working_days='Sunday - Thursday',
+            start_time='10:00 AM',
+            end_time='2:00 PM',
+        )
+        self.date = '2026-08-25'
+
+    def _post(self, **overrides):
+        payload = {
+            'doctor': 'Dr. Ava Testing',
+            'date': self.date,
+            'is_available': True,
+            'max_appointments': 15,
+        }
+        payload.update(overrides)
+        return self.client.post(
+            reverse('api_doctor_availability'),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+    def test_requires_staff(self):
+        response = self._post()
+        self.assertEqual(response.status_code, 302)
+
+    def test_upserts_schedule(self):
+        self.client.force_login(self.staff)
+        response = self._post()
+        self.assertEqual(response.status_code, 200)
+        schedule = DoctorSchedule.objects.get(doctor=self.doctor, date='2026-08-25')
+        self.assertTrue(schedule.is_available)
+        self.assertEqual(schedule.max_appointments, 15)
+
+    def test_toggle_unavailable(self):
+        self.client.force_login(self.staff)
+        response = self._post(is_available=False)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertFalse(data['is_available'])
+
+    def test_missing_fields_returns_400(self):
+        self.client.force_login(self.staff)
+        response = self._post(doctor='')
+        self.assertEqual(response.status_code, 400)
+
+    def test_unknown_doctor_returns_404(self):
+        self.client.force_login(self.staff)
+        response = self._post(doctor='Dr. Nope')
+        self.assertEqual(response.status_code, 404)
+
+    def test_booking_blocked_for_unavailable_doctor(self):
+        self.client.force_login(self.staff)
+        self._post(is_available=False)
+        self.client.force_login(self.student)
+        response = self.client.post(reverse('book_appointment'), {
+            'doctor_name': 'Dr. Ava Testing',
+            'appointment_date': self.date,
+            'time_slot': '10:00',
+            'reason': 'Checkup',
+        })
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('unavailable', response.json()['message'])
+
+    def test_booking_enforces_daily_cap(self):
+        self.client.force_login(self.staff)
+        self._post(max_appointments=1)
+        self.client.force_login(self.student)
+        first = self.client.post(reverse('book_appointment'), {
+            'doctor_name': 'Dr. Ava Testing',
+            'appointment_date': self.date,
+            'time_slot': '10:00',
+            'reason': 'Checkup',
+        })
+        self.assertEqual(first.status_code, 200)
+
+        second_student = User.objects.create_user(username='med_student2', password='x12345678')
+        self.client.force_login(second_student)
+        second = self.client.post(reverse('book_appointment'), {
+            'doctor_name': 'Dr. Ava Testing',
+            'appointment_date': self.date,
+            'time_slot': '10:30',
+            'reason': 'Checkup',
+        })
+        self.assertEqual(second.status_code, 409)
+        self.assertIn('daily appointment limit', second.json()['message'])

@@ -249,10 +249,17 @@
         </div>
 
         <div data-component="card" data-widget="doctor-schedule" class="rounded-2xl border border-border bg-card p-6 shadow-sm">
-            <h3 class="text-lg font-semibold text-main">Doctor Schedule</h3>
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="text-lg font-semibold text-main">Doctor Schedule &amp; Availability</h3>
+                    <p class="text-sm text-main/60">Toggle today's availability and slot caps — enforced by the booking flow.</p>
+                </div>
+                <span class="rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-main">Today · {{ today|date:"M j" }}</span>
+            </div>
+            <p id="avail-note" class="mt-3 text-sm text-emerald-700" hidden role="status"></p>
             <div class="mt-4 space-y-3">
                 {% for doctor in doctors %}
-                <div class="rounded-xl border border-border p-3">
+                <div class="rounded-xl border border-border p-3" data-doctor-card>
                     <div class="flex items-center justify-between gap-3">
                         <div>
                             <div class="font-medium text-main">{{ doctor.name }}</div>
@@ -260,15 +267,38 @@
                         </div>
                         <span class="rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-main">{{ doctor.status }}</span>
                     </div>
-                    <div class="mt-2 text-sm text-main/60">{{ doctor.days }}</div>
-                    <div class="text-sm text-main/60">{{ doctor.time }}</div>
+                    <div class="mt-2 text-sm text-main/60">{{ doctor.days }} · {{ doctor.time }}</div>
+                    <div class="mt-3 flex flex-wrap items-center gap-3">
+                        <label class="flex cursor-pointer items-center gap-2 text-sm text-main/70">
+                            <input type="checkbox"
+                                   class="doctor-available-toggle h-4 w-4 accent-emerald-600"
+                                   data-doctor="{{ doctor.name }}"
+                                   data-date="{{ doctor.today }}"
+                                   {% if doctor.is_available %}checked{% endif %}>
+                            Accepting appointments
+                        </label>
+                        <label class="flex items-center gap-2 text-sm text-main/70">
+                            <span>Daily cap</span>
+                            <input type="number"
+                                   min="1" max="100"
+                                   class="doctor-max-input w-20 rounded-lg border border-border bg-base px-2 py-1 text-sm text-main"
+                                   data-doctor="{{ doctor.name }}"
+                                   data-date="{{ doctor.today }}"
+                                   value="{{ doctor.max_appointments }}">
+                        </label>
+                        <span class="text-xs text-main/50">{{ doctor.booked_today }} booked today</span>
+                        <button type="button"
+                                class="doctor-save-btn rounded bg-accent px-2.5 py-1 text-xs font-medium text-main"
+                                data-doctor="{{ doctor.name }}"
+                                data-date="{{ doctor.today }}">Save</button>
+                    </div>
                 </div>
                 {% endfor %}
             </div>
         </div>
     </div>
 
-    <div data-component="card" data-widget="content-management" class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+    <div data-component="card" data-widget="content-management" class="rounded-2xl border border-border bg-card p-6 shadow-sm" style="margin-top: 1.5rem;">
         <h3 class="text-lg font-semibold text-main">Medical Content Management</h3>
         <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {% for section in content_sections %}
@@ -300,6 +330,67 @@
     </div>
 </div>
 {{ request.user.id|json_script:"chat-viewer-id" }}
+<script>
+(function () {
+    // Doctor availability toggles + slot caps → POST /api/medical/doctor-availability/
+    const AVAIL_URL = '{% url "api_doctor_availability" %}';
+
+    function getCookie(name) {
+        if (!document.cookie || document.cookie === '') return null;
+        for (const part of document.cookie.split(';')) {
+            const pair = part.trim();
+            if (pair.startsWith(name + '=')) return decodeURIComponent(pair.slice(name.length + 1));
+        }
+        return null;
+    }
+
+    async function saveDoctorAvailability(doctor, date, card) {
+        const isAvailable = card.querySelector('.doctor-available-toggle').checked;
+        const maxInput = card.querySelector('.doctor-max-input');
+        const maxAppointments = parseInt(maxInput.value, 10) || 20;
+        try {
+            const resp = await fetch(AVAIL_URL, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: JSON.stringify({ doctor: doctor, date: date, is_available: isAvailable, max_appointments: maxAppointments }),
+            });
+            const data = await resp.json();
+            return { ok: resp.ok, data: data };
+        } catch (err) {
+            return { ok: false, data: { message: 'Could not reach the availability service.' } };
+        }
+    }
+
+    document.querySelectorAll('.doctor-save-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const doctor = btn.dataset.doctor;
+            const date = btn.dataset.date;
+            const card = btn.closest('[data-doctor-card]');
+            btn.disabled = true;
+            const { ok, data } = await saveDoctorAvailability(doctor, date, card);
+            btn.disabled = false;
+            if (ok && data.status === 'success') {
+                // Reflect the saved availability in the status chip.
+                const chip = card.querySelector('.rounded-full.bg-accent');
+                if (chip) {
+                    chip.textContent = data.is_available ? 'Available' : 'Unavailable';
+                    chip.className = 'rounded-full px-2.5 py-1 text-xs font-medium ' +
+                        (data.is_available ? 'bg-accent text-main' : 'bg-red-100 text-red-800');
+                }
+                const note = document.getElementById('avail-note');
+                if (note) { note.textContent = 'Availability saved for ' + doctor + '.'; note.hidden = false; setTimeout(() => { note.hidden = true; }, 2500); }
+            } else {
+                const note = document.getElementById('avail-note');
+                if (note) { note.textContent = data.message || 'Could not save availability.'; note.hidden = false; note.classList.add('text-red-600'); setTimeout(() => { note.hidden = true; note.classList.remove('text-red-600'); }, 3500); }
+            }
+        });
+    });
+})();
+</script>
 <script>
 (function () {
     // Persistent patient–doctor consultation chat (WebSockets, per-thread groups).

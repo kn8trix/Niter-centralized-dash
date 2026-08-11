@@ -91,6 +91,7 @@ urlpatterns = [
 
     # Staff action endpoints — persistent service handlers for admin dashboards
     path('api/cafeteria/redeem/', views.redeem_meal_ticket, name='api_cafeteria_redeem'),
+    path('api/cafeteria/batch-redeem/', views.batch_redeem_meal_tickets, name='api_cafeteria_batch_redeem'),
     path('api/medical/appointments/<int:appointment_id>/status/', views.update_appointment_status, name='api_appointment_status'),
     path('api/clubs/verify-transaction/', views.verify_club_transaction_view, name='api_club_verify_transaction'),
     path('api/admin/update-role/', views.update_user_role, name='api_admin_update_role'),
@@ -103,5 +104,6 @@ urlpatterns = [
     path('api/medical/chat/start/', views.medical_chat_start, name='api_medical_chat_start'),
     path('api/medical/chat/<int:thread_id>/messages/', views.medical_chat_messages, name='api_medical_chat_messages'),
     path('api/medical/queue/', views.medical_queue_api, name='api_medical_queue'),
+    path('api/medical/doctor-availability/', views.medical_doctor_availability, name='api_doctor_availability'),
 ]
 

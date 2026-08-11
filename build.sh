@@ -36,4 +36,13 @@ echo "==> Installing Python dependencies"
 echo "==> Collecting static assets (WhiteNoise -> staticfiles/)"
 RENDER_BUILD=true "$PYTHON" manage.py collectstatic --noinput
 
+# Supabase deployments: when SUPABASE_DB_URL is supplied, apply migrations
+# against it during the build (config/settings.py forces sslmode=require).
+# The render.yaml releaseCommand also runs `migrate --noinput` idempotently
+# for the Render-managed Postgres path, so both databases stay in sync.
+if [ -n "${SUPABASE_DB_URL:-}" ]; then
+    echo "==> Applying migrations against SUPABASE_DB_URL"
+    RENDER_BUILD=true "$PYTHON" manage.py migrate --noinput
+fi
+
 echo "==> Build complete"

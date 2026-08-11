@@ -3032,3 +3032,92 @@ below AA (≈ 4.3:1) on small text.
 ### Tests
 
 - Full suite — **517 tests OK** (run via `./venv/bin/python manage.py test`).
+
+---
+
+## 63. Dual-Database Architecture & Dedicated Admin Dashboards
+
+Supabase PostgreSQL wiring, a Clubs Google Sheets data layer, and persisted
+medical-doctor availability — the “database” layer behind the existing admin
+consoles.
+
+### Supabase PostgreSQL (main application DB)
+
+- `config/settings.py` → `_build_databases()`:
+  - Reads **`SUPABASE_DB_URL`** first, falling back to the generic
+    **`DATABASE_URL`** (Render managed Postgres / Blueprint keeps working).
+  - Appends **`sslmode=require`** automatically to `postgres://…` URLs that do
+    not already carry an `sslmode` (Supabase requires TLS); explicit query
+    params are left untouched.
+  - No URL set → local SQLite for dev/tests (test runner stays on SQLite).
+  - Parsing via **`dj-database-url`** (`dj_database_url.parse(url, conn_max_age=600)`).
+- `requirements.txt`: added `dj-database-url>=2.0`.
+- `build.sh` + `render.yaml`: unchanged migration flow — `python manage.py
+  migrate` runs on deploy against whatever `DATABASE_URL` Render injects;
+  set `SUPABASE_DB_URL` for Supabase.
+- `.env.example`: documented `SUPABASE_DB_URL` (and `DATABASE_URL`) with the
+  `postgresql://…` scheme hint.
+- The **Clubs module** is the second data source: a user-connected Google
+  Sheet (see below) — not a second Django DB.
+
+### Clubs module — Google Sheets database (settings integration)
+
+- **`core/club_sheets.py`** — high-level `gspread` data layer built on the
+  existing `core/google_service.py` OAuth plumbing:
+  - Reference normalization: full `docs.google.com/spreadsheets/d/…` URL *or*
+    bare Sheet ID (`normalize_sheet_ref`).
+  - Reads: `read_rows`, `get_members` (Members tab), `get_event_registrations`
+    (Registrations), `get_club_notices` (Notices). Missing tab → first
+    worksheet, so single-tab sheets keep working.
+  - Writes: `append_rows`, `append_member`, `append_event_registration`,
+    `append_club_notice`.
+  - All Google/transport failures surface as `GoogleServiceError` (with
+    `GoogleAccountNotConnected` / `GoogleReauthRequired` subtypes) so views
+    answer 401 (re-connect Google) or 500 correctly.
+- **Settings → Club Google Sheets tab** (`/settings/?tab=google_sheets`):
+  - OAuth via the existing Google connect button (allauth) — tokens stored in
+    `GoogleUserToken`; no new OAuth flow added.
+  - New `ClubSheetsConfig` model (OneToOne→User) stores the club
+    spreadsheet reference; the tab saves/validates it via `form=sheets` POST.
+- **Club Management auto-connect**: `club_admin_view` falls back to the saved
+  `ClubSheetsConfig.sheet_ref` when no `?sheet_url=` param is given, and the
+  page prefills the input from it.
+
+### Dedicated admin dashboards
+
+**Cafeteria Meal Admin — `/cafeteria/admin/`** (staff-only):
+- Live daily meal ratios (claimed/capacity per meal against
+  `DAILY_MEAL_CAPACITY`), subscription counts, token redemption counters
+  (issued/redeemed today, active total).
+- Active (unredeemed) pass list.
+- **Batch redemption** — `POST /api/cafeteria/batch-redeem/` (`tokens` list or
+  `all_today=true`); returns per-token results; UI button redeems today's
+  unredeemed passes in one action.
+
+**Medical Center Admin — `/medical/admin/`** (staff-only):
+- New persisted models: `Doctor` (name, specialty, working days, hours,
+  active) and `DoctorSchedule` (doctor × date, `is_available`,
+  `max_appointments`, unique_together). Seed migration `0026_seed_doctors`
+  creates the four default doctors so the dashboard works immediately.
+- Dashboard now renders doctors from the DB with today's schedule, booked
+  counts, and **availability toggles + daily slot-cap inputs**.
+- `POST /api/medical/doctor-availability/` upserts a `DoctorSchedule` row
+  (staff-only).
+- **Booking enforcement**: `book_appointment` reads the doctor's schedule for
+  the requested date — blocks unavailable doctors (409) and enforces the
+  daily `max_appointments` cap (409).
+
+### Tests
+
+- New test classes in `core/tests.py` (all Google calls mocked, no network):
+  - `SupabaseDatabaseConfigTest` — sslmode=require wiring, precedence,
+    explicit-sslmode passthrough, SQLite fallback.
+  - `ClubSheetsModuleTest` — reference normalization, tab-targeted reads,
+    row appends, error translation with `gspread` mocked.
+  - `SettingsGoogleSheetsTabTest` — sheets tab save/validation, club admin
+    prefill.
+  - `BatchRedemptionApiTest` — staff guard, all-today + explicit tokens,
+    already-redeemed/not-found handling.
+  - `DoctorAvailabilityApiTest` — upsert, toggle, validation, and booking
+    block/cap enforcement.
+- Full suite — **546 tests OK** (run via `./venv/bin/python manage.py test`).

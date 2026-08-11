@@ -4,7 +4,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.db.models import Q
 from django.shortcuts import redirect, render
 
-from core.models import MedicalAppointment, MedicalChatThread, StudentProfile
+from core.models import Doctor, DoctorSchedule, MedicalAppointment, MedicalChatThread, StudentProfile
 from core.views import _chat_thread_serialize as _serialize_chat_thread
 
 # Fallback catalog shown in the filter dropdown when no appointments exist yet.
@@ -188,11 +188,29 @@ def medical_admin_dashboard(request):
         .prefetch_related('messages')
         .order_by('-updated_at', '-id')[:30]
     ]
-    doctors = [
-        {'name': 'Dr. Ahmed Khan', 'specialty': 'General Physician', 'days': 'Sunday - Thursday', 'time': '10:00 AM - 2:00 PM', 'status': 'Available'},
-        {'name': 'Dr. Sarah Smith', 'specialty': 'Orthopedic', 'days': 'Monday - Friday', 'time': '9:00 AM - 1:00 PM', 'status': 'Available'},
-        {'name': 'Dr. Michael Chen', 'specialty': 'Dermatology', 'days': 'Tuesday - Saturday', 'time': '11:00 AM - 3:00 PM', 'status': 'Busy'},
-    ]
+    # Doctors come from the persisted ``Doctor`` catalog (seeded by a data
+    # migration) plus today's ``DoctorSchedule`` availability for the toggle UI.
+    doctors = []
+    for doctor in Doctor.objects.filter(is_active=True):
+        schedule = DoctorSchedule.objects.filter(doctor=doctor, date=today).first()
+        available = True if schedule is None else schedule.is_available
+        max_appointments = schedule.max_appointments if schedule else 20
+        booked_today = MedicalAppointment.objects.filter(
+            doctor_name__iexact=doctor.name,
+            appointment_date=today,
+        ).exclude(status='cancelled').count()
+        doctors.append({
+            'id': doctor.pk,
+            'name': doctor.name,
+            'specialty': doctor.specialty or 'General Physician',
+            'days': doctor.working_days or '—',
+            'time': '%s - %s' % (doctor.start_time, doctor.end_time),
+            'status': 'Available' if available else 'Unavailable',
+            'is_available': available,
+            'max_appointments': max_appointments,
+            'booked_today': booked_today,
+            'today': today.isoformat(),
+        })
     content_sections = [
         {'title': 'Health Tips', 'description': 'Short wellness guidance for students.', 'items': 5},
         {'title': 'Disease Awareness', 'description': 'Seasonal and campus health alerts.', 'items': 3},
@@ -212,6 +230,7 @@ def medical_admin_dashboard(request):
     context = {
         'summaries': summaries,
         'appointments': appointments,
+        'today': today,
         'selected_appointment': selected_appointment,
         'search_query': request.GET.get('q', ''),
         'student_name_filter': student_name_filter,

@@ -52,6 +52,9 @@
             <button type="button" class="tab-btn{% if active_tab == 'display' %} active{% endif %}" data-tab="display" role="tab" aria-selected="{% if active_tab == 'display' %}true{% else %}false{% endif %}" aria-controls="tab-display">
                 <i class="fa-solid fa-palette"></i> Display
             </button>
+            <button type="button" class="tab-btn{% if active_tab == 'google_sheets' %} active{% endif %}" data-tab="google_sheets" role="tab" aria-selected="{% if active_tab == 'google_sheets' %}true{% else %}false{% endif %}" aria-controls="tab-google_sheets">
+                <i class="fa-solid fa-table-cells"></i> Club Google Sheets
+            </button>
         </div>
 
         <div class="settings-layout">
@@ -366,6 +369,91 @@
                             <span>Denser layout — more on screen.</span>
                         </button>
                     </div>
+                </div>
+            </section>
+
+            <!-- ============================================================
+                 Tab 4: Club Google Sheets
+            ============================================================ -->
+            <section class="card tab-panel" id="tab-google_sheets" role="tabpanel" aria-labelledby="tab-google-sheets-label" {% if active_tab != 'google_sheets' %}hidden{% endif %}>
+                <h2 id="tab-google-sheets-label" class="section-title"><i class="fa-solid fa-table-cells"></i> Club Google Sheets</h2>
+                <p class="section-subtitle">Connect your Google account and link your club's spreadsheet so the Club Management dashboard syncs members, registrations, and notices in real time.</p>
+
+                <!-- Connection status -->
+                <div class="settings-section">
+                    <h3 class="sub-section-title"><i class="fa-brands fa-google"></i> Google Connection</h3>
+                    <p class="section-subtitle">Your stored OAuth tokens power every Sheets read/write from the Clubs module.</p>
+
+                    <div class="google-card">
+                        {% if google_social or has_google_token %}
+                        <div class="google-status connected">
+                            <div class="google-status-icon"><i class="fa-brands fa-google"></i></div>
+                            <div class="google-status-body">
+                                <strong>Connected</strong>
+                                <span>{{ google_social.extra_data.email|default:google_social.uid|default:"Google account" }}</span>
+                                <small>Sheets reads/writes will use this account's access.</small>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="google-status disconnected">
+                            <div class="google-status-icon"><i class="fa-brands fa-google"></i></div>
+                            <div class="google-status-body">
+                                <strong>Not connected</strong>
+                                <span>Connect your Google account before linking a club spreadsheet.</span>
+                            </div>
+                            <a href="{% url 'google_login' %}" class="btn-connect" target="_blank" rel="noopener">
+                                <i class="fa-brands fa-google"></i> Connect Google Account
+                            </a>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Spreadsheet reference -->
+                <div class="settings-section">
+                    <h3 class="sub-section-title"><i class="fa-solid fa-table-cells"></i> Club Spreadsheet</h3>
+                    <p class="section-subtitle">Paste the sheet ID or the full share link of the spreadsheet your club uses for registrations and payments.</p>
+
+                    {% if sheet_saved %}
+                    <div class="alert success" role="status">
+                        <i class="fa-solid fa-circle-check"></i>
+                        <span>Club spreadsheet saved — the Club Management dashboard will sync from it.</span>
+                    </div>
+                    {% endif %}
+
+                    {% if sheet_errors %}
+                    <div class="alert error" role="alert">
+                        <i class="fa-solid fa-circle-exclamation"></i>
+                        <div>
+                            {% for error in sheet_errors %}<p>{{ error }}</p>{% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <form method="post" action="{% url 'settings' %}" class="settings-form" novalidate>
+                        {% csrf_token %}
+                        <input type="hidden" name="form" value="sheets">
+                        <div class="field">
+                            <label for="club-sheet-ref" class="field-label">Sheet ID or URL</label>
+                            <div class="field-input">
+                                <i class="fa-solid fa-table-cells"></i>
+                                <input type="text" id="club-sheet-ref" name="sheet_ref"
+                                       value="{{ club_sheets.sheet_ref|default:'' }}"
+                                       placeholder="1AbC… or https://docs.google.com/spreadsheets/d/…/edit"
+                                       aria-describedby="club-sheet-ref-note">
+                            </div>
+                            <small id="club-sheet-ref-note" class="field-note">Shared with you — open it in your browser to copy the link.</small>
+                        </div>
+                        <button type="submit" class="btn-primary">
+                            <i class="fa-solid fa-floppy-disk"></i> Save Spreadsheet
+                        </button>
+                    </form>
+
+                    <p class="field-note" style="margin-top: 14px;">
+                        <a href="{% url 'club_admin' %}" class="btn-connect">
+                            <i class="fa-solid fa-users-gear"></i> Open Club Management Dashboard
+                        </a>
+                    </p>
                 </div>
             </section>
 

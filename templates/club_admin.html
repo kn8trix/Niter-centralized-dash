@@ -48,6 +48,7 @@
 
             <div class="sheet-connect">
                 <input type="url" id="sheet-url" class="sheet-url-input"
+                       value="{{ sheet_url }}"
                        placeholder="https://docs.google.com/spreadsheets/d/…/edit"
                        aria-label="Google Sheet URL">
                 <button type="button" class="btn-primary" id="connect-sheet-btn">
@@ -640,11 +641,19 @@
                 });
             }
 
-            // Restore the saved sheet URL and auto-load on refresh
+            // Restore the saved sheet URL and auto-load on refresh.
+            // A server-side prefill (Settings → Club Google Sheets) takes
+            // precedence over the localStorage copy so the dashboard
+            // auto-connects after setup — fetch only when the sheet changed.
             const saved = localStorage.getItem(SHEET_URL_KEY);
-            if (saved) {
-                urlInput.value = saved;
-                fetchClubSheetRecords();
+            const serverPrefill = urlInput.value.trim();
+            const initial = serverPrefill || saved;
+            if (initial) {
+                urlInput.value = initial;
+                localStorage.setItem(SHEET_URL_KEY, initial);
+                if (initial !== saved) {
+                    fetchClubSheetRecords();
+                }
             }
         })();
     </script>
