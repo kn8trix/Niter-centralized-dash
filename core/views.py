@@ -1,10 +1,7 @@
 import colorsys
-import html
-import html.parser
 import json
 import re
 import secrets
-from collections import Counter
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -30,6 +27,7 @@ from google.auth.exceptions import RefreshError
 from .consumers import notify_user, send_chat_push
 from .decorators import change_editablepage_required, superuser_required
 from .forms import SignUpForm
+from .block_sanitizer import sanitize_css, sanitize_html
 from .templatetags.builder_tags import render_block_html
 from .google_service import (
     GoogleAccountNotConnected,
@@ -57,6 +55,7 @@ from .models import (
     MedicalChatThread,
     MealSubscription,
     MealTicket,
+    NoteAnalysis,
     Notice,
     Notification,
     PageTemplate,
@@ -66,7 +65,16 @@ from .models import (
     TransportRoute,
     UserNote,
     UserNotificationPreference,
+    generate_meal_token,
+    generate_qr_token,
 )
+
+# Paid-flow order creation (parallel to the instant book/claim flow).
+from payments.services import create_payment_order  # noqa: E402
+
+# Huey background task for notes analysis (off the request path). The
+# extractors themselves live in core/notes_analysis and run inside the task.
+from .tasks import analyze_note_content  # noqa: E402
 
 
 def public_home(request):
@@ -740,20 +748,6 @@ DOCTOR_SPECIALTIES = {
 MEDICAL_SLOTS_PER_DAY = 4
 
 
-def _generate_meal_token():
-    """Return an unused ``#MEAL-XXXX`` token (4 random digits)."""
-    for _ in range(50):
-        token = '#MEAL-%04d' % secrets.randbelow(10000)
-        if not MealTicket.objects.filter(ticket_token=token).exists():
-            return token
-    raise RuntimeError('Could not allocate a unique meal token')
-
-
-def _generate_qr_token():
-    """Return a random boarding-pass QR token, e.g. ``TR-4F2A1C``."""
-    return 'TR-' + secrets.token_hex(3).upper()
-
-
 def _broadcast_notification(notification):
     """Push a freshly-created Notification over the user's WebSocket group.
 
@@ -784,6 +778,33 @@ def claim_meal(request):
     meal_type = request.POST.get('meal_type', '').strip()
     if meal_type not in DAILY_MEAL_CAPACITY:
         return JsonResponse({'status': 'error', 'message': 'Invalid meal type.'}, status=400)
+
+    # Optional paid flow: when a wallet provider is supplied the ticket is
+    # created PENDING with no token — the gateway SUCCESS callback activates
+    # it (PAID + token). Absent this param, the instant free claim runs as
+    # before.
+    payment_method = request.POST.get('payment_method', '').strip().lower()
+    if payment_method and payment_method not in ('bkash', 'nagad'):
+        return JsonResponse(
+            {'status': 'error', 'message': 'payment_method must be bkash or nagad.'},
+            status=400,
+        )
+    amount_raw = request.POST.get('amount', '').strip()
+    if payment_method and not amount_raw:
+        return JsonResponse(
+            {'status': 'error', 'message': 'amount is required when paying by %s.' % payment_method},
+            status=400,
+        )
+    if payment_method:
+        try:
+            paid_amount = Decimal(amount_raw)
+        except (InvalidOperation, TypeError, ValueError):
+            paid_amount = None
+        if paid_amount is None or not paid_amount.is_finite() or paid_amount <= 0:
+            return JsonResponse(
+                {'status': 'error', 'message': 'A valid positive amount is required.'},
+                status=400,
+            )
 
     subscription = getattr(request.user, 'meal_subscription', None)
     if subscription is None or not subscription.is_active or subscription.is_expired:
@@ -817,17 +838,35 @@ def claim_meal(request):
 
     try:
         with transaction.atomic():
+            is_paid_flow = bool(payment_method)
             ticket = MealTicket.objects.create(
                 user=request.user,
                 meal_type=meal_type,
-                ticket_token=_generate_meal_token(),
+                ticket_token=None if is_paid_flow else generate_meal_token(),
+                payment_status='pending' if is_paid_flow else 'paid',
+                paid_at=None if is_paid_flow else timezone.now(),
             )
-            notification = Notification.objects.create(
-                user=request.user,
-                title='Meal ticket claimed',
-                message='Your %s ticket %s is ready.' % (meal_type, ticket.ticket_token),
-                category='meal',
-            )
+            payment_order = None
+            if is_paid_flow:
+                payment_order = create_payment_order(request.user, ticket, payment_method, amount_raw)
+                ticket.payment_order = payment_order
+                ticket.save(update_fields=['payment_order'])
+                notification = Notification.objects.create(
+                    user=request.user,
+                    title='Meal ticket awaiting payment',
+                    message='Your %s ticket is reserved — pay %s %s via %s to activate it.' % (
+                        meal_type, payment_order.amount, payment_order.currency,
+                        payment_order.get_provider_display(),
+                    ),
+                    category='meal',
+                )
+            else:
+                notification = Notification.objects.create(
+                    user=request.user,
+                    title='Meal ticket claimed',
+                    message='Your %s ticket %s is ready.' % (meal_type, ticket.ticket_token),
+                    category='meal',
+                )
     except IntegrityError:
         # Token collision or a concurrent claim of the same slot.
         return JsonResponse(
@@ -840,6 +879,8 @@ def claim_meal(request):
         'status': 'success',
         'ticket_token': ticket.ticket_token,
         'meal_type': ticket.meal_type,
+        'payment_status': ticket.payment_status,
+        'payment_order': payment_order.merchant_invoice_id if payment_order else None,
         'message': 'Meal ticket claimed successfully.',
     })
 
@@ -900,21 +941,65 @@ def book_transport(request):
             status=400,
         )
 
+    # Optional paid flow: same as claim_meal — with a wallet provider the
+    # booking is created PENDING with no QR code until the gateway SUCCESS
+    # callback activates it.
+    payment_method = request.POST.get('payment_method', '').strip().lower()
+    if payment_method and payment_method not in ('bkash', 'nagad'):
+        return JsonResponse(
+            {'status': 'error', 'message': 'payment_method must be bkash or nagad.'},
+            status=400,
+        )
+    amount_raw = request.POST.get('amount', '').strip()
+    if payment_method and not amount_raw:
+        return JsonResponse(
+            {'status': 'error', 'message': 'amount is required when paying by %s.' % payment_method},
+            status=400,
+        )
+    if payment_method:
+        try:
+            paid_amount = Decimal(amount_raw)
+        except (InvalidOperation, TypeError, ValueError):
+            paid_amount = None
+        if paid_amount is None or not paid_amount.is_finite() or paid_amount <= 0:
+            return JsonResponse(
+                {'status': 'error', 'message': 'A valid positive amount is required.'},
+                status=400,
+            )
+
     try:
         with transaction.atomic():
+            is_paid_flow = bool(payment_method)
             booking = TransportBooking.objects.create(
                 user=request.user,
                 route_name=route_name,
                 departure_time=departure_time,
                 seat_number=seat_number,
-                qr_token=_generate_qr_token(),
+                qr_token=None if is_paid_flow else generate_qr_token(),
+                payment_status='pending' if is_paid_flow else 'paid',
+                paid_at=None if is_paid_flow else timezone.now(),
             )
-            notification = Notification.objects.create(
-                user=request.user,
-                title='Transport seat booked',
-                message='Seat %s on %s (%s) is booked.' % (seat_number, route_name, departure_time),
-                category='transport',
-            )
+            payment_order = None
+            if is_paid_flow:
+                payment_order = create_payment_order(request.user, booking, payment_method, amount_raw)
+                booking.payment_order = payment_order
+                booking.save(update_fields=['payment_order'])
+                notification = Notification.objects.create(
+                    user=request.user,
+                    title='Transport seat awaiting payment',
+                    message='Seat %s on %s (%s) is reserved — pay %s %s via %s to activate it.' % (
+                        seat_number, route_name, departure_time, payment_order.amount,
+                        payment_order.currency, payment_order.get_provider_display(),
+                    ),
+                    category='transport',
+                )
+            else:
+                notification = Notification.objects.create(
+                    user=request.user,
+                    title='Transport seat booked',
+                    message='Seat %s on %s (%s) is booked.' % (seat_number, route_name, departure_time),
+                    category='transport',
+                )
     except IntegrityError:
         return JsonResponse(
             {'status': 'error', 'message': 'That seat is already taken on this route.'},
@@ -929,6 +1014,8 @@ def book_transport(request):
         'departure_time': booking.departure_time,
         'seat_number': booking.seat_number,
         'qr_token': booking.qr_token,
+        'payment_status': booking.payment_status,
+        'payment_order': payment_order.merchant_invoice_id if payment_order else None,
         'message': 'Transport seat booked successfully.',
     })
 
@@ -2126,54 +2213,6 @@ def club_admin_view(request):
 # Notes Engine — server-side actions (save / summarize / keywords / export)
 # ============================================================================
 
-# Lightweight English stopword list for the keyword + summary extractors.
-_STOPWORDS = frozenset(
-    ("the a an and or but if then else for with without of on in at by from to "
-     "is are was were be been being have has had do does did will would can could "
-     "should may might must this that these those it its i you he she we they them "
-     "my your our their his her not no nor so as about into over under again further "
-     "once here there when where why how all any both each few more most other some "
-     "such only own same too very just also than up down out off because while "
-     "during before after above below between through during against per via "
-     "us am etc e g ie vs").split()
-)
-
-
-def _note_tokens(text):
-    """Lowercased alphanumeric tokens minus stopwords (min length 3)."""
-    words = re.findall(r'[a-z0-9]+', (text or '').lower())
-    return [w for w in words if w not in _STOPWORDS and len(w) >= 3]
-
-
-def _extract_keywords(content, limit=8):
-    """Top ``limit`` keywords by term frequency (deterministic server-side)."""
-    tokens = _note_tokens(content)
-    ranked = Counter(tokens).most_common()
-    return [word for word, _count in ranked[:limit]]
-
-
-def _extract_summary(content, max_sentences=3):
-    """Extractive summarization — score sentences by term frequency, keep the
-    highest-scoring sentences in their original order."""
-    text = (content or '').strip()
-    if not text:
-        return ''
-    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n+', text) if s.strip()]
-    if len(sentences) <= max_sentences:
-        return text
-
-    freq = Counter(_note_tokens(text))
-
-    def score(sentence):
-        tokens = _note_tokens(sentence)
-        if not tokens:
-            return 0.0
-        # Sum of term frequencies, dampened by length to favour dense sentences.
-        return sum(freq.get(t, 0) for t in tokens) / (len(tokens) ** 0.6)
-
-    scored = sorted(range(len(sentences)), key=lambda i: score(sentences[i]), reverse=True)
-    picked = sorted(scored[:max_sentences])
-    return ' '.join(sentences[i] for i in picked)
 
 
 def _pdf_escape(text):
@@ -2317,27 +2356,77 @@ def save_note(request):
 
 
 @login_required
+def _enqueue_note_analysis(request, content):
+    """Create a NoteAnalysis row, enqueue the Huey task, and return the payload.
+
+    In Huey's immediate mode (dev/tests) the task has already run by the time
+    we refresh, so the response carries the finished analysis with the same
+    shape the old synchronous endpoints returned. In production the response
+    is ``{'status': 'queued', 'analysis_id': ...}`` and the frontend polls
+    ``note_analysis_status``.
+    """
+    analysis = NoteAnalysis.objects.create(user=request.user, content=content)
+    # djhuey's TaskWrapper: executes synchronously in immediate mode (dev/
+    # tests), enqueues to Redis otherwise (production worker picks it up).
+    analyze_note_content(analysis.pk)
+    analysis.refresh_from_db()
+    if analysis.status == 'done':
+        return {
+            'status': 'success',
+            'analysis_id': str(analysis.analysis_id),
+            'summary': analysis.summary,
+            'keywords': analysis.keywords,
+            'sentence_count': analysis.sentence_count,
+        }
+    if analysis.status == 'failed':
+        return {
+            'status': 'failed',
+            'analysis_id': str(analysis.analysis_id),
+            'message': analysis.error_message or 'Analysis failed — please try again.',
+        }
+    return {'status': 'queued', 'analysis_id': str(analysis.analysis_id)}
+
+
+@login_required
 def note_summary(request):
-    """Auto-summarize note content server-side (extractive)."""
+    """Auto-summarize note content server-side (extractive, background queue).
+
+    The HTTP response stays fast: the analysis runs in the Huey worker and
+    the client polls ``/api/notes/analysis/<id>/`` for the result.
+    """
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
-    content = request.POST.get('content', '')
-    summary = _extract_summary(content)
-    return JsonResponse({
-        'status': 'success',
-        'summary': summary,
-        'sentence_count': len([s for s in re.split(r'(?<=[.!?])\s+|\n+', content.strip()) if s.strip()]),
-    })
+    return JsonResponse(_enqueue_note_analysis(request, request.POST.get('content', '')))
 
 
 @login_required
 def note_keywords(request):
-    """Extract the top keywords from note content server-side (TF ranking)."""
+    """Extract the top keywords from note content server-side (TF ranking,
+    background queue)."""
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
-    content = request.POST.get('content', '')
-    keywords = _extract_keywords(content)
-    return JsonResponse({'status': 'success', 'keywords': keywords})
+    return JsonResponse(_enqueue_note_analysis(request, request.POST.get('content', '')))
+
+
+@login_required
+def note_analysis_status(request, analysis_id):
+    """Poll endpoint for a queued note analysis (owner-scoped).
+
+    Returns ``{status: queued|processing|done|failed, ...}``; the full result
+    (summary / keywords / sentence_count) is included only once ``done``.
+    """
+    analysis = get_object_or_404(request.user.note_analyses, analysis_id=analysis_id)
+    payload = {
+        'status': analysis.status,
+        'analysis_id': str(analysis.analysis_id),
+    }
+    if analysis.status == 'done':
+        payload['summary'] = analysis.summary
+        payload['keywords'] = analysis.keywords
+        payload['sentence_count'] = analysis.sentence_count
+    elif analysis.status == 'failed':
+        payload['message'] = analysis.error_message or 'Analysis failed — please try again.'
+    return JsonResponse(payload)
 
 
 @login_required
@@ -2554,6 +2643,11 @@ def _style_attr(style_json):
     CamelCase keys (e.g. ``fontSize`` / ``paddingTop``) are converted to
     kebab-case CSS properties (``font-size`` / ``padding-top``) so styles
     authored in the builder apply directly in the browser.
+
+    Values are intentionally left raw: every consumer renders this string
+    inside ``style="{{ ... }}"`` under Django autoescaping, which is the
+    safety boundary — a quote in a saved value becomes ``&quot;`` and can
+    never close the attribute or forge an ``on*`` handler.
     """
     parts = []
     for key, value in (style_json or {}).items():
@@ -2620,8 +2714,12 @@ def editable_page_view(request, slug):
         }
         for block in page.content_blocks.order_by('order', 'id')
     ]
+    # custom_css is injected with ``|safe`` inside a <style> tag — re-run the
+    # save-time break-out guard at render time so an admin-edited row can never
+    # close the <style> tag (defense-in-depth, same trust model as the blocks).
     return render(request, 'editable_page.html', {
         'page': page,
+        'custom_css': sanitize_css(page.custom_css),
         'blocks': blocks,
     })
 
@@ -2631,139 +2729,12 @@ def editable_page_view(request, slug):
 # ============================================================================
 
 # ----------------------------------------------------------------------------
-# Block HTML sanitizer (defense-in-depth)
+# Block HTML / CSS sanitizer (defense-in-depth)
 # ----------------------------------------------------------------------------
-# The builder API is superuser-only, so this is belt-and-braces on top of the
-# existing trust model: a strict allow-list keeps pasted content free of
-# script tags, event handlers, and inline-style / javascript: URL injection.
-
-ALLOWED_TAGS = frozenset({
-    'p', 'br', 'hr', 'div', 'span',
-    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-    'strong', 'b', 'em', 'i', 'u', 's', 'mark',
-    'a', 'img', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre',
-    'table', 'thead', 'tbody', 'tr', 'th', 'td',
-})
-
-VOID_TAGS = frozenset({'br', 'hr', 'img'})
-
-# Per-tag attribute allow-list (``style``, ``on*`` and anything else is dropped).
-ALLOWED_ATTRS = {
-    'a': {'href', 'title', 'target'},
-    'img': {'src', 'alt', 'title', 'width', 'height'},
-    'code': {'class'},
-    'pre': {'class'},
-    'div': {'class'},
-    'span': {'class'},
-    'th': {'colspan', 'rowspan'},
-    'td': {'colspan', 'rowspan'},
-}
-
-SAFE_URL_SCHEMES = frozenset({'http', 'https', 'mailto', 'tel', 'ftp'})
-
-
-def _is_safe_url(value):
-    """Allow relative/absolute links but reject dangerous URL schemes."""
-    stripped = (value or '').strip().lower()
-    if not stripped or stripped.startswith('#') or stripped.startswith('//'):
-        return True
-    scheme = re.match(r'^([a-z][a-z0-9+.-]*):', stripped)
-    if not scheme:
-        return True  # relative path such as /dashboard/ or images/x.png
-    return scheme.group(1) in SAFE_URL_SCHEMES
-
-
-class _BlockHtmlSanitizer(html.parser.HTMLParser):
-    """Rebuild input HTML keeping only allow-listed tags and attributes.
-
-    Content inside a disallowed element (e.g. ``<script>``) is dropped
-    entirely rather than being leaked as text. Fail-safe: an unclosed
-    disallowed tag swallows the rest of the document, which can only
-    ever lose content (never allow it through).
-    """
-
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self._out = []
-        self._skip_depth = 0
-
-    def _safe_attrs(self, tag, attrs):
-        allowed = ALLOWED_ATTRS.get(tag, frozenset())
-        for key, value in attrs:
-            if key not in allowed or key.lower().startswith('on'):
-                continue
-            if key in ('href', 'src') and not _is_safe_url(value):
-                continue
-            yield key, html.escape(value, quote=True)
-
-    def _emit_start(self, tag, attrs, self_closing):
-        parts = ['<%s' % tag]
-        for key, value in self._safe_attrs(tag, attrs):
-            parts.append(' %s="%s"' % (key, value))
-        parts.append(' />' if self_closing else '>')
-        self._out.append(''.join(parts))
-
-    def handle_starttag(self, tag, attrs):
-        if tag not in ALLOWED_TAGS:
-            self._skip_depth += 1
-            return
-        if not self._skip_depth:
-            self._emit_start(tag, attrs, self_closing=False)
-
-    def handle_startendtag(self, tag, attrs):
-        # XHTML-style self-closing tags such as <img /> / <br />
-        if tag in ALLOWED_TAGS and not self._skip_depth:
-            self._emit_start(tag, attrs, self_closing=True)
-
-    def handle_endtag(self, tag):
-        if tag not in ALLOWED_TAGS:
-            if self._skip_depth:
-                self._skip_depth -= 1
-            return
-        if not self._skip_depth and tag not in VOID_TAGS:
-            self._out.append('</%s>' % tag)
-
-    def handle_data(self, data):
-        if not self._skip_depth:
-            self._out.append(html.escape(data))
-
-    def handle_comment(self, data):
-        pass  # drop comments
-
-    def handle_decl(self, decl):
-        pass  # drop <!DOCTYPE ...>
-
-    def handle_pi(self, data):
-        pass  # drop <?...?>
-
-
-def sanitize_html(raw_html):
-    """Return ``raw_html`` with all non-allow-listed tags/attributes removed."""
-    if not raw_html:
-        return ''
-    parser = _BlockHtmlSanitizer()
-    parser.feed(raw_html)
-    parser.close()
-    return ''.join(parser._out)
-
-
-# custom_css is injected with ``|safe`` inside a <style> tag on the live page,
-# so strip anything that could break out of it (closing tags / HTML comments).
-_UNSAFE_CSS_PATTERNS = (
-    re.compile(r'</\s*style', re.IGNORECASE),
-    re.compile(r'</\s*script', re.IGNORECASE),
-    re.compile(r'<!--'),
-)
-
-
-def _sanitize_css(raw_css):
-    """Light guard for custom_css: remove <style>/<script> break-out tokens."""
-    if not raw_css:
-        return ''
-    css = raw_css
-    for pattern in _UNSAFE_CSS_PATTERNS:
-        css = pattern.sub('', css)
-    return css
+# The allow-list sanitizer (sanitize_html / sanitize_css) lives in
+# core/block_sanitizer.py so the save-time API and the render-time template
+# tag share one source of truth: content is neutralized when authored AND
+# again when served. See that module for the tag/attribute allow-lists.
 
 
 def _parse_json_body(request):
@@ -3346,7 +3317,7 @@ def save_page_css(request):
     except EditablePage.DoesNotExist:
         return JsonResponse({'status': 'error', 'message': 'Page not found'}, status=404)
 
-    page.custom_css = _sanitize_css(data.get('custom_css', ''))
+    page.custom_css = sanitize_css(data.get('custom_css', ''))
     page.save(update_fields=['custom_css', 'updated_at'])
     return JsonResponse({'status': 'success'})
 

@@ -7,10 +7,14 @@ Usage in a template::
 
 Renders the saved ``ContentBlock`` for the matching page and element:
 
-  * ``html`` blocks render their saved ``content_html`` directly,
+  * ``html`` blocks render their saved ``content_html`` directly, re-run
+    through the shared ``sanitize_html`` allow-list so a row that predates the
+    sanitizer (or was hand-edited in the admin) can never ship script tags or
+    event handlers to the page,
   * structured blocks (``faq`` / ``stats`` / ``testimonials`` / ``cta``)
     are rendered through the matching partial in ``templates/builder/blocks/``
-    with their ``content_json`` data,
+    with their ``content_json`` data (Django-autoescaped; URLs pass through
+    the ``safe_url`` filter),
   * a missing/blank block, an unknown type, or a partial that fails to load
     falls back to ``default_text`` (a broken block never 500s the page).
 """
@@ -22,6 +26,13 @@ from django import template
 from django.template.loader import get_template
 from django.utils.html import mark_safe
 
+# Aliased so the public template filters below can be registered under the
+# friendly ``sanitize_html`` / ``sanitize_css`` names without clashing with
+# the imported functions.
+from core.block_sanitizer import (  # noqa: E402
+    sanitize_css as _sanitize_css,
+    sanitize_html as _sanitize_html,
+)
 from core.models import ContentBlock
 
 register = template.Library()
@@ -53,12 +64,17 @@ def render_block_html(block, default_text=""):
     if block is None:
         return default_text
 
+    # Raw fallback content (plain ``html`` blocks and every structured-block
+    # fallback) is re-sanitized at render time — see module docstring.
+    def _raw():
+        return _sanitize_html(block.content_html) if block.content_html.strip() else default_text
+
     partial = _BLOCK_PARTIALS.get(block.block_type)
     if partial:
         data = block.content_json or {}
         if not data:
             # Structured block with no data yet behaves like an empty block.
-            return block.content_html if block.content_html.strip() else default_text
+            return _raw()
         if not isinstance(data, dict):
             # A JSONField row could hold a list/string if someone edited it in
             # the admin by hand — treat it as malformed and fall back.
@@ -66,7 +82,7 @@ def render_block_html(block, default_text=""):
                 'Builder block %s (%s): content_json is %s, not a dict',
                 block.element_id, block.block_type, type(data).__name__,
             )
-            return block.content_html if block.content_html.strip() else default_text
+            return _raw()
         try:
             tpl = get_template(partial)
         except template.TemplateDoesNotExist:
@@ -100,9 +116,7 @@ def render_block_html(block, default_text=""):
                 # A malformed block (e.g. bad JSON data) must not break the page.
                 logger.exception('Failed to render builder block %s (%s)', block.element_id, block.block_type)
 
-    if block.content_html.strip():
-        return block.content_html
-    return default_text
+    return _raw()
 
 
 # URL schemes permitted in CTA ``href`` attributes. Mirrors the scheme
@@ -133,3 +147,25 @@ def render_block(page_slug, element_id, default_text=""):
         .first()
     )
     return mark_safe(render_block_html(block, default_text))
+
+
+@register.filter
+def sanitize_html(raw_html):
+    """Template filter: strip every non-allow-listed tag/attribute from raw
+    HTML and mark the result safe (the sanitizer is the trust boundary, so the
+    template needs no further ``|safe``).
+
+    Intended for rendering raw ``content_html`` outside the standard block
+    renderers (e.g. ad-hoc widgets). Structured block output must NOT be run
+    through this filter — those partials embed trusted inline JavaScript that
+    the allow-list would strip; their text is already Django-autoescaped and
+    their URLs already pass through ``safe_url``.
+    """
+    return mark_safe(_sanitize_html(raw_html))
+
+
+@register.filter
+def sanitize_css(raw_css):
+    """Template filter: remove ``<style>``/``<script>`` break-out tokens from
+    author CSS and mark the result safe for injection inside a ``<style>`` tag."""
+    return mark_safe(_sanitize_css(raw_css))

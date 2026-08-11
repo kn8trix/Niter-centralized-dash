@@ -19,6 +19,7 @@ from .models import (
     MedicalChatThread,
     MealSubscription,
     MealTicket,
+    NoteAnalysis,
     Notice,
     Notification,
     PageTemplate,
@@ -28,6 +29,17 @@ from .models import (
     UserNote,
     UserNotificationPreference,
 )
+
+
+@admin.register(NoteAnalysis)
+class NoteAnalysisAdmin(admin.ModelAdmin):
+    """Inspect queued/failed note analyses (Huey background tasks)."""
+
+    list_display = ('analysis_id', 'user', 'status', 'sentence_count', 'created_at', 'completed_at')
+    list_filter = ('status', 'created_at')
+    search_fields = ('analysis_id', 'user__username')
+    list_select_related = ('user',)
+    readonly_fields = ('analysis_id', 'content', 'summary', 'keywords', 'created_at', 'completed_at')
 
 
 class ContentBlockInline(admin.StackedInline):
@@ -119,8 +131,8 @@ class MealSubscriptionAdmin(admin.ModelAdmin):
 class MealTicketAdmin(admin.ModelAdmin):
     """Browse and redeem issued meal tickets."""
 
-    list_display = ('ticket_token', 'user', 'meal_type', 'is_redeemed', 'claimed_at')
-    list_filter = ('meal_type', 'is_redeemed', 'claimed_at')
+    list_display = ('ticket_token', 'user', 'meal_type', 'payment_status', 'is_redeemed', 'claimed_at')
+    list_filter = ('meal_type', 'payment_status', 'is_redeemed', 'claimed_at')
     search_fields = ('ticket_token', 'user__username')
     list_select_related = ('user',)
 
@@ -129,8 +141,8 @@ class MealTicketAdmin(admin.ModelAdmin):
 class TransportBookingAdmin(admin.ModelAdmin):
     """Inspect seat bookings; QR tokens are scanned at boarding."""
 
-    list_display = ('qr_token', 'user', 'route_name', 'departure_time', 'seat_number', 'booked_at')
-    list_filter = ('departure_time', 'booked_at')
+    list_display = ('qr_token', 'user', 'route_name', 'departure_time', 'seat_number', 'payment_status', 'booked_at')
+    list_filter = ('payment_status', 'departure_time', 'booked_at')
     search_fields = ('qr_token', 'route_name', 'user__username')
     list_select_related = ('user',)
 

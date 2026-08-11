@@ -1,0 +1,4 @@
+# Shell scripts MUST stay LF. Render executes `./build.sh` on Linux; a
+# Windows CRLF checkout corrupts the shebang (`/usr/bin/env bash\r`) and
+# fails the build with a cryptic error.
+*.sh text eol=lf

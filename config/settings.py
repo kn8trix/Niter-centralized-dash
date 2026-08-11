@@ -118,6 +118,10 @@ INSTALLED_APPS = [
     'allauth.socialaccount.providers.google',
 
     'core',
+    'payments',
+
+    # Huey background task queue (djhuey registers the ``run_huey`` command)
+    'huey.contrib.djhuey',
 ]
 
 MIDDLEWARE = [
@@ -256,10 +260,50 @@ def _default_channel_layer():
 
 CHANNEL_LAYERS = {'default': _default_channel_layer()}
 
+# --- Background tasks (Huey) ------------------------------------------------------
+# Redis-backed task queue sharing the same REDIS_URL as the channel layer.
+# ``immediate`` runs tasks synchronously in-process — automatic while DEBUG is
+# on or no REDIS_URL is set (local dev + tests, no worker process needed). In
+# production (DEBUG off + REDIS_URL set) tasks are dispatched to the Redis
+# queue and executed by the Render worker service (``manage.py run_huey``).
+_redis_url = env('REDIS_URL', default='')
+HUEY = {
+    'name': 'niter-centralized-dash',
+    'url': _redis_url or 'redis://127.0.0.1:6379/1',
+    'immediate': DEBUG or not _redis_url,
+    'consumer': {
+        'workers': 2,
+        'worker_type': 'thread',
+        'loglevel': 'INFO',
+    },
+}
+
 # --- Authentication ---------------------------------------------------------------
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/dashboard/'
 LOGOUT_REDIRECT_URL = '/'
+
+# Django's default password policy is EMPTY unless configured — without this
+# block, ``validate_password`` would accept "password" / "12345678" and the
+# registration form would never run the common-password check. These four
+# validators apply to every password-changing flow (allauth signup, the
+# password-change form, createsuperuser) because they plug into
+# ``AUTH_PASSWORD_VALIDATORS``.
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {'min_length': 8},
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+]
 
 # --- Security ---------------------------------------------------------------------
 X_FRAME_OPTIONS = 'DENY'
@@ -280,3 +324,11 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = True
     # Send a restrictive Referrer-Policy header on responses.
     SECURE_REFERRER_POLICY = 'same-origin'
+
+# --- Payments (bKash / Nagad callbacks) ---------------------------------------
+# Nagad callbacks carry ``signature = sha256(payment_ref_id . order_id .
+# status)``; recompute and reject mismatches unless disabled (e.g. while
+# testing against a stub gateway). bKash callbacks carry no signature —
+# production confirmation goes through the bKash status API with merchant
+# credentials (see .env.example; not yet wired).
+PAYMENTS_VERIFY_SIGNATURES = env.bool('PAYMENTS_VERIFY_SIGNATURES', default=True)

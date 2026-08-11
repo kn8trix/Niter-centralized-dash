@@ -26,9 +26,21 @@ services:
     plan: free
     region: oregon
     buildCommand: ./build.sh
+    # Migrations run in the release phase: after the build succeeds and BEFORE
+    # the new version starts serving. A failed migration aborts the deploy
+    # while the current release keeps serving (previously `migrate` ran inside
+    # build.sh, where a failure left the service in a broken state).
+    releaseCommand: python manage.py migrate --noinput
     startCommand: daphne -b 0.0.0.0 -p $PORT config.asgi:application
     healthCheckPath: /
-    # autoDeployTrigger: commit   # (default) redeploy on every push to main
+    # Deploys are gated by CI: .github/workflows/deploy.yml runs the test
+    # suite and only then POSTs to this service's deploy hook. Turn off
+    # Render's built-in auto-deploy so the webhook is the only path to
+    # production — a red test suite means no deploy. Copy the hook URL from
+    # Render -> Web Service -> Settings -> Deploy Hook (looks like
+    # https://api.render.com/deploy/srv-<id>?key=<key>) and store it as the
+    # RENDER_DEPLOY_HOOK_URL repository secret.
+    autoDeploy: false
     # Custom domain — Let's Encrypt cert is provisioned automatically once DNS
     # points at Render (CNAME -> <service>.onrender.com). Remove if not live yet.
     domains:
@@ -60,6 +72,34 @@ services:
       # custom domain (niter.edu.bd + www) whenever RENDER=true (set by the
       # platform). Any additional domains go in these env vars in THIS file
       # so Blueprint syncs keep them in sync.
+
+  # Huey background worker — executes the async task queue (TF-IDF note
+  # analysis etc.) off the web request path. Runs the djhuey consumer against
+  # the same Redis used by the Channels layer. The web service's
+  # releaseCommand runs migrations before either service starts serving.
+  - type: worker
+    name: niter-centralized-dash-worker
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: ./build.sh
+    startCommand: python manage.py run_huey
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: niter-centralized-dash-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: niter-centralized-dash-redis
+          property: connectionString
 
   # Managed Redis for Django Channels WebSocket broadcasting.
   # `type: redis` is the documented alias for Render's `keyvalue` service type.

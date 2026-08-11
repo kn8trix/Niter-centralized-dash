@@ -14,7 +14,12 @@ gspread>=6.0
 
 # Real-time notification & system alert engine (WebSockets)
 channels>=4.0,<5.0
+# ASGI server used by the Render start command (config.asgi:application — HTTP
+# + WebSockets). Pinned below 5.0 to stay compatible with channels 4.x.
 daphne>=4.0,<5.0
+# Optional WSGI server for self-hosted deployments (e.g. a gunicorn systemd
+# unit); the Render blueprint starts daphne directly and does not use it.
+gunicorn>=21.2,<23.0
 
 # Implicit dependencies of channels/daphne, pinned explicitly so fresh installs
 # (CI / Render / local) never depend on transitive resolution order.
@@ -24,6 +29,11 @@ daphne>=4.0,<5.0
 asgiref>=3.9,<4.0
 autobahn>=22.4.2,<27
 twisted[tls]>=22.4,<27
+
+# Background task queue (async TF-IDF note analysis). Redis-backed; the
+# [django-redis] extra pulls in redis-py so the worker and the channel layer
+# share the same REDIS_URL.
+huey[django-redis]>=2.5,<3.0
 
 # Production deployment & configuration
 # Environment-driven settings (secrets, DB URL, hosts) via a local .env

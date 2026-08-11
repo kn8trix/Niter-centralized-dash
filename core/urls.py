@@ -31,8 +31,12 @@ urlpatterns = [
     path('departments/', views.departments_directory, name='departments'),
     path('departments/<slug:dept_slug>/', views.department_detail, name='department_detail'),
 
-    # Website Builder — dynamic pages rendered from EditablePage + ContentBlock
+    # Website Builder — dynamic pages rendered from EditablePage + ContentBlock.
+    # Both /page/<slug>/ (legacy + builder previews) and /pages/<slug>/ (public
+    # canonical route) serve the same view; published pages are public, drafts
+    # 404 for everyone except users with the builder permission.
     path('page/<slug:slug>/', views.editable_page_view, name='editable_page'),
+    path('pages/<slug:slug>/', views.editable_page_view, name='editable_page_public'),
 
     # Website Builder — Super Admin console (Phase 2)
     path('builder/', views.builder_dashboard, name='builder_dashboard'),
@@ -65,6 +69,8 @@ urlpatterns = [
     path('api/notes/save/', views.save_note, name='api_note_save'),
     path('api/notes/summarize/', views.note_summary, name='api_note_summarize'),
     path('api/notes/keywords/', views.note_keywords, name='api_note_keywords'),
+    # Poll endpoint for a queued note analysis (Huey background task)
+    path('api/notes/analysis/<uuid:analysis_id>/', views.note_analysis_status, name='api_note_analysis_status'),
     path('api/notes/export/', views.export_note, name='api_note_export'),
 
     # Research AI — structured query endpoint

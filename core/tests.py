@@ -980,6 +980,95 @@ class EditablePageRenderTest(TestCase):
         # hero-title (created first) appears before hero-subtitle
         self.assertLess(html.index('id="hero-title"'), html.index('id="hero-subtitle"'))
 
+    # ------------------------------------------------------------------
+    # Public /pages/<slug>/ route (canonical alias of /page/<slug>/)
+    # ------------------------------------------------------------------
+    def test_public_pages_slug_route_renders_published_page(self):
+        response = self.client.get(reverse('editable_page_public', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Hello from the database')
+        self.assertContains(response, 'data-page-slug="research-ai"')
+
+    def test_public_pages_slug_route_404s_for_draft_and_unknown(self):
+        self.page.is_published = False
+        self.page.save()
+        response = self.client.get(reverse('editable_page_public', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 404)
+        response = self.client.get(reverse('editable_page_public', args=['does-not-exist']))
+        self.assertEqual(response.status_code, 404)
+
+    # ------------------------------------------------------------------
+    # Render-time sanitization (defense-in-depth on top of save-time)
+    # ------------------------------------------------------------------
+    def test_render_time_sanitizes_legacy_html_blocks(self):
+        # A row created straight through the ORM (bypassing the save-time
+        # sanitizer) must still render clean: scripts, event handlers and
+        # unsafe URL schemes are stripped by the render-time pass.
+        ContentBlock.objects.create(
+            page=self.page,
+            element_id='legacy-raw',
+            content_html=(
+                '<script>alert(1)</script><p onclick="alert(2)">Keep me</p>'
+                '<a href="javascript:alert(3)">bad</a>'
+                '<img src="x" onerror="alert(4)">'
+            ),
+        )
+        html = self.client.get(reverse('editable_page', args=[self.page.slug])).content.decode()
+        self.assertIn('Keep me', html)
+        # The malicious payload is gone; the <a> lost its javascript: href and
+        # the <img> its onerror handler. (Assert the payload itself, not raw
+        # ``<script`` — the page's shared topbar legitimately embeds its own
+        # trusted inline JS.)
+        self.assertNotIn('alert(1)', html)
+        self.assertNotIn('onclick', html)
+        self.assertNotIn('onerror', html)
+        self.assertNotIn('javascript:', html)
+        self.assertIn('<a>bad</a>', html)
+
+    def test_style_json_values_cannot_break_out_of_style_attribute(self):
+        # A quote inside a style value must be escaped so it can never forge
+        # new attributes (e.g. onmouseover) on the live page.
+        ContentBlock.objects.create(
+            page=self.page,
+            element_id='stylish',
+            content_html='<p>styled</p>',
+            style_json={'fontSize': '12px"; onmouseover="alert(1)'},
+        )
+        html = self.client.get(reverse('editable_page', args=[self.page.slug])).content.decode()
+        # Django autoescaping is the safety boundary for style values: the raw
+        # quote becomes &quot; so the attribute can never close early and forge
+        # an ``onmouseover="..."`` attribute.
+        self.assertNotIn('12px";', html)
+        self.assertNotIn('onmouseover="', html)
+
+    def test_custom_css_breakout_guarded_at_render_time(self):
+        # custom_css is injected with |safe inside a <style> tag; the render-
+        # time guard strips anything that could close the tag, even when the
+        # row was hand-edited after the save-time guard ran.
+        self.page.custom_css = '</style><script>alert(1)</script><!--'
+        self.page.save(update_fields=['custom_css'])
+        html = self.client.get(reverse('editable_page', args=[self.page.slug])).content.decode()
+        # The injected break-out is neutralized: no ``</style>`` followed by
+        # content, and the <script> payload never reaches the page. (The page's
+        # own topbar legitimately emits its own ``<script>``/``<!--`` markers.)
+        self.assertNotIn('</style><script', html)
+        self.assertNotIn('<script>alert', html)
+
+    def test_structured_block_trusted_inline_js_survives_render(self):
+        # Structured blocks render through their partials, which embed trusted
+        # inline JS (stats/testimonial animations). The render-time sanitizer
+        # must only ever touch raw ``content_html`` — never partial output.
+        ContentBlock.objects.create(
+            page=self.page,
+            element_id='metrics',
+            block_type='stats',
+            content_json={'title': 'Campus metrics'},
+        )
+        html = self.client.get(reverse('editable_page', args=[self.page.slug])).content.decode()
+        self.assertIn('Campus metrics', html)
+        self.assertIn('IntersectionObserver', html)
+        self.assertIn('easeOutCubic', html)
+
 
 class BuilderBackendTest(TestCase):
     """Phase 2 — Website Builder backend: permission guard, template tag, API."""
@@ -3468,6 +3557,109 @@ class NotesEngineApiTest(TestCase):
         self.assertIn('data-note-id=', html)
 
 
+class NoteAnalysisAsyncTests(TestCase):
+    """Huey-backed note analysis — queued rows, the worker task, poll endpoint.
+
+    Huey runs in ``immediate`` mode under tests (DEBUG or no REDIS_URL), so
+    ``analyze_note_content.delay()`` executes synchronously and the API keeps
+    answering inline results, exactly as it did before the queue was added.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='async_notes', password='x12345678')
+        self.client.login(username='async_notes', password='x12345678')
+        self.SAMPLE = (
+            'Divide and conquer breaks problems into subproblems. '
+            'The master theorem solves recurrence relations. '
+            'Recurrence relations appear in divide and conquer analysis.'
+        )
+
+    def test_summarize_returns_inline_result_in_immediate_mode(self):
+        response = self.client.post(reverse('api_note_summarize'), {'content': self.SAMPLE})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertIn('divide and conquer', data['summary'].lower())
+        self.assertEqual(data['sentence_count'], 3)
+
+    def test_keywords_returns_inline_result_in_immediate_mode(self):
+        response = self.client.post(reverse('api_note_keywords'), {'content': self.SAMPLE})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertIn('recurrence', data['keywords'])
+        self.assertNotIn('the', data['keywords'])
+
+    def test_worker_task_computes_summary_and_keywords(self):
+        from core.models import NoteAnalysis
+        from core.tasks import analyze_note_content
+        analysis = NoteAnalysis.objects.create(user=self.user, content=self.SAMPLE)
+        analyze_note_content(analysis.pk)
+        analysis.refresh_from_db()
+        self.assertEqual(analysis.status, 'done')
+        self.assertIn('divide', analysis.keywords)
+        self.assertIn('recurrence', analysis.keywords)
+        self.assertEqual(analysis.sentence_count, 3)
+        self.assertIsNotNone(analysis.completed_at)
+
+    def test_status_endpoint_tracks_queued_then_done(self):
+        from core.models import NoteAnalysis
+        from core.tasks import analyze_note_content
+        analysis = NoteAnalysis.objects.create(user=self.user, content=self.SAMPLE)
+        url = reverse('api_note_analysis_status', args=[analysis.analysis_id])
+        self.assertEqual(self.client.get(url).json()['status'], 'queued')
+        analyze_note_content(analysis.pk)
+        data = self.client.get(url).json()
+        self.assertEqual(data['status'], 'done')
+        self.assertIn('summary', data)
+        self.assertIn('keywords', data)
+
+    def test_status_endpoint_scoped_to_owner(self):
+        from core.models import NoteAnalysis
+        other = User.objects.create_user(username='async_other', password='x12345678')
+        analysis = NoteAnalysis.objects.create(user=other, content='secret')
+        response = self.client.get(reverse('api_note_analysis_status', args=[analysis.analysis_id]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_worker_task_marks_failed_when_extraction_raises(self):
+        from unittest import mock
+        from core.models import NoteAnalysis
+        from core.tasks import analyze_note_content
+        analysis = NoteAnalysis.objects.create(user=self.user, content=self.SAMPLE)
+        with mock.patch('core.tasks.extract_summary', side_effect=RuntimeError('boom')):
+            analyze_note_content(analysis.pk)
+        analysis.refresh_from_db()
+        self.assertEqual(analysis.status, 'failed')
+        self.assertTrue(analysis.error_message)
+
+    def test_summarize_reports_failure_in_immediate_mode(self):
+        from unittest import mock
+        with mock.patch('core.tasks.extract_summary', side_effect=RuntimeError('boom')):
+            response = self.client.post(reverse('api_note_summarize'), {'content': self.SAMPLE})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'failed')
+        self.assertTrue(data['message'])
+
+    def test_poll_endpoint_reports_failed_with_message(self):
+        from core.models import NoteAnalysis
+        analysis = NoteAnalysis.objects.create(
+            user=self.user, content=self.SAMPLE, status='failed', error_message='Analysis failed — please try again.',
+        )
+        data = self.client.get(reverse('api_note_analysis_status', args=[analysis.analysis_id])).json()
+        self.assertEqual(data['status'], 'failed')
+        self.assertIn('failed', data['message'])
+
+    def test_analysis_endpoints_require_login(self):
+        from core.models import NoteAnalysis
+        self.client.logout()
+        response = self.client.post(reverse('api_note_summarize'), {'content': 'x'})
+        self.assertEqual(response.status_code, 302)
+        analysis = NoteAnalysis.objects.create(user=self.user, content='x')
+        response = self.client.get(reverse('api_note_analysis_status', args=[analysis.analysis_id]))
+        self.assertEqual(response.status_code, 302)
+
+
 class ResearchQueryApiTest(TestCase):
     """POST /api/research/query/ — structured server-side assistant responses."""
 
@@ -4035,6 +4227,30 @@ class BuilderBlockLibraryTest(TestCase):
         self.assertEqual(render('#top'), '#top')
         self.assertEqual(render('javascript:alert(1)'), '#')
         self.assertEqual(render('data:text/html,x'), '#')
+
+    def test_sanitize_html_filter_strips_scripts_and_marks_safe(self):
+        from django.template import Context, Template
+        tpl = Template(
+            "{% load builder_tags %}{{ value|sanitize_html }}"
+        )
+        html = tpl.render(Context({
+            'value': '<b>ok</b><script>alert(1)</script><a href="javascript:x">x</a>',
+        }))
+        self.assertIn('<b>ok</b>', html)
+        self.assertNotIn('<script', html)
+        self.assertNotIn('javascript:', html)
+
+    def test_sanitize_css_filter_blocks_style_breakout(self):
+        from django.template import Context, Template
+        tpl = Template(
+            "{% load builder_tags %}{{ value|sanitize_css }}"
+        )
+        html = tpl.render(Context({
+            'value': '.x{color:red}</style><script>alert(1)</script>',
+        }))
+        self.assertIn('.x{color:red}', html)
+        self.assertNotIn('</style>', html)
+        self.assertNotIn('</script>', html)
 
     def test_structured_block_without_items_renders_empty_state(self):
         self._block(block_type='faq', content_json={'title': 'Empty FAQ'})
@@ -4987,3 +5203,257 @@ class GoogleDriveOAuthTest(TestCase):
         self.assertIn('Not Connected', html)
         self.assertIn('Grant Google Drive Access', html)
         self.assertIn(reverse('google_login'), html)
+
+
+class SecurityAuditTest(TestCase):
+    """Production security audit — settings posture + endpoint authentication.
+
+    Verifies the guarantees a production deployment depends on:
+      * DEBUG hard-defaults to False, and the secure flags (SECURE_SSL_REDIRECT
+        / SESSION_COOKIE_SECURE / CSRF_COOKIE_SECURE / HSTS) turn on only when
+        DEBUG is off — never in dev/test runs,
+      * production mode emits the security response headers,
+      * AUTH_PASSWORD_VALIDATORS are configured and enforced,
+      * every protected endpoint refuses anonymous access,
+      * every public endpoint stays reachable without a session, and
+      * the payment webhooks remain server-to-server reachable (no auth).
+    """
+
+    # ------------------------------------------------------------------
+    # Settings posture (loaded fresh, like a real deploy)
+    # ------------------------------------------------------------------
+    def test_production_settings_force_secure_defaults(self):
+        """Loading the real settings with DEBUG unset (a fresh production
+        deploy) must yield DEBUG=False plus the hardened flags.
+
+        The dev-only gitignored ``.env`` (which forces DEBUG=True) is set
+        aside for the duration so the subprocess sees a genuinely bare
+        environment — the same as CI / Render, where no .env exists.
+        """
+        import os
+        import subprocess
+        import sys
+
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        env_file = os.path.join(project_root, '.env')
+        env_backup = env_file + '.audit.bak'
+        renamed = False
+        if os.path.exists(env_file):
+            os.rename(env_file, env_backup)
+            renamed = True
+        try:
+            code = (
+                "import os, json\n"
+                "os.environ.pop('DEBUG', None)\n"
+                "os.environ.pop('RENDER', None)\n"
+                "os.environ.pop('RENDER_BUILD', None)\n"
+                "os.environ['SECRET_KEY'] = 'audit-test-key'\n"
+                "os.environ['ALLOWED_HOSTS'] = 'audit.example'\n"
+                "os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings'\n"
+                "import django; django.setup()\n"
+                "from django.conf import settings\n"
+                "print(json.dumps({\n"
+                "    'debug': settings.DEBUG,\n"
+                "    'ssl_redirect': settings.SECURE_SSL_REDIRECT,\n"
+                "    'session_secure': settings.SESSION_COOKIE_SECURE,\n"
+                "    'csrf_secure': settings.CSRF_COOKIE_SECURE,\n"
+                "    'hsts': settings.SECURE_HSTS_SECONDS,\n"
+                "    'referrer': settings.SECURE_REFERRER_POLICY,\n"
+                "    'frame': settings.X_FRAME_OPTIONS,\n"
+                "}))\n"
+            )
+            proc = subprocess.run(
+                [sys.executable, '-c', code],
+                capture_output=True, text=True, cwd=project_root,
+            )
+        finally:
+            if renamed:
+                os.rename(env_backup, env_file)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        values = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertFalse(values['debug'])
+        self.assertTrue(values['ssl_redirect'])
+        self.assertTrue(values['session_secure'])
+        self.assertTrue(values['csrf_secure'])
+        self.assertGreaterEqual(values['hsts'], 31536000)
+        self.assertEqual(values['referrer'], 'same-origin')
+        self.assertEqual(values['frame'], 'DENY')
+
+    def test_debug_mode_does_not_force_secure_flags(self):
+        """The hardened flags must never leak into DEBUG=True (dev/tests).
+
+        SECURE_SSL_REDIRECT / SESSION_COOKIE_SECURE / CSRF_COOKIE_SECURE are
+        Django *global defaults* (False / 0) even when undefined, so the
+        assertions check the VALUES: in dev mode they must stay at their
+        insecure Django defaults, never flip to True."""
+        import os
+        import subprocess
+        import sys
+
+        code = (
+            "import os, json\n"
+            "os.environ['DEBUG'] = 'True'\n"
+            "os.environ['SECRET_KEY'] = 'dev-key'\n"
+            "os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings'\n"
+            "import django; django.setup()\n"
+            "from django.conf import settings\n"
+            "print(json.dumps({\n"
+            "    'debug': settings.DEBUG,\n"
+            "    'ssl_redirect': settings.SECURE_SSL_REDIRECT,\n"
+            "    'session_secure': settings.SESSION_COOKIE_SECURE,\n"
+            "    'csrf_secure': settings.CSRF_COOKIE_SECURE,\n"
+            "    'hsts': settings.SECURE_HSTS_SECONDS,\n"
+            "}))\n"
+        )
+        proc = subprocess.run(
+            [sys.executable, '-c', code],
+            capture_output=True, text=True,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        values = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertTrue(values['debug'])
+        self.assertFalse(values['ssl_redirect'])
+        self.assertFalse(values['session_secure'])
+        self.assertFalse(values['csrf_secure'])
+        self.assertEqual(values['hsts'], 0)
+
+    @override_settings(
+        DEBUG=False,
+        ALLOWED_HOSTS=['testserver'],
+        SECURE_SSL_REDIRECT=False,
+        SECURE_PROXY_SSL_HEADER=('HTTP_X_FORWARDED_PROTO', 'https'),
+        SECURE_HSTS_SECONDS=3600,
+        SECURE_HSTS_INCLUDE_SUBDOMAINS=True,
+        SECURE_HSTS_PRELOAD=True,
+        SESSION_COOKIE_SECURE=True,
+        CSRF_COOKIE_SECURE=True,
+    )
+    def test_production_mode_emits_security_headers(self):
+        # HSTS is only emitted on HTTPS responses — the proxy-ssl header makes
+        # the test request count as HTTPS, exactly like Render's TLS terminator.
+        response = self.client.get('/', HTTP_X_FORWARDED_PROTO='https')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response['Strict-Transport-Security'],
+            'max-age=3600; includeSubDomains; preload',
+        )
+        self.assertEqual(response['X-Content-Type-Options'], 'nosniff')
+        self.assertEqual(response['X-Frame-Options'], 'DENY')
+
+    # ------------------------------------------------------------------
+    # Password policy
+    # ------------------------------------------------------------------
+    def test_password_validators_configured_and_enforced(self):
+        from django.conf import settings
+        from django.contrib.auth.password_validation import validate_password
+
+        names = [v['NAME'] for v in settings.AUTH_PASSWORD_VALIDATORS]
+        for expected in (
+            'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+            'django.contrib.auth.password_validation.MinimumLengthValidator',
+            'django.contrib.auth.password_validation.CommonPasswordValidator',
+            'django.contrib.auth.password_validation.NumericPasswordValidator',
+        ):
+            self.assertIn(expected, names)
+
+        # Weak / common / numeric passwords are all rejected…
+        for weak in ('password', '12345678', 'password123', 'qwerty123'):
+            with self.assertRaises(Exception, msg=weak):
+                validate_password(weak)
+        # …while a genuinely strong password passes.
+        validate_password('Niter#2026!StrongPass')
+
+    # ------------------------------------------------------------------
+    # Endpoint authentication matrix
+    # ------------------------------------------------------------------
+    def test_protected_endpoints_redirect_anonymous_users(self):
+        """Every protected endpoint must refuse anonymous callers — bounced to
+        the login page (302) or, for the one JSON endpoint that answers inline
+        (google-unlink), a 401.
+
+        The matrix is exhaustive: every @login_required, @staff_member_required
+        and @change_editablepage_required view in the URLconf is exercised.
+        Decorator guards fire before the view body, so path args are only there
+        to let ``reverse()`` resolve."""
+        cases = [
+            # Student dashboards / account
+            (reverse('settings'), 'GET'),
+            (reverse('profile'), 'GET'),
+            # Notes Engine + Google Drive/Sheets APIs
+            (reverse('api_note_get', args=[1]), 'GET'),
+            (reverse('api_note_save'), 'POST'),
+            (reverse('api_note_summarize'), 'POST'),
+            (reverse('api_note_keywords'), 'POST'),
+            (reverse('api_note_analysis_status', args=['00000000-0000-0000-0000-000000000000']), 'GET'),
+            (reverse('api_note_export'), 'POST'),
+            (reverse('api_upload_note'), 'POST'),
+            (reverse('api_club_sheet_fetch'), 'GET'),
+            (reverse('api_club_sheet_append'), 'POST'),
+            (reverse('api_google_unlink'), 'POST'),
+            # Research AI
+            (reverse('api_research_query'), 'POST'),
+            # Notifications
+            (reverse('api_notifications'), 'GET'),
+            (reverse('api_notification_read', args=[1]), 'POST'),
+            # Campus service actions
+            (reverse('claim_meal_ticket'), 'POST'),
+            (reverse('book_transport_ticket'), 'POST'),
+            (reverse('book_appointment'), 'POST'),
+            (reverse('api_club_join'), 'POST'),
+            # Medical chat (patient) + queue (staff)
+            (reverse('api_medical_chat_threads'), 'GET'),
+            (reverse('api_medical_chat_start'), 'POST'),
+            (reverse('api_medical_chat_messages', args=[1]), 'GET'),
+            (reverse('api_medical_queue'), 'GET'),
+            # Staff dashboards + staff actions
+            (reverse('sys_admin'), 'GET'),
+            (reverse('cafeteria_admin'), 'GET'),
+            (reverse('club_admin'), 'GET'),
+            (reverse('medical_admin_dashboard'), 'GET'),
+            (reverse('host:medical_host_dashboard'), 'GET'),
+            (reverse('api_cafeteria_redeem'), 'POST'),
+            (reverse('api_appointment_status', args=[1]), 'POST'),
+            (reverse('api_club_verify_transaction'), 'POST'),
+            (reverse('api_notices_create'), 'POST'),
+            (reverse('api_admin_update_role'), 'POST'),
+            # Website Builder (permission-gated)
+            (reverse('builder_dashboard'), 'GET'),
+            (reverse('builder_editor', args=['x']), 'GET'),
+            (reverse('visual_editor', args=['x']), 'GET'),
+            (reverse('create_page'), 'POST'),
+            (reverse('save_content_block'), 'POST'),
+            (reverse('save_page_css'), 'POST'),
+            (reverse('builder_blocks_reorder'), 'POST'),
+            (reverse('builder_blocks_save'), 'POST'),
+            (reverse('builder_page_save'), 'POST'),
+            (reverse('builder_block_create'), 'POST'),
+            (reverse('builder_block_delete', args=[1]), 'POST'),
+        ]
+        for url, method in cases:
+            response = getattr(self.client, method.lower())(url)
+            if url == reverse('api_google_unlink'):
+                # Inline 401 (JSON) — the settings page consumes it via fetch.
+                self.assertEqual(response.status_code, 401, url)
+            else:
+                self.assertEqual(response.status_code, 302, url)
+
+    def test_public_endpoints_reachable_anonymously(self):
+        public = [
+            '/', reverse('dashboard'), reverse('tickets'), reverse('medical'),
+            reverse('notes'), reverse('academic_notes'), reverse('notices'),
+            reverse('clubs_dashboard'), reverse('transport_dashboard'),
+            reverse('meal_dashboard'), reverse('checkout'), reverse('research_ai'),
+            reverse('departments'), reverse('signup'), reverse('login'),
+        ]
+        for url in public:
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200, url)
+
+    def test_payment_webhooks_accept_server_to_server_callbacks(self):
+        """Gateway webhooks are intentionally unauthenticated (the gateway has
+        no session) — they must answer a business status, never a redirect."""
+        for url in (reverse('payments_bkash_webhook'), reverse('payments_nagad_webhook')):
+            response = self.client.post(url, {})
+            self.assertNotEqual(response.status_code, 302, url)
+            self.assertIn(response.status_code, (200, 400, 404), url)

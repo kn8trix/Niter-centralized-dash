@@ -421,6 +421,9 @@
         const SUMMARY_URL = '{% url "api_note_summarize" %}';
         const KEYWORDS_URL = '{% url "api_note_keywords" %}';
         const EXPORT_URL = '{% url "api_note_export" %}';
+        // Poll endpoint for a queued analysis — the 0 placeholder is replaced
+        // with the real analysis id (the route expects a UUID).
+        const ANALYSIS_STATUS_URL = '{% url "api_note_analysis_status" "00000000-0000-0000-0000-000000000000" %}';
         // GET /api/notes/<id>/ — the 0 placeholder is swapped for the real id.
         const NOTE_GET_URL = '{% url "api_note_get" 0 %}';
         const LOGIN_URL = '{% url "login" %}?next={{ request.path|urlencode }}';
@@ -467,10 +470,52 @@
                 return null;
             }
             const data = await response.json().catch(() => ({}));
-            if (!response.ok || data.status !== 'success') {
+            // 'queued' is a valid immediate answer — the caller then polls the
+            // analysis status endpoint until the background task finishes.
+            if (!response.ok || (data.status !== 'success' && data.status !== 'queued')) {
                 throw new Error(data.message || 'Action failed (HTTP ' + response.status + ').');
             }
             return data;
+        }
+
+        // Poll a queued analysis (summary/keywords) until it is done.
+        async function pollAnalysis(analysisId, timeoutMs) {
+            const url = ANALYSIS_STATUS_URL.replace(
+                '00000000-0000-0000-0000-000000000000', analysisId
+            );
+            const deadline = Date.now() + (timeoutMs || 20000);
+            while (Date.now() < deadline) {
+                const response = await fetch(url);
+                if (response.redirected) {
+                    // Session expired mid-poll — send them to the login page.
+                    window.location.href = LOGIN_URL;
+                    return null;
+                }
+                const data = await response.json().catch(() => ({}));
+                if (data.status === 'done') return data;
+                if (data.status === 'failed') throw new Error(data.message || 'Analysis failed — please try again.');
+                await new Promise((resolve) => setTimeout(resolve, 700));
+            }
+            throw new Error('Analysis is taking too long — please try again.');
+        }
+
+        // Show a spinner while a background analysis is running.
+        function setAnalyzing(button, on) {
+            button.disabled = on;
+            if (on) {
+                button.dataset.html = button.innerHTML;
+                button.innerHTML =
+                    '<svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                    '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
+                    '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>' +
+                    '<span>Analyzing…</span>';
+            } else {
+                button.disabled = false;
+                if (button.dataset.html) {
+                    button.innerHTML = button.dataset.html;
+                    delete button.dataset.html;
+                }
+            }
         }
 
         // Save Note — updates the loaded note when one is open (note_id set),
@@ -510,27 +555,40 @@
             }
         });
 
-        // Generate AI Summary
+        // Generate AI Summary (background queue + polling)
         document.getElementById('ai-summary-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('ai-summary-btn');
+            setAnalyzing(btn, true);
+            previewSrc.textContent = 'Analyzing: ' + (titleInput.value.trim() || 'Untitled Note');
             try {
                 const data = await postForm(SUMMARY_URL, { content: contentArea.value });
                 if (!data) return;
-                const summary = data.summary || '(No summary — the note may be too short.)';
+                const result = data.status === 'success' ? data : await pollAnalysis(data.analysis_id);
+                if (!result) return;
+                const summary = result.summary || '(No summary — the note may be too short.)';
                 previewSrc.textContent = 'Generated from: ' + (titleInput.value.trim() || 'Untitled Note');
                 previewBody.innerHTML =
                     '<p class="text-main/80"><strong>Summary:</strong> ' + escapeHtml(summary) + '</p>';
                 showToast('Summary generated ✓', true);
             } catch (err) {
                 showToast(err.message, false);
+                previewSrc.textContent = 'Ready — pick an action above.';
+            } finally {
+                setAnalyzing(btn, false);
             }
         });
 
-        // Extract Keywords
+        // Extract Keywords (background queue + polling)
         document.getElementById('keywords-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('keywords-btn');
+            setAnalyzing(btn, true);
+            previewSrc.textContent = 'Analyzing: ' + (titleInput.value.trim() || 'Untitled Note');
             try {
                 const data = await postForm(KEYWORDS_URL, { content: contentArea.value });
                 if (!data) return;
-                const chips = (data.keywords || []).map(k =>
+                const result = data.status === 'success' ? data : await pollAnalysis(data.analysis_id);
+                if (!result) return;
+                const chips = (result.keywords || []).map(k =>
                     '<span class="inline-block bg-base border border-border rounded-full px-3 py-1 text-xs font-medium text-main">' + escapeHtml(k) + '</span>'
                 ).join(' ') || 'No keywords found.';
                 previewSrc.textContent = 'Keywords extracted from: ' + (titleInput.value.trim() || 'Untitled Note');
@@ -538,6 +596,9 @@
                 showToast('Keywords extracted ✓', true);
             } catch (err) {
                 showToast(err.message, false);
+                previewSrc.textContent = 'Ready — pick an action above.';
+            } finally {
+                setAnalyzing(btn, false);
             }
         });
 

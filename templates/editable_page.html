@@ -22,9 +22,9 @@
     <!-- FontAwesome icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 
-    {% if page.custom_css %}
-    <!-- Theme style overrides authored in the Website Builder -->
-    <style>{{ page.custom_css|safe }}</style>
+    {% if custom_css %}
+    <!-- Theme style overrides authored in the Website Builder (break-out-guarded) -->
+    <style>{{ custom_css|safe }}</style>
     {% endif %}
 </head>
 
@@ -46,8 +46,9 @@
         </header>
 
         <!-- ============================================================
-             Content blocks — admin-authored HTML rendered as-is
-             (same trust model as the Django admin)
+             Content blocks — saved HTML re-run through the shared allow-list
+             sanitizer at render time (scripts / event handlers / unsafe URL
+             schemes never reach the page, even from pre-sanitizer rows)
         ============================================================ -->
         <main class="blocks" id="page-blocks">
             {% for block in blocks %}

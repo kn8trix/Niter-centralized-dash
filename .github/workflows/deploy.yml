@@ -1,58 +1,75 @@
 name: Deploy
 
-# Automated production deployment on push to `main`.
+# Production deployment gated by the test suite.
 #
-# Flow: tests already passed on this commit (CI) → SSH into the production
-# server → git pull → install deps → migrate → collectstatic → reload the
-# gunicorn/daphne service (scripts/deploy.sh on the server).
+# Flow: on every push to `main` (or a manual `workflow_dispatch` run) the job
+# installs dependencies, runs `python manage.py check` and `python manage.py
+# test`, and — only if every test passes — triggers the Render deploy hook.
 #
-# No-op until the repository secrets below are configured in
-# Settings → Secrets and variables → Actions:
-#   DEPLOY_HOST   — production server hostname/IP
-#   DEPLOY_USER   — SSH user (must have an authorized deploy key)
-#   DEPLOY_KEY    — private SSH key (add the public half to ~/.ssh/authorized_keys)
-#   DEPLOY_PORT   — SSH port (optional, defaults to 22)
-#   DEPLOY_PATH   — absolute path of the app checkout on the server
+# render.yaml sets `autoDeploy: false`, so this webhook is the ONLY path to
+# production: a red test suite means no deploy.
 #
-# The reload targets a systemd unit whose name matches the repo (override via
-# the DEPLOY_SERVICE_NAME secret). Example unit:
-#   [Service]
-#   WorkingDirectory=<DEPLOY_PATH>
-#   ExecStart=<DEPLOY_PATH>/venv/bin/daphne -b 127.0.0.1 -p 8000 config.asgi:application
-#   Restart=always
-#   User=<DEPLOY_USER>
-#
-# NOTE: if the live service is Render (render.yaml Blueprint), Render already
-# auto-deploys on push — this workflow is for a self-hosted gunicorn/daphne
-# server and simply skips when DEPLOY_HOST is not configured.
+# Required repository secret (Settings → Secrets and variables → Actions):
+#   RENDER_DEPLOY_HOOK_URL — deploy hook URL from Render → your web service →
+#   Settings → Deploy Hook (https://api.render.com/deploy/srv-<id>?key=<key>).
+#   The final step fails loudly if the secret is missing so the gate is never
+#   silently unconfigured.
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: Deploy to production
+  test-and-deploy:
+    name: Test then deploy to Render
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run remote deploy script
-        if: secrets.DEPLOY_HOST != ''
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          port: ${{ secrets.DEPLOY_PORT || 22 }}
-          script: |
-            set -e
-            echo "==> Pulling latest main"
-            cd ${{ secrets.DEPLOY_PATH }}
-            git pull --ff-only origin main
-            echo "==> Running versioned deploy script (migrate + collectstatic + reload)"
-            bash scripts/deploy.sh
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Django system check
+        run: python manage.py check
+        env:
+          DEBUG: "true"
+          SECRET_KEY: ci-check-key
+
+      - name: Run test suite
+        run: python manage.py test
+        env:
+          DEBUG: "true"
+          SECRET_KEY: ci-test-key
+
+      - name: Trigger Render deploy (only if all tests passed)
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::error::RENDER_DEPLOY_HOOK_URL secret is not set — add it from Render → Web Service → Settings → Deploy Hook. Deploys are paused until then."
+            exit 1
+          fi
+          echo "==> POSTing to Render deploy hook"
+          http_code=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --request POST \
+            --max-time 60 \
+            "$RENDER_DEPLOY_HOOK_URL")
+          echo "==> Render deploy hook responded with HTTP $http_code"
+          # 2xx = deploy accepted; 409 = a deploy is already in progress
+          # (e.g. a manual dashboard deploy) — neither is a failure.
+          case "$http_code" in
+            2*|409) echo "==> Render deploy triggered (see Render dashboard for build progress)" ;;
+            *) echo "::error::Render deploy hook failed with HTTP $http_code"; exit 1 ;;
+          esac

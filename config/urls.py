@@ -12,6 +12,9 @@ urlpatterns = [
     path('medical/admin/', medical_admin_dashboard, name='medical_admin_dashboard'),
     path('host/', include('host.urls')),
 
+    # bKash / Nagad payment webhooks (server-to-server)
+    path('payments/', include('payments.urls')),
+
     # Authentication
     path('login/', auth_views.LoginView.as_view(
         template_name='login.html',

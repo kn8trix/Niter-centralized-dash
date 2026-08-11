@@ -1,3 +1,6 @@
+import secrets as _secrets
+import uuid
+
 from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
@@ -480,13 +483,43 @@ class MealSubscription(models.Model):
         return 'Meal subscription - %s' % self.user.username
 
 
+# --- Payment-gated entitlement helpers ----------------------------------------
+# Shared by the instant (free) flow in core.views and the paid flow in
+# payments.services — one source of truth for the token formats.
+
+def generate_meal_token():
+    """Return an unused ``#MEAL-XXXX`` token (4 random digits)."""
+    for _ in range(50):
+        token = '#MEAL-%04d' % _secrets.randbelow(10000)
+        if not MealTicket.objects.filter(ticket_token=token).exists():
+            return token
+    raise RuntimeError('Could not allocate a unique meal token')
+
+
+def generate_qr_token():
+    """Return a random boarding-pass QR token, e.g. ``TR-4F2A1C``."""
+    return 'TR-' + _secrets.token_hex(3).upper()
+
+
 class MealTicket(models.Model):
-    """A single redeemable meal token claimed against a MealSubscription."""
+    """A single redeemable meal token claimed against a MealSubscription.
+
+    In the paid flow the ticket starts ``pending`` with no ``ticket_token``;
+    the bKash / Nagad SUCCESS callback (``payments.services.fulfill_payment_order``)
+    flips it to ``paid`` and generates the token. The instant (free) claim
+    flow records the ticket as ``paid`` (entitled) immediately.
+    """
 
     MEAL_TYPE_CHOICES = [
         ('breakfast', 'Breakfast'),
         ('lunch', 'Lunch'),
         ('dinner', 'Dinner'),
+    ]
+
+    PAYMENT_STATUS_CHOICES = [
+        ('pending', 'Pending payment'),
+        ('paid', 'Paid / entitled'),
+        ('failed', 'Payment failed'),
     ]
 
     user = models.ForeignKey(
@@ -499,7 +532,9 @@ class MealTicket(models.Model):
     ticket_token = models.CharField(
         max_length=20,
         unique=True,
-        help_text='Format e.g. #MEAL-XXXX',
+        null=True,
+        blank=True,
+        help_text='Format e.g. #MEAL-XXXX — generated when the ticket is activated (instant claim or payment confirmed)',
     )
     is_redeemed = models.BooleanField(default=False, db_index=True)
     claimed_at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -507,6 +542,26 @@ class MealTicket(models.Model):
         null=True,
         blank=True,
         help_text='When the cafeteria counter redeemed this ticket',
+    )
+    payment_status = models.CharField(
+        max_length=10,
+        choices=PAYMENT_STATUS_CHOICES,
+        default='pending',
+        db_index=True,
+        help_text='Paid-flow gating: pending until the gateway SUCCESS callback; instant claims record paid.',
+    )
+    paid_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When this ticket was activated (instant claim or payment confirmed)',
+    )
+    payment_order = models.OneToOneField(
+        'payments.PaymentOrder',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='meal_ticket',
+        help_text='The payment order that activated this ticket (paid flow)',
     )
 
     class Meta:
@@ -521,7 +576,16 @@ class TransportBooking(models.Model):
 
     ``unique_together`` makes the DB itself the seat-availability arbiter:
     two requests racing for the same (route, time, seat) can only win once.
+
+    In the paid flow the booking starts ``pending`` with no ``qr_token``;
+    the bKash / Nagad SUCCESS callback activates it (PAID + QR code).
     """
+
+    PAYMENT_STATUS_CHOICES = [
+        ('pending', 'Pending payment'),
+        ('paid', 'Paid / entitled'),
+        ('failed', 'Payment failed'),
+    ]
 
     user = models.ForeignKey(
         User,
@@ -532,8 +596,34 @@ class TransportBooking(models.Model):
     route_name = models.CharField(max_length=100, db_index=True)
     departure_time = models.CharField(max_length=50)
     seat_number = models.IntegerField(help_text='Seats 1 to 40')
-    qr_token = models.CharField(max_length=50, unique=True)
+    qr_token = models.CharField(
+        max_length=50,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text='Boarding QR code — generated when the booking is activated (instant book or payment confirmed)',
+    )
     booked_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    payment_status = models.CharField(
+        max_length=10,
+        choices=PAYMENT_STATUS_CHOICES,
+        default='pending',
+        db_index=True,
+        help_text='Paid-flow gating: pending until the gateway SUCCESS callback; instant bookings record paid.',
+    )
+    paid_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When this booking was activated (instant book or payment confirmed)',
+    )
+    payment_order = models.OneToOneField(
+        'payments.PaymentOrder',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transport_booking',
+        help_text='The payment order that activated this booking (paid flow)',
+    )
 
     class Meta:
         # One seat per route + departure time — prevents duplicate assignments.
@@ -1067,6 +1157,51 @@ class UserNote(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class NoteAnalysis(models.Model):
+    """A queued/extracted analysis of note content (Huey background task).
+
+    ``note_summary`` / ``note_keywords`` create a row, enqueue
+    ``core.tasks.analyze_note_content`` and answer immediately (either inline
+    in Huey's immediate mode, or a ``queued`` response the frontend polls via
+    ``/api/notes/analysis/<id>/``). The worker fills in ``summary``,
+    ``keywords`` and ``sentence_count`` off the HTTP request path.
+    """
+
+    STATUS_CHOICES = [
+        ('queued', 'Queued'),
+        ('processing', 'Processing'),
+        ('done', 'Done'),
+        ('failed', 'Failed'),
+    ]
+
+    analysis_id = models.UUIDField(unique=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='note_analyses',
+        db_index=True,
+    )
+    content = models.TextField(blank=True, default='')
+    summary = models.TextField(blank=True, default='')
+    keywords = models.JSONField(default=list, blank=True)
+    sentence_count = models.PositiveIntegerField(default=0)
+    status = models.CharField(
+        max_length=12,
+        choices=STATUS_CHOICES,
+        default='queued',
+        db_index=True,
+    )
+    error_message = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return '%s · %s' % (self.analysis_id, self.status)
 
 
 # ----------------------------------------------------------------------------

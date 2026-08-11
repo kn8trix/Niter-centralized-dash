@@ -2568,3 +2568,132 @@ Drive status shown on the Account & Google settings tab.
   created the card flips to "Connected: Google Drive access granted", the
   helper returns credentials with the Drive scope, and ``GoogleUserToken``
   is mirrored; all cleaned up after the check.
+
+## 58. Payments Webhooks, Background Queue, Builder XSS Hardening & Security Audit
+
+**Date:** 11 August 2026  
+**Branch:** main
+
+### Overview
+
+Five workstreams shipped in one release: the Render/CI deployment fix, a
+payments app connecting bKash/Nagad webhooks to the transport + meal models,
+a Huey background queue for note analysis, render-time XSS hardening for the
+Website Builder, and a production security audit with tests.
+
+### 1. Deployment setup fix (Render + CI)
+
+- **`render.yaml`** — web service build runs collectstatic + migrate cleanly
+  (WhiteNoise), gunicorn/daphne deps specified, managed Postgres + Redis wired
+  into `DATABASE_URL`/`REDIS_URL`; a new **worker service** runs the Huey
+  consumer (`manage.py run_huey`).
+- **`.github/workflows/deploy.yml`** — the workflow now runs `python manage.py
+  test` before triggering the Render deploy webhook, so broken builds never
+  ship.
+- **`requirements.txt`** — pinned the channels/daphne implicit deps
+  (`asgiref`, `autobahn`, `twisted[tls]`), plus `whitenoise`, `psycopg2-binary`
+  and `huey[django-redis]`.
+- **`.gitattributes`** — `*.sh text eol=lf` so a Windows CRLF checkout never
+  corrupts the `build.sh` shebang on Render's Linux builder.
+
+### 2. Payments app — bKash/Nagad webhooks (auto-activate paid tickets)
+
+- **New `payments/` app.** `PaymentOrder`: provider (bKash/Nagad),
+  amount/currency, unique `PINV-XXXXXX` merchant invoice id, status
+  (`pending/paid/failed/cancelled`), indexed `provider_transaction_id`,
+  raw-callback audit JSON, and a **generic link to the purchased item**
+  (TransportBooking or MealTicket) with a one-order-per-item constraint.
+- **`payments/services.py`** — `create_payment_order` (idempotent,
+  race-safe), `fulfill_payment_order` — the SUCCESS connector: order → paid,
+  linked ticket/booking → **PAID**, active `#MEAL-XXXX` / `TR-XXXXXX` code
+  generated, real-time notification pushed (deferred via `on_commit`).
+- **`payments/views.py`** — CSRF-exempt webhooks `POST
+  /payments/webhook/bkash/` (GET callback + JSON/form payloads) and
+  `/payments/webhook/nagad/` (sha256 signature verified); order matched by
+  invoice then provider ids; **amount verified**; failure-after-success can
+  never undo a payment; unknown order → 404, cross-provider/mismatch → 400.
+- **`simulate_payment_callback`** management command — end-to-end callback
+  testing with no merchant credentials.
+- **Core integration** — `MealTicket`/`TransportBooking` tokens are now
+  nullable until activation plus `payment_status`/`paid_at`/`payment_order`;
+  `claim_meal`/`book_transport` accept an optional `payment_method`+`amount`
+  (created PENDING, activated by the webhook). Migration **0023** backfills
+  pre-existing rows as paid; the free instant flow is untouched. Invalid
+  amounts → 400.
+- **Caveats (documented in the webhook docstrings):** bKash callbacks carry
+  no signature (trusted + amount-checked until the status API is wired with
+  credentials) and the Nagad sha256 "signature" is tamper-evidence, not
+  authentication — production should confirm via Nagad's verify API (reserved
+  `BKASH_*`/`NAGAD_*` env vars).
+
+### 3. Huey background task queue (async note analysis)
+
+- **`huey[django-redis]>=2.5,<3.0`** added; `HUEY` settings driven by the same
+  `REDIS_URL` as the channel layer — `immediate: True` while `DEBUG` or no
+  Redis (dev/tests run synchronously), Redis queue in production;
+  `huey.contrib.djhuey` registers `manage.py run_huey`.
+- **`core/notes_analysis.py`** (extractors moved out of views) + **
+  `core/tasks.py`** (`analyze_note_content` db_task — idempotent, failure →
+  `failed`) + **`NoteAnalysis`** model (migration **0024**) with admin.
+- **`note_summary`/`note_keywords`** now create a row, enqueue, and return
+  instantly (`queued` + `analysis_id`); owner-scoped poll endpoint **`GET
+  /api/notes/analysis/<uuid>/`**; `notes_engine.html` buttons show spinners
+  and poll every 700 ms.
+- **`render.yaml`** — `niter-centralized-dash-worker` service (`run_huey`).
+- **Channel layer verified:** already reads `REDIS_URL` via `env()` with a
+  graceful in-memory fallback — no change needed.
+
+### 4. Website Builder — render-time XSS hardening + `/pages/` routing
+
+- **New `core/block_sanitizer.py`** — the HTML/CSS allow-list sanitizer
+  (moved out of `views.py`) is now the single source of truth, applied at
+  **save time** (builder API) and **render time** (live page + template tag).
+  `sanitize_css` also strips `<style>`/`<script>` opening tokens.
+- **`render_block_html`** re-sanitizes every raw `content_html` path, so a
+  pre-sanitizer row or admin-edited block can never ship scripts/event
+  handlers; new **`sanitize_html` / `sanitize_css` template filters**;
+  `custom_css` is re-guarded before its `|safe` injection; `_style_attr`
+  relies on Django autoescaping (quotes become `&quot;` — no attribute
+  breakout). Structured-block partials (which embed trusted inline JS for the
+  stats/testimonial animations) are deliberately **not** sanitized — locked
+  in by a regression test.
+- **New public route** `GET /pages/<slug>/` (`editable_page_public`) alongside
+  the legacy `/page/<slug>/`; published pages are public, drafts 404 for
+  everyone except builders.
+- No new dependency — reuses the project's existing tested sanitizer instead
+  of adding bleach.
+
+### 5. Production security audit
+
+- **Verified (now proven by tests):** `DEBUG` hard-defaults to `False`;
+  `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, HSTS
+  (1 year + subdomains + preload), `SECURE_PROXY_SSL_HEADER` and
+  `X_FRAME_OPTIONS=DENY` all activate only when `DEBUG=False`; `.env.example`
+  documents them.
+- **Gap fixed — `AUTH_PASSWORD_VALIDATORS` was missing** (Django's default is
+  empty). Added the four standard validators (similarity, min-length 8,
+  common-password, numeric); they apply to allauth signup, the password-
+  change form, and `createsuperuser`.
+- **Endpoint audit** (this project uses function views + decorators, not DRF):
+  every protected endpoint is guarded — 21 `@login_required`, 10
+  `@staff_member_required`, 11 builder-permission-gated
+  (`@change_editablepage_required`), 1 `@superuser_required`. The payment
+  webhooks are the documented unauthenticated exception (server-to-server,
+  signature/amount-checked); `google_unlink` answers an inline **401** rather
+  than a redirect so the settings page's `fetch()` works.
+- **New `SecurityAuditTest` (7 tests):** bare-environment settings load
+  (DEBUG unset → False + all secure flags; the gitignored dev `.env` is
+  temporarily set aside), DEBUG=True never forces the secure flags,
+  production security headers (HSTS/nosniff/X-Frame-Options), password-
+  validator enforcement, an **exhaustive 45-endpoint anonymous-access
+  matrix**, and webhook reachability (never a login redirect).
+
+### Verification
+
+- Full suite: **501 tests pass** (447 at the start of this session) ·
+  `manage.py check` clean · migrations 0023/0024 + payments 0001/0002
+  applied.
+- End-to-end verified: bKash SUCCESS → order `paid`, booking `paid` with QR
+  generated; Nagad FAILURE → order `failed`, ticket stays `pending` with no
+  code; Huey task path in immediate mode; builder pages neutralize legacy XSS
+  payloads at render time.
