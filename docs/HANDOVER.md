@@ -2885,3 +2885,62 @@ per-user account row (`UserNotificationPreference`) + device `localStorage`.
 - New `UserTimezoneMiddlewareTest` (2) — timezone activated during the
   request for a UTC-pref user; anonymous requests untouched.
 - Full suite — **517 tests OK** · `manage.py check` clean.
+
+---
+
+## 61. Dark-Mode Hero Glow Fix — No More White Corner Blobs
+
+**Date:** 11 August 2026
+
+### Overview
+
+In dark mode the standalone service pages (dashboard, meals, transport,
+medical, notes, notices, profile, clubs, departments, settings, research AI,
+checkout, auth, builder, admin consoles, …) showed bright **white/cream
+blobs** at the top of the page. Root cause: every standalone page paints a
+pair of warm-cream `radial-gradient` layers on `<body>` as a soft hero glow
+(e.g. `rgba(232, 226, 216, 0.55)` top-right and `rgba(240, 235, 225, 0.6)`
+top-left). Those hardcoded cream values stay bright when the page background
+(`--bg-main`) flips to `#18181b` in dark mode.
+
+### The fix — `static/css/theme.css`
+
+Added a **centralized dark-mode override** (in the existing dark-theme
+repair section) that swaps the cream glows for faint amber tints while
+preserving their corner position and softness — the glows are kept, but they
+no longer glare:
+
+```css
+html[data-theme='dark'] body.dashboard,
+html[data-theme='dark'] body.landing,
+html[data-theme='dark'] body.auth,
+… /* every standalone page body class */
+html[data-theme='dark'] .canvas-wrap {
+    background:
+        radial-gradient(1000px 520px at 85% -10%, rgba(217, 119, 6, 0.06), transparent 60%),
+        radial-gradient(800px 420px at 5% 12%, rgba(180, 83, 9, 0.07), transparent 55%),
+        var(--bg-main);
+}
+
+html[data-theme='dark'] .cta-block {
+    background:
+        radial-gradient(520px 300px at 15% 0%, rgba(255, 255, 255, 0.08), transparent 60%),
+        linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
+}
+```
+
+- Covered body classes: `body.dashboard`, `body.landing`, `body.auth`,
+  `body.profile`, `body.medical`, `body.notes`, `body.notices`, `body.meals`,
+  `body.transport`, `body.clubs`, `body.dept-detail`, `body.settings`,
+  `body.research`, `body.checkout`, `body.builder`, `body.editable-page`,
+  `body.sys-admin`, `body.cafeteria-admin`, `body.club-admin`, plus the
+  builder editor canvas (`.canvas-wrap`) and the editable-page CTA highlight
+  (`.cta-block`).
+- Chose one central place (`theme.css`, loaded first on **every** page) over
+  editing 17 page stylesheets — matches the existing dark-mode repair
+  convention; light mode is untouched.
+
+### Tests
+
+- Full suite — **517 tests OK** · `manage.py check` clean · CSS braces
+  balanced.
