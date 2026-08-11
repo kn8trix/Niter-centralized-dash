@@ -7,6 +7,8 @@
     <title>Academic Notes — Niter Hub</title>
     <meta name="description" content="Search, view, and organize lecture materials, notes, and study guides for your courses.">
 
+    {% include 'partials/pwa_head.html' %}
+
     <!-- Global design tokens -->
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
     <!-- Shared top navigation -->
@@ -162,5 +164,8 @@
             applyFilters();
         })();
     </script>
+
+    <!-- PWA service worker registration (offline caching) -->
+    <script src="{% static 'js/pwa-register.js' %}" defer></script>
 </body>
 </html>

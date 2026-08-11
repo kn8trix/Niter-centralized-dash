@@ -2588,7 +2588,9 @@ class CreateNoticeApiTest(TestCase):
         self.assertEqual(response.status_code, 405)
 
     def test_creates_published_notice_and_notifies_all_users(self):
-        with mock.patch('core.views.notify_user') as mock_push:
+        # The broadcast now runs as a Huey task (synchronous in immediate mode),
+        # so the push helper is patched where the task lives.
+        with mock.patch('core.tasks.notify_user') as mock_push:
             response = self._post()
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -5457,3 +5459,42 @@ class SecurityAuditTest(TestCase):
             response = self.client.post(url, {})
             self.assertNotEqual(response.status_code, 302, url)
             self.assertIn(response.status_code, (200, 400, 404), url)
+
+
+class PwaTests(TestCase):
+    """PWA surface — web app manifest, service worker, template wiring."""
+
+    def test_manifest_exposes_installable_metadata(self):
+        response = self.client.get(reverse('pwa_manifest'))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['start_url'], '/dashboard/')
+        self.assertEqual(data['background_color'], '#FBF9F5')
+        self.assertEqual(data['theme_color'], '#EADCC9')
+        self.assertEqual(data['display'], 'standalone')
+        sizes = {icon['sizes'] for icon in data['icons']}
+        self.assertIn('192x192', sizes)
+        self.assertIn('512x512', sizes)
+
+    def test_service_worker_served_with_origin_scope(self):
+        response = self.client.get(reverse('service_worker'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/javascript')
+        self.assertEqual(response['Service-Worker-Allowed'], '/')
+        body = response.content.decode()
+        # The two offline routes + core CSS are precached by the worker.
+        self.assertIn('/academic-notes/', body)
+        self.assertIn('/transport/', body)
+        self.assertIn('/static/css/theme.css', body)
+
+    def test_dashboard_shell_links_manifest_and_registers_worker(self):
+        html = self.client.get(reverse('dashboard')).content.decode()
+        self.assertIn('rel="manifest" href="/manifest.json"', html)
+        self.assertIn('pwa-register.js', html)
+        self.assertIn('theme-color', html)
+
+    def test_offline_routes_link_manifest_and_register_worker(self):
+        for url in (reverse('academic_notes'), reverse('transport_dashboard')):
+            html = self.client.get(url).content.decode()
+            self.assertIn('rel="manifest" href="/manifest.json"', html)
+            self.assertIn('pwa-register.js', html)

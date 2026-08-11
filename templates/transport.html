@@ -7,6 +7,8 @@
     <title>Transport Tickets — Niter Hub</title>
     <meta name="description" content="Book campus transport seats online — routes, schedules, and digital boarding passes.">
 
+    {% include 'partials/pwa_head.html' %}
+
     <!-- Global design tokens -->
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
     <!-- Shared top navigation -->
@@ -458,5 +460,8 @@
         renderTimeChips();
         renderSeats();
     </script>
+
+    <!-- PWA service worker registration (offline caching) -->
+    <script src="{% static 'js/pwa-register.js' %}" defer></script>
 </body>
 </html>

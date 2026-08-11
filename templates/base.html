@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Dashboard{% endblock %}</title>
+
+    {% include 'partials/pwa_head.html' %}
     
     <!-- Global Design Tokens (theme.css) — single source of truth for colors, fonts, radii -->
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
@@ -268,5 +270,8 @@
             link.addEventListener('click', () => setSidebar(false));
         });
     </script>
+
+    <!-- PWA service worker registration (offline caching) -->
+    <script src="{% static 'js/pwa-register.js' %}" defer></script>
 </body>
 </html>

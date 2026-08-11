@@ -2697,3 +2697,87 @@ Website Builder, and a production security audit with tests.
   generated; Nagad FAILURE → order `failed`, ticket stays `pending` with no
   code; Huey task path in immediate mode; builder pages neutralize legacy XSS
   payloads at render time.
+
+---
+
+## 59. PWA Shell, Bleach Sanitizer Upgrade, Notice Broadcast Task & Versioned Payment Callback
+
+**Date:** 11 August 2026  
+**Branch:** main
+
+### Overview
+
+Five follow-ups landed after §58: an installable **PWA shell** (manifest +
+service worker + offline caching), the builder HTML sanitizer rebuilt on
+**bleach**, notice fan-out moved to a **Huey background task**, a **versioned
+generic payment callback** plus a `simulate_payment` command alias, and
+horizontal-scroll wrappers for the wide admin tables.
+
+### 1. PWA shell (`manifest.json`, `/sw.js`, offline caching)
+
+- **`GET /manifest.json`** (`pwa_manifest`, `core/urls.py` + `core/views.py`)
+  — Web App Manifest with `start_url: /dashboard/`, `scope: /`, standalone
+display, brand palette (`#FBF9F5` / `#EADCC9`), and 192/512 icons.
+- **`GET /sw.js`** (`service_worker_view`) — serves `static/js/sw.js` from
+the origin root with `Service-Worker-Allowed: /` and `Cache-Control:
+no-cache` (never stale).
+- **`static/js/sw.js`** — versioned cache (`niterhub-v1`): precaches the app
+shell + core CSS + icons; network-first for navigations with a cached
+fallback (falls back to the cached dashboard); stale-while-revalidate for
+static; old caches purged on activate. **Bump `VERSION` when the precache
+list changes.**
+- **`static/js/pwa-register.js`** — deferred `register('/sw.js')` on `load`;
+failures log a warning, never fatal.
+- **`templates/partials/pwa_head.html`** — manifest link, `theme-color`,
+mobile-web-app / apple-touch meta + `icon-180/192/512` links. Included in
+`base.html`, `dashboard/home.html`, `index.html`, `academic/notes.html` and
+`transport.html` (each also loads `pwa-register.js`).
+- **`scripts/generate_pwa_icons.py`** — stdlib-only (struct + zlib) PNG
+renderer for the rounded-square "N" badge in the brand palette; writes
+`static/pwa/icon-{180,192,512}.png`.
+
+### 2. Builder sanitizer rebuilt on bleach
+
+- **`core/block_sanitizer.py`** — the hand-rolled `html.parser` allow-list
+sink is replaced with **`bleach.clean`** (allow-listed tags/attrs + the same
+`SAFE_URL_SCHEMES`), keeping save-time and render-time behaviour identical.
+`<script>`/`<style>` blocks are pre-dropped **in full** (content included) so
+an injected script never leaks its text onto the page.
+- **`requirements.txt`** — `bleach>=6.0,<7.0` added (supersedes §58's note
+that no new dependency was introduced).
+
+### 3. Notice broadcast → Huey background task
+
+- **`core/tasks.py`** — new `broadcast_notice(notice_id, bell_category)`
+`db_task` fans out the per-user `Notification` rows + live WebSocket pushes
+off the request path (returns the created count).
+- **`create_notice` (`core/views.py`)** — enqueues the task (Huey queues it
+in production when Redis is present; runs synchronously in immediate mode,
+where the view uses the task's return value as the exact `notified` count).
+Response gains `broadcast: sent|queued|none`.
+
+### 4. Versioned generic payment callback
+
+- **`POST/GET /api/v1/payments/callback/<gateway>/`**
+  (`gateway_callback`, `payments/urls.py` + `payments/views.py`) — thin
+CSRF-exempt dispatcher over the existing bKash/Nagad handlers; unknown
+gateways answer 404, cross-provider callbacks stay rejected (400).
+- **`payments/management/commands/simulate_payment.py`** — alias for
+`simulate_payment_callback` so dev tooling can use the shorter name.
+
+### 5. Admin table overflow fixes
+
+- `sys_admin.html`, `club_admin.html`, `cafeteria_admin.html`, `clubs.html`
+— every admin `<table>` is now wrapped in `.overflow-x-auto` so wide tables
+scroll horizontally on small screens instead of overflowing the page.
+
+### Tests
+
+- New `PwaTests` (`core/tests.py`, 4): manifest metadata/icons, service
+worker headers + precache contents, dashboard/offline-route PWA wiring.
+- New `GatewayCallbackApiTests` (`payments/tests.py`, 4): bKash/Nagad
+success through the generic route, unknown gateway 404, cross-provider 400.
+- `CreateNoticeApiTest` updated to patch `core.tasks.notify_user` (the
+broadcast push now lives in the task module).
+- Full suite — **509 tests OK** · `manage.py check` clean · `node --check`
+clean on all JS (incl. `sw.js` / `pwa-register.js`) · PNG icons validated.

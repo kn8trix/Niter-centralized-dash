@@ -93,6 +93,23 @@ def _process_callback(order, status, provider_transaction_id, amount_raw, raw_pa
 
 @csrf_exempt
 @require_http_methods(['GET', 'POST'])
+def gateway_callback(request, gateway):
+    """Generic gateway callback endpoint — ``/api/v1/payments/callback/<gateway>/``.
+
+    Thin dispatcher over the bKash / Nagad handlers so the public API surface
+    matches the versioned ``/api/v1/...`` convention; any other gateway name
+    answers 404. Payloads and behaviour are identical to the per-gateway
+    endpoints (``/payments/webhook/<gateway>/``).
+    """
+    if gateway == 'bkash':
+        return bkash_callback(request)
+    if gateway == 'nagad':
+        return nagad_callback(request)
+    return JsonResponse({'status': 'error', 'message': 'Unknown gateway'}, status=404)
+
+
+@csrf_exempt
+@require_http_methods(['GET', 'POST'])
 def bkash_callback(request):
     """bKash payment callback / webhook.
 

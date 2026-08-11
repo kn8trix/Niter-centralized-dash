@@ -7,6 +7,8 @@
     <title>CampusDash — Public University Information &amp; Medical Services</title>
     <meta name="description" content="CampusDash — public university information, academic departments, and medical services system.">
 
+    {% include 'partials/pwa_head.html' %}
+
     <!-- Global design tokens -->
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
     <!-- Public homepage warm light theme styles -->
@@ -371,5 +373,8 @@
         window.addEventListener('scroll', onScroll, { passive: true });
         onScroll();
     </script>
+
+    <!-- PWA service worker registration (offline caching) -->
+    <script src="{% static 'js/pwa-register.js' %}" defer></script>
 </body>
 </html>

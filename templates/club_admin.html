@@ -62,10 +62,10 @@
             {% endif %}
 
             <div class="table-wrap sheet-table-wrap" id="sheet-table-wrap" hidden>
-                <table id="sheet-table">
+                <div class="overflow-x-auto"><table id="sheet-table">
                     <thead id="sheet-thead"></thead>
                     <tbody id="sheet-tbody"></tbody>
-                </table>
+                </table></div>
             </div>
 
             <!-- Verify transaction / add member -->
@@ -106,7 +106,7 @@
             <h2 class="section-title"><i class="fa-solid fa-user-check"></i> Member Approvals</h2>
             <p class="section-subtitle">Students waiting for club membership approval.</p>
             <div class="table-wrap">
-                <table>
+                <div class="overflow-x-auto"><table>
                     <thead>
                         <tr>
                             <th>Name</th>
@@ -132,7 +132,7 @@
                         </tr>
                         {% endfor %}
                     </tbody>
-                </table>
+                </table></div>
             </div>
         </div>
 
@@ -143,7 +143,7 @@
             <h2 class="section-title"><i class="fa-solid fa-user-tag"></i> Role Assignments</h2>
             <p class="section-subtitle">Set or change roles for club executives and members.</p>
             <div class="table-wrap">
-                <table>
+                <div class="overflow-x-auto"><table>
                     <thead>
                         <tr>
                             <th>Member</th>
@@ -170,7 +170,7 @@
                         </tr>
                         {% endfor %}
                     </tbody>
-                </table>
+                </table></div>
             </div>
         </div>
 
@@ -217,7 +217,7 @@
             </form>
 
             <div class="table-wrap events-table">
-                <table>
+                <div class="overflow-x-auto"><table>
                     <thead>
                         <tr>
                             <th>Event</th>
@@ -236,7 +236,7 @@
                         </tr>
                         {% endfor %}
                     </tbody>
-                </table>
+                </table></div>
             </div>
         </div>
 
@@ -277,7 +277,7 @@
             <div class="alert" id="verify-result" role="status" hidden></div>
 
             <div class="table-wrap">
-                <table>
+                <div class="overflow-x-auto"><table>
                     <thead>
                         <tr>
                             <th>Student</th>
@@ -302,7 +302,7 @@
                         </tr>
                         {% endfor %}
                     </tbody>
-                </table>
+                </table></div>
             </div>
         </div>
 

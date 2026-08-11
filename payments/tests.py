@@ -416,3 +416,69 @@ class FulfillConnectorTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.status, 'failed')
         self.assertIn('no longer exists', order.error_message)
+
+
+class GatewayCallbackApiTests(TestCase):
+    """Versioned generic callback — /api/v1/payments/callback/<gateway>/.
+
+    Thin dispatcher over the per-gateway handlers; behaviour must match the
+    legacy /payments/webhook/<gateway>/ endpoints exactly."""
+
+    def setUp(self):
+        self.user = _user()
+        self.booking = _booking(self.user)
+
+    def test_bkash_success_through_generic_route(self):
+        order = services.create_payment_order(self.user, self.booking, 'bkash', '30.00')
+        url = reverse('payments_gateway_callback', args=['bkash'])
+        response = self.client.post(url, data=json.dumps({
+            'paymentID': 'BKAABC123',
+            'status': 'success',
+            'transactionStatus': 'Completed',
+            'trxID': 'TRX-1',
+            'merchantInvoiceNumber': order.merchant_invoice_id,
+            'amount': '30.00',
+        }), content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        order.refresh_from_db()
+        self.booking.refresh_from_db()
+        self.assertEqual(order.status, 'paid')
+        self.assertEqual(self.booking.payment_status, 'paid')
+        self.assertTrue(self.booking.qr_token.startswith('TR-'))
+
+    def test_nagad_success_through_generic_route(self):
+        order = services.create_payment_order(self.user, self.booking, 'nagad', '45.00')
+        url = reverse('payments_gateway_callback', args=['nagad'])
+        payment_ref = 'NGX123456'
+        status_str = 'Success'
+        data = {
+            'order_id': order.merchant_invoice_id,
+            'payment_ref_id': payment_ref,
+            'status': status_str,
+            'signature': services.nagad_signature(payment_ref, order.merchant_invoice_id, status_str),
+        }
+        response = self.client.post(url, data=data)
+        self.assertEqual(response.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, 'paid')
+        self.assertEqual(order.provider_transaction_id, payment_ref)
+
+    def test_unknown_gateway_returns_404(self):
+        url = reverse('payments_gateway_callback', args=['unknown'])
+        response = self.client.post(url, data={})
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()['status'], 'error')
+
+    def test_generic_route_rejects_cross_provider_callback(self):
+        # A bKash callback arriving for a Nagad order must be refused even
+        # through the generic dispatcher.
+        order = services.create_payment_order(self.user, self.booking, 'nagad', '45.00')
+        url = reverse('payments_gateway_callback', args=['bkash'])
+        response = self.client.post(url, data=json.dumps({
+            'paymentID': 'BKAABC123',
+            'status': 'success',
+            'merchantInvoiceNumber': order.merchant_invoice_id,
+        }), content_type='application/json')
+        self.assertEqual(response.status_code, 400)
+        order.refresh_from_db()
+        self.assertEqual(order.status, 'pending')

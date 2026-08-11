@@ -7,6 +7,8 @@
     <title>Student Dashboard — Niter Hub</title>
     <meta name="description" content="Your central campus overview — meals, transport, medical bookings, and updates.">
 
+    {% include 'partials/pwa_head.html' %}
+
     <!-- Global design tokens -->
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
     <!-- Shared top navigation -->
@@ -156,5 +158,8 @@
         </div>
 
     </div>
+
+    <!-- PWA service worker registration (offline caching) -->
+    <script src="{% static 'js/pwa-register.js' %}" defer></script>
 </body>
 </html>

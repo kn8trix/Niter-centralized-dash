@@ -35,6 +35,10 @@ twisted[tls]>=22.4,<27
 # share the same REDIS_URL.
 huey[django-redis]>=2.5,<3.0
 
+# Allow-list HTML sanitizer for the Website Builder (core/block_sanitizer.py)
+# — strips scripts/event handlers/unsafe URL schemes from authored block HTML.
+bleach>=6.0,<7.0
+
 # Production deployment & configuration
 # Environment-driven settings (secrets, DB URL, hosts) via a local .env
 django-environ>=0.11

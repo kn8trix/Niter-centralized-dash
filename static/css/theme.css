@@ -59,3 +59,11 @@
     /* ------------------------------------------------------------------ */
     --sidebar-width: 16rem;     /* 256px fixed sidebar  */
 }
+
+/* -------------------------------------------------------------------------- */
+/* Utility — horizontal scroll wrapper (used by admin table pages that do not */
+/* load the Tailwind CDN, e.g. sys_admin / club_admin / cafeteria_admin)      */
+/* -------------------------------------------------------------------------- */
+.overflow-x-auto {
+    overflow-x: auto;
+}

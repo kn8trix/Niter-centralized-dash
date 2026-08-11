@@ -4,6 +4,10 @@ from . import views
 urlpatterns = [
     # Public homepage (landing page) at the root; the student dashboard lives at /dashboard/
     path('', views.public_home, name='home'),
+
+    # PWA — web app manifest + service worker (origin-root URLs)
+    path('manifest.json', views.pwa_manifest, name='pwa_manifest'),
+    path('sw.js', views.service_worker_view, name='service_worker'),
     path('dashboard/', views.dashboard, name='dashboard'),
     path('tickets/', views.tickets, name='tickets'),
     path('medical/', views.medical, name='medical'),

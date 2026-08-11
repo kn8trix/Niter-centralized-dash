@@ -11,14 +11,20 @@ existed or hand-edited in the admin:
     re-sanitizes raw ``content_html`` and ``editable_page_view`` re-sanitizes
     ``custom_css``, so a never-sanitized row still renders clean.
 
+The HTML sanitizer is built on **bleach** (a battle-tested allow-list
+sanitizer) configured with the builder's existing tag/attribute allow-lists.
+``script``/``style`` elements are pre-dropped *in full* (content included):
+bleach strips disallowed tags but would otherwise keep their text, which would
+turn an injected ``<script>alert(1)</script>`` into visible ``alert(1)`` text
+on the page instead of removing it.
+
 The builder API is superuser-only, so this is belt-and-braces on top of the
-existing trust model: a strict allow-list keeps pasted content free of script
-tags, event handlers, and inline-style / ``javascript:`` URL injection.
+existing trust model.
 """
 
-import html
-import html.parser
 import re
+
+import bleach
 
 ALLOWED_TAGS = frozenset({
     'p', 'br', 'hr', 'div', 'span',
@@ -44,90 +50,32 @@ ALLOWED_ATTRS = {
 
 SAFE_URL_SCHEMES = frozenset({'http', 'https', 'mailto', 'tel', 'ftp'})
 
-
-def _is_safe_url(value):
-    """Allow relative/absolute links but reject dangerous URL schemes."""
-    stripped = (value or '').strip().lower()
-    if not stripped or stripped.startswith('#') or stripped.startswith('//'):
-        return True
-    scheme = re.match(r'^([a-z][a-z0-9+.-]*):', stripped)
-    if not scheme:
-        return True  # relative path such as /dashboard/ or images/x.png
-    return scheme.group(1) in SAFE_URL_SCHEMES
-
-
-class _BlockHtmlSanitizer(html.parser.HTMLParser):
-    """Rebuild input HTML keeping only allow-listed tags and attributes.
-
-    Content inside a disallowed element (e.g. ``<script>``) is dropped
-    entirely rather than being leaked as text. Fail-safe: an unclosed
-    disallowed tag swallows the rest of the document, which can only
-    ever lose content (never allow it through).
-    """
-
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self._out = []
-        self._skip_depth = 0
-
-    def _safe_attrs(self, tag, attrs):
-        allowed = ALLOWED_ATTRS.get(tag, frozenset())
-        for key, value in attrs:
-            if key not in allowed or key.lower().startswith('on'):
-                continue
-            if key in ('href', 'src') and not _is_safe_url(value):
-                continue
-            yield key, html.escape(value, quote=True)
-
-    def _emit_start(self, tag, attrs, self_closing):
-        parts = ['<%s' % tag]
-        for key, value in self._safe_attrs(tag, attrs):
-            parts.append(' %s="%s"' % (key, value))
-        parts.append(' />' if self_closing else '>')
-        self._out.append(''.join(parts))
-
-    def handle_starttag(self, tag, attrs):
-        if tag not in ALLOWED_TAGS:
-            self._skip_depth += 1
-            return
-        if not self._skip_depth:
-            self._emit_start(tag, attrs, self_closing=False)
-
-    def handle_startendtag(self, tag, attrs):
-        # XHTML-style self-closing tags such as <img /> / <br />
-        if tag in ALLOWED_TAGS and not self._skip_depth:
-            self._emit_start(tag, attrs, self_closing=True)
-
-    def handle_endtag(self, tag):
-        if tag not in ALLOWED_TAGS:
-            if self._skip_depth:
-                self._skip_depth -= 1
-            return
-        if not self._skip_depth and tag not in VOID_TAGS:
-            self._out.append('</%s>' % tag)
-
-    def handle_data(self, data):
-        if not self._skip_depth:
-            self._out.append(html.escape(data))
-
-    def handle_comment(self, data):
-        pass  # drop comments
-
-    def handle_decl(self, decl):
-        pass  # drop <!DOCTYPE ...>
-
-    def handle_pi(self, data):
-        pass  # drop <?...?>
+# Whole-element drop for <script>/<style> (see module docstring). The regex is
+# deliberately tolerant of attribute casing and whitespace inside the tags.
+_SCRIPT_STYLE_RE = re.compile(
+    r'<\s*(script|style)\b[^>]*>.*?<\s*/\s*\1\s*>',
+    re.DOTALL | re.IGNORECASE,
+)
 
 
 def sanitize_html(raw_html):
-    """Return ``raw_html`` with all non-allow-listed tags/attributes removed."""
+    """Return ``raw_html`` with all non-allow-listed tags/attributes removed.
+
+    Implemented with bleach's allow-list sanitizer using the builder's
+    ``ALLOWED_TAGS`` / ``ALLOWED_ATTRS`` / ``SAFE_URL_SCHEMES``. ``script`` /
+    ``style`` blocks are dropped entirely first; everything else keeps its
+    text (safely escaped) minus disallowed tags, attributes and URL schemes.
+    """
     if not raw_html:
         return ''
-    parser = _BlockHtmlSanitizer()
-    parser.feed(raw_html)
-    parser.close()
-    return ''.join(parser._out)
+    without_script_style = _SCRIPT_STYLE_RE.sub('', raw_html)
+    return bleach.clean(
+        without_script_style,
+        tags=ALLOWED_TAGS,
+        attributes={tag: list(attrs) for tag, attrs in ALLOWED_ATTRS.items()},
+        protocols=SAFE_URL_SCHEMES,
+        strip=True,
+    )
 
 
 # custom_css is injected with ``|safe`` inside a <style> tag on the live page,
