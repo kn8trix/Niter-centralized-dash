@@ -1459,7 +1459,7 @@ The app is packaged for one-click deployment on **Render** via a Blueprint (`ren
 | File | Purpose |
 | :--- | :--- |
 | `render.yaml` | Blueprint: web service (Python/Daphne), managed Postgres, managed Redis |
-| `build.sh` | Render build command (executable): pip install → collectstatic → migrate |
+| `build.sh` | Render build command (executable): pip install → collectstatic → migrate → seed_demo_users |
 | `config/settings.py` | Render auto-config: `ALLOWED_HOSTS` + `CSRF_TRUSTED_ORIGINS` when `RENDER=true` |
 | `requirements.txt` | Added `psycopg2-binary>=2.9.9` (Postgres driver for `DATABASE_URL`) |
 
@@ -1487,17 +1487,19 @@ if [ -x "venv/bin/python" ]; then PYTHON="venv/bin/python"
 elif command -v python >/dev/null 2>&1; then PYTHON="python"
 else PYTHON="python3"; fi
 
+"$PYTHON" -m pip install --upgrade pip
 "$PYTHON" -m pip install -r requirements.txt
 RENDER_BUILD=true "$PYTHON" manage.py collectstatic --noinput
-RENDER_BUILD=true "$PYTHON" manage.py migrate
+RENDER_BUILD=true "$PYTHON" manage.py migrate --noinput
+RENDER_BUILD=true "$PYTHON" manage.py seed_demo_users
 ```
 
 **Hardening** (`chmod +x build.sh`): `errexit` + `pipefail` abort the build on
 any failing step; `RENDER_BUILD=true` tells settings.py this is the **build
-phase**, so `collectstatic`/`migrate` succeed even before Render injects the
-service's generated `SECRET_KEY` (see below). Verified locally: `./build.sh`
-installs (no-op when satisfied), collects 147 static files, applies migrations,
-and exits `Build complete`.
+phase**, so `collectstatic`/`migrate`/`seed_demo_users` succeed even before
+Render injects the service's generated `SECRET_KEY` (see below). Verified
+locally: `bash -n build.sh` OK; `manage.py seed_demo_users` runs idempotently
+(§69, §76).
 
 ### Settings Changes (`config/settings.py`)
 
@@ -1506,8 +1508,8 @@ Render injects `RENDER=true` for every service. When present, the app **appends*
 **Build-time SECRET_KEY fallback.** `SECRET_KEY` still **fails closed** at
 runtime (`ImproperlyConfigured` when `DEBUG=false` and no secret), but when
 `RENDER_BUILD=true` (set only by `build.sh`, never by the start command) a
-throwaway placeholder key is used so the build's `collectstatic`/`migrate`
-run cleanly even if the env var hasn't loaded yet. Probes (`.env` moved aside):
+throwaway placeholder key is used so the build's `collectstatic`/`migrate`/
+`seed_demo_users` run cleanly even if the env var hasn't loaded yet. Probes (`.env` moved aside):
 `DEBUG=false RENDER_BUILD=true` → check OK; `DEBUG=false` alone →
 `ImproperlyConfigured`; `DEBUG=true` → dev fallback key. This is defense-in-depth
 — Render's `generateValue` secret is normally injected before the build runs.
@@ -1518,8 +1520,8 @@ WhiteNoise (`CompressedStaticFilesStorage`, middleware) already serves collected
 
 1. Commit and push `render.yaml` + `build.sh` (plus the settings/requirements changes) to the GitHub repo (`kn8trix/Niter-centralized-dash`).
 2. In the Render dashboard: **New + → Blueprint → select the repo** → Render validates the Blueprint and creates all three resources.
-3. First deploy runs `build.sh`: pip install → collectstatic → migrate (seeded departments/clubs come via migration `0009`).
-4. Open `https://niter-centralized-dash.onrender.com`. Create the admin with `python manage.py createsuperuser` — easiest via a one-off command in the Render **Shell** tab, or temporarily via `DJANGO_SUPERUSER_*` env vars + `createsuperuser --noinput`.
+3. First deploy runs `build.sh`: pip install → collectstatic → migrate (seeded departments/clubs come via migration `0009`) → `seed_demo_users` (demo accounts, §69).
+4. Open `https://niter-centralized-dash.onrender.com`. The build seeds the demo accounts `admin`/`admin123` and `student`/`student123` automatically (§76) — use `python manage.py createsuperuser` (Render **Shell** tab) only for additional accounts.
 
 ### Custom Domain (`niter.edu.bd`)
 
@@ -1598,7 +1600,7 @@ One work session covering: the **Render Blueprint production deployment** (with 
 
 ### Completed
 
-1. **Render Blueprint deployment** — `render.yaml` (web service + managed PostgreSQL + managed Redis, `domains: [niter.edu.bd]`), executable `build.sh` (pip install → collectstatic → migrate), `RENDER=true` auto-config in `config/settings.py` (appends `.onrender.com` + `niter.edu.bd`/`www` to `ALLOWED_HOSTS` and CSRF origins), `psycopg2-binary` Postgres driver. → §38
+1. **Render Blueprint deployment** — `render.yaml` (web service + managed PostgreSQL + managed Redis, `domains: [niter.edu.bd]`), executable `build.sh` (pip install → collectstatic → migrate → seed_demo_users), `RENDER=true` auto-config in `config/settings.py` (appends `.onrender.com` + `niter.edu.bd`/`www` to `ALLOWED_HOSTS` and CSRF origins), `psycopg2-binary` Postgres driver. → §38
 2. **DB transport catalog** — `Driver` / `TransportRoute` / `BusSchedule` models + seed migration (0013); the transport page, dashboard widget, and `book_transport` read live routes/drivers/seats with per-route capacity; legacy-constant fallback for pre-seed databases. → §39.1
 3. **Medical consultation chat + live queue** — persistent `MedicalChatThread` / `MedicalChatMessage`; REST APIs + WebSocket consumer (`ws/medical-chat/<id>/`); staff admin chat UI and patient "My Consultations" UI; staff-only FIFO queue API (`/api/medical/queue/`) with real-time staff pushes on status changes. → §39.2
 4. **CI/CD** — `.github/workflows/ci.yml` (check + full test suite on PRs to main and pushes), `.github/workflows/deploy.yml` (SSH deploy on push to main, secrets-guarded), `scripts/deploy.sh` (versioned, idempotent remote deploy). → §39.3
@@ -3077,9 +3079,11 @@ consoles.
   - No URL set → local SQLite for dev/tests (test runner stays on SQLite).
   - Parsing via **`dj-database-url`** (`dj_database_url.parse(url, conn_max_age=600)`).
 - `requirements.txt`: added `dj-database-url>=2.0`.
-- `build.sh` + `render.yaml`: unchanged migration flow — `python manage.py
-  migrate` runs on deploy against whatever `DATABASE_URL` Render injects;
-  set `SUPABASE_DB_URL` for Supabase.
+- `build.sh` + `render.yaml`: `build.sh` runs `migrate --noinput` followed by
+  `seed_demo_users` (idempotent — §76) against whichever database is configured
+  (`SUPABASE_DB_URL` first, else `DATABASE_URL`); the render.yaml
+  `releaseCommand` still migrates idempotently before the new release serves.
+  Set `SUPABASE_DB_URL` to use Supabase.
 - `.env.example`: documented `SUPABASE_DB_URL` (and `DATABASE_URL`) with the
   `postgresql://…` scheme hint.
 - The **Clubs module** is the second data source: a user-connected Google
@@ -3963,3 +3967,62 @@ heart-pulse icon inherited the body ink instead of their intended styling.
 
 - `static/css/main.css`, `templates/index.html`, `docs/HANDOVER.md` (this
   section).
+
+---
+
+## 76. Demo Users Seeded During Render Build (`build.sh`)
+
+**Date:** 12 August 2026  
+**Branch:** main  
+
+### Overview
+
+`build.sh` now seeds the demo accounts automatically during Render's build
+phase: immediately after `migrate` it runs `manage.py seed_demo_users`
+(idempotent, §69), so every deploy guarantees `admin`/`admin123` and
+`student`/`student123` exist in the production PostgreSQL database with no
+manual `createsuperuser` step. Pushed as commit `9542886`; pushing to `main`
+triggers the GitHub Actions deploy workflow, which runs the test suite and then
+posts to the Render deploy hook (Render's `autoDeploy` is off — the webhook is
+the only path to production).
+
+### Changes (`build.sh`)
+
+- **`migrate --noinput` now runs unconditionally during the build** — it was
+  previously gated behind `SUPABASE_DB_URL` (the Render-managed Postgres path
+  relied on the release command). Migrating in the build phase guarantees the
+  tables exist before the seed step, even on a fresh database. The render.yaml
+  `releaseCommand: python manage.py migrate --noinput` is unchanged and still
+  runs idempotently before the new release serves (a no-op on an already-
+  migrated DB).
+- **`python manage.py seed_demo_users`** added directly after the migrate step,
+  with the same `RENDER_BUILD=true` guard. Idempotent — existing users are
+  never touched, so re-running on every deploy is safe.
+- **Kept from the previous script:** the venv/`python`/`python3` interpreter
+  picker and the pip self-upgrade (old pip on Python 3.12 can mis-resolve
+  dependency ranges).
+- **`RENDER_BUILD=true` is required on every `manage.py` call:** `settings.py`
+  fails closed (`ImproperlyConfigured`) when `SECRET_KEY` is missing and
+  `DEBUG=false`, and Render injects the generated secret only at runtime — a
+  bare `python manage.py …` line would crash the build.
+
+### Resulting build flow
+
+```bash
+pip install -r requirements.txt
+python manage.py collectstatic --noinput
+python manage.py migrate --noinput
+python manage.py seed_demo_users
+```
+
+### Testing
+
+- `bash -n build.sh` ✔ (syntax)
+- `manage.py seed_demo_users` ✔ — idempotent locally (`exists (skipped)` for
+  existing users)
+- No test-suite changes — build script only; the seed command's own coverage
+  lives in `SeedDemoUsersCommandTest` (§69).
+
+### Files Modified
+
+- `build.sh`, `docs/HANDOVER.md` (this section; §38/§39/§63 flow notes updated)
