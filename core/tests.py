@@ -16,7 +16,8 @@ from django.utils import timezone
 
 from core.context_processors import custom_pages_nav
 
-from services.document_text import extract_document_text
+from services.openrouter import call_openrouter
+from services.parser import extract_document_text
 
 from core.forms import SignUpForm
 from core.models import (
@@ -3931,7 +3932,12 @@ class ResearchQueryApiTest(TestCase):
     # OpenRouter path (key configured, HTTP mocked)
     # ------------------------------------------------------------------
 
-    @override_settings(OPENROUTER_API_KEY='test-key', OPENROUTER_DEFAULT_MODEL='google/gemini-2.5-pro')
+    @override_settings(
+        OPENROUTER_API_KEY='test-key',
+        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3-ultra-550b-a55b:free',
+        OPENROUTER_FALLBACK_MODEL='openrouter/free',
+        OPENROUTER_BASE_URL='https://openrouter.ai/api/v1/chat/completions',
+    )
     def test_openrouter_used_when_key_configured(self):
         with mock.patch('services.openrouter.requests.post', return_value=_fake_openrouter_response('Real AI reply.')) as post:
             response = self._query(message='Explain superposition', citation_style='APA 7')
@@ -3939,7 +3945,7 @@ class ResearchQueryApiTest(TestCase):
         data = response.json()
         self.assertEqual(data['status'], 'success')
         self.assertEqual(data['engine'], 'openrouter')
-        self.assertEqual(data['model'], 'google/gemini-2.5-pro')
+        self.assertEqual(data['model'], 'nvidia/nemotron-3-ultra-550b-a55b:free')
         self.assertEqual(data['response'], 'Real AI reply.')
 
         # Headers carry auth + branding + dynamic referer.
@@ -3950,10 +3956,111 @@ class ResearchQueryApiTest(TestCase):
         self.assertEqual(headers['X-Title'], 'NITER Centralized Dash')
         self.assertEqual(headers['HTTP-Referer'], 'https://testserver')
         self.assertEqual(kwargs['timeout'], 30)
-        # System prompt injects the selected citation style.
+        # Default free model sent to the provider.
+        self.assertEqual(kwargs['json']['model'], 'nvidia/nemotron-3-ultra-550b-a55b:free')
+        # System prompt (prepended) injects the selected citation style.
         system = kwargs['json']['messages'][0]['content']
         self.assertEqual(kwargs['json']['messages'][0]['role'], 'system')
         self.assertIn('APA 7', system)
+
+    @override_settings(
+        OPENROUTER_API_KEY='test-key',
+        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3-ultra-550b-a55b:free',
+        OPENROUTER_FALLBACK_MODEL='openrouter/free',
+    )
+    def test_model_param_passed_to_provider(self):
+        with mock.patch('services.openrouter.requests.post', return_value=_fake_openrouter_response('ok')) as post:
+            response = self._query(message='hello', model='openrouter/free')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['model'], 'openrouter/free')
+        _, kwargs = post.call_args
+        self.assertEqual(kwargs['json']['model'], 'openrouter/free')
+
+    @override_settings(
+        OPENROUTER_API_KEY='test-key',
+        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3-ultra-550b-a55b:free',
+        OPENROUTER_FALLBACK_MODEL='openrouter/free',
+    )
+    def test_unknown_model_falls_back_to_default(self):
+        with mock.patch('services.openrouter.requests.post', return_value=_fake_openrouter_response('ok')) as post:
+            response = self._query(message='hello', model='openai/gpt-4o')  # not allowed
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['model'], 'nvidia/nemotron-3-ultra-550b-a55b:free')
+        _, kwargs = post.call_args
+        self.assertEqual(kwargs['json']['model'], 'nvidia/nemotron-3-ultra-550b-a55b:free')
+
+    @override_settings(
+        OPENROUTER_API_KEY='test-key',
+        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3-ultra-550b-a55b:free',
+        OPENROUTER_FALLBACK_MODEL='openrouter/free',
+    )
+    def test_rate_limit_retries_with_fallback_model(self):
+        """429 on the primary model → one automatic retry with the fallback."""
+        limited = mock.Mock()
+        limited.status_code = 429
+        limited.text = 'rate limited'
+        with mock.patch(
+            'services.openrouter.requests.post',
+            side_effect=[limited, _fake_openrouter_response('fallback answered')],
+        ) as post:
+            response = self._query(message='hello')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertEqual(data['engine'], 'openrouter')
+        self.assertEqual(data['model'], 'openrouter/free')
+        self.assertEqual(post.call_count, 2)
+        first_model = post.call_args_list[0][1]['json']['model']
+        second_model = post.call_args_list[1][1]['json']['model']
+        self.assertEqual(first_model, 'nvidia/nemotron-3-ultra-550b-a55b:free')
+        self.assertEqual(second_model, 'openrouter/free')
+
+    @override_settings(
+        OPENROUTER_API_KEY='test-key',
+        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3-ultra-550b-a55b:free',
+        OPENROUTER_FALLBACK_MODEL='openrouter/free',
+    )
+    def test_503_retries_with_fallback_model(self):
+        """503 on the primary model → one automatic retry with the fallback."""
+        unavailable = mock.Mock()
+        unavailable.status_code = 503
+        unavailable.text = 'service unavailable'
+        with mock.patch(
+            'services.openrouter.requests.post',
+            side_effect=[unavailable, _fake_openrouter_response('recovered')],
+        ) as post:
+            response = self._query(message='hello')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['engine'], 'openrouter')
+        self.assertEqual(response.json()['model'], 'openrouter/free')
+        self.assertEqual(post.call_count, 2)
+
+    @override_settings(
+        OPENROUTER_API_KEY='test-key',
+        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3-ultra-550b-a55b:free',
+        OPENROUTER_FALLBACK_MODEL='openrouter/free',
+    )
+    def test_fallback_exhausted_returns_429_payload(self):
+        """Both attempts rate-limited → friendly 429 error to the client."""
+        limited = mock.Mock()
+        limited.status_code = 429
+        limited.text = 'still rate limited'
+        with mock.patch('services.openrouter.requests.post', return_value=limited) as post:
+            response = self._query(message='hello')
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertEqual(post.call_count, 2)
+        self.assertIn('thread_id', response.json())
+
+    @override_settings(OPENROUTER_API_KEY='test-key')
+    def test_503_exhausted_returns_503_payload(self):
+        unavailable = mock.Mock()
+        unavailable.status_code = 503
+        unavailable.text = 'down'
+        with mock.patch('services.openrouter.requests.post', return_value=unavailable):
+            response = self._query(message='hello')
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()['status'], 'error')
 
     @override_settings(OPENROUTER_API_KEY='test-key')
     def test_rate_limit_returns_429_payload(self):
@@ -4095,8 +4202,51 @@ class ResearchQueryApiTest(TestCase):
         self.assertFalse(ResearchMessage.objects.filter(thread_id=thread_id).exists())
 
 
+class OpenRouterServiceTest(TestCase):
+    """services.openrouter.call_openrouter — automatic free-model fallback."""
+
+    @override_settings(
+        OPENROUTER_API_KEY='key',
+        OPENROUTER_DEFAULT_MODEL='primary-free-model',
+        OPENROUTER_FALLBACK_MODEL='fallback-free-model',
+    )
+    def test_429_triggers_fallback_retry(self):
+        limited = mock.Mock()
+        limited.status_code = 429
+        limited.text = 'rate limited'
+        with mock.patch(
+            'services.openrouter.requests.post',
+            side_effect=[limited, _fake_openrouter_response('ok')],
+        ) as post:
+            text, model_used = call_openrouter([{'role': 'user', 'content': 'hi'}])
+        self.assertEqual(text, 'ok')
+        self.assertEqual(model_used, 'fallback-free-model')
+        self.assertEqual(post.call_count, 2)
+        models = [c[1]['json']['model'] for c in post.call_args_list]
+        self.assertEqual(models, ['primary-free-model', 'fallback-free-model'])
+
+    @override_settings(
+        OPENROUTER_API_KEY='key',
+        OPENROUTER_DEFAULT_MODEL='primary-free-model',
+        OPENROUTER_FALLBACK_MODEL='fallback-free-model',
+    )
+    def test_system_prompt_prepended_and_no_retry_on_success(self):
+        with mock.patch('services.openrouter.requests.post', return_value=_fake_openrouter_response('ok')) as post:
+            text, model_used = call_openrouter(
+                [{'role': 'user', 'content': 'hi'}],
+                system_prompt='You are the NITER assistant.',
+            )
+        self.assertEqual(text, 'ok')
+        self.assertEqual(model_used, 'primary-free-model')
+        self.assertEqual(post.call_count, 1)
+        _, kwargs = post.call_args
+        messages = kwargs['json']['messages']
+        self.assertEqual(messages[0], {'role': 'system', 'content': 'You are the NITER assistant.'})
+        self.assertEqual(messages[1], {'role': 'user', 'content': 'hi'})
+
+
 class ResearchDocumentTextTest(TestCase):
-    """services.document_text — plain-text extraction from PDF/DOCX uploads."""
+    """services.parser — plain-text extraction from PDF/DOCX uploads."""
 
     @staticmethod
     def _make_docx(text):

@@ -9,8 +9,13 @@ typed exceptions below into user-friendly JSON payloads:
 * ``OpenRouterNotConfigured`` — ``OPENROUTER_API_KEY`` is empty/missing.
 * ``OpenRouterAuthError`` — the provider rejected the key (401/403).
 * ``OpenRouterRateLimitError`` — the provider answered 429 (rate limit).
+* ``OpenRouterServiceUnavailableError`` — the provider answered 503.
 * ``OpenRouterTimeoutError`` — the request exceeded the 30s cap.
 * ``OpenRouterError`` — any other transport/provider failure.
+
+**Zero-cost model strategy:** the default model is the free NVIDIA Nemotron 3
+Ultra 550B slug. ``call_openrouter`` automatically retries once with the
+``openrouter/free`` auto-router when the primary model answers 429/503.
 """
 
 import logging
@@ -20,7 +25,8 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-# OpenRouter chat-completions endpoint (POST JSON payloads).
+# OpenRouter chat-completions endpoint (POST JSON payloads). Mirrors the
+# OPENROUTER_BASE_URL setting so the constant stays available for tests.
 OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions'
 
 # Hard cap on a single provider call — per spec, 30 seconds.
@@ -54,20 +60,43 @@ class OpenRouterRateLimitError(OpenRouterError):
     """Provider answered HTTP 429 (rate limit / quota exhausted)."""
 
 
+class OpenRouterServiceUnavailableError(OpenRouterError):
+    """Provider answered HTTP 503 (service unavailable / overloaded)."""
+
+
 class OpenRouterTimeoutError(OpenRouterError):
     """The provider call exceeded the 30s cap."""
 
 
 def get_default_model():
-    """Return the configured OpenRouter model slug (with fallback)."""
+    """Return the configured default model slug (free Nemotron by default)."""
     return getattr(
-        settings, 'OPENROUTER_DEFAULT_MODEL', 'google/gemini-2.5-pro'
+        settings, 'OPENROUTER_DEFAULT_MODEL', 'nvidia/nemotron-3-ultra-550b-a55b:free'
     )
+
+
+def get_fallback_model():
+    """Return the automatic fallback model used on 429/503 retries."""
+    return getattr(settings, 'OPENROUTER_FALLBACK_MODEL', 'openrouter/free')
 
 
 def get_api_key():
     """Return the configured OpenRouter API key (possibly empty)."""
     return getattr(settings, 'OPENROUTER_API_KEY', '')
+
+
+def get_base_url():
+    """Return the chat-completions endpoint URL."""
+    return getattr(settings, 'OPENROUTER_BASE_URL', OPENROUTER_BASE_URL)
+
+
+def is_enabled():
+    """True when a key is configured (the live provider should be used).
+
+    Reads the live key so ``override_settings`` in tests (which does not
+    recompute the import-time ``OPENROUTER_ENABLED`` flag) works correctly.
+    """
+    return bool(get_api_key())
 
 
 def build_headers(referer=None):
@@ -131,12 +160,11 @@ def build_system_prompt(citation_style, document_text=''):
     return '\n\n'.join(parts)
 
 
-def chat_completion(messages, model=None, timeout=REQUEST_TIMEOUT_SECONDS, referer=None):
-    """POST ``messages`` to OpenRouter and return the assistant text.
+def _post_completion(messages, model, timeout, referer):
+    """Perform one chat-completions POST and translate failures to typed errors.
 
-    ``messages`` is a list of ``{'role': 'user' | 'assistant' | 'system',
-    'content': str}`` dicts. Raises a typed ``OpenRouterError`` subclass on any
-    failure so callers can render a friendly JSON payload without crashing.
+    ``model`` is the explicit model slug to send — callers resolve the default
+    and/or retry with the fallback model themselves.
     """
     try:
         headers = build_headers(referer=referer)
@@ -144,14 +172,14 @@ def chat_completion(messages, model=None, timeout=REQUEST_TIMEOUT_SECONDS, refer
         raise
 
     payload = {
-        'model': model or get_default_model(),
+        'model': model,
         'messages': messages,
         'max_tokens': 2048,
     }
 
     try:
         response = requests.post(
-            OPENROUTER_BASE_URL,
+            get_base_url(),
             headers=headers,
             json=payload,
             timeout=timeout,
@@ -170,6 +198,10 @@ def chat_completion(messages, model=None, timeout=REQUEST_TIMEOUT_SECONDS, refer
     if response.status_code == 429:
         raise OpenRouterRateLimitError(
             'The AI service is rate-limited right now. Please wait a moment and try again.'
+        )
+    if response.status_code == 503:
+        raise OpenRouterServiceUnavailableError(
+            'The AI service is temporarily unavailable. Please try again in a moment.'
         )
     if response.status_code in (401, 403):
         raise OpenRouterAuthError(
@@ -191,3 +223,36 @@ def chat_completion(messages, model=None, timeout=REQUEST_TIMEOUT_SECONDS, refer
             'The AI provider returned an unreadable response. Please try again.'
         )
     return (content or '').strip()
+
+
+def call_openrouter(messages, model=None, system_prompt=None,
+                    timeout=REQUEST_TIMEOUT_SECONDS, referer=None):
+    """POST ``messages`` to OpenRouter, with automatic free-model fallback.
+
+    ``messages`` is a list of ``{'role': 'user' | 'assistant', 'content': str}``
+    dicts; ``system_prompt`` (if given) is prepended as the system message.
+    The primary ``model`` (defaulting to ``OPENROUTER_DEFAULT_MODEL``) is
+    tried first; when it answers 429 (rate limit) or 503 (unavailable) the
+    request is retried **once** with ``OPENROUTER_FALLBACK_MODEL``. Raises a
+    typed ``OpenRouterError`` subclass on any remaining failure.
+
+    Returns ``(assistant_text, model_used)`` so callers can report which
+    model actually answered (the fallback may have been used).
+    """
+    if system_prompt:
+        messages = [{'role': 'system', 'content': system_prompt}] + list(messages)
+
+    primary_model = model or get_default_model()
+    try:
+        text = _post_completion(messages, primary_model, timeout=timeout, referer=referer)
+        return text, primary_model
+    except (OpenRouterRateLimitError, OpenRouterServiceUnavailableError):
+        fallback_model = get_fallback_model()
+        if fallback_model == primary_model:
+            raise
+        logger.info(
+            'Primary OpenRouter model %s unavailable — retrying with %s.',
+            primary_model, fallback_model,
+        )
+        text = _post_completion(messages, fallback_model, timeout=timeout, referer=referer)
+        return text, fallback_model

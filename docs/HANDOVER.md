@@ -207,6 +207,7 @@ To create a new page, extend the base template:
 - **Static:** WhiteNoise (`CompressedStaticFilesStorage`) — production static serving + `collectstatic`
 - **Auth:** django-allauth (Google OAuth) + Django sessions; Google ID-token verification via `PyJWT[crypto]` (allauth's `socialaccount` extra — pinned in `requirements.txt`, see §42)
 - **Google APIs:** `google-api-python-client`, `gspread` (Drive notes upload, club sheets)
+- **Research AI / LLM (OpenRouter):** `requests`-based chat-completions client in `services/openrouter.py`. Zero-cost models — default `OPENROUTER_DEFAULT_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free` (NVIDIA Nemotron 3 Ultra 550B, 1M context) with automatic single retry on HTTP 429/503 via `OPENROUTER_FALLBACK_MODEL=openrouter/free` (auto free router). `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1/chat/completions`, `OPENROUTER_ENABLED = bool(OPENROUTER_API_KEY)`; page falls back to the deterministic offline engine when the key is unset. Reference PDF/DOCX text extracted server-side by `services/parser.py` (`pypdf` + `python-docx`).
 - **Frontend Styling:** Tailwind CSS (via CDN for rapid development)
 - **Icons:** Heroicons (SVG) for a consistent, clean look.
 - **Fonts:** Inter (Google Fonts)
@@ -339,7 +340,7 @@ Niter-centralized-dash/
 │   ├── __init__.py
 │   ├── openrouter.py            # OpenRouter chat-completions client (headers,
 │   │                            #   system prompt, typed error hierarchy, 30s cap)
-│   └── document_text.py         # PDF/DOCX → plain-text extraction for references
+│   └── parser.py                # PDF/DOCX → plain-text extraction for references
 ├── static/
 │   └── css/
 │       ├── theme.css            # Global design tokens (:root variables)
@@ -516,7 +517,7 @@ CSRF_COOKIE_SECURE=True
 1. **~~LOW — Transport live status / route catalog~~ — DONE in §39**: `TRANSPORT_ROUTES` is replaced by DB models (`TransportRoute`/`BusSchedule`/`Driver`); the transport page, dashboard widget, and booking handler read live seat counts and driver details from the database.
 2. **LOW — Cafeteria kitchen inventory + System Admin driver/scan tables**: still mock forms — needs inventory/scan models + staff CRUD (drivers themselves now live in the DB via `Driver`).
 3. **~~LOW — Medical admin chat~~ — DONE in §39**: persistent patient–doctor consultation threads (models + REST + WebSockets). The doctor-schedule panel is now **real** (§63 — DB `Doctor`/`DoctorSchedule` + availability toggles + slot caps enforced at booking); only the content-management and home-page-information panels remain mock.
-4. **~~LOW — Research AI persisted threads & real LLM~~ — DONE in §65**: `/research-ai/api/query/` now calls OpenRouter (`services/openrouter.py`) when `OPENROUTER_API_KEY` is set and persists `ResearchThread`/`ResearchMessage` history; uploaded PDF/DOCX reference text is extracted server-side (`services/document_text.py`) and injected into the LLM system prompt.
+4. **~~LOW — Research AI persisted threads & real LLM~~ — DONE in §65/§66**: `/research-ai/api/query/` now calls OpenRouter (`services/openrouter.py`, zero-cost free models with automatic 429/503 fallback) when `OPENROUTER_API_KEY` is set and persists `ResearchThread`/`ResearchMessage` history; uploaded PDF/DOCX reference text is extracted server-side (`services/parser.py`) and injected into the LLM system prompt.
 5. **LOW — Media at scale**: media is served by Django — swap to django-storages/CDN if uploads grow (noted in `.env.example`).
 
 ## 13. Update by Tajkia Tasnim
@@ -3241,8 +3242,10 @@ when `OPENROUTER_API_KEY` is not configured.
 ### 1. Environment & Configuration
 
 - `OPENROUTER_API_KEY = env('OPENROUTER_API_KEY', default='')` and
-  `OPENROUTER_DEFAULT_MODEL = env('OPENROUTER_DEFAULT_MODEL', default='google/gemini-2.5-pro')`
-  added to `config/settings.py`; both documented in `.env.example`.
+  `OPENROUTER_DEFAULT_MODEL = env('OPENROUTER_DEFAULT_MODEL', default='nvidia/nemotron-3-ultra-550b-a55b:free')`
+  added to `config/settings.py`; both documented in `.env.example`. (The
+  zero-cost free-model default, `OPENROUTER_FALLBACK_MODEL`, base URL and
+  `OPENROUTER_ENABLED` landed in §66.)
 - Base URL constant: `https://openrouter.ai/api/v1/chat/completions` (in
   `services/openrouter.py`).
 
@@ -3258,7 +3261,7 @@ when `OPENROUTER_API_KEY` is not configured.
   `OpenRouterTimeoutError` / `OpenRouterError`) is translated by the view into
   friendly JSON payloads with matching HTTP statuses (401/403→502, 429→429,
   timeout→504, transport→502).
-- **`services/document_text.py`** (new) — lazily-imported `pypdf` (`.pdf`) and
+- **`services/parser.py`** (new) — lazily-imported `pypdf` (`.pdf`) and
   `python-docx` (`.docx`) extraction; returns `None` gracefully when the
   libraries or the file are unparseable, so a bad upload never breaks a query.
 - **`research_query` view** (`/research-ai/api/query/`) — reads `message`,
@@ -3310,9 +3313,89 @@ when `OPENROUTER_API_KEY` is not configured.
 
 ### Files Added / Modified
 
-- `services/` (new: `__init__.py`, `openrouter.py`, `document_text.py`)
+- `services/` (new: `__init__.py`, `openrouter.py`, `parser.py`)
 - `config/settings.py`, `.env.example`, `requirements.txt` (pypdf, python-docx)
 - `core/models.py` (`ResearchThread`, `ResearchMessage`) + `0028_*` migration
 - `core/views.py` (rewritten `research_query` + `research_threads` +
   `research_thread_detail`), `core/urls.py`, `core/admin.py`
 - `templates/research_ai.html`, `static/css/research_ai.css`, `core/tests.py`
+
+---
+
+## 66. OpenRouter Zero-Cost Models, Fallback Retry, Model Selector & Contrast Fix
+
+**Date:** 12 August 2026  
+**Branch:** main
+
+### Overview
+
+Hardened the Research AI OpenRouter integration around **zero-cost models** and
+polished the surrounding UI: switched the default to NVIDIA Nemotron 3 Ultra
+550B (free), added automatic 429/503 failover to the `openrouter/free`
+auto-router, renamed the extractor to `services/parser.py`, added a frontend
+model selector, and fixed the last low-contrast action buttons.
+
+### 1. Environment & Configuration
+
+- `settings.py`: `OPENROUTER_DEFAULT_MODEL` now defaults to
+  `nvidia/nemotron-3-ultra-550b-a55b:free`; new constants
+  `OPENROUTER_FALLBACK_MODEL = 'openrouter/free'`,
+  `OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions'` and
+  `OPENROUTER_ENABLED = bool(OPENROUTER_API_KEY)`. `.env.example` documents all
+  of them.
+- `render.yaml`: web-service `envVars` gains `OPENROUTER_API_KEY`
+  (`sync: false` — set once in the Render dashboard, never overwritten by
+  Blueprint sync) and `OPENROUTER_DEFAULT_MODEL` with the Nemotron free slug.
+
+### 2. Service Layer & Backend
+
+- **`services/openrouter.py`** — new `call_openrouter(messages, model=None,
+  system_prompt=None, timeout=30, referer=None)` entry point. It prepends the
+  system prompt, POSTs to `OPENROUTER_BASE_URL`, and on HTTP **429/503** retries
+  **once** with `OPENROUTER_FALLBACK_MODEL`, returning
+  `(assistant_text, model_used)` so the API can report which model answered.
+  New `OpenRouterServiceUnavailableError` (503) typed error; the pre-§66
+  `chat_completion` alias was removed (no remaining callers). Added
+  `get_fallback_model()` and `is_enabled()` helpers.
+- **`services/parser.py`** — extraction module renamed from `document_text.py`
+  (same `pypdf`/`python-docx` lazy-import behavior); all imports updated.
+- **`research_query` view** — reads an optional `model` field, validated against
+  the allow-list `{default, fallback}` (anything else silently uses the default
+  so crafted requests can't select paid models); the response reports the model
+  that actually answered. 503 → HTTP 503 in the error-status mapping.
+
+### 3. Frontend
+
+- **`templates/research_ai.html`** — new "AI Model" selector card in the
+  sidebar offering `nvidia/nemotron-3-ultra-550b-a55b:free` (default) and
+  `openrouter/free`; the selected value is posted as `model` with every
+  FormData query.
+- **Contrast fix (`templates/notes/notes_engine.html`)** — the three light
+  action buttons (Extract Keywords, Save Note, Export as PDF) now use the
+  explicit high-contrast pattern `bg-white hover:bg-[#EADCC9] text-[#2B2927]`
+  (dark ink on light surface, accent hover) instead of `text-gray-900`;
+  Generate AI Summary keeps its dark `bg-main text-white` treatment (already
+  high contrast).
+
+### Testing
+
+- Mocked OpenRouter HTTP tests (`unittest.mock.patch`, offline):
+  - Model param passthrough (`model=openrouter/free` reaches the payload).
+  - Unknown/invalid model silently falls back to the default.
+  - 429 → one automatic retry with `openrouter/free`, success + model reported.
+  - 503 → one automatic retry with the fallback.
+  - Both attempts rate-limited → friendly HTTP 429 error payload.
+  - 503 exhausted → HTTP 503 error payload.
+- Service-level `OpenRouterServiceTest` — `call_openrouter` fallback retry +
+  system-prompt prepending.
+- `python manage.py check` ✔; full suite **599 tests OK**
+  (`./venv/bin/python manage.py test`).
+
+### Files Modified
+
+- `config/settings.py`, `.env.example`, `render.yaml`
+- `services/openrouter.py` (fallback + `call_openrouter`), `services/parser.py`
+  (renamed from `document_text.py`), `services/__init__.py`
+- `core/views.py`, `core/tests.py`
+- `templates/research_ai.html`, `templates/notes/notes_engine.html`
+- `docs/HANDOVER.md`

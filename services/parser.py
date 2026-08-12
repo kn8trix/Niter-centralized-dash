@@ -1,11 +1,11 @@
 """Plain-text extraction for research reference documents.
 
 Converts uploaded PDF/DOCX files into prompt-ready plain text that the
-Research AI endpoint feeds into the OpenRouter system prompt. The extraction
-libraries (``pypdf`` / ``python-docx``) are imported lazily inside each
-function so a missing optional dependency degrades to ``None`` (the query
-still runs, just without the document context) instead of crashing the
-endpoint.
+Research AI endpoint feeds into the OpenRouter system prompt as the
+"Current Reference" context. The extraction libraries (``pypdf`` /
+``python-docx``) are imported lazily inside each function so a missing
+optional dependency degrades to ``None`` (the query still runs, just without
+the document context) instead of crashing the endpoint.
 """
 
 import io

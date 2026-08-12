@@ -46,18 +46,20 @@ from .google_service import (
 from academic_notes.drive_service import get_drive_storage_info
 
 # Research AI — OpenRouter LLM client + PDF/DOCX reference extraction
-# (services/openrouter.py + services/document_text.py).
-from services.document_text import extract_document_text
+# (services/openrouter.py + services/parser.py).
+from services.parser import extract_document_text
 from services.openrouter import (
     OpenRouterAuthError,
     OpenRouterError,
     OpenRouterNotConfigured,
     OpenRouterRateLimitError,
+    OpenRouterServiceUnavailableError,
     OpenRouterTimeoutError,
     build_system_prompt,
-    chat_completion,
-    get_api_key as get_openrouter_api_key,
+    call_openrouter,
     get_default_model as get_openrouter_default_model,
+    get_fallback_model as get_openrouter_fallback_model,
+    is_enabled as openrouter_enabled,
 )
 
 from .models import (
@@ -3133,6 +3135,7 @@ def _offline_research_response(prompt, style):
 # OpenRouter failure types → HTTP status codes returned to the frontend.
 _OPENROUTER_ERROR_STATUS = {
     OpenRouterRateLimitError: 429,
+    OpenRouterServiceUnavailableError: 503,
     OpenRouterTimeoutError: 504,
     OpenRouterAuthError: 502,
     OpenRouterNotConfigured: 503,
@@ -3169,6 +3172,14 @@ def research_query(request):
     valid_styles = {code for code, _label in ResearchThread.CITATION_STYLE_CHOICES}
     if style not in valid_styles:
         style = 'IEEE'
+
+    # Optional model override from the sidebar selector — only the configured
+    # default and fallback (free) models are accepted; anything else silently
+    # falls back to the default so a crafted request cannot pick paid models.
+    requested_model = (request.POST.get('model') or '').strip()
+    allowed_models = {get_openrouter_default_model(), get_openrouter_fallback_model()}
+    if requested_model not in allowed_models:
+        requested_model = None
 
     # --- Reject oversized reference uploads before any row is created ---
     # (10 MB cap — extraction reads the whole file into memory server-side).
@@ -3209,15 +3220,15 @@ def research_query(request):
     document_text = extract_document_text(attached_file) if attached_file is not None else None
 
     try:
-        if get_openrouter_api_key():
-            assistant_text = chat_completion(
-                [
-                    {'role': 'system', 'content': build_system_prompt(style, document_text)},
-                    {'role': 'user', 'content': message},
-                ],
+        if openrouter_enabled():
+            assistant_text, used_model = call_openrouter(
+                [{'role': 'user', 'content': message}],
+                model=requested_model,
+                system_prompt=build_system_prompt(style, document_text),
                 referer='https://' + request.get_host(),
             )
-            engine, model = 'openrouter', get_openrouter_default_model()
+            engine = 'openrouter'
+            model = used_model
         else:
             assistant_text, _topic = _offline_research_response(message, style)
             engine, model = 'offline', None

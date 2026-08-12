@@ -91,6 +91,16 @@
                     </p>
                 </section>
 
+                <!-- AI Model Selector -->
+                <section class="card">
+                    <h2 class="section-title">AI Model</h2>
+                    <p class="section-subtitle">Zero-cost OpenRouter models — 429/503 auto-fails over to OpenRouter Free.</p>
+                    <select class="field-select" id="model-select" aria-label="AI model">
+                        <option value="nvidia/nemotron-3-ultra-550b-a55b:free">Nemotron 3 Ultra 550B (Free · Default)</option>
+                        <option value="openrouter/free">OpenRouter Auto Free Router</option>
+                    </select>
+                </section>
+
                 <!-- Quick Prompt Starters -->
                 <section class="card">
                     <h2 class="section-title">Quick Prompt Starters</h2>
@@ -385,6 +395,7 @@ Or upload a paper from the workbench and I will use it as your active reference.
         const attachChip = document.getElementById('attach-chip');
         const attachChipName = document.getElementById('attach-chip-name');
         const attachChipRemove = document.getElementById('attach-chip-remove');
+        const modelSelect = document.getElementById('model-select');
         let busy = false;
         let toastTimer;
 
@@ -521,6 +532,7 @@ Or upload a paper from the workbench and I will use it as your active reference.
             const form = new FormData();
             form.append('message', text);
             form.append('citation_style', citeSelect.value);
+            form.append('model', modelSelect.value);
             if (currentThreadId) form.append('thread_id', currentThreadId);
             if (file) form.append('file', file, file.name);
 

@@ -75,6 +75,14 @@ services:
       # - key: SUPABASE_DB_URL
       #   value: postgres://postgres:<pw>@db.<project>.supabase.co:5432/postgres
 
+      # OpenRouter — Research AI LLM provider (zero-cost free models).
+      # sync: false => set the key in the Render dashboard once; Blueprint
+      # syncs never overwrite the dashboard-set secret.
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_DEFAULT_MODEL
+        value: nvidia/nemotron-3-ultra-550b-a55b:free
+
       # NOTE: ALLOWED_HOSTS / CSRF_TRUSTED_ORIGINS are intentionally NOT set
       # here. config/settings.py auto-appends the platform domain AND the
       # custom domain (niter.edu.bd + www) whenever RENDER=true (set by the
