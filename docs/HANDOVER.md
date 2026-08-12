@@ -286,6 +286,8 @@ python manage.py check --deploy
 | **Departments** | [http://127.0.0.1:8000/departments/](http://127.0.0.1:8000/departments/) | Department directory & hub (`/departments/<slug>/`) |
 | **Builder** | [http://127.0.0.1:8000/builder/](http://127.0.0.1:8000/builder/) | Website Builder dashboard (super-admin) + `/builder/edit/<slug>/` editor |
 | **Builder Pages** | [http://127.0.0.1:8000/page/<slug>/](http://127.0.0.1:8000/page/<slug>/) | Public render of builder-authored pages (e.g. `/page/research-ai/`) |
+| **Student Reports** | [http://127.0.0.1:8000/dashboard/student/reports/](http://127.0.0.1:8000/dashboard/student/reports/) | Reports & Feedback — submit + personal history (login required) |
+| **Report Inbox (Admin)** | [http://127.0.0.1:8000/dashboard/admin/reports/](http://127.0.0.1:8000/dashboard/admin/reports/) | Staff inbox — triage all student reports (staff only) |
 
 ### Troubleshooting
 - **Port already in use:** Use `python manage.py runserver 8080` to run on a different port.
@@ -495,6 +497,11 @@ CSRF_COOKIE_SECURE=True
 | GET | `/admin-dashboard/` | System Admin dashboard (staff-only, 4 tabs) |
 | GET | `/cafeteria/admin/` | Cafeteria admin (staff-only) |
 | GET | `/clubs/manage/` | Club admin / executive workspace (staff-only) |
+| GET/POST | `/api/reports/` | Student: list own reports / submit one (`@login_required`, JSON or form body) |
+| GET | `/api/admin/reports/` | Staff: all reports with student details, `?status=` / `?category=` filters |
+| PATCH | `/api/admin/reports/<id>/` | Staff: update status + admin_notes; notifies the student in real time |
+| GET | `/dashboard/student/reports/` | Student Reports & Feedback page (login required) |
+| GET | `/dashboard/admin/reports/` | Staff report inbox (staff only) |
 
 ## 12. Next Steps
 
@@ -3835,3 +3842,81 @@ initial dashboard render embeds, so month navigation reuses one code path.
 - Browser-verified (Chrome): login → dashboard renders the live clock, next-class
   countdown, routine panel, calendar grid and activity feed with **no console
   errors**; Settings → Routine tab renders preview + upload + JSON entry ✔
+
+---
+
+## 74. Reports & Feedback Module
+
+**Date:** 12 August 2026  
+**Branch:** main
+
+### Overview
+
+Built a complete **Reports & Feedback** module so students can submit
+issue/feedback reports and staff can triage them with a visible response —
+modeled on the project's Django conventions (the original request described
+this as a Next.js/Prisma/NextAuth feature; this repo is Django 4.2, so the
+module is implemented natively with a `Report` model, JSON APIs, and
+Tailwind-styled pages that work in the existing app).
+
+### Data model (`core/models.py` + migration `0032`)
+
+`Report` — `user` (FK), `title`, `category` (`academic` / `facility` /
+`technical` / `other`), `description`, `status` (`pending` / `in_progress` /
+`resolved` / `rejected`, default `pending`), `admin_notes`, `created_at`,
+`updated_at`. Indexed for the two hot paths: per-user history and the staff
+status inbox. Registered in Django admin with list filters + inline status
+editing. Also added a `report` category to `Notification` so status changes
+push real-time bell alerts.
+
+### Pages
+
+| URL | View | Access | Purpose |
+|---|---|---|---|
+| `/dashboard/student/reports/` | `reports_student_view` | `@login_required` | Submit form + personal history with status badges and staff responses |
+| `/dashboard/admin/reports/` | `reports_admin_view` | `@staff_member_required` | Filterable table of every report with student details + inline status/notes management |
+
+### API endpoints (`core/views.py`)
+
+| Method | Path | Access | Behavior |
+|---|---|---|---|
+| GET | `/api/reports/` | `@login_required` | The signed-in student's own reports (never others') |
+| POST | `/api/reports/` | `@login_required` | Submit a report (JSON or form body; validates title/description/category; starts `pending`) |
+| GET | `/api/admin/reports/` | `@staff_member_required` | All reports with user details (name, student ID, department); `?status=` / `?category=` filters |
+| PATCH | `/api/admin/reports/<id>/` | `@staff_member_required` | Update `status` + `admin_notes`; creates a `Notification` and WebSocket push to the student when anything changes |
+
+### Navigation
+
+- Sidebar: **Reports & Feedback** link for every signed-in user; a **Report
+  Inbox** link in a new staff-only sidebar section (`{% if user.is_staff %}`).
+- `core/context_processors.py` gains `reports_student`, `reports_admin`,
+  `api_reports`, `api_admin_reports` in the `ENDPOINTS` registry.
+
+### Templates
+
+- `templates/reports/student_reports.html` — form (title / category dropdown /
+  description) posting JSON via `fetch` + CSRF header; history cards with
+  color-coded status badges, category chips, and a highlighted **Staff
+  response** block; new submissions prepend live.
+- `templates/reports/admin_reports.html` — client-side status/category filter
+  bar, table with student identity, description clamp, inline status select +
+  staff-notes input, and a per-row **Update** button that PATCHes and
+  re-renders the badge/notes in place with a saved indicator.
+- `templates/reports/_status_badge.html` — shared badge partial (warning /
+  info / success / danger theme tokens).
+
+### Files Modified
+
+- `core/models.py` (+`Report`, +`report` notification category), migration `0032`
+- `core/views.py` (+5 views + `_serialize_report`), `core/urls.py` (+5 routes),
+  `core/admin.py` (+`ReportAdmin`), `core/context_processors.py`
+- `templates/base.html` (sidebar links), `templates/reports/*` (3 new files)
+- `core/tests.py` (`ReportModelTest` + `ReportsModuleTest` + admin-page gating)
+- `docs/HANDOVER.md` (this section + pages/API tables)
+
+### Testing
+
+- `manage.py check` ✔
+- Full suite **646 tests OK** (was 575 — +24 model/API/page tests for reports,
+  +4 admin-page gating assertions, +2 endpoint-registry entries) ✔
+- `host` + `payments` suites OK ✔

@@ -27,12 +27,26 @@ from .models import (
     PaymentTransaction,
     ResearchMessage,
     ResearchThread,
+    Report,
     Routine,
     TransportBooking,
     TransportRoute,
     UserNote,
     UserNotificationPreference,
 )
+
+
+@admin.register(Report)
+class ReportAdmin(admin.ModelAdmin):
+    """Student-submitted reports/feedback — triage status and respond."""
+
+    list_display = ('title', 'user', 'category', 'status', 'created_at', 'updated_at')
+    list_filter = ('status', 'category', 'created_at')
+    search_fields = ('title', 'description', 'admin_notes', 'user__username', 'user__email')
+    list_select_related = ('user',)
+    date_hierarchy = 'created_at'
+    readonly_fields = ('created_at', 'updated_at')
+    list_editable = ('status',)
 
 
 @admin.register(NoteAnalysis)

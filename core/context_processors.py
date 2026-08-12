@@ -107,6 +107,12 @@ def endpoints(request):
             'cafeteria_admin': reverse('cafeteria_admin'),
             'club_admin': reverse('club_admin'),
 
+            # Reports & Feedback
+            'reports_student': reverse('reports_student'),
+            'reports_admin': reverse('reports_admin'),
+            'api_reports': reverse('api_reports'),
+            'api_admin_reports': reverse('api_admin_reports'),
+
             # Host portal pages
             'medical_admin_dashboard': reverse('medical_admin_dashboard'),
             'host_index': reverse('host:index'),

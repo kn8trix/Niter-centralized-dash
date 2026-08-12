@@ -115,6 +115,13 @@ urlpatterns = [
     # Official notices — publish from the System Admin dashboard
     path('api/notices/create/', views.create_notice, name='api_notices_create'),
 
+    # Reports & Feedback — student submission + staff inbox
+    path('dashboard/student/reports/', views.reports_student_view, name='reports_student'),
+    path('dashboard/admin/reports/', views.reports_admin_view, name='reports_admin'),
+    path('api/reports/', views.api_reports, name='api_reports'),
+    path('api/admin/reports/', views.api_admin_reports, name='api_admin_reports'),
+    path('api/admin/reports/<int:report_id>/', views.api_admin_report_update, name='api_admin_report_update'),
+
     # Medical consultation chat + live queue (patient ↔ doctor, real-time)
     path('api/medical/chat/threads/', views.medical_chat_threads, name='api_medical_chat_threads'),
     path('api/medical/chat/start/', views.medical_chat_start, name='api_medical_chat_start'),

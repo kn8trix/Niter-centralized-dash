@@ -49,6 +49,7 @@ from core.models import (
     PaymentTransaction,
     ResearchMessage,
     ResearchThread,
+    Report,
     Routine,
     StudentProfile,
     TransportBooking,
@@ -95,6 +96,7 @@ class StudentPagesSmokeTest(TestCase):
         for name in self.PAGES + [
             'claim_meal_ticket', 'book_transport_ticket', 'book_appointment', 'login', 'logout',
             'settings', 'profile', 'sys_admin', 'cafeteria_admin', 'club_admin',
+            'reports_student', 'reports_admin',
         ]:
             with self.subTest(endpoint=name):
                 self.assertIn(name, mapping)
@@ -371,7 +373,7 @@ class AccountAndAdminPagesTest(TestCase):
     # Access control
     # ------------------------------------------------------------------
     def test_admin_pages_redirect_anonymous_to_login(self):
-        for name in ['sys_admin', 'cafeteria_admin', 'club_admin']:
+        for name in ['sys_admin', 'cafeteria_admin', 'club_admin', 'reports_admin']:
             with self.subTest(page=name):
                 response = self.client.get(reverse(name))
                 self.assertEqual(response.status_code, 302)
@@ -380,7 +382,7 @@ class AccountAndAdminPagesTest(TestCase):
     def test_admin_pages_require_staff(self):
         # Logged-in non-staff users are sent back to the login page
         self.client.login(username='S1001', password='student123')
-        for name in ['sys_admin', 'cafeteria_admin', 'club_admin']:
+        for name in ['sys_admin', 'cafeteria_admin', 'club_admin', 'reports_admin']:
             with self.subTest(page=name):
                 response = self.client.get(reverse(name))
                 self.assertEqual(response.status_code, 302)
@@ -6968,3 +6970,312 @@ class RoutineSettingsTabTest(TestCase):
         response = self.client.post(reverse('settings'), {'form': 'routine_clear'})
         self.assertFalse(Routine.objects.filter(user=self.user).exists())
         self.assertContains(response, 'has been removed')
+
+
+class ReportModelTest(TestCase):
+    """Report model — fields, defaults, ordering, and cascade delete."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='report_user', password='x12345678')
+        self.report = Report.objects.create(
+            user=self.user,
+            title='Broken projector',
+            category='facility',
+            description='Room D-205 projector is not working.',
+        )
+
+    def test_str_returns_title(self):
+        self.assertEqual(str(self.report), 'Broken projector')
+
+    def test_default_status_is_pending(self):
+        self.assertEqual(self.report.status, 'pending')
+        self.assertEqual(self.report.get_status_display(), 'Pending')
+
+    def test_admin_notes_default_blank(self):
+        self.assertEqual(self.report.admin_notes, '')
+
+    def test_ordering_newest_first(self):
+        older = Report.objects.create(
+            user=self.user, title='Older', category='academic', description='x',
+        )
+        newer = Report.objects.create(
+            user=self.user, title='Newer', category='other', description='y',
+        )
+        ids = list(Report.objects.values_list('id', flat=True))
+        self.assertEqual(ids[0], newer.id)
+        self.assertIn(older.id, ids)
+
+    def test_cascade_delete_on_user(self):
+        user_id = self.user.id
+        self.user.delete()
+        self.assertFalse(Report.objects.filter(user_id=user_id).exists())
+
+
+class ReportsModuleTest(TestCase):
+    """Reports & Feedback — student submission/history, staff inbox, PATCH updates."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(username='staff', password='staffpass123', is_staff=True)
+        self.student_a = User.objects.create_user(
+            username='S1001', password='student123',
+            first_name='Alice', last_name='Johnson', email='alice@niter.edu.bd',
+        )
+        StudentProfile.objects.create(user=self.student_a, student_id='S1001', department='CSE')
+        self.student_b = User.objects.create_user(username='S1002', password='student123')
+
+    def _submit(self, **overrides):
+        data = {
+            'title': 'Broken projector',
+            'category': 'facility',
+            'description': 'Room D-205 projector is not working.',
+        }
+        data.update(overrides)
+        return self.client.post(reverse('api_reports'), data=json.dumps(data), content_type='application/json')
+
+    # ------------------------------------------------------------------
+    # Pages
+    # ------------------------------------------------------------------
+    def test_student_page_requires_login(self):
+        response = self.client.get(reverse('reports_student'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_student_page_renders_history(self):
+        Report.objects.create(
+            user=self.student_a, title='Broken projector', category='facility',
+            description='Not working.', admin_notes='Replaced the bulb.', status='resolved',
+        )
+        self.client.login(username='S1001', password='student123')
+        response = self.client.get(reverse('reports_student'))
+        self.assertEqual(response.status_code, 200)
+        for needle in ['Reports & Feedback', 'Submit a new report', 'Broken projector', 'Replaced the bulb.', 'Resolved']:
+            self.assertContains(response, needle, msg_prefix=needle)
+
+    def test_admin_page_requires_staff(self):
+        self.client.login(username='S1001', password='student123')
+        response = self.client.get(reverse('reports_admin'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_admin_page_renders_inbox(self):
+        Report.objects.create(
+            user=self.student_a, title='Broken projector', category='facility',
+            description='Not working.', status='pending',
+        )
+        self.client.login(username='staff', password='staffpass123')
+        response = self.client.get(reverse('reports_admin'))
+        self.assertEqual(response.status_code, 200)
+        for needle in ['Report Inbox', 'Broken projector', 'Alice Johnson', 'S1001', 'Pending']:
+            self.assertContains(response, needle, msg_prefix=needle)
+
+    # ------------------------------------------------------------------
+    # Student submit (POST /api/reports/)
+    # ------------------------------------------------------------------
+    def test_submit_requires_login(self):
+        response = self._submit()
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_student_submits_report(self):
+        self.client.login(username='S1001', password='student123')
+        response = self._submit()
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertEqual(data['report']['title'], 'Broken projector')
+        self.assertEqual(data['report']['category'], 'facility')
+        self.assertEqual(data['report']['status'], 'pending')
+        report = Report.objects.get(user=self.student_a)
+        self.assertEqual(report.category, 'facility')
+        self.assertEqual(report.status, 'pending')
+        self.assertEqual(report.admin_notes, '')
+
+    def test_submit_accepts_form_encoding(self):
+        self.client.login(username='S1001', password='student123')
+        response = self.client.post(reverse('api_reports'), {
+            'title': 'Form report', 'category': 'academic', 'description': 'via form',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Report.objects.filter(user=self.student_a, title='Form report').exists())
+
+    def test_submit_rejects_missing_title(self):
+        self.client.login(username='S1001', password='student123')
+        response = self._submit(title='   ')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('title is required', response.json()['message'])
+
+    def test_submit_rejects_missing_description(self):
+        self.client.login(username='S1001', password='student123')
+        response = self._submit(description='')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('description is required', response.json()['message'])
+
+    def test_submit_rejects_invalid_category(self):
+        self.client.login(username='S1001', password='student123')
+        response = self._submit(category='bogus')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Invalid report category', response.json()['message'])
+
+    def test_api_reports_rejects_put(self):
+        self.client.login(username='S1001', password='student123')
+        response = self.client.put(reverse('api_reports'), data='{}', content_type='application/json')
+        self.assertEqual(response.status_code, 405)
+
+    # ------------------------------------------------------------------
+    # Student list (GET /api/reports/) — own reports only
+    # ------------------------------------------------------------------
+    def test_student_list_returns_only_own_reports(self):
+        mine = Report.objects.create(
+            user=self.student_a, title='Mine', category='other', description='a',
+        )
+        Report.objects.create(
+            user=self.student_b, title='Theirs', category='other', description='b',
+        )
+        self.client.login(username='S1001', password='student123')
+        response = self.client.get(reverse('api_reports'))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        titles = [r['title'] for r in data['reports']]
+        self.assertEqual(titles, ['Mine'])
+        self.assertNotIn('Theirs', titles)
+        # Own serialization never leaks the user block
+        self.assertNotIn('user', data['reports'][0])
+        self.assertEqual(data['reports'][0]['id'], mine.id)
+
+    # ------------------------------------------------------------------
+    # Admin inbox (GET /api/admin/reports/)
+    # ------------------------------------------------------------------
+    def test_admin_list_requires_staff(self):
+        self.client.login(username='S1001', password='student123')
+        response = self.client.get(reverse('api_admin_reports'))
+        self.assertEqual(response.status_code, 302)
+
+    def test_admin_list_returns_all_with_user_details(self):
+        Report.objects.create(
+            user=self.student_a, title='From Alice', category='academic', description='x',
+        )
+        Report.objects.create(
+            user=self.student_b, title='From Bob', category='technical', description='y',
+        )
+        self.client.login(username='staff', password='staffpass123')
+        response = self.client.get(reverse('api_admin_reports'))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['count'], 2)
+        users = {r['title']: r['user'] for r in data['reports']}
+        self.assertEqual(users['From Alice']['full_name'], 'Alice Johnson')
+        self.assertEqual(users['From Alice']['student_id'], 'S1001')
+        self.assertEqual(users['From Alice']['department'], 'CSE')
+        self.assertEqual(users['From Bob']['full_name'], 'S1002')
+
+    def test_admin_list_filters_by_status_and_category(self):
+        Report.objects.create(
+            user=self.student_a, title='Pending one', category='facility', description='x',
+        )
+        Report.objects.create(
+            user=self.student_a, title='Resolved one', category='facility',
+            description='y', status='resolved',
+        )
+        self.client.login(username='staff', password='staffpass123')
+        response = self.client.get(reverse('api_admin_reports'), {'status': 'resolved'})
+        self.assertEqual(response.json()['count'], 1)
+        self.assertEqual(response.json()['reports'][0]['title'], 'Resolved one')
+        response = self.client.get(reverse('api_admin_reports'), {'category': 'facility', 'status': 'pending'})
+        self.assertEqual(response.json()['count'], 1)
+        self.assertEqual(response.json()['reports'][0]['title'], 'Pending one')
+
+    # ------------------------------------------------------------------
+    # Admin update (PATCH /api/admin/reports/<id>/)
+    # ------------------------------------------------------------------
+    def _make_report(self, **kwargs):
+        defaults = {
+            'user': self.student_a, 'title': 'Broken projector',
+            'category': 'facility', 'description': 'Not working.',
+        }
+        defaults.update(kwargs)
+        return Report.objects.create(**defaults)
+
+    def _patch(self, report_id, payload):
+        return self.client.patch(
+            reverse('api_admin_report_update', args=[report_id]),
+            data=json.dumps(payload), content_type='application/json',
+        )
+
+    def test_update_requires_staff(self):
+        report = self._make_report()
+        self.client.login(username='S1001', password='student123')
+        response = self._patch(report.id, {'status': 'resolved'})
+        self.assertEqual(response.status_code, 302)
+        report.refresh_from_db()
+        self.assertEqual(report.status, 'pending')
+
+    def test_update_changes_status_and_notes_and_notifies_student(self):
+        report = self._make_report()
+        self.client.login(username='staff', password='staffpass123')
+        response = self._patch(report.id, {'status': 'resolved', 'admin_notes': 'Bulb replaced.'})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertEqual(data['report']['status'], 'resolved')
+        self.assertEqual(data['report']['admin_notes'], 'Bulb replaced.')
+        report.refresh_from_db()
+        self.assertEqual(report.status, 'resolved')
+        self.assertEqual(report.admin_notes, 'Bulb replaced.')
+        # The student receives a real-time Notification (category 'report')
+        notification = Notification.objects.get(user=self.student_a, category='report')
+        self.assertIn('now resolved', notification.message)
+
+    def test_update_accepts_post_fallback(self):
+        report = self._make_report()
+        self.client.login(username='staff', password='staffpass123')
+        response = self.client.post(
+            reverse('api_admin_report_update', args=[report.id]),
+            {'status': 'in_progress'},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(response.status_code, 200)
+        report.refresh_from_db()
+        self.assertEqual(report.status, 'in_progress')
+
+    def test_update_rejects_invalid_status(self):
+        report = self._make_report()
+        self.client.login(username='staff', password='staffpass123')
+        response = self._patch(report.id, {'status': 'bogus'})
+        self.assertEqual(response.status_code, 400)
+        report.refresh_from_db()
+        self.assertEqual(report.status, 'pending')
+
+    def test_update_404_for_unknown_report(self):
+        self.client.login(username='staff', password='staffpass123')
+        response = self._patch(99999, {'status': 'resolved'})
+        self.assertEqual(response.status_code, 404)
+
+    def test_update_rejects_get(self):
+        report = self._make_report()
+        self.client.login(username='staff', password='staffpass123')
+        response = self.client.get(reverse('api_admin_report_update', args=[report.id]))
+        self.assertEqual(response.status_code, 405)
+
+    def test_update_does_not_notify_when_nothing_changes(self):
+        report = self._make_report(status='resolved', admin_notes='Bulb replaced.')
+        self.client.login(username='staff', password='staffpass123')
+        response = self._patch(report.id, {'status': 'resolved', 'admin_notes': 'Bulb replaced.'})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Notification.objects.filter(user=self.student_a, category='report').exists())
+
+    def test_submit_rejects_overlong_title(self):
+        self.client.login(username='S1001', password='student123')
+        response = self._submit(title='x' * 201)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('200 characters', response.json()['message'])
+        self.assertFalse(Report.objects.filter(user=self.student_a).exists())
+
+    def test_notes_only_update_uses_response_wording(self):
+        report = self._make_report()
+        self.client.login(username='staff', password='staffpass123')
+        response = self._patch(report.id, {'admin_notes': 'We are looking into it.'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(report.status, 'pending')
+        notification = Notification.objects.get(user=self.student_a, category='report')
+        self.assertIn('added a response', notification.message)
+        self.assertNotIn('now pending', notification.message)

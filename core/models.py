@@ -338,6 +338,7 @@ class Notification(models.Model):
         ('transport', 'Transport'),
         ('medical', 'Medical'),
         ('club', 'Club & Events'),
+        ('report', 'Reports & Feedback'),
     ]
 
     user = models.ForeignKey(
@@ -1446,6 +1447,70 @@ class ResearchMessage(models.Model):
 
     def __str__(self):
         return '%s · %s' % (self.get_role_display(), (self.content or '')[:60])
+
+
+class Report(models.Model):
+    """A student-submitted report/feedback item reviewed by staff.
+
+    Students submit a title, category and description; staff triage the item
+    through the status workflow (pending → in_progress → resolved / rejected)
+    and attach ``admin_notes`` as the visible response. Status changes push a
+    real-time ``Notification`` (category ``report``) to the submitting
+    student so they see the outcome without refreshing.
+    """
+
+    CATEGORY_CHOICES = [
+        ('academic', 'Academic'),
+        ('facility', 'Facility'),
+        ('technical', 'Technical'),
+        ('other', 'Other'),
+    ]
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('in_progress', 'In Progress'),
+        ('resolved', 'Resolved'),
+        ('rejected', 'Rejected'),
+    ]
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='reports',
+        db_index=True,
+        help_text='Student who submitted this report',
+    )
+    title = models.CharField(max_length=200)
+    category = models.CharField(
+        max_length=20,
+        choices=CATEGORY_CHOICES,
+        db_index=True,
+    )
+    description = models.TextField()
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        db_index=True,
+    )
+    admin_notes = models.TextField(
+        blank=True,
+        default='',
+        help_text='Staff response / resolution notes shown to the student',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        # Student history always filters by user; the admin inbox filters by status.
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['status', '-created_at']),
+        ]
+
+    def __str__(self):
+        return self.title
 
 
 # ----------------------------------------------------------------------------

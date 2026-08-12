@@ -90,6 +90,7 @@ from .models import (
     PaymentTransaction,
     ResearchMessage,
     ResearchThread,
+    Report,
     Routine,
     StudentProfile,
     TransportBooking,
@@ -4336,3 +4337,218 @@ def append_club_sheet_view(request):
         return _google_error_response(exc)
 
     return JsonResponse({'status': 'success', 'message': 'Row added'})
+
+
+# ============================================================================
+# Reports & Feedback module
+# ============================================================================
+
+
+def _serialize_report(report, include_user=False):
+    """Serialize one ``Report`` row for the JSON APIs.
+
+    ``include_user`` adds the submitting student's details (username, full
+    name, email, plus student ID / department when a profile exists) — used
+    only by the staff inbox.
+    """
+    data = {
+        'id': report.id,
+        'title': report.title,
+        'category': report.category,
+        'category_label': report.get_category_display(),
+        'description': report.description,
+        'status': report.status,
+        'status_label': report.get_status_display(),
+        'admin_notes': report.admin_notes,
+        'created_at': report.created_at.isoformat(),
+        'updated_at': report.updated_at.isoformat(),
+    }
+    if include_user:
+        profile = getattr(report.user, 'student_profile', None)
+        data['user'] = {
+            'username': report.user.username,
+            'full_name': report.user.get_full_name() or report.user.username,
+            'email': report.user.email or '',
+            'student_id': profile.student_id if profile else '',
+            'department': profile.department if profile else '',
+            'department_label': profile.get_department_display_name() if profile else '',
+        }
+    return data
+
+
+@login_required
+def reports_student_view(request):
+    """Student Reports & Feedback page — submit form + personal history.
+
+    The page is server-rendered with the user's own ``Report`` rows; new
+    submissions and any live updates happen through ``POST /api/reports/``.
+    """
+    reports = (
+        request.user.reports
+        .select_related('user')
+        .order_by('-created_at', '-id')
+    )
+    return render(request, 'reports/student_reports.html', {
+        'reports': reports,
+        'categories': Report.CATEGORY_CHOICES,
+    })
+
+
+@staff_member_required(login_url=settings.LOGIN_URL)
+def reports_admin_view(request):
+    """Staff Reports inbox — every student report with user details.
+
+    Supports ``?status=`` and ``?category=`` query filters; the table is
+    server-rendered and the page manages status updates through
+    ``PATCH /api/admin/reports/<id>/``.
+    """
+    queryset = Report.objects.select_related('user').order_by('-created_at', '-id')
+    active_status = (request.GET.get('status') or '').strip().lower()
+    if active_status in dict(Report.STATUS_CHOICES):
+        queryset = queryset.filter(status=active_status)
+    else:
+        active_status = 'all'
+    active_category = (request.GET.get('category') or '').strip().lower()
+    if active_category in dict(Report.CATEGORY_CHOICES):
+        queryset = queryset.filter(category=active_category)
+    else:
+        active_category = 'all'
+    return render(request, 'reports/admin_reports.html', {
+        'reports': queryset,
+        'categories': Report.CATEGORY_CHOICES,
+        'status_choices': Report.STATUS_CHOICES,
+        'active_status': active_status,
+        'active_category': active_category,
+    })
+
+
+@login_required
+def api_reports(request):
+    """Student Reports API — ``GET`` lists own reports, ``POST`` submits one.
+
+    POST accepts a JSON body or a regular form (``title``, ``category``,
+    ``description``); new rows always start with status ``pending`` and no
+    admin notes. Only the signed-in student's own reports are ever visible.
+    """
+    if request.method == 'GET':
+        reports = request.user.reports.select_related('user').order_by('-created_at', '-id')
+        return JsonResponse({
+            'status': 'success',
+            'reports': [_serialize_report(r) for r in reports],
+        })
+
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST or GET required'}, status=405)
+
+    try:
+        payload = json.loads(request.body or b'{}')
+    except ValueError:
+        payload = {}
+
+    title = (payload.get('title') or request.POST.get('title') or '').strip()
+    description = (payload.get('description') or request.POST.get('description') or '').strip()
+    category = (payload.get('category') or request.POST.get('category') or '').strip().lower()
+
+    if not title:
+        return JsonResponse({'status': 'error', 'message': 'Report title is required.'}, status=400)
+    if len(title) > 200:
+        return JsonResponse({'status': 'error', 'message': 'Report title must be 200 characters or fewer.'}, status=400)
+    if not description:
+        return JsonResponse({'status': 'error', 'message': 'Report description is required.'}, status=400)
+    if category not in dict(Report.CATEGORY_CHOICES):
+        return JsonResponse({'status': 'error', 'message': 'Invalid report category.'}, status=400)
+
+    report = Report.objects.create(
+        user=request.user,
+        title=title,
+        category=category,
+        description=description,
+    )
+    return JsonResponse({
+        'status': 'success',
+        'message': 'Report submitted successfully.',
+        'report': _serialize_report(report),
+    })
+
+
+@staff_member_required(login_url=settings.LOGIN_URL)
+def api_admin_reports(request):
+    """Staff Reports API — every student report with submitting-user details.
+
+    Supports the same ``?status=`` / ``?category=`` filters as the admin page
+    so the inbox can refresh server-side.
+    """
+    queryset = Report.objects.select_related('user').order_by('-created_at', '-id')
+    status = (request.GET.get('status') or '').strip().lower()
+    if status in dict(Report.STATUS_CHOICES):
+        queryset = queryset.filter(status=status)
+    category = (request.GET.get('category') or '').strip().lower()
+    if category in dict(Report.CATEGORY_CHOICES):
+        queryset = queryset.filter(category=category)
+    return JsonResponse({
+        'status': 'success',
+        'count': queryset.count(),
+        'reports': [_serialize_report(r, include_user=True) for r in queryset],
+    })
+
+
+@staff_member_required(login_url=settings.LOGIN_URL)
+def api_admin_report_update(request, report_id):
+    """Staff update endpoint — ``PATCH`` a report's status and/or admin notes.
+
+    Accepts a JSON body (``status`` / ``admin_notes``); when either field
+    changes, the submitting student receives a real-time ``Notification``
+    (category ``report``) via their WebSocket group.
+    """
+    if request.method not in ('PATCH', 'POST'):
+        return JsonResponse({'status': 'error', 'message': 'PATCH or POST required'}, status=405)
+
+    report = get_object_or_404(Report.objects.select_related('user'), pk=report_id)
+
+    try:
+        payload = json.loads(request.body or b'{}')
+    except ValueError:
+        payload = {}
+
+    status = (payload.get('status') or request.POST.get('status') or '').strip().lower()
+    admin_notes = (payload.get('admin_notes') or request.POST.get('admin_notes') or '').strip()
+
+    changes = []
+    if status:
+        if status not in dict(Report.STATUS_CHOICES):
+            return JsonResponse({'status': 'error', 'message': 'Invalid report status.'}, status=400)
+        if status != report.status:
+            report.status = status
+            changes.append('status')
+    if 'admin_notes' in payload or 'admin_notes' in request.POST:
+        if admin_notes != report.admin_notes:
+            report.admin_notes = admin_notes
+            changes.append('admin_notes')
+
+    if changes:
+        report.save(update_fields=changes + ['updated_at'])
+        student = report.user
+        if 'status' in changes:
+            message = 'Your report "%s" is now %s.' % (
+                report.title, report.get_status_display().lower(),
+            )
+        else:
+            message = 'Staff added a response to your report "%s".' % report.title
+        Notification.objects.create(
+            user=student,
+            title='Your report was updated',
+            message=message,
+            category='report',
+        )
+        notify_user(student.id, {
+            'type': 'report.updated',
+            'report_id': report.id,
+            'status': report.status,
+            'admin_notes': report.admin_notes,
+        })
+
+    return JsonResponse({
+        'status': 'success',
+        'message': 'Report updated.',
+        'report': _serialize_report(report, include_user=True),
+    })

@@ -155,7 +155,25 @@
                 </svg>
                 Clubs & Events
             </a>
+            
+            <a href="{{ ENDPOINTS.reports_student }}" data-route="reports_student" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-main/80 hover:text-main">
+                <svg class="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5h6M11 9h6M11 13h6m-9-8H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-2m-4 0a2 2 0 00-2 2v1a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2z"></path>
+                </svg>
+                Reports & Feedback
+            </a>
         </nav>
+        {% if user.is_staff %}
+        <div class="p-4 border-t border-border">
+            <p class="text-xs font-medium text-main/40 uppercase tracking-wider px-3 mb-2">Staff</p>
+            <a href="{{ ENDPOINTS.reports_admin }}" data-route="reports_admin" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-main/80 hover:text-main">
+                <svg class="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                Report Inbox
+            </a>
+        </div>
+        {% endif %}
         
         <!-- User Profile / Logout -->
         <div data-component="profile" class="p-4 border-t border-border">
