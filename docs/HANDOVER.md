@@ -4704,3 +4704,63 @@ HTTP status codes (400/404/405):
 - `templates/reports/student_reports.html`, `templates/reports/admin_reports.html`
 - `templates/admin/admin_base.html` (toasts include)
 - `docs/HANDOVER.md` (this section)
+
+---
+
+## 85. Android WebView Wrapper (`/mobile-webview`)
+
+**Date:** 13 August 2026  
+**Branch:** main
+
+A lightweight native launcher for the dashboard, rendering
+`https://niter-centralized-dash.onrender.com` in a full-screen Android WebView.
+Kotlin, single `MainActivity`, no extra UI.
+
+### Key implementation points (`MainActivity.kt`)
+
+| Requirement | Where |
+|---|---|
+| `javaScriptEnabled`, `domStorageEnabled`, `databaseEnabled`, `allowFileAccess` | `configureWebView()` |
+| Google OAuth "disallowed_useragent" fix | `chromeLikeUserAgent()` — strips the `Version/4.0` marker and normalises the Chrome token to `Chrome/125.0.0.0`, keeping device OS/model tokens; result looks like stock Chrome for Android |
+| External redirects | `shouldOverrideUrlLoading` — http/https (Google auth, allauth + Drive callbacks, payment pages) stay in the WebView; `mailto:`/`tel:`/`intent:`/`whatsapp://` open external apps |
+| Full-screen | `Theme.AppCompat.NoActionBar` + `android:windowFullscreen` + `WindowInsetsControllerCompat.hide(systemBars())` |
+| Hardware BACK | `OnBackPressedCallback` — `webView.canGoBack() ? goBack() : finish()` |
+| File uploads | `WebChromeClient.onShowFileChooser` → `ActivityResultContracts.StartActivityForResult` (used by Notes Engine + Reports attachments) |
+
+Security posture: `MIXED_CONTENT_NEVER_ALLOW` (site is https-only), and
+`allowFileAccessFromFileURLs` / `allowUniversalAccessFromFileURLs` explicitly
+`false` alongside the required `allowFileAccess(true)`.
+
+### Project structure
+
+```
+mobile-webview/
+├── settings.gradle.kts / build.gradle.kts / gradle.properties
+├── gradle/wrapper/gradle-wrapper.properties   # Gradle 8.11.1 (JAR restored by Android Studio)
+└── app/
+    ├── build.gradle.kts        # AGP 8.10.1 · Kotlin 2.0.21 · compileSdk 36 · minSdk 26
+    └── src/main/
+        ├── AndroidManifest.xml # INTERNET, launcher activity, configChanges (no rotate reload)
+        ├── java/com/niterhub/dash/MainActivity.kt
+        └── res/                # layout (WebView + thin progress bar), theme, adaptive icon
+```
+
+### How to open & compile the APK (Android Studio)
+
+1. **File → Open…** → select the `mobile-webview/` folder → **OK** → **Trust Project**.
+2. Let Gradle sync (it downloads Gradle 8.11.1 + AGP/Kotlin/AndroidX). If the
+   wrapper JAR is missing, Android Studio restores it during sync (or run
+   `gradle wrapper` inside `mobile-webview/`).
+   - Recommended: **Android Studio Meerkat (2024.3.1)+**, which bundles JDK 17+.
+3. **Build → Build APK(s)** → install `app/build/outputs/apk/debug/app-debug.apk`
+   on a device, or plug in a phone and press **Run ▶**.
+4. Release: **Build → Generate Signed Bundle / APK… → APK** (create a keystore).
+
+Change the target URL via the `startUrl` constant at the top of `MainActivity.kt`.
+Full details, including troubleshooting (Google login, blank screen, uploads):
+see `mobile-webview/README.md`.
+
+### Files
+
+- `mobile-webview/` (new — Gradle project, `MainActivity.kt`, manifest, resources, README)
+- `docs/HANDOVER.md` (this section)

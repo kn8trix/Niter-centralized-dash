@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        NoActionBar + fullscreen: the dashboard is a pure WebView experience, so
+        the OS chrome is hidden. Bars are also hidden at runtime in MainActivity
+        (WindowInsetsControllerCompat) to cover gesture navigation on API 29+.
+    -->
+    <style name="Theme.NiterDash" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowBackground">#FBF9F5</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="colorPrimary">#EADCC9</item>
+        <item name="colorPrimaryDark">#2B2927</item>
+        <item name="colorAccent">#2B2927</item>
+    </style>
+</resources>
