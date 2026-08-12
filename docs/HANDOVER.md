@@ -4440,3 +4440,67 @@ for a quick Drive-flow check without starting Postgres, run the server with
 ### Files Modified
 
 - `docs/HANDOVER.md` (this section — documentation only; no code changed)
+
+---
+
+## 82. Homepage (Hero) — Permanently Dark Mode
+
+**Date:** 13 August 2026  
+**Branch:** main
+
+### Overview
+
+The public homepage / hero page (`templates/index.html`) is now **always
+dark**, by brand choice — it no longer follows the OS theme or the user's
+Settings → Display preference. (Earlier work made the portal default
+`system`; this overrides that **for this page only**.)
+
+### What Changed
+
+1. **`templates/index.html`** — replaced the shared display-preference driver
+   (`{% include 'partials/display_prefs.html' %}` → the no-flash
+   `display-preferences.js` driver) with a tiny inline script in `<head>` that
+   permanently stamps the dark theme before first paint (zero flash):
+
+   ```html
+   <script>
+       (function () {
+           var root = document.documentElement;
+           root.setAttribute('data-theme', 'dark');
+           root.setAttribute('data-theme-mode', 'dark');
+           root.setAttribute('data-density', 'comfortable');
+           root.classList.add('dark');
+       })();
+   </script>
+   ```
+
+   Because `theme.css` already contains the complete `html[data-theme='dark']`
+   landing palette (navbar, glass panels, hero overlay, card deck, `body.landing`
+   background), stamping the attribute activates the dark design with no CSS
+   duplication. The theme driver is **not loaded** on this page, so Settings →
+   Display cannot lighten it.
+2. **`static/css/main.css`** — header comment updated to describe the
+   permanently-dark landing (light tokens in `:root` remain the fallback base;
+   the dark token block wins by specificity). No functional change.
+
+### Behavior
+
+- The landing page is dark for **everyone**, including anonymous visitors and
+  signed-in users with a light preference.
+- The rest of the portal (dashboard, settings, service pages) is unaffected
+  and still honours each user's theme setting.
+
+### Verification
+
+- `python manage.py test core.tests.StudentPagesSmokeTest.test_all_student_pages_render` ✔
+- Served HTML: force-dark script present, `js/display-preferences.js` absent.
+- Browser (Chrome, SW cache cleared): `data-theme="dark"`,
+  `data-theme-mode="dark"`, `dark` class applied, body background
+  `rgb(24,24,27)`, hero/navbar/glass cards + About/Medical sections all
+  dark-themed, zero console errors.
+
+### Files Modified
+
+- `templates/index.html`
+- `static/css/main.css`
+- `docs/HANDOVER.md` (this section)

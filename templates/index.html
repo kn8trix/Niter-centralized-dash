@@ -11,9 +11,21 @@
 
     <!-- Global design tokens -->
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
-    <!-- Global display preferences (theme / timezone / density) -- no-flash driver -->
-    {% include 'partials/display_prefs.html' %}
-    <!-- Public homepage warm light theme styles -->
+    <!-- The public hero/homepage is permanently dark (brand choice). This
+         stamps the dark theme before first paint so theme.css's dark tokens
+         apply with zero flash — deliberately independent of the global
+         display-preference driver (Settings → Display does not affect this
+         page). -->
+    <script>
+        (function () {
+            var root = document.documentElement;
+            root.setAttribute('data-theme', 'dark');
+            root.setAttribute('data-theme-mode', 'dark');
+            root.setAttribute('data-density', 'comfortable');
+            root.classList.add('dark');
+        })();
+    </script>
+    <!-- Public homepage styles (light tokens; dark tokens from theme.css win) -->
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
 
     <!-- Google Fonts (Inter) -->

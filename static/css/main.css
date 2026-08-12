@@ -1,13 +1,15 @@
 /* ============================================================================
-   CampusDash — Public Homepage Stylesheet (Warm Light Theme)
+   CampusDash — Public Homepage Stylesheet (Permanently Dark)
    ----------------------------------------------------------------------------
-   Warm, light landing styling for the public homepage (templates/index.html),
-   matching the "Warm Minimal Notion-style" design system of the Niter Hub
-   Student Dashboard (/dashboard/) for a seamless visual transition.
+   Landing styling for the public homepage (templates/index.html). The
+   homepage is permanently dark by design: index.html stamps
+   ``html[data-theme="dark"]`` before first paint, so the dark tokens in
+   theme.css (``html[data-theme='dark']``) win over the light base palette
+   below — Settings → Display cannot lighten this page.
 
-   The palette below mirrors the app design tokens (bg #faf9f6, cards #ffffff,
-   borders #f0ebe1, charcoal accents #27272a) and falls back to theme.css
-   variables where possible so the site stays re-themable from one place.
+   The light tokens in ``:root`` are the base fallback (bg #faf9f6, cards
+   #ffffff, borders #f0ebe1, charcoal accents #27272a); every component
+   reads them via var() so the dark block overrides them in one place.
 
    Sections:
      1. Landing-page tokens (light theme palette)
