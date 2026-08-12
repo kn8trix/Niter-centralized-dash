@@ -350,16 +350,18 @@ body.landing [id] {
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.10);
 }
 
-/* "Medical Services" — pure white with light border */
+/* "Medical Services" — pure white with dark ink text. The text colour is a
+   fixed hex (not var(--text-primary)) so it stays readable when the token
+   flips light in dark mode — no white-on-white. */
 .hero-btn-secondary {
     background: #ffffff;
     border: 1px solid var(--border-color);
-    color: var(--text-primary);
+    color: #1E1E1E;
 }
 
 .hero-btn-secondary:hover {
     transform: translateY(-2px);
-    background: var(--bg-subtle);
+    background: #f3f4f6; /* gray-100 — keeps the dark ink readable */
 }
 
 /* Bottom floating quick-card deck */

@@ -210,6 +210,14 @@ html[data-theme='dark'] .navbar.scrolled {
     background: rgba(39, 39, 42, 0.9);
 }
 
+/* Unscrolled navbar: the pill is translucent white in light mode; in dark
+   mode it must go dark too, otherwise the light nav text sits on a light
+   translucent surface (white-on-white). */
+html[data-theme='dark'] .navbar {
+    background: rgba(39, 39, 42, 0.82);
+    border-color: #3f3f46;
+}
+
 /* Auth screen — the error alert and back link are light elements; in dark mode
    they get dark-adapted surfaces with high-contrast text (WCAG AA). */
 html[data-theme='dark'] .auth-alert {

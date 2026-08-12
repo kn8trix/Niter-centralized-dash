@@ -3378,8 +3378,10 @@ model selector, and fixed the last low-contrast action buttons.
   action buttons (Extract Keywords, Save Note, Export as PDF) now use the
   explicit high-contrast pattern `bg-white hover:bg-[#EADCC9] text-[#2B2927]`
   (dark ink on light surface, accent hover) instead of `text-gray-900`;
-  Generate AI Summary keeps its dark `bg-main text-white` treatment (already
-  high contrast).
+  Generate AI Summary kept its dark `bg-main text-white` treatment (already
+  high contrast) at the time. **Note (§68):** a later contrast pass moved the
+  AI Summary button to theme-agnostic `bg-white text-[#1E1E1E]` because
+  `bg-main` flips light in dark mode (white-on-white) — see §68.
 
 ### Testing
 
@@ -3454,3 +3456,66 @@ working until a UI pass updates the option.
 
 - `templates/research_ai.html` model-selector option value still shows
   `nvidia/nemotron-3-ultra-550b-a55b:free` — update it in a future UI pass.
+
+---
+
+## 68. Button Contrast Fix — White Text on Light Backgrounds (Dark Mode)
+
+**Date:** 12 August 2026  
+**Branch:** main
+
+### Overview
+
+Fixed low-contrast buttons where white text rendered over white or light
+surfaces. Root cause: several action buttons relied on theme tokens that
+**flip in dark mode** — `--color-main` and `--text-primary` become light
+values (`#f4f4f5`), while the button backgrounds stayed white/light, so dark
+mode produced white-on-white. The fixes use **theme-agnostic colors** (fixed
+hex ink) that stay readable in both themes.
+
+### Changes
+
+- **`templates/notes/notes_engine.html`** — "Generate AI Summary" button:
+  `bg-main hover:bg-main/90 text-white` → `bg-white text-[#1E1E1E]
+  hover:bg-gray-200 font-semibold` (layout classes `flex items-center gap-2` /
+  `text-sm` / `shadow-sm` kept). Now matches the sibling buttons' dark-ink-on-
+  white treatment in both themes.
+- **`static/css/main.css`** — "Medical Services" hero button
+  (`.hero-btn-secondary`): text colour is now hardcoded `#1E1E1E` (was
+  `var(--text-primary)`, which flips light in dark mode) on the white
+  background; hover now uses `#f3f4f6` (gray-100, was `var(--bg-subtle)`).
+- **`templates/ticketing/tickets.html`** — "Claim Meal Ticket" submit button:
+  `bg-main hover:bg-main/90 text-white` → `bg-[#2B2927] hover:bg-[#3A3836]
+  text-white` — same dark-ink treatment, hardcoded so it stays dark in both
+  themes.
+- **`static/css/theme.css`** — added a dark-mode `.navbar` rule
+  (`background: rgba(39, 39, 42, 0.82); border-color: #3f3f46`) so the
+  translucent-white landing navbar pill doesn't carry light nav text on a
+  light surface in dark mode (the scrolled-state rule already existed).
+
+### Audit results (no other offenders)
+
+- The remaining `bg-white` action buttons (Extract Keywords, Save Note, Export
+  as PDF) already used explicit dark text (`text-[#2B2927]`).
+- `bg-emerald-600` / `bg-red-600` admin buttons keep white text on dark fixed
+  colours — fine in both themes.
+- No `bg-white/10`, `bg-white/20`, or `text-white/50` instances found in any
+  template. `grep 'bg-main.*text-white' templates/` and
+  `grep 'bg-white.*text-white' templates/` now return nothing.
+- The `#notes-toast` element uses `text-white` but always ends with
+  `bg-success` / `bg-danger` (neither flips in dark mode) — fine.
+
+### Testing
+
+- Grep verification for residual `bg-main.*text-white` / `bg-white.*text-white`
+  in `templates/` ✔ (none)
+- Confirmed `templates/ticketing/tickets.html` extends `base.html` (Tailwind
+  CDN) so the arbitrary hex utilities (`bg-[#2B2927]`) resolve.
+- Code review ✔ — no regressions; cascade for the new navbar rule verified
+  (scrolled-dark state is covered by the pre-existing higher-specificity rule).
+
+### Files Modified
+
+- `templates/notes/notes_engine.html`, `static/css/main.css`,
+  `templates/ticketing/tickets.html`, `static/css/theme.css`,
+  `docs/HANDOVER.md`
