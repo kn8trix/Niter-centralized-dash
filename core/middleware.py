@@ -11,14 +11,58 @@ render in the user's zone.
 """
 
 from django.utils import timezone
+from django.shortcuts import redirect
 
 from .models import UserNotificationPreference
+from .roles import get_user_role, role_home_path
 
 DEFAULT_DISPLAY_PREFS = {
     'theme': 'light',
     'timezone': None,
     'density': 'comfortable',
 }
+
+
+class RoleAccessMiddleware:
+    """Enforce the portal's role-based area separation at the request layer.
+
+    Every authenticated request is resolved to an explicit role
+    (admin / club / student — see ``core.roles``). Requests that land on the
+    wrong role's area are redirected to that role's home URL so a student can
+    never browse ``/dashboard/admin/*`` and a club manager can never open the
+    admin area by typing a URL.
+
+    The role dispatcher for the bare ``/dashboard/`` URL lives in the view
+    (``core.views.dashboard``) so anonymous guests keep the pre-RBAC public
+    behaviour of viewing the student dashboard.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self._guard(request)
+        if response is not None:
+            return response
+        return self.get_response(request)
+
+    def _guard(self, request):
+        user = request.user
+        if not user.is_authenticated:
+            return None
+
+        role = get_user_role(user)
+        path = request.path
+
+        # Admin area (/dashboard/admin/*) — admins only.
+        if path.startswith('/dashboard/admin/'):
+            if role != 'admin':
+                return redirect(role_home_path(role))
+        # Student area (/dashboard/student/*) — students (admins may preview).
+        elif path.startswith('/dashboard/student/'):
+            if role == 'club':
+                return redirect(role_home_path(role))
+        return None
 
 
 class UserDisplayPreferencesMiddleware:

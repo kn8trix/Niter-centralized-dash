@@ -134,6 +134,9 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'allauth.account.middleware.AccountMiddleware',
+    # Role-based area separation (admin / club / student) — must run after
+    # AuthenticationMiddleware so request.user is resolved.
+    'core.middleware.RoleAccessMiddleware',
     # Per-user display prefs (theme / timezone / density) — activates the
     # user's timezone for aware datetime handling + caches prefs on the request.
     'core.middleware.UserDisplayPreferencesMiddleware',
@@ -157,6 +160,8 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 # Centralized endpoint registry for decoupled URL mappings
                 'core.context_processors.endpoints',
+                # Explicit portal role (admin / club / student) for role-aware nav
+                'core.context_processors.user_role',
                 # Published builder pages flagged for the top navigation
                 'core.context_processors.custom_pages_nav',
                 # Global display preferences (theme / timezone / density)

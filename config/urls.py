@@ -3,6 +3,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import path, include
+from core.views import RoleAwareLoginView
 from host.views import medical_admin_dashboard
 
 urlpatterns = [
@@ -16,7 +17,7 @@ urlpatterns = [
     path('payments/', include('payments.urls')),
 
     # Authentication
-    path('login/', auth_views.LoginView.as_view(
+    path('login/', RoleAwareLoginView.as_view(
         template_name='login.html',
         redirect_authenticated_user=True,
     ), name='login'),

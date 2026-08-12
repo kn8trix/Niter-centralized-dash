@@ -1,0 +1,55 @@
+{% extends "admin/admin_base.html" %}
+{% load static %}
+
+{% block title %}Website Builder / CMS — Niter Hub Admin{% endblock %}
+{% block header %}Website Builder / Content Management{% endblock %}
+
+{% block content %}
+<div class="admin-card">
+    <h2><i class="fa-solid fa-pen-ruler"></i> Website Builder</h2>
+    <p class="admin-card-sub">
+        Build and manage public pages with the visual WYSIWYG builder.
+        {{ published_count }} of {{ pages|length }} pages are live.
+    </p>
+    <div class="flex flex-wrap gap-3">
+        {% if can_build %}
+        <a href="{{ ENDPOINTS.builder_dashboard }}" class="admin-btn admin-btn-primary"><i class="fa-solid fa-layer-group"></i> Open Builder</a>
+        {% else %}
+        <span class="text-sm text-main/50">You need the <code>change_editablepage</code> permission (superuser) to edit pages.</span>
+        {% endif %}
+        <a href="{{ ENDPOINTS.sys_admin }}" class="admin-btn"><i class="fa-solid fa-bullhorn"></i> Publish a Notice</a>
+        <a href="{{ ENDPOINTS.notices }}" class="admin-btn"><i class="fa-solid fa-eye"></i> View Notices Feed</a>
+    </div>
+</div>
+
+<div class="admin-card">
+    <h2><i class="fa-solid fa-file-pen"></i> Builder Pages</h2>
+    <p class="admin-card-sub">All pages managed through the Website Builder (CMS).</p>
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr><th>Title</th><th>Slug</th><th>Status</th><th>In Nav</th><th>Updated</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for page in pages %}
+                <tr>
+                    <td class="font-medium">{{ page.title }}</td>
+                    <td class="mono">{{ page.slug }}</td>
+                    <td><span class="admin-badge {% if page.is_published %}admin-badge-green{% else %}admin-badge-gray{% endif %}">{{ page.is_published|yesno:"Published,Draft" }}</span></td>
+                    <td>{% if page.show_in_nav %}<span class="admin-badge admin-badge-blue">In nav</span>{% else %}<span class="text-main/40">—</span>{% endif %}</td>
+                    <td>{{ page.updated_at|date:"M d, Y" }}</td>
+                    <td class="text-right whitespace-nowrap">
+                        {% if can_build %}
+                        <a href="{% url 'builder_editor' page.slug %}" class="admin-btn"><i class="fa-solid fa-pen"></i> Edit</a>
+                        {% endif %}
+                        <a href="{% url 'editable_page' page.slug %}" class="admin-btn"><i class="fa-solid fa-eye"></i> View</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-main/50 py-4">No builder pages yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

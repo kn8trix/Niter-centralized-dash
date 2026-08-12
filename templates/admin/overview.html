@@ -1,0 +1,144 @@
+{% extends "admin/admin_base.html" %}
+{% load static %}
+
+{% block title %}Admin Overview — Niter Hub{% endblock %}
+{% block header %}Admin Overview{% endblock %}
+
+{% block content %}
+<!-- Quick links -->
+<div class="admin-quick-grid">
+    <a href="{{ ENDPOINTS.admin_users }}" class="admin-quick-tile">
+        <span class="tile-icon"><i class="fa-solid fa-users"></i></span>
+        <span><span class="tile-name block">Users &amp; Clubs</span><span class="tile-sub">Students · Staff · Managers</span></span>
+    </a>
+    <a href="{{ ENDPOINTS.admin_club_accounts }}" class="admin-quick-tile">
+        <span class="tile-icon"><i class="fa-solid fa-user-shield"></i></span>
+        <span><span class="tile-name block">Club Accounts</span><span class="tile-sub">Create · assign · reset</span></span>
+    </a>
+    <a href="{{ ENDPOINTS.reports_admin }}" class="admin-quick-tile">
+        <span class="tile-icon"><i class="fa-solid fa-clipboard-list"></i></span>
+        <span><span class="tile-name block">Reports Inbox</span><span class="tile-sub">{{ stats.pending_reports }} pending review</span></span>
+    </a>
+    <a href="{{ ENDPOINTS.admin_database }}" class="admin-quick-tile">
+        <span class="tile-icon"><i class="fa-solid fa-database"></i></span>
+        <span><span class="tile-name block">Database Stats</span><span class="tile-sub">Row counts per model</span></span>
+    </a>
+    <a href="{{ ENDPOINTS.admin_content }}" class="admin-quick-tile">
+        <span class="tile-icon"><i class="fa-solid fa-pen-ruler"></i></span>
+        <span><span class="tile-name block">Website Builder</span><span class="tile-sub">{{ stats.pages }} pages · CMS</span></span>
+    </a>
+    <a href="{{ ENDPOINTS.admin_settings }}" class="admin-quick-tile">
+        <span class="tile-icon"><i class="fa-solid fa-gear"></i></span>
+        <span><span class="tile-name block">System Settings</span><span class="tile-sub">Platform configuration</span></span>
+    </a>
+</div>
+
+<!-- Stat cards -->
+<div class="admin-stats-grid">
+    <div class="admin-stat-card">
+        <span class="admin-stat-icon"><i class="fa-solid fa-user-graduate"></i></span>
+        <span><span class="admin-stat-value">{{ stats.students }}</span><span class="admin-stat-label">Students</span></span>
+    </div>
+    <div class="admin-stat-card">
+        <span class="admin-stat-icon"><i class="fa-solid fa-user-tie"></i></span>
+        <span><span class="admin-stat-value">{{ stats.staff }}</span><span class="admin-stat-label">Staff accounts</span></span>
+    </div>
+    <div class="admin-stat-card">
+        <span class="admin-stat-icon"><i class="fa-solid fa-user-shield"></i></span>
+        <span><span class="admin-stat-value">{{ stats.club_accounts }}</span><span class="admin-stat-label">Active club accounts</span></span>
+    </div>
+    <div class="admin-stat-card">
+        <span class="admin-stat-icon"><i class="fa-solid fa-crown"></i></span>
+        <span><span class="admin-stat-value">{{ stats.superusers }}</span><span class="admin-stat-label">System admins</span></span>
+    </div>
+    <div class="admin-stat-card">
+        <span class="admin-stat-icon"><i class="fa-solid fa-bullhorn"></i></span>
+        <span><span class="admin-stat-value">{{ stats.published_notices }}</span><span class="admin-stat-label">Published notices</span></span>
+    </div>
+    <div class="admin-stat-card">
+        <span class="admin-stat-icon"><i class="fa-solid fa-clipboard-list"></i></span>
+        <span><span class="admin-stat-value">{{ stats.pending_reports }}</span><span class="admin-stat-label">Pending reports</span></span>
+    </div>
+    <div class="admin-stat-card">
+        <span class="admin-stat-icon"><i class="fa-solid fa-file-pen"></i></span>
+        <span><span class="admin-stat-value">{{ stats.pages }}</span><span class="admin-stat-label">Builder pages</span></span>
+    </div>
+    <div class="admin-stat-card">
+        <span class="admin-stat-icon"><i class="fa-solid fa-utensils"></i></span>
+        <span><span class="admin-stat-value">{{ stats.meal_tickets }}</span><span class="admin-stat-label">Meal tickets</span></span>
+    </div>
+    <div class="admin-stat-card">
+        <span class="admin-stat-icon"><i class="fa-solid fa-bus"></i></span>
+        <span><span class="admin-stat-value">{{ stats.transport_bookings }}</span><span class="admin-stat-label">Transport bookings</span></span>
+    </div>
+    <div class="admin-stat-card">
+        <span class="admin-stat-icon"><i class="fa-solid fa-stethoscope"></i></span>
+        <span><span class="admin-stat-value">{{ stats.appointments }}</span><span class="admin-stat-label">Appointments</span></span>
+    </div>
+</div>
+
+<!-- Recent reports -->
+<div class="admin-card">
+    <h2><i class="fa-solid fa-clipboard-list"></i> Recent Reports</h2>
+    <p class="admin-card-sub">Latest student feedback waiting for triage.</p>
+    {% if recent_reports %}
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr><th>Title</th><th>Student</th><th>Category</th><th>Status</th><th>Date</th></tr>
+            </thead>
+            <tbody>
+                {% for report in recent_reports %}
+                <tr>
+                    <td>{{ report.title }}</td>
+                    <td>{{ report.user.get_full_name|default:report.user.username }}</td>
+                    <td>{{ report.get_category_display }}</td>
+                    <td><span class="admin-badge {% if report.status == 'pending' %}admin-badge-amber{% elif report.status == 'resolved' %}admin-badge-green{% elif report.status == 'rejected' %}admin-badge-red{% else %}admin-badge-blue{% endif %}">{{ report.get_status_display }}</span></td>
+                    <td>{{ report.created_at|date:"M d, Y" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-sm text-main/50">No reports submitted yet.</p>
+    {% endif %}
+</div>
+
+<!-- Recent notices + latest pages -->
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
+    <div class="admin-card">
+        <h2><i class="fa-solid fa-bullhorn"></i> Recent Notices</h2>
+        <p class="admin-card-sub">Most recently published announcements.</p>
+        {% if recent_notices %}
+        <ul class="space-y-2 text-sm">
+            {% for notice in recent_notices %}
+            <li class="flex items-center justify-between gap-3">
+                <span class="truncate">{{ notice.title }}</span>
+                <span class="admin-badge {% if notice.category == 'urgent' %}admin-badge-red{% elif notice.category == 'academic' %}admin-badge-blue{% elif notice.category == 'event' %}admin-badge-amber{% else %}admin-badge-gray{% endif %}">{{ notice.get_category_display }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-sm text-main/50">No notices published yet.</p>
+        {% endif %}
+    </div>
+
+    <div class="admin-card">
+        <h2><i class="fa-solid fa-file-pen"></i> Latest Builder Pages</h2>
+        <p class="admin-card-sub">Recently edited CMS pages.</p>
+        {% if latest_pages %}
+        <ul class="space-y-2 text-sm">
+            {% for page in latest_pages %}
+            <li class="flex items-center justify-between gap-3">
+                <a href="{% url 'editable_page' page.slug %}" class="truncate hover:text-accentHover">{{ page.title }}</a>
+                <span class="admin-badge {% if page.is_published %}admin-badge-green{% else %}admin-badge-gray{% endif %}">{{ page.is_published|yesno:"Published,Draft" }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-sm text-main/50">No builder pages yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

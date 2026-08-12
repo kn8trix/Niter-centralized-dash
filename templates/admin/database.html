@@ -1,0 +1,36 @@
+{% extends "admin/admin_base.html" %}
+{% load static %}
+
+{% block title %}Database Stats — Niter Hub Admin{% endblock %}
+{% block header %}Database Management{% endblock %}
+
+{% block content %}
+<div class="admin-card">
+    <h2><i class="fa-solid fa-database"></i> Database Quick Stats</h2>
+    <p class="admin-card-sub">Live row counts per core table — a read-only health check of the platform.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+        {% for group_name, rows in tables %}
+        <div class="admin-card" style="margin-bottom:0;">
+            <h2>{{ group_name }}</h2>
+            <div class="space-y-2 mt-3">
+                {% for label, count in rows %}
+                <div class="flex items-center justify-between text-sm">
+                    <span class="text-main/70">{{ label }}</span>
+                    <span class="mono font-semibold">{{ count }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="admin-card">
+    <h2><i class="fa-solid fa-circle-info"></i> Notes</h2>
+    <p class="admin-card-sub">This panel is intentionally read-only. Deep database management (indexes, backups, row edits) belongs in the Django admin or a production SQL client.</p>
+    <div class="flex flex-wrap gap-3">
+        <a href="/admin/" class="admin-btn admin-btn-primary"><i class="fa-solid fa-lock"></i> Django Admin</a>
+    </div>
+</div>
+{% endblock %}

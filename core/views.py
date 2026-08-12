@@ -11,6 +11,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import login as auth_login, update_session_auth_hash
+from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.models import User
@@ -31,7 +32,13 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from google.auth.exceptions import RefreshError
 
 from .consumers import notify_user, send_chat_push
-from .decorators import change_editablepage_required, superuser_required
+from .decorators import (
+    admin_required,
+    change_editablepage_required,
+    club_access_required,
+    superuser_required,
+)
+from .roles import get_user_role, role_home_path
 from .forms import SignUpForm
 from .block_sanitizer import sanitize_css, sanitize_html
 from .templatetags.builder_tags import render_block_html
@@ -67,6 +74,7 @@ from .models import (
     AcademicEvent,
     ClassRoutine,
     Club,
+    ClubAccount,
     ClubEvent,
     ClubRegistration,
     ClubSheetsConfig,
@@ -282,6 +290,20 @@ def _parse_month_param(value):
 
 
 def dashboard(request):
+    """Role dispatcher for the bare /dashboard/ URL.
+
+    Anonymous guests keep the pre-RBAC public behaviour of viewing the student
+    dashboard; authenticated users are redirected to their role's home
+    (admin → /dashboard/admin/, club → /clubs/manage/, student →
+    /dashboard/student/). LOGIN_REDIRECT_URL points here, so every sign-in
+    lands on the right area automatically.
+    """
+    if request.user.is_authenticated:
+        return redirect(role_home_path(get_user_role(request.user)))
+    return student_dashboard(request)
+
+
+def student_dashboard(request):
     """Student dashboard — BST clock, class routine, academic calendar, feeds.
 
     The live Asia/Dhaka clock and the NOW / NEXT-UP class highlighting run
@@ -1298,6 +1320,26 @@ def book_appointment(request):
 # Account & profile pages
 # ============================================================================
 
+class RoleAwareLoginView(auth_views.LoginView):
+    """Login that lands every role on its own area.
+
+    Stock Django LoginView redirects to ``LOGIN_REDIRECT_URL`` (/dashboard/),
+    which the role dispatcher then bounces to the role home — a harmless but
+    needless double redirect. This subclass resolves the success URL directly:
+    a safe ``?next=`` target is honoured, otherwise the user is sent to their
+    role home (``/dashboard/admin/`` for staff, ``/clubs/manage/`` for club
+    managers, ``/dashboard/student/`` for students). ``redirect_authenticated_user``
+    keeps working — an authenticated visitor to /login/ is forwarded to the
+    same role-aware URL.
+    """
+
+    def get_success_url(self):
+        redirect_to = self.get_redirect_url()
+        if redirect_to:
+            return redirect_to
+        return role_home_path(get_user_role(self.request.user))
+
+
 def signup_view(request):
     """Self-registration — ``SignUpForm`` validates the fields (duplicate
     Student ID / email, password confirmation), creates the User + StudentProfile
@@ -1306,14 +1348,14 @@ def signup_view(request):
     drift apart.
     """
     if request.user.is_authenticated:
-        return redirect('dashboard')
+        return redirect(role_home_path(get_user_role(request.user)))
 
     if request.method == 'POST':
         form = SignUpForm(request.POST)
         if form.is_valid():
             user = form.save()
             auth_login(request, user)
-            return redirect('dashboard')
+            return redirect(role_home_path(get_user_role(user)))
     else:
         form = SignUpForm()
 
@@ -2467,7 +2509,7 @@ def _club_rows_from_sheet(records):
     return {'pending': pending, 'members': members, 'transactions': transactions}
 
 
-@staff_member_required(login_url=settings.LOGIN_URL)
+@club_access_required
 def verify_club_transaction_view(request):
     """Verify a bKash/Nagad/Rocket TrxID against the club's linked Google Sheet.
 
@@ -2638,7 +2680,7 @@ def create_notice(request):
     })
 
 
-@staff_member_required(login_url=settings.LOGIN_URL)
+@club_access_required
 def club_admin_view(request):
     """Club admin — member approvals, role assignments, event posts, and
     bKash/Nagad/Rocket transaction verification.
@@ -2924,7 +2966,7 @@ def drive_callback(request):
     return redirect(reverse('settings') + '?tab=account')
 
 
-@staff_member_required(login_url=settings.LOGIN_URL)
+@club_access_required
 def verify_club_sheet_view(request):
     """Verify & Connect a club spreadsheet (Club Management dashboard).
 
@@ -4283,7 +4325,7 @@ def upload_note_view(request):
     })
 
 
-@staff_member_required(login_url=settings.LOGIN_URL)
+@club_access_required
 def fetch_club_sheet_view(request):
     """Return every row of the club Google Sheet as JSON records.
 
@@ -4309,7 +4351,7 @@ def fetch_club_sheet_view(request):
     return JsonResponse({'status': 'success', 'records': records})
 
 
-@staff_member_required(login_url=settings.LOGIN_URL)
+@club_access_required
 def append_club_sheet_view(request):
     """Append a row of values to the club Google Sheet.
 
@@ -4551,4 +4593,408 @@ def api_admin_report_update(request, report_id):
         'status': 'success',
         'message': 'Report updated.',
         'report': _serialize_report(report, include_user=True),
+    })
+
+
+# ============================================================================
+# Admin Dashboard — role-based admin area (/dashboard/admin/*)
+# ============================================================================
+
+@admin_required
+def admin_dashboard(request):
+    """Admin Overview — the landing page for the admin role.
+
+    Live platform stats (users, students, staff, club accounts, reports,
+    notices, bookings) plus quick links into every admin section and the
+    legacy service dashboards. Distinct admin layout: ``admin/admin_base.html``.
+    """
+    stats = {
+        'users': User.objects.count(),
+        'students': StudentProfile.objects.count(),
+        'staff': User.objects.filter(is_staff=True).count(),
+        'superusers': User.objects.filter(is_superuser=True).count(),
+        'club_accounts': ClubAccount.objects.filter(is_active=True).count(),
+        'clubs': Club.objects.count(),
+        'reports': Report.objects.count(),
+        'pending_reports': Report.objects.filter(status='pending').count(),
+        'published_notices': Notice.objects.filter(is_published=True).count(),
+        'pages': EditablePage.objects.count(),
+        'meal_tickets': MealTicket.objects.count(),
+        'transport_bookings': TransportBooking.objects.count(),
+        'appointments': MedicalAppointment.objects.count(),
+        'users_today': User.objects.filter(last_login__date=timezone.now().date()).count(),
+    }
+    recent_reports = Report.objects.select_related('user').order_by('-created_at')[:5]
+    recent_notices = Notice.objects.select_related('author').order_by('-created_at')[:5]
+    latest_pages = EditablePage.objects.order_by('-updated_at')[:5]
+    return render(request, 'admin/overview.html', {
+        'admin_section': 'overview',
+        'stats': stats,
+        'recent_reports': recent_reports,
+        'recent_notices': recent_notices,
+        'latest_pages': latest_pages,
+    })
+
+
+@admin_required
+def admin_users_view(request):
+    """User & Club Management — students, staff, admins and club managers.
+
+    Lists every account grouped by role (Students / Staff / Club Managers /
+    System Admins) with live role flags; the role promotion endpoint is the
+    existing superuser-only ``update_user_role`` API. Club managers link to
+    the dedicated Club Accounts page.
+    """
+    profiles = StudentProfile.objects.select_related('user').order_by('student_id')
+    students = [
+        {
+            'user_id': p.user_id,
+            'name': p.user.get_full_name() or p.user.username,
+            'username': p.user.username,
+            'student_id': p.student_id,
+            'department': p.get_department_display_name(),
+            'email': p.user.email,
+            'active': p.user.is_active,
+        }
+        for p in profiles
+    ]
+    staff = [
+        {
+            'user_id': u.pk,
+            'name': u.get_full_name() or u.username,
+            'username': u.username,
+            'role': 'System Admin' if u.is_superuser else 'Staff',
+            'department': getattr(getattr(u, 'student_profile', None), 'department', 'Administration'),
+            'email': u.email,
+            'active': u.is_active,
+        }
+        for u in User.objects.filter(is_staff=True).order_by('username')
+    ]
+    club_accounts = ClubAccount.objects.select_related('user', 'club').order_by('club__name')
+    return render(request, 'admin/users.html', {
+        'admin_section': 'users',
+        'students': students,
+        'staff': staff,
+        'club_accounts': club_accounts,
+        'is_superuser': request.user.is_superuser,
+    })
+
+
+@admin_required
+def admin_club_accounts_view(request):
+    """Club Account Management — create/assign club manager accounts.
+
+    The page renders the club list, every active ``ClubAccount`` row, and the
+    list of existing users that can be assigned to a club. Mutations happen
+    through the ``/api/admin/club-accounts/*`` JSON endpoints (create, assign,
+    reset password, toggle status, update permissions).
+    """
+    clubs = Club.objects.order_by('name')
+    accounts = ClubAccount.objects.select_related('user', 'club').order_by('club__name', 'user__username')
+    # Users available for assignment: anyone without an existing club account.
+    assigned_ids = ClubAccount.objects.values_list('user_id', flat=True)
+    assignable = (
+        User.objects.exclude(pk__in=assigned_ids)
+        .filter(is_active=True)
+        .order_by('username')
+    )
+    return render(request, 'admin/club_accounts.html', {
+        'admin_section': 'clubs',
+        'clubs': clubs,
+        'accounts': accounts,
+        'assignable_users': assignable,
+        'role_choices': ClubAccount.ROLE_CHOICES,
+    })
+
+
+@admin_required
+def admin_database_view(request):
+    """Database Management / Quick Stats — live row counts per model.
+
+    A read-only dashboard of every core table's size (users, campus services,
+    content, clubs, research, notifications) so admins can gauge the database
+    at a glance without SQL access.
+    """
+    tables = [
+        ('Accounts', [
+            ('Users', User.objects.count()),
+            ('Student profiles', StudentProfile.objects.count()),
+            ('Staff + admins', User.objects.filter(is_staff=True).count()),
+            ('Club accounts', ClubAccount.objects.count()),
+        ]),
+        ('Campus services', [
+            ('Meal tickets', MealTicket.objects.count()),
+            ('Meal subscriptions', MealSubscription.objects.count()),
+            ('Transport bookings', TransportBooking.objects.count()),
+            ('Transport routes', TransportRoute.objects.count()),
+            ('Medical appointments', MedicalAppointment.objects.count()),
+            ('Medical chat threads', MedicalChatThread.objects.count()),
+            ('Medical chat messages', MedicalChatMessage.objects.count()),
+            ('Doctor schedules', DoctorSchedule.objects.count()),
+        ]),
+        ('Content & academics', [
+            ('Notices', Notice.objects.count()),
+            ('Courses', Course.objects.count()),
+            ('Course materials', CourseMaterial.objects.count()),
+            ('Departments', Department.objects.count()),
+            ('Faculty members', Department.objects.count() * 0 + sum(
+                dept.faculty.count() for dept in Department.objects.all()
+            )),
+            ('Editable pages', EditablePage.objects.count()),
+            ('Content blocks', ContentBlock.objects.count()),
+        ]),
+        ('Clubs', [
+            ('Clubs', Club.objects.count()),
+            ('Club events', ClubEvent.objects.count()),
+            ('Club registrations', ClubRegistration.objects.count()),
+        ]),
+        ('Research & notes', [
+            ('Research threads', ResearchThread.objects.count()),
+            ('Research messages', ResearchMessage.objects.count()),
+            ('User notes', UserNote.objects.count()),
+            ('Note analyses', NoteAnalysis.objects.count()),
+        ]),
+        ('Payments & alerts', [
+            ('Payment transactions', PaymentTransaction.objects.count()),
+            ('Notifications', Notification.objects.count()),
+            ('Reports & feedback', Report.objects.count()),
+        ]),
+    ]
+    return render(request, 'admin/database.html', {
+        'admin_section': 'database',
+        'tables': tables,
+    })
+
+
+@admin_required
+def admin_content_view(request):
+    """Website Builder / Content Management (CMS).
+
+    Entry point for the Website Builder (super-admin console + per-page
+    editors), plus a live list of builder pages (title, slug, publish state,
+    nav flag) and a shortcut to the notices publisher.
+    """
+    pages = EditablePage.objects.order_by('-updated_at')
+    published_count = EditablePage.objects.filter(is_published=True).count()
+    return render(request, 'admin/content.html', {
+        'admin_section': 'content',
+        'pages': pages,
+        'published_count': published_count,
+        'can_build': request.user.has_perm('core.change_editablepage'),
+    })
+
+
+@admin_required
+def admin_settings_view(request):
+    """System Settings — read-only platform configuration summary.
+
+    Surfaces the environment-driven settings (debug flag, hosts, security
+    flags, service integrations) that would otherwise require the shell or
+    the Django admin; links to the Django admin for deep management.
+    """
+    env_summary = {
+        'DEBUG': settings.DEBUG,
+        'ALLOWED_HOSTS': getattr(settings, 'ALLOWED_HOSTS', []),
+        'SECURE_SSL_REDIRECT': bool(getattr(settings, 'SECURE_SSL_REDIRECT', False)),
+        'SESSION_COOKIE_SECURE': bool(getattr(settings, 'SESSION_COOKIE_SECURE', False)),
+        'CSRF_COOKIE_SECURE': bool(getattr(settings, 'CSRF_COOKIE_SECURE', False)),
+        'X_FRAME_OPTIONS': getattr(settings, 'X_FRAME_OPTIONS', 'DENY'),
+        'REDIS_URL': 'configured' if getattr(settings, 'REDIS_URL', '') else 'unset (in-memory fallback)',
+        'OPENROUTER_ENABLED': openrouter_enabled(),
+        'DATABASE_URL': 'configured' if getattr(settings, 'DATABASE_URL', '') else 'unset (SQLite)',
+        'GOOGLE_OAUTH': 'configured' if getattr(settings, 'GOOGLE_OAUTH_CLIENT_ID', '') else 'unset',
+    }
+    return render(request, 'admin/settings.html', {
+        'admin_section': 'settings',
+        'env_summary': env_summary,
+    })
+
+
+# ============================================================================
+# Club account management APIs (/api/admin/club-accounts/*)
+# ============================================================================
+
+def _serialize_club_account(account):
+    """JSON-safe ClubAccount row for the admin management UI."""
+    return {
+        'id': account.pk,
+        'user_id': account.user_id,
+        'username': account.user.username,
+        'name': account.user.get_full_name() or account.user.username,
+        'email': account.user.email,
+        'club_id': account.club_id,
+        'club': account.club.name,
+        'role': account.role,
+        'role_label': account.get_role_display(),
+        'can_post_events': account.can_post_events,
+        'can_manage_members': account.can_manage_members,
+        'can_manage_finances': account.can_manage_finances,
+        'is_active': account.is_active,
+        'created_at': account.created_at.isoformat() if account.created_at else '',
+    }
+
+
+def _parse_club_role(value):
+    """Validate a ClubAccount role value, returning the code or None."""
+    value = (value or '').strip()
+    if value in dict(ClubAccount.ROLE_CHOICES):
+        return value
+    return None
+
+
+@admin_required
+def api_club_accounts(request):
+    """List / create / assign club accounts (admin area).
+
+    GET returns every ``ClubAccount`` row. POST accepts either a new user
+    (``create`` — username, full_name, email, password, club_id, role) or an
+    assignment of an existing user (``assign`` — user_id, club_id, role).
+    """
+    if request.method == 'GET':
+        accounts = ClubAccount.objects.select_related('user', 'club').order_by('club__name', 'user__username')
+        return JsonResponse({
+            'status': 'success',
+            'accounts': [_serialize_club_account(a) for a in accounts],
+        })
+
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST or GET required'}, status=405)
+
+    mode = request.POST.get('mode', '').strip()
+    if mode not in ('create', 'assign'):
+        return JsonResponse({'status': 'error', 'message': 'mode must be create or assign.'}, status=400)
+
+    club_id = request.POST.get('club_id', '').strip()
+    try:
+        club = Club.objects.get(pk=int(club_id))
+    except (Club.DoesNotExist, TypeError, ValueError):
+        return JsonResponse({'status': 'error', 'message': 'Club not found.'}, status=404)
+
+    role = _parse_club_role(request.POST.get('role'))
+    if role is None:
+        return JsonResponse({'status': 'error', 'message': 'Invalid club role.'}, status=400)
+
+    can_post_events = request.POST.get('can_post_events') in ('1', 'true', 'on')
+    can_manage_members = request.POST.get('can_manage_members') in ('1', 'true', 'on')
+    can_manage_finances = request.POST.get('can_manage_finances') in ('1', 'true', 'on')
+    is_active = request.POST.get('is_active', '1') in ('1', 'true', 'on')
+
+    try:
+        with transaction.atomic():
+            if mode == 'create':
+                username = request.POST.get('username', '').strip()
+                if not username:
+                    return JsonResponse({'status': 'error', 'message': 'Username is required.'}, status=400)
+                if User.objects.filter(username__iexact=username).exists():
+                    return JsonResponse(
+                        {'status': 'error', 'message': 'That username is already taken.'},
+                        status=409,
+                    )
+                full_name = request.POST.get('full_name', '').strip()
+                first, _, last = full_name.partition(' ')
+                # The User is always created active — access is controlled
+                # purely by ClubAccount.is_active (see get_user_role), so the
+                # admin status toggle is the single source of truth and a
+                # disabled account can be re-enabled without unlocking a user.
+                user = User.objects.create_user(
+                    username=username,
+                    email=request.POST.get('email', '').strip(),
+                    password=request.POST.get('password') or User.objects.make_random_password(12),
+                    first_name=first,
+                    last_name=last,
+                )
+            else:
+                user_id = request.POST.get('user_id', '').strip()
+                try:
+                    user = User.objects.get(pk=int(user_id))
+                except (User.DoesNotExist, TypeError, ValueError):
+                    return JsonResponse({'status': 'error', 'message': 'User not found.'}, status=404)
+                if ClubAccount.objects.filter(user=user).exists():
+                    return JsonResponse(
+                        {'status': 'error', 'message': '%s already has a club account.' % user.username},
+                        status=409,
+                    )
+
+            account, _created = ClubAccount.objects.update_or_create(
+                user=user,
+                defaults={
+                    'club': club,
+                    'role': role,
+                    'can_post_events': can_post_events,
+                    'can_manage_members': can_manage_members,
+                    'can_manage_finances': can_manage_finances,
+                    'is_active': is_active,
+                },
+            )
+    except IntegrityError:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Could not save the club account. Please try again.'},
+            status=409,
+        )
+
+    return JsonResponse({
+        'status': 'success',
+        'message': 'Club account saved for %s.' % user.username,
+        'account': _serialize_club_account(account),
+    })
+
+
+@admin_required
+def api_club_account_password(request, account_id):
+    """Reset a club account's password (admin area)."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    account = get_object_or_404(ClubAccount.objects.select_related('user'), pk=account_id)
+    new_password = request.POST.get('password', '').strip()
+    if not new_password:
+        new_password = User.objects.make_random_password(12)
+    account.user.set_password(new_password)
+    account.user.save(update_fields=['password'])
+    return JsonResponse({
+        'status': 'success',
+        'message': 'Password reset for %s.' % account.user.username,
+        'generated_password': new_password,
+    })
+
+
+@admin_required
+def api_club_account_status(request, account_id):
+    """Toggle a club account's active/inactive status (admin area)."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    account = get_object_or_404(ClubAccount, pk=account_id)
+    account.is_active = not account.is_active
+    account.save(update_fields=['is_active', 'updated_at'])
+    return JsonResponse({
+        'status': 'success',
+        'message': '%s is now %s.' % (
+            account.user.username, 'active' if account.is_active else 'inactive',
+        ),
+        'is_active': account.is_active,
+    })
+
+
+@admin_required
+def api_club_account_permissions(request, account_id):
+    """Update a club account's role + permission flags (admin area)."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    account = get_object_or_404(ClubAccount, pk=account_id)
+
+    role = _parse_club_role(request.POST.get('role'))
+    if role is None:
+        return JsonResponse({'status': 'error', 'message': 'Invalid club role.'}, status=400)
+
+    account.role = role
+    if 'can_post_events' in request.POST:
+        account.can_post_events = request.POST.get('can_post_events') in ('1', 'true', 'on')
+    if 'can_manage_members' in request.POST:
+        account.can_manage_members = request.POST.get('can_manage_members') in ('1', 'true', 'on')
+    if 'can_manage_finances' in request.POST:
+        account.can_manage_finances = request.POST.get('can_manage_finances') in ('1', 'true', 'on')
+    account.save()
+    return JsonResponse({
+        'status': 'success',
+        'message': 'Permissions updated for %s.' % account.user.username,
+        'account': _serialize_club_account(account),
     })

@@ -47,6 +47,71 @@ def change_editablepage_required(view_func=None, login_url=None):
         return decorator(view_func)
     return decorator
 
+def admin_required(view_func=None, login_url=None):
+    """Restrict a view to portal admins (staff or superuser).
+
+    Mirrors ``superuser_required`` but admits the whole ``admin`` role
+    (``is_staff`` OR ``is_superuser``) — the staff flag already gates every
+    admin dashboard in the project, so this is the canonical RBAC guard for
+    the ``/dashboard/admin/*`` area.
+
+    - Anonymous visitors are redirected to the login page.
+    - Authenticated non-admins (students / club managers) get a 403 Forbidden
+      response so they never bounce between the page and the login form.
+    """
+    login_url = login_url or settings.LOGIN_URL
+
+    def _is_admin(user):
+        return bool(user.is_authenticated and (user.is_staff or user.is_superuser))
+
+    _redirect_to_login = user_passes_test(_is_admin, login_url=login_url)
+
+    def decorator(view_func):
+        @wraps(view_func)
+        def _wrapped_view(request, *args, **kwargs):
+            if request.user.is_authenticated and not (request.user.is_staff or request.user.is_superuser):
+                raise PermissionDenied
+            return _redirect_to_login(view_func)(request, *args, **kwargs)
+
+        return _wrapped_view
+
+    if view_func:
+        return decorator(view_func)
+    return decorator
+
+def club_access_required(view_func=None, login_url=None):
+    """Restrict a view to staff/superusers OR active club-account holders.
+
+    The club workspace (``/clubs/manage/``) is the landing area for the
+    ``club`` role, so it must admit club managers as well as staff. Anonymous
+    visitors are redirected to login; authenticated users with neither a staff
+    flag nor an active ``ClubAccount`` get a 403.
+    """
+    login_url = login_url or settings.LOGIN_URL
+
+    def _has_club_access(user):
+        if not user.is_authenticated:
+            return False
+        if user.is_staff or user.is_superuser:
+            return True
+        account = getattr(user, 'club_account', None)
+        return bool(account is not None and account.is_active)
+
+    _redirect_to_login = user_passes_test(_has_club_access, login_url=login_url)
+
+    def decorator(view_func):
+        @wraps(view_func)
+        def _wrapped_view(request, *args, **kwargs):
+            if request.user.is_authenticated and not _has_club_access(request.user):
+                raise PermissionDenied
+            return _redirect_to_login(view_func)(request, *args, **kwargs)
+
+        return _wrapped_view
+
+    if view_func:
+        return decorator(view_func)
+    return decorator
+
 
 def superuser_required(view_func=None, login_url=None):
     """Restrict a view to authenticated superusers.

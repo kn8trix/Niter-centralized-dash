@@ -11,6 +11,7 @@ import json
 from django.urls import reverse
 
 from core.models import EditablePage, UserNotificationPreference
+from core.roles import get_user_role
 
 
 def display_prefs(request):
@@ -61,6 +62,17 @@ def custom_pages_nav(request):
     }
 
 
+def user_role(request):
+    """Expose the signed-in user's explicit portal role to every template.
+
+    ``USER_ROLE`` is one of ``admin`` / ``club`` / ``student`` (``None`` for
+    anonymous visitors) — the same value the middleware and view decorators
+    use, so templates can render role-appropriate navigation without
+    duplicating the is_staff / club_account logic.
+    """
+    return {'USER_ROLE': get_user_role(request.user)}
+
+
 def endpoints(request):
     """Expose a single ENDPOINTS dict to every template.
 
@@ -71,6 +83,13 @@ def endpoints(request):
             # Public homepage + student app pages
             'home': reverse('home'),
             'dashboard': reverse('dashboard'),
+            'student_dashboard': reverse('student_dashboard'),
+            'admin_dashboard': reverse('admin_dashboard'),
+            'admin_users': reverse('admin_users'),
+            'admin_club_accounts': reverse('admin_club_accounts'),
+            'admin_database': reverse('admin_database'),
+            'admin_content': reverse('admin_content'),
+            'admin_settings': reverse('admin_settings'),
             'academic_notes': reverse('academic_notes'),
             'notices': reverse('notices'),
             'tickets': reverse('tickets'),
@@ -94,6 +113,7 @@ def endpoints(request):
             'api_cafeteria_redeem': reverse('api_cafeteria_redeem'),
             'api_club_verify_transaction': reverse('api_club_verify_transaction'),
             'api_admin_update_role': reverse('api_admin_update_role'),
+            'api_club_accounts': reverse('api_club_accounts'),
 
             # Authentication
             'login': reverse('login'),
@@ -117,5 +137,8 @@ def endpoints(request):
             'medical_admin_dashboard': reverse('medical_admin_dashboard'),
             'host_index': reverse('host:index'),
             'host_medical_dashboard': reverse('host:medical_host_dashboard'),
+
+            # Website Builder console
+            'builder_dashboard': reverse('builder_dashboard'),
         }
     }

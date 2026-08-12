@@ -1,0 +1,289 @@
+{% extends "admin/admin_base.html" %}
+{% load static %}
+
+{% block title %}Club Accounts — Niter Hub Admin{% endblock %}
+{% block header %}Club Account Management{% endblock %}
+
+{% block content %}
+<div class="admin-alert" id="club-alert"></div>
+
+<!-- Create new club account -->
+<div class="admin-card">
+    <h2><i class="fa-solid fa-user-plus"></i> Create a Club Account</h2>
+    <p class="admin-card-sub">Create a brand-new login for a club executive or manager.</p>
+    <form id="create-club-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% csrf_token %}
+        <div class="admin-form-row">
+            <label for="create-username">Username *</label>
+            <input id="create-username" name="username" class="admin-input" required>
+        </div>
+        <div class="admin-form-row">
+            <label for="create-full-name">Full name</label>
+            <input id="create-full-name" name="full_name" class="admin-input">
+        </div>
+        <div class="admin-form-row">
+            <label for="create-email">Email</label>
+            <input id="create-email" name="email" type="email" class="admin-input">
+        </div>
+        <div class="admin-form-row">
+            <label for="create-password">Password <span class="text-main/40">(blank = auto-generate)</span></label>
+            <input id="create-password" name="password" class="admin-input">
+        </div>
+        <div class="admin-form-row">
+            <label for="create-club">Club *</label>
+            <select id="create-club" name="club_id" class="admin-input" required>
+                {% for club in clubs %}
+                <option value="{{ club.pk }}">{{ club.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="admin-form-row">
+            <label for="create-role">Role *</label>
+            <select id="create-role" name="role" class="admin-input" required>
+                {% for code, label in role_choices %}
+                <option value="{{ code }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="md:col-span-2">
+            <div class="flex flex-wrap gap-4">
+                <label class="admin-check"><input type="checkbox" name="can_post_events" value="1" checked> Post events</label>
+                <label class="admin-check"><input type="checkbox" name="can_manage_members" value="1" checked> Manage members</label>
+                <label class="admin-check"><input type="checkbox" name="can_manage_finances" value="1"> Manage finances</label>
+                <label class="admin-check"><input type="checkbox" name="is_active" value="1" checked> Active</label>
+            </div>
+        </div>
+        <div class="md:col-span-2">
+            <button type="submit" class="admin-btn admin-btn-primary"><i class="fa-solid fa-user-plus"></i> Create Club Account</button>
+        </div>
+    </form>
+</div>
+
+<!-- Assign existing account -->
+<div class="admin-card">
+    <h2><i class="fa-solid fa-user-check"></i> Assign an Existing Account</h2>
+    <p class="admin-card-sub">Grant club-manager access to a user who already has a portal login.</p>
+    <form id="assign-club-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% csrf_token %}
+        <div class="admin-form-row">
+            <label for="assign-user">User *</label>
+            <select id="assign-user" name="user_id" class="admin-input" required>
+                {% for user in assignable_users %}
+                <option value="{{ user.pk }}">{{ user.username }}{% if user.get_full_name %} — {{ user.get_full_name }}{% endif %}</option>
+                {% empty %}
+                <option value="">No unassigned users</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="admin-form-row">
+            <label for="assign-club">Club *</label>
+            <select id="assign-club" name="club_id" class="admin-input" required>
+                {% for club in clubs %}
+                <option value="{{ club.pk }}">{{ club.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="admin-form-row">
+            <label for="assign-role">Role *</label>
+            <select id="assign-role" name="role" class="admin-input" required>
+                {% for code, label in role_choices %}
+                <option value="{{ code }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="flex items-end gap-4 pb-1">
+            <label class="admin-check"><input type="checkbox" name="can_manage_finances" value="1"> Manage finances</label>
+            <label class="admin-check"><input type="checkbox" name="is_active" value="1" checked> Active</label>
+        </div>
+        <div class="md:col-span-2">
+            <button type="submit" class="admin-btn admin-btn-primary"><i class="fa-solid fa-user-check"></i> Assign Club Account</button>
+        </div>
+    </form>
+</div>
+
+<!-- Existing club accounts -->
+<div class="admin-card">
+    <h2><i class="fa-solid fa-user-shield"></i> Club Manager Accounts</h2>
+    <p class="admin-card-sub">Reset passwords, toggle status and tune permissions per account.</p>
+    <div class="admin-table-wrap">
+        <table class="admin-table" id="club-accounts-table">
+            <thead>
+                <tr><th>Account</th><th>Club</th><th>Role</th><th>Permissions</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for account in accounts %}
+                <tr data-account-id="{{ account.pk }}">
+                    <td>
+                        <span class="font-medium">{{ account.user.get_full_name|default:account.user.username }}</span>
+                        <span class="mono block text-main/50">{{ account.user.username }}</span>
+                    </td>
+                    <td>{{ account.club.name }}</td>
+                    <td>
+                        <select class="admin-input perm-role" data-field="role" style="width:auto;padding:0.25rem 0.5rem;">
+                            {% for code, label in role_choices %}
+                            <option value="{{ code }}" {% if account.role == code %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td>
+                        <label class="admin-check"><input type="checkbox" class="perm-flag" data-field="can_post_events" {% if account.can_post_events %}checked{% endif %}> Events</label>
+                        <label class="admin-check"><input type="checkbox" class="perm-flag" data-field="can_manage_members" {% if account.can_manage_members %}checked{% endif %}> Members</label>
+                        <label class="admin-check"><input type="checkbox" class="perm-flag" data-field="can_manage_finances" {% if account.can_manage_finances %}checked{% endif %}> Finances</label>
+                    </td>
+                    <td>
+                        <span class="admin-badge {% if account.is_active %}admin-badge-green{% else %}admin-badge-red{% endif %} status-badge">{{ account.is_active|yesno:"Active,Inactive" }}</span>
+                    </td>
+                    <td>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" class="admin-btn action-reset"><i class="fa-solid fa-key"></i> Reset PW</button>
+                            <button type="button" class="admin-btn action-toggle"><i class="fa-solid fa-power-off"></i> {{ account.is_active|yesno:"Deactivate,Activate" }}</button>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-main/50 py-4">No club manager accounts yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+    const alertBox = document.getElementById('club-alert');
+    const toast = document.createElement('div');
+    toast.className = 'admin-toast';
+    document.body.appendChild(toast);
+
+    function showToast(msg) {
+        toast.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3500);
+    }
+
+    function showAlert(type, msg) {
+        alertBox.className = 'admin-alert ' + type;
+        alertBox.textContent = msg;
+    }
+
+    function csrfToken() {
+        const m = document.querySelector('[name=csrfmiddlewaretoken]');
+        return m ? m.value : '';
+    }
+
+    async function postJSON(url, body) {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(body).toString(),
+        });
+        let data = {};
+        try { data = await res.json(); } catch (e) { /* non-JSON response */ }
+        return { ok: res.ok, status: res.status, data };
+    }
+
+    // ---- Create club account ----
+    document.getElementById('create-club-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        showAlert('', '');
+        const form = e.target;
+        const body = {
+            mode: 'create',
+            username: form.username.value.trim(),
+            full_name: form.full_name.value.trim(),
+            email: form.email.value.trim(),
+            password: form.password.value,
+            club_id: form.club_id.value,
+            role: form.role.value,
+            can_post_events: form.can_post_events.checked ? '1' : '',
+            can_manage_members: form.can_manage_members.checked ? '1' : '',
+            can_manage_finances: form.can_manage_finances.checked ? '1' : '',
+            is_active: form.is_active.checked ? '1' : '',
+        };
+        const { ok, data } = await postJSON('{{ ENDPOINTS.api_club_accounts }}', body);
+        if (ok) {
+            showToast(data.message);
+            setTimeout(() => window.location.reload(), 700);
+        } else {
+            showAlert('error', data.message || 'Could not create the club account.');
+        }
+    });
+
+    // ---- Assign existing account ----
+    document.getElementById('assign-club-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        showAlert('', '');
+        const form = e.target;
+        if (!form.user_id.value) { showAlert('error', 'No unassigned users available.'); return; }
+        const body = {
+            mode: 'assign',
+            user_id: form.user_id.value,
+            club_id: form.club_id.value,
+            role: form.role.value,
+            can_manage_finances: form.can_manage_finances.checked ? '1' : '',
+            is_active: form.is_active.checked ? '1' : '',
+        };
+        const { ok, data } = await postJSON('{{ ENDPOINTS.api_club_accounts }}', body);
+        if (ok) {
+            showToast(data.message);
+            setTimeout(() => window.location.reload(), 700);
+        } else {
+            showAlert('error', data.message || 'Could not assign the club account.');
+        }
+    });
+
+    // ---- Row actions (reset password / toggle status / permissions) ----
+    const table = document.getElementById('club-accounts-table');
+
+    table.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        const tr = btn.closest('tr[data-account-id]');
+        const id = tr.dataset.accountId;
+        const urlBase = '{{ ENDPOINTS.api_club_accounts }}'.replace(/\/$/, '');
+
+        if (btn.classList.contains('action-reset')) {
+            const { ok, data } = await postJSON(urlBase + '/' + id + '/password/', {});
+            if (ok) {
+                showToast('New password for this account: ' + data.generated_password);
+            } else {
+                showAlert('error', data.message || 'Could not reset the password.');
+            }
+        } else if (btn.classList.contains('action-toggle')) {
+            const { ok, data } = await postJSON(urlBase + '/' + id + '/status/', {});
+            if (ok) {
+                const badge = tr.querySelector('.status-badge');
+                const active = data.is_active;
+                badge.textContent = active ? 'Active' : 'Inactive';
+                badge.className = 'admin-badge status-badge ' + (active ? 'admin-badge-green' : 'admin-badge-red');
+                btn.innerHTML = '<i class="fa-solid fa-power-off"></i> ' + (active ? 'Deactivate' : 'Activate');
+                showToast(data.message);
+            } else {
+                showAlert('error', data.message || 'Could not update status.');
+            }
+        }
+    });
+
+    // ---- Permission changes (save on change) ----
+    table.addEventListener('change', async (e) => {
+        const target = e.target;
+        if (!target.classList.contains('perm-flag') && !target.classList.contains('perm-role')) return;
+        const tr = target.closest('tr[data-account-id]');
+        const id = tr.dataset.accountId;
+        const urlBase = '{{ ENDPOINTS.api_club_accounts }}'.replace(/\/$/, '');
+        const body = { role: tr.querySelector('.perm-role').value };
+        tr.querySelectorAll('.perm-flag').forEach(cb => {
+            body[cb.dataset.field] = cb.checked ? '1' : '';
+        });
+        const { ok, data } = await postJSON(urlBase + '/' + id + '/permissions/', body);
+        if (ok) {
+            showToast('Permissions updated.');
+        } else {
+            showAlert('error', data.message || 'Could not update permissions.');
+        }
+    });
+})();
+</script>
+{% endblock %}

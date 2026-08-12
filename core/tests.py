@@ -25,6 +25,7 @@ from core.models import (
     BusSchedule,
     ClassRoutine,
     Club,
+    ClubAccount,
     ClubEvent,
     ClubRegistration,
     ClubSheetsConfig,
@@ -97,6 +98,8 @@ class StudentPagesSmokeTest(TestCase):
             'claim_meal_ticket', 'book_transport_ticket', 'book_appointment', 'login', 'logout',
             'settings', 'profile', 'sys_admin', 'cafeteria_admin', 'club_admin',
             'reports_student', 'reports_admin',
+            'student_dashboard', 'admin_dashboard', 'admin_users', 'admin_club_accounts',
+            'admin_database', 'admin_content', 'admin_settings', 'api_club_accounts',
         ]:
             with self.subTest(endpoint=name):
                 self.assertIn(name, mapping)
@@ -358,6 +361,279 @@ class DepartmentsPageTest(TestCase):
         self.assertEqual(Department.objects.count(), len(self.SLUGS))
 
 
+class RoleRoutingTest(TestCase):
+    """RBAC — role dispatcher, area middleware, and club-role resolution.
+
+    The bare /dashboard/ URL dispatches authenticated users to their role's
+    home: admin → /dashboard/admin/, club → /clubs/manage/, student →
+    /dashboard/student/. The RoleAccessMiddleware keeps students out of the
+    /dashboard/admin/* area and club managers out of /dashboard/student/*.
+    """
+
+    def setUp(self):
+        self.student = User.objects.create_user(username='stu_r', password='x12345678')
+        self.staff = User.objects.create_user(username='adm_r', password='x12345678', is_staff=True)
+        self.superuser = User.objects.create_user(
+            username='sup_r', password='x12345678', is_staff=True, is_superuser=True,
+        )
+        self.club = Club.objects.create(name='RBAC Club', slug='rbac-club')
+
+    def test_anonymous_dashboard_renders_student_view(self):
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Welcome back')
+
+    def test_student_redirected_to_student_dashboard(self):
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('dashboard'))
+        self.assertRedirects(response, reverse('student_dashboard'))
+
+    def test_staff_redirected_to_admin_dashboard(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse('dashboard'))
+        self.assertRedirects(response, reverse('admin_dashboard'))
+
+    def test_superuser_redirected_to_admin_dashboard(self):
+        self.client.force_login(self.superuser)
+        response = self.client.get(reverse('dashboard'))
+        self.assertRedirects(response, reverse('admin_dashboard'))
+
+    def test_club_manager_redirected_to_club_workspace(self):
+        ClubAccount.objects.create(user=self.student, club=self.club, role='manager')
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('dashboard'))
+        self.assertRedirects(response, reverse('club_admin'))
+
+    def test_inactive_club_account_is_treated_as_student(self):
+        ClubAccount.objects.create(
+            user=self.student, club=self.club, role='manager', is_active=False,
+        )
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('dashboard'))
+        self.assertRedirects(response, reverse('student_dashboard'))
+
+    def test_student_blocked_from_admin_area(self):
+        self.client.force_login(self.student)
+        for url in (reverse('admin_dashboard'), reverse('admin_users'), reverse('admin_club_accounts')):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 302)
+                self.assertRedirects(response, reverse('student_dashboard'))
+
+    def test_club_manager_blocked_from_student_and_admin_areas(self):
+        ClubAccount.objects.create(user=self.student, club=self.club, role='executive')
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('student_dashboard'))
+        self.assertRedirects(response, reverse('club_admin'))
+        response = self.client.get(reverse('admin_dashboard'))
+        self.assertRedirects(response, reverse('club_admin'))
+
+    def test_staff_can_open_admin_area(self):
+        self.client.force_login(self.staff)
+        for url in (reverse('admin_dashboard'), reverse('admin_users'), reverse('admin_database')):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+
+    def test_club_manager_can_open_club_workspace(self):
+        ClubAccount.objects.create(user=self.student, club=self.club, role='president')
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('club_admin'))
+        self.assertEqual(response.status_code, 200)
+
+    def test_anonymous_blocked_from_admin_area(self):
+        for url in (reverse('admin_dashboard'), reverse('admin_users'), reverse('admin_club_accounts')):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 302)
+                self.assertIn(reverse('login'), response.url)
+
+
+class AdminDashboardPagesTest(TestCase):
+    """The role-based admin dashboard (/dashboard/admin/*) pages render for
+    staff with the distinct admin layout and admin-only sidebar."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(username='adm_pg', password='x12345678', is_staff=True)
+        self.student = User.objects.create_user(username='stu_pg', password='x12345678')
+        self.client.force_login(self.staff)
+
+    def test_overview_renders_stats_and_quick_links(self):
+        response = self.client.get(reverse('admin_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        for needle in ['Admin Overview', 'Users &amp; Clubs', 'Club Accounts', 'Reports Inbox', 'Database Stats', 'Website Builder', 'System Settings']:
+            self.assertContains(response, needle, msg_prefix=needle)
+        self.assertContains(response, 'admin-sidebar')
+        self.assertContains(response, 'data-app="campusdash-admin"')
+
+    def test_users_page_lists_roles(self):
+        response = self.client.get(reverse('admin_users'))
+        self.assertEqual(response.status_code, 200)
+        for needle in ['User &amp; Club Management', 'Students', 'Staff &amp; System Admins', 'Club Managers']:
+            self.assertContains(response, needle, msg_prefix=needle)
+
+    def test_database_page_shows_row_counts(self):
+        response = self.client.get(reverse('admin_database'))
+        self.assertEqual(response.status_code, 200)
+        for needle in ['Database Quick Stats', 'Accounts', 'Campus services', 'Clubs', 'Payments &amp; alerts']:
+            self.assertContains(response, needle, msg_prefix=needle)
+
+    def test_content_page_links_builder(self):
+        response = self.client.get(reverse('admin_content'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Website Builder')
+        self.assertContains(response, 'Builder Pages')
+
+    def test_settings_page_shows_env_summary(self):
+        response = self.client.get(reverse('admin_settings'))
+        self.assertEqual(response.status_code, 200)
+        for needle in ['Platform Configuration', 'DEBUG', 'ALLOWED_HOSTS', 'Django Admin']:
+            self.assertContains(response, needle, msg_prefix=needle)
+
+    def test_student_blocked_from_all_admin_pages(self):
+        self.client.force_login(self.student)
+        for name in ('admin_dashboard', 'admin_users', 'admin_club_accounts', 'admin_database', 'admin_content', 'admin_settings'):
+            with self.subTest(page=name):
+                response = self.client.get(reverse(name))
+                self.assertEqual(response.status_code, 302)
+                self.assertRedirects(response, reverse('student_dashboard'))
+
+
+class ClubAccountApiTest(TestCase):
+    """Club Account Management APIs — create, assign, reset, toggle, perms."""
+
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            username='sys_admin', password='x12345678', is_staff=True, is_superuser=True,
+        )
+        self.staff = User.objects.create_user(username='plain_staff', password='x12345678', is_staff=True)
+        self.student = User.objects.create_user(username='stu_ca', password='x12345678')
+        # The 0009 seed migration already creates Computer Club (slug
+        # computer-club), so reuse it rather than tripping the unique slug.
+        self.club, _ = Club.objects.get_or_create(name='Computer Club', slug='computer-club')
+
+    def _post(self, url, data):
+        return self.client.post(url, data)
+
+    def test_create_requires_admin(self):
+        self.client.force_login(self.student)
+        response = self._post(reverse('api_club_accounts'), {'mode': 'create', 'username': 'new_mgr', 'club_id': self.club.pk, 'role': 'manager'})
+        self.assertEqual(response.status_code, 403)
+
+    def test_create_requires_login(self):
+        response = self._post(reverse('api_club_accounts'), {'mode': 'create', 'username': 'new_mgr', 'club_id': self.club.pk, 'role': 'manager'})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_staff_can_create_club_account(self):
+        self.client.force_login(self.staff)
+        response = self._post(reverse('api_club_accounts'), {
+            'mode': 'create', 'username': 'new_mgr', 'full_name': 'Nadia Manager',
+            'email': 'nadia@niter.edu.bd', 'password': 'secretpass1',
+            'club_id': self.club.pk, 'role': 'manager',
+            'can_post_events': '1', 'can_manage_members': '1', 'is_active': '1',
+        })
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        account = ClubAccount.objects.get(user__username='new_mgr')
+        self.assertEqual(account.club, self.club)
+        self.assertEqual(account.role, 'manager')
+        self.assertTrue(account.can_post_events)
+        self.assertTrue(account.user.check_password('secretpass1'))
+
+    def test_create_rejects_duplicate_username(self):
+        User.objects.create_user(username='taken', password='x12345678')
+        self.client.force_login(self.staff)
+        response = self._post(reverse('api_club_accounts'), {
+            'mode': 'create', 'username': 'taken', 'club_id': self.club.pk, 'role': 'manager',
+        })
+        self.assertEqual(response.status_code, 409)
+
+    def test_create_rejects_unknown_club(self):
+        self.client.force_login(self.staff)
+        response = self._post(reverse('api_club_accounts'), {
+            'mode': 'create', 'username': 'new_mgr', 'club_id': 9999, 'role': 'manager',
+        })
+        self.assertEqual(response.status_code, 404)
+
+    def test_assign_existing_user(self):
+        self.client.force_login(self.staff)
+        response = self._post(reverse('api_club_accounts'), {
+            'mode': 'assign', 'user_id': self.student.pk, 'club_id': self.club.pk, 'role': 'executive',
+        })
+        self.assertEqual(response.status_code, 200)
+        account = ClubAccount.objects.get(user=self.student)
+        self.assertEqual(account.role, 'executive')
+        # The assigned user becomes a club-role user at the dashboard dispatcher.
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('dashboard'))
+        self.assertRedirects(response, reverse('club_admin'))
+
+    def test_assign_rejects_double_assignment(self):
+        ClubAccount.objects.create(user=self.student, club=self.club)
+        self.client.force_login(self.staff)
+        response = self._post(reverse('api_club_accounts'), {
+            'mode': 'assign', 'user_id': self.student.pk, 'club_id': self.club.pk, 'role': 'manager',
+        })
+        self.assertEqual(response.status_code, 409)
+
+    def test_reset_password(self):
+        account = ClubAccount.objects.create(user=self.student, club=self.club)
+        self.client.force_login(self.staff)
+        response = self._post(reverse('api_club_account_password', args=[account.pk]), {'password': 'brandnewpass1'})
+        self.assertEqual(response.status_code, 200)
+        # check_password compares against the in-memory hash — reload the row.
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.check_password('brandnewpass1'))
+
+    def test_reset_password_generates_when_blank(self):
+        account = ClubAccount.objects.create(user=self.student, club=self.club)
+        self.client.force_login(self.staff)
+        response = self._post(reverse('api_club_account_password', args=[account.pk]), {})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['generated_password'])
+        # check_password compares against the in-memory hash — reload the row.
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.check_password(data['generated_password']))
+
+    def test_toggle_status(self):
+        account = ClubAccount.objects.create(user=self.student, club=self.club, is_active=True)
+        self.client.force_login(self.staff)
+        response = self._post(reverse('api_club_account_status', args=[account.pk]), {})
+        self.assertEqual(response.status_code, 200)
+        account.refresh_from_db()
+        self.assertFalse(account.is_active)
+
+    def test_update_permissions(self):
+        account = ClubAccount.objects.create(user=self.student, club=self.club, role='manager')
+        self.client.force_login(self.staff)
+        response = self._post(reverse('api_club_account_permissions', args=[account.pk]), {
+            'role': 'president', 'can_manage_finances': '1', 'can_manage_members': '', 'can_post_events': '1',
+        })
+        self.assertEqual(response.status_code, 200)
+        account.refresh_from_db()
+        self.assertEqual(account.role, 'president')
+        self.assertTrue(account.can_manage_finances)
+        self.assertFalse(account.can_manage_members)
+
+    def test_club_accounts_page_renders_for_staff(self):
+        ClubAccount.objects.create(user=self.student, club=self.club, role='manager')
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse('admin_club_accounts'))
+        self.assertEqual(response.status_code, 200)
+        for needle in ['Club Account Management', 'Create a Club Account', 'Assign an Existing Account', 'Club Manager Accounts']:
+            self.assertContains(response, needle, msg_prefix=needle)
+        self.assertContains(response, self.student.username)
+
+    def test_club_accounts_page_blocked_for_students(self):
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('admin_club_accounts'))
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('student_dashboard'))
+
+
 class AccountAndAdminPagesTest(TestCase):
     """Signup, settings, profile, and the three staff admin dashboards."""
 
@@ -380,13 +656,23 @@ class AccountAndAdminPagesTest(TestCase):
                 self.assertIn(reverse('login'), response.url)
 
     def test_admin_pages_require_staff(self):
-        # Logged-in non-staff users are sent back to the login page
+        # Logged-in non-staff users are sent back to the login page for the
+        # legacy staff dashboards (kept on staff_member_required)…
         self.client.login(username='S1001', password='student123')
-        for name in ['sys_admin', 'cafeteria_admin', 'club_admin', 'reports_admin']:
+        for name in ['sys_admin', 'cafeteria_admin']:
             with self.subTest(page=name):
                 response = self.client.get(reverse(name))
                 self.assertEqual(response.status_code, 302)
                 self.assertIn(reverse('login'), response.url)
+        # …the club workspace 403s students without club access
+        # (club_access_required fails closed instead of looping to login)…
+        response = self.client.get(reverse('club_admin'))
+        self.assertEqual(response.status_code, 403)
+        # …and the admin area (/dashboard/admin/*) bounces students to their
+        # own dashboard via the RoleAccessMiddleware, never the login loop.
+        response = self.client.get(reverse('reports_admin'))
+        self.assertEqual(response.status_code, 302)
+        self.assertNotIn(reverse('login'), response.url)
 
     def test_profile_and_settings_redirect_anonymous_to_login(self):
         for name in ['profile', 'settings']:
@@ -522,7 +808,9 @@ class AccountAndAdminPagesTest(TestCase):
             'password': 'secretpass1',
             'confirm_password': 'secretpass1',
         })
-        self.assertRedirects(response, reverse('dashboard'))
+        # Sign-in lands on /dashboard/ which the role dispatcher routes to the
+        # new student's area.
+        self.assertRedirects(response, reverse('student_dashboard'))
         self.assertTrue(User.objects.filter(username='S2001').exists())
         profile = StudentProfile.objects.get(student_id='S2001')
         self.assertEqual(profile.user.username, 'S2001')
@@ -873,11 +1161,12 @@ class LoginFlowTests(TestCase):
         self.assertContains(response, reverse('dashboard'))
 
     def test_valid_login_redirects_to_dashboard(self):
+        # LOGIN_REDIRECT_URL → /dashboard/ → role dispatcher → student home.
         response = self.client.post(reverse('login'), {
             'username': 'student',
             'password': 'student123',
         })
-        self.assertRedirects(response, '/dashboard/')
+        self.assertRedirects(response, reverse('student_dashboard'))
 
     def test_invalid_login_shows_error(self):
         response = self.client.post(reverse('login'), {
@@ -890,7 +1179,7 @@ class LoginFlowTests(TestCase):
     def test_login_redirects_authenticated_user(self):
         self.client.login(username='student', password='student123')
         response = self.client.get(reverse('login'))
-        self.assertRedirects(response, '/dashboard/')
+        self.assertRedirects(response, reverse('student_dashboard'))
 
     def test_logout_redirects_home(self):
         self.client.login(username='student', password='student123')
@@ -1693,12 +1982,24 @@ class GoogleApiViewsTest(TestCase):
         student = User.objects.create_user(username='plain_student', password='x12345678')
         self.client.logout()
         self.client.login(username='plain_student', password='x12345678')
-        # staff_member_required bounces authenticated non-staff to the login
-        # page (Django default) — never serves sheet data to students.
+        # club_access_required fails closed with 403 for authenticated users
+        # with no staff flag and no active club account — sheet data never
+        # reaches plain students.
         response = self.client.get(reverse('api_club_sheet_fetch'), {'sheet_url': 'https://x'})
-        self.assertEqual(response.status_code, 302)
-        self.assertIn(reverse('login'), response.url)
-        self.assertNotEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 403)
+
+    def test_fetch_sheet_allowed_for_club_manager(self):
+        # Active club accounts may use the club workspace (sheets + verify).
+        club, _ = Club.objects.get_or_create(name='Computer Club', slug='computer-club')
+        manager = User.objects.create_user(username='mgr_sheet', password='x12345678')
+        ClubAccount.objects.create(user=manager, club=club, role='manager', is_active=True)
+        self.client.logout()
+        self.client.login(username='mgr_sheet', password='x12345678')
+        response = self.client.get(reverse('api_club_sheet_fetch'), {'sheet_url': 'https://x'})
+        # Passed the role gate — a non-403/non-302 status means the request
+        # reached the view (a 401 here means Google not connected, which is
+        # expected for a manager without Drive/Sheets scopes).
+        self.assertNotIn(response.status_code, (302, 403))
 
     def test_fetch_sheet_success(self):
         records = [{'Name': 'Alice', 'Amount': '200'}]
@@ -2998,7 +3299,11 @@ class JoinClubApiTest(TestCase):
 
 
 class DashboardWidgetsTest(TestCase):
-    """The /dashboard/ widgets — BST clock, routine, calendar, activity feeds."""
+    """The /dashboard/student/ widgets — BST clock, routine, calendar, feeds.
+
+    The canonical student dashboard URL is ``student_dashboard``; the bare
+    ``/dashboard/`` dispatcher redirects authenticated users by role.
+    """
 
     def setUp(self):
         self.user = User.objects.create_user(username='widget_user', password='x12345678')
@@ -3015,7 +3320,7 @@ class DashboardWidgetsTest(TestCase):
         ]}
 
     def test_dashboard_embeds_bst_clock_widget(self):
-        html = self.client.get(reverse('dashboard')).content.decode()
+        html = self.client.get(reverse('student_dashboard')).content.decode()
         self.assertIn('id="clock-time"', html)
         self.assertIn('Bangladesh Standard Time', html)
         self.assertIn('id="dash-data"', html)
@@ -3025,21 +3330,21 @@ class DashboardWidgetsTest(TestCase):
         Routine.objects.create(
             user=self.user, schedule=self._full_week_schedule(), source_name='routine.png',
         )
-        html = self.client.get(reverse('dashboard')).content.decode()
+        html = self.client.get(reverse('student_dashboard')).content.decode()
         self.assertIn('CSE-1101', html)
         self.assertIn('data-start="09:00"', html)
         self.assertIn('Room 201', html)
         self.assertIn('Synced from routine.png', html)
 
     def test_dashboard_shows_routine_setup_cta_when_missing(self):
-        html = self.client.get(reverse('dashboard')).content.decode()
+        html = self.client.get(reverse('student_dashboard')).content.decode()
         self.assertIn('routine-cta', html)
         self.assertIn('Set up routine', html)
 
     def test_dashboard_lists_recent_activity(self):
         self.client.force_login(self.user)
         UserNote.objects.create(user=self.user, title='OOP Notes', content='x')
-        html = self.client.get(reverse('dashboard')).content.decode()
+        html = self.client.get(reverse('student_dashboard')).content.decode()
         self.assertIn('Edited note', html)
         self.assertIn('OOP Notes', html)
 
@@ -3049,7 +3354,7 @@ class DashboardWidgetsTest(TestCase):
             author=author, title='Semester Fee Notice', category='academic',
             content='Fees due.', is_published=True,
         )
-        html = self.client.get(reverse('dashboard')).content.decode()
+        html = self.client.get(reverse('student_dashboard')).content.decode()
         self.assertIn('Semester Fee Notice', html)
         self.assertIn('Quick Campus Info', html)
 
@@ -3063,18 +3368,18 @@ class DashboardWidgetsTest(TestCase):
             author=author, title='Hidden Draft', category='general',
             content='Should never appear.', is_published=False,
         )
-        html = self.client.get(reverse('dashboard')).content.decode()
+        html = self.client.get(reverse('student_dashboard')).content.decode()
         self.assertIn('Live Feed Notice', html)
         self.assertNotIn('Hidden Draft', html)
 
     def test_dashboard_quick_links_use_live_courses(self):
         Course.objects.create(code='WGT101', title='Widget Science', department='CSE')
-        html = self.client.get(reverse('dashboard')).content.decode()
+        html = self.client.get(reverse('student_dashboard')).content.decode()
         self.assertIn('WGT101', html)
         self.assertNotIn('material_count', html)  # server-rendered, not raw JS
 
     def test_dashboard_renders_for_anonymous_users(self):
-        response = self.client.get(reverse('dashboard'))
+        response = self.client.get(reverse('student_dashboard'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Welcome back')
 
@@ -3460,7 +3765,7 @@ class DisplayPreferencesIntegrationTest(TestCase):
         prefs.compact_layout = True
         prefs.save()
 
-        response = self.client.get(reverse('dashboard'))
+        response = self.client.get(reverse('student_dashboard'))
         data = response.context['DISPLAY_PREFS']
         self.assertEqual(data['theme'], 'dark')
         self.assertEqual(data['timezone'], 'UTC')
@@ -3480,7 +3785,7 @@ class DisplayPreferencesIntegrationTest(TestCase):
         orphan = User.objects.create_user(username='no_prefs_row', password='x12345678')
         UserNotificationPreference.objects.filter(user=orphan).delete()
         self.client.force_login(orphan)
-        response = self.client.get(reverse('dashboard'))
+        response = self.client.get(reverse('student_dashboard'))
         data = response.context['DISPLAY_PREFS']
         self.assertEqual(data['theme'], 'light')
         self.assertEqual(data['density'], 'comfortable')
@@ -6038,6 +6343,17 @@ class SecurityAuditTest(TestCase):
             (reverse('api_club_verify_transaction'), 'POST'),
             (reverse('api_notices_create'), 'POST'),
             (reverse('api_admin_update_role'), 'POST'),
+            # Admin Dashboard area (/dashboard/admin/*) + club account APIs
+            (reverse('admin_dashboard'), 'GET'),
+            (reverse('admin_users'), 'GET'),
+            (reverse('admin_club_accounts'), 'GET'),
+            (reverse('admin_database'), 'GET'),
+            (reverse('admin_content'), 'GET'),
+            (reverse('admin_settings'), 'GET'),
+            (reverse('api_club_accounts'), 'GET'),
+            (reverse('api_club_account_password', args=[1]), 'POST'),
+            (reverse('api_club_account_status', args=[1]), 'POST'),
+            (reverse('api_club_account_permissions', args=[1]), 'POST'),
             # Website Builder (permission-gated)
             (reverse('builder_dashboard'), 'GET'),
             (reverse('builder_editor', args=['x']), 'GET'),
@@ -6061,7 +6377,8 @@ class SecurityAuditTest(TestCase):
 
     def test_public_endpoints_reachable_anonymously(self):
         public = [
-            '/', reverse('dashboard'), reverse('tickets'), reverse('medical'),
+            '/', reverse('dashboard'), reverse('student_dashboard'),
+            reverse('tickets'), reverse('medical'),
             reverse('notes'), reverse('academic_notes'), reverse('notices'),
             reverse('clubs_dashboard'), reverse('transport_dashboard'),
             reverse('meal_dashboard'), reverse('checkout'), reverse('research_ai'),
@@ -6417,7 +6734,8 @@ class VerifyClubSheetApiTest(TestCase):
     """POST /clubs/dashboard/sheets/verify/ — save + setup default tabs/headers."""
 
     def setUp(self):
-        # Verify & Connect is staff-only (Club Management dashboard).
+        # Verify & Connect lives in the Club Management dashboard — staff or
+        # active club-account holders (club_access_required).
         self.user = User.objects.create_user(
             username='verify_sheets_user', password='x12345678', is_staff=True,
         )
@@ -6432,15 +6750,14 @@ class VerifyClubSheetApiTest(TestCase):
         student = User.objects.create_user(username='plain_student_v', password='x12345678')
         self.client.logout()
         self.client.login(username='plain_student_v', password='x12345678')
-        # Same staff gate as fetch/append — authenticated students are bounced
-        # to the login page rather than reaching the sheet setup endpoint.
+        # Same club gate as fetch/append — authenticated students without a
+        # staff flag or active club account get a 403, never sheet setup.
         response = self.client.post(
             reverse('api_club_sheet_verify'),
             data=json.dumps({'sheet_ref': 'x'}),
             content_type='application/json',
         )
-        self.assertEqual(response.status_code, 302)
-        self.assertIn(reverse('login'), response.url)
+        self.assertEqual(response.status_code, 403)
 
     def test_verify_rejects_missing_ref(self):
         response = self.client.post(reverse('api_club_sheet_verify'), data=json.dumps({'sheet_ref': '  '}), content_type='application/json')
@@ -7054,8 +7371,9 @@ class ReportsModuleTest(TestCase):
     def test_admin_page_requires_staff(self):
         self.client.login(username='S1001', password='student123')
         response = self.client.get(reverse('reports_admin'))
+        # The RoleAccessMiddleware redirects students away from the admin area.
         self.assertEqual(response.status_code, 302)
-        self.assertIn(reverse('login'), response.url)
+        self.assertNotIn(reverse('login'), response.url)
 
     def test_admin_page_renders_inbox(self):
         Report.objects.create(

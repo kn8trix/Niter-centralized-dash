@@ -4026,3 +4026,132 @@ python manage.py seed_demo_users
 ### Files Modified
 
 - `build.sh`, `docs/HANDOVER.md` (this section; §38/§39/§63 flow notes updated)
+
+## 77. RBAC Audit & Admin Dashboard Split — Role-Based Areas, Admin Hub, Club Account Management
+
+**Date:** 12 August 2026  
+**Branch:** main
+
+### Overview
+
+Audited and fixed the entire Role-Based Access Control (RBAC) and Admin
+Dashboard system. The admin dashboards previously looked identical to the
+student dashboard because every role was routed through the same view and
+layout; this section documents the root causes found, the new explicit-role
+architecture, the dedicated Admin area at `/dashboard/admin/*`, and the new
+Club Account Management module.
+
+### Audit Report — Root Causes of the "Duplicate Layout"
+
+1. **One dashboard for everyone.** `/dashboard/` (`views.dashboard`) rendered
+the *student* dashboard for any visitor — there was no role dispatch, and
+`LOGIN_REDIRECT_URL = '/dashboard/'` sent admins, club managers and students
+to the exact same page. Admin consoles (System Admin, Cafeteria, Club,
+Medical) were separate URLs but shared the student page shell.
+2. **No explicit roles.** Access was implicit Django flags only (`is_staff` /
+`is_superuser`); there was no `CLUB` role, no role constants, no
+role-aware middleware, and no role-based redirects. Nothing enforced
+"students cannot open admin routes" beyond per-view decorators.
+3. **Shared look & feel.** Every admin console reused the same student-style
+CampusDash top-pill header (`partials/topbar.html`) and `base.html` sidebar
+— there was no distinct admin shell, sidebar, or navigation.
+4. **No club account management.** `Club.lead_user` was a single FK; there
+was no way to create dedicated club-manager accounts, assign users to
+clubs, reset passwords, or toggle permissions/status.
+
+### New RBAC Architecture
+
+**`core/roles.py` (new) — the single source of truth.** Defines the three
+explicit roles (`admin`, `club`, `student`), `get_user_role(user)` (precedence:
+superuser/staff → admin, active `ClubAccount` → club, else student) and
+`role_home_path(role)` (admin → `/dashboard/admin/`, club → `/clubs/manage/`,
+student → `/dashboard/student/`).
+
+**Role dispatcher at `/dashboard/`.** `views.dashboard` now redirects every
+*authenticated* user to their role home; anonymous guests keep the pre-RBAC
+behaviour of viewing the student dashboard (so public links and the demo
+"Skip login" flow still work).
+
+**`RoleAccessMiddleware` (`core/middleware.py`).** Enforced at the request
+layer, before any view: students/club managers hitting `/dashboard/admin/*`
+are bounced to their role home; club managers are also kept out of
+`/dashboard/student/*`. The middleware uses `role_home_path()` so a student
+typing an admin URL lands on their own dashboard, never the login loop.
+
+**Role-aware sign-in.** `RoleAwareLoginView` (subclasses Django's `LoginView`,
+wired in `config/urls.py`) sends every sign-in straight to the role home —
+admin → `/dashboard/admin/`, club → `/clubs/manage/`, student →
+`/dashboard/student/` — while still honouring a safe `?next=` target. Signup
+redirects the new student to `/dashboard/student/` the same way.
+
+**Page-level guards (`core/decorators.py`).** `admin_required` gates all
+`/dashboard/admin/*` views (staff/superuser; 403 for authenticated
+non-admins), and `club_access_required` admits staff **or** active club
+accounts to the club workspace (`club_admin_view`).
+
+### Admin Area — `/dashboard/admin/*` (distinct layout)
+
+All six pages render through the new **`templates/admin/admin_base.html`** —
+a dedicated admin shell with its own sidebar (Overview, Users & Clubs,
+Club Accounts, Database, Website Builder, System Settings, plus links to the
+legacy service dashboards), topbar and `static/css/admin_dashboard.css` —
+completely separate from the student `base.html` layout.
+
+| URL | View | Page |
+| :--- | :--- | :--- |
+| `/dashboard/admin/` | `admin_dashboard` | Overview — live platform stats, recent reports/notices/pages, quick links |
+| `/dashboard/admin/users/` | `admin_users_view` | User & Club Management — students, staff/admins, club managers |
+| `/dashboard/admin/users/clubs/` | `admin_club_accounts_view` | Club Account Management (new module) |
+| `/dashboard/admin/database/` | `admin_database_view` | Database Quick Stats — live row counts per model group |
+| `/dashboard/admin/content/` | `admin_content_view` | Website Builder / CMS — builder pages + notices + settings links |
+| `/dashboard/admin/settings/` | `admin_settings_view` | System Settings — env/config summary + Django admin link |
+
+`templates/reports/admin_reports.html` (Report Inbox) now uses the admin
+layout too. The student sidebar (`base.html`) gained role-aware links: staff
+see "Admin Panel", club managers see "Club Workspace".
+
+### Club Account Management (new module)
+
+**`ClubAccount` model** (`core/models.py`, migration `0033`): OneToOne to
+`User`, FK to `Club`, a `role` (`manager` / `executive` / `president` /
+`member`), three permission flags (`can_post_events`, `can_manage_members`,
+`can_manage_finances`) and `is_active`. Registered in `core/admin.py`.
+
+**Admin page** (`/dashboard/admin/users/clubs/`, `templates/admin/club_accounts.html`):
+- List every club account (club, holder, role, permissions, status).
+- **Create** a new club-manager account (username, name, email, password or
+auto-generated, club, role, permissions, active flag).
+- **Assign** an existing user to a club (duplicate assignment → 409).
+- **Reset password** (explicit or auto-generated), **toggle active/inactive**,
+and **update role + permission flags** inline.
+
+**APIs** (`/api/admin/club-accounts/*`, all `@admin_required`):
+| Method | Endpoint | Purpose |
+| :--- | :--- | :--- |
+| GET/POST | `/api/admin/club-accounts/` | List accounts; create new or assign existing user (`mode=create|assign`) |
+| POST | `/api/admin/club-accounts/<id>/password/` | Reset password (blank → generated) |
+| POST | `/api/admin/club-accounts/<id>/status/` | Toggle active/inactive |
+| POST | `/api/admin/club-accounts/<id>/permissions/` | Update role + permission flags |
+
+### Files Added / Modified
+
+- **New:** `core/roles.py`, `core/migrations/0033_clubaccount.py`,
+`static/css/admin_dashboard.css`, `templates/admin/` (`admin_base.html`,
+`overview.html`, `users.html`, `club_accounts.html`, `database.html`,
+`content.html`, `settings.html`)
+- **Modified:** `core/models.py`, `core/views.py` (dispatcher, admin hub
+views, club-account APIs, `RoleAwareLoginView`, signup redirect),
+`core/decorators.py`, `core/middleware.py`, `core/admin.py`,
+`core/urls.py`, `core/context_processors.py`, `config/settings.py`
+(middleware + `user_role` processor), `config/urls.py`,
+`templates/reports/admin_reports.html`, `templates/base.html`,
+`core/tests.py`
+
+### Testing
+
+- `python manage.py check` ✔ (clean)
+- `python manage.py test` ✔ — **678 tests pass**, including new
+`RoleRoutingTest` (dispatcher + middleware matrix), `AdminDashboardPagesTest`
+(admin area renders for staff, admin layout + sidebar), `ClubAccountApiTest`
+(create/assign/reset/status/permissions + 403/404/409 guards), and updated
+login/signup redirect assertions.

@@ -5,6 +5,7 @@ from .models import (
     BusSchedule,
     ClassRoutine,
     Club,
+    ClubAccount,
     ClubEvent,
     ClubRegistration,
     ContentBlock,
@@ -271,6 +272,16 @@ class RoutineAdmin(admin.ModelAdmin):
     list_display = ('user', 'source_name', 'updated_at')
     search_fields = ('user__username', 'source_name')
     readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(ClubAccount)
+class ClubAccountAdmin(admin.ModelAdmin):
+    """Club manager accounts — who manages which club and what they may do."""
+
+    list_display = ('user', 'club', 'role', 'can_post_events', 'can_manage_members', 'can_manage_finances', 'is_active', 'created_at')
+    list_filter = ('club', 'role', 'is_active')
+    search_fields = ('user__username', 'user__email', 'club__name')
+    list_select_related = ('user', 'club')
 
 
 @admin.register(Club)

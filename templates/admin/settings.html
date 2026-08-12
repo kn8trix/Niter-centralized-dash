@@ -1,0 +1,44 @@
+{% extends "admin/admin_base.html" %}
+{% load static %}
+
+{% block title %}System Settings — Niter Hub Admin{% endblock %}
+{% block header %}System Settings{% endblock %}
+
+{% block content %}
+<div class="admin-card">
+    <h2><i class="fa-solid fa-sliders"></i> Platform Configuration</h2>
+    <p class="admin-card-sub">Environment-driven settings — manage them via the process environment / <code>.env</code>, not this page.</p>
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr><th>Setting</th><th>Value</th></tr>
+            </thead>
+            <tbody>
+                {% for key, value in env_summary.items %}
+                <tr>
+                    <td class="mono">{{ key }}</td>
+                    <td>
+                        {% if key == 'ALLOWED_HOSTS' %}
+                            <span class="admin-badge admin-badge-gray">{{ value|join:", "|default:"—" }}</span>
+                        {% elif key == 'DEBUG' %}
+                            <span class="admin-badge {% if value %}admin-badge-amber{% else %}admin-badge-green{% endif %}">{{ value|yesno:"ON (development),OFF (production)" }}</span>
+                        {% else %}
+                            <span class="admin-badge {% if value == 'unset (in-memory fallback)' or value == 'unset (SQLite)' or value == 'unset' %}admin-badge-amber{% else %}admin-badge-green{% endif %}">{{ value }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="admin-card">
+    <h2><i class="fa-solid fa-toolbox"></i> Management Tools</h2>
+    <p class="admin-card-sub">Deep configuration, user editing and data management live in the Django admin.</p>
+    <div class="flex flex-wrap gap-3">
+        <a href="/admin/" class="admin-btn admin-btn-primary"><i class="fa-solid fa-lock"></i> Django Admin</a>
+        <a href="{{ ENDPOINTS.sys_admin }}" class="admin-btn"><i class="fa-solid fa-user-gear"></i> System Admin Console</a>
+    </div>
+</div>
+{% endblock %}

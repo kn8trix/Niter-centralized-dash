@@ -1,0 +1,90 @@
+{% extends "admin/admin_base.html" %}
+{% load static %}
+
+{% block title %}Users &amp; Clubs — Niter Hub Admin{% endblock %}
+{% block header %}User &amp; Club Management{% endblock %}
+
+{% block content %}
+<div class="admin-card">
+    <h2><i class="fa-solid fa-users"></i> Students</h2>
+    <p class="admin-card-sub">Registered student accounts with their institutional identity.</p>
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr><th>Name</th><th>Student ID</th><th>Department</th><th>Email</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                {% for student in students %}
+                <tr>
+                    <td class="font-medium">{{ student.name }}</td>
+                    <td class="mono">{{ student.student_id }}</td>
+                    <td>{{ student.department }}</td>
+                    <td>{{ student.email|default:"—" }}</td>
+                    <td><span class="admin-badge {% if student.active %}admin-badge-green{% else %}admin-badge-red{% endif %}">{{ student.active|yesno:"Active,Inactive" }}</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center text-main/50 py-4">No students registered yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="admin-card">
+    <h2><i class="fa-solid fa-user-tie"></i> Staff &amp; System Admins</h2>
+    <p class="admin-card-sub">
+        Staff accounts. Role promotion runs through the System Admin dashboard
+        {% if not is_superuser %}(superuser only){% endif %}.
+    </p>
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr><th>Name</th><th>Username</th><th>Role</th><th>Email</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                {% for member in staff %}
+                <tr>
+                    <td class="font-medium">{{ member.name }}</td>
+                    <td class="mono">{{ member.username }}</td>
+                    <td>
+                        <span class="admin-badge {% if member.role == 'System Admin' %}admin-badge-amber{% else %}admin-badge-blue{% endif %}">{{ member.role }}</span>
+                    </td>
+                    <td>{{ member.email|default:"—" }}</td>
+                    <td><span class="admin-badge {% if member.active %}admin-badge-green{% else %}admin-badge-red{% endif %}">{{ member.active|yesno:"Active,Inactive" }}</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center text-main/50 py-4">No staff accounts yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="admin-card">
+    <h2><i class="fa-solid fa-user-shield"></i> Club Managers</h2>
+    <p class="admin-card-sub">
+        Users holding an active club account. Manage them on the
+        <a href="{{ ENDPOINTS.admin_club_accounts }}" class="text-accentHover underline font-medium">Club Accounts</a> page.
+    </p>
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr><th>Name</th><th>Username</th><th>Club</th><th>Role</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                {% for account in club_accounts %}
+                <tr>
+                    <td class="font-medium">{{ account.user.get_full_name|default:account.user.username }}</td>
+                    <td class="mono">{{ account.user.username }}</td>
+                    <td>{{ account.club.name }}</td>
+                    <td><span class="admin-badge admin-badge-amber">{{ account.get_role_display }}</span></td>
+                    <td><span class="admin-badge {% if account.is_active %}admin-badge-green{% else %}admin-badge-red{% endif %}">{{ account.is_active|yesno:"Active,Inactive" }}</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center text-main/50 py-4">No club manager accounts yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

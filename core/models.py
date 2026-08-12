@@ -1000,6 +1000,62 @@ class ClubRegistration(models.Model):
         return '%s → %s' % (self.student.username, self.club.name)
 
 
+class ClubAccount(models.Model):
+    """A dedicated club-manager account linked to a club.
+
+    Admins create/assign these accounts so club executives and managers get
+    their own login for the club workspace (``/clubs/manage/``). Each account
+    carries its own role, granular permission flags and an active switch — a
+    user can be a student and a club manager at the same time.
+    """
+
+    ROLE_CHOICES = [
+        ('manager', 'Club Manager'),
+        ('executive', 'Club Executive'),
+        ('president', 'Club President'),
+    ]
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='club_account',
+    )
+    club = models.ForeignKey(
+        Club,
+        on_delete=models.CASCADE,
+        related_name='accounts',
+    )
+    role = models.CharField(
+        max_length=20,
+        choices=ROLE_CHOICES,
+        default='manager',
+    )
+    can_post_events = models.BooleanField(
+        default=True,
+        help_text='May publish events and announcements for the club',
+    )
+    can_manage_members = models.BooleanField(
+        default=True,
+        help_text='May approve/reject membership requests',
+    )
+    can_manage_finances = models.BooleanField(
+        default=False,
+        help_text='May verify payments and manage club funds',
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text='Inactive club accounts are locked out of the club workspace',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['club__name', 'user__username']
+
+    def __str__(self):
+        return '%s · %s' % (self.club.name, self.user.username)
+
+
 class MedicalAppointment(models.Model):
     """A booked appointment slot with a campus doctor.
 
