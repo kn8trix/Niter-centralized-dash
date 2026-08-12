@@ -3519,3 +3519,68 @@ hex ink) that stay readable in both themes.
 - `templates/notes/notes_engine.html`, `static/css/main.css`,
   `templates/ticketing/tickets.html`, `static/css/theme.css`,
   `docs/HANDOVER.md`
+
+---
+
+## 69. Demo Accounts — `seed_demo_users` Management Command
+
+**Date:** 12 August 2026  
+**Branch:** main
+
+### Overview
+
+`db.sqlite3` is gitignored, so a fresh clone starts with **no users** and the
+documented demo accounts (`admin` / `admin123`, `student` / `student123`) had
+to be recreated by hand. Added an idempotent management command so any
+environment can bring back the demo accounts with one line:
+
+```bash
+venv/bin/python manage.py seed_demo_users
+```
+
+### Changes
+
+- **`core/management/commands/seed_demo_users.py`** (new) — creates, when
+  missing:
+  - `admin` / `admin123` — superuser + staff (every admin dashboard, Django
+    `/admin/`, and the Website Builder).
+  - `student` / `student123` — regular student (all student-facing pages).
+  - Options: `--password 'S3cret!x'` overrides the admin/staff password
+    (student keeps its documented `student123`); `--extra-staff N` also
+    creates `staff1..staffN` staff accounts.
+  - **Idempotent** — existing users are never touched or password-reset, so
+    re-running after a password change keeps the new password.
+- **`core/tests.py`** — new `SeedDemoUsersCommandTest` (4 tests): creates the
+  demo users with correct roles, idempotency + keeps a changed password,
+  `--extra-staff` creation, and `--password` override (student unaffected).
+- **`README.md`** — new "Demo Accounts" section with the credential table and
+  the seed command + options.
+- **`docs/HANDOVER.md`** — replaced the stale `.freebuff/run.md` references
+  (that file does not exist) with the real command in §20 and §32 notes.
+
+### Access mapping (unchanged, for reference)
+
+| Dashboard | URL | Requires | Login |
+| :--- | :--- | :--- | :--- |
+| Student pages | `/dashboard/`, `/tickets/`, `/meals/`, `/transport/`, `/medical/`, `/notes/`, `/academic-notes/`, `/research-ai/` | any login | `student` / `student123` |
+| System Admin | `/admin-dashboard/` | staff | `admin` / `admin123` |
+| Medical Admin | `/medical/admin/` | staff | `admin` / `admin123` |
+| Medical Host | `/host/medical/` | staff | `admin` / `admin123` |
+| Cafeteria Admin | `/cafeteria/admin/` | staff | `admin` / `admin123` |
+| Club Management | `/clubs/manage/` | staff | `admin` / `admin123` |
+| Django Admin | `/admin/` | superuser | `admin` / `admin123` |
+| Website Builder | `/builder/` | superuser / `change_editablepage` | `admin` / `admin123` |
+
+### Testing
+
+- Fresh empty-DB run: `migrate` → `seed_demo_users` creates both users;
+  `admin` authenticates as staff+superuser, `student` as regular ✔
+- Idempotency: second run reports `exists (skipped)` for every user ✔
+- `python manage.py check` ✔; `SeedDemoUsersCommandTest` 4/4 ✔; full core
+  suite **559 tests OK** ✔
+
+### Files Modified
+
+- `core/management/commands/seed_demo_users.py` (new),
+  `core/management/__init__.py` (new), `core/management/commands/__init__.py`
+  (new), `core/tests.py`, `README.md`, `docs/HANDOVER.md`
