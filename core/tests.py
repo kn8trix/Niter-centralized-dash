@@ -6769,3 +6769,46 @@ class DoctorAvailabilityApiTest(TestCase):
         })
         self.assertEqual(second.status_code, 409)
         self.assertIn('daily appointment limit', second.json()['message'])
+
+
+class SeedDemoUsersCommandTest(TestCase):
+    """The ``seed_demo_users`` management command creates the documented demo
+    accounts and is idempotent (never resets existing users)."""
+
+    def _run(self, *args, **kwargs):
+        from django.core.management import call_command
+        return call_command('seed_demo_users', *args, **kwargs)
+
+    def test_creates_demo_users(self):
+        self._run()
+        admin = User.objects.get(username='admin')
+        student = User.objects.get(username='student')
+        self.assertTrue(admin.check_password('admin123'))
+        self.assertTrue(admin.is_staff and admin.is_superuser)
+        self.assertTrue(student.check_password('student123'))
+        self.assertFalse(student.is_staff or student.is_superuser)
+
+    def test_idempotent_and_keeps_password(self):
+        self._run()
+        admin = User.objects.get(username='admin')
+        admin.set_password('changed-pass-1')
+        admin.save()
+        self._run()  # second run must not reset the password
+        admin.refresh_from_db()
+        self.assertTrue(admin.check_password('changed-pass-1'))
+        self.assertEqual(User.objects.filter(username='admin').count(), 1)
+
+    def test_extra_staff(self):
+        self._run(extra_staff=2)
+        for i in (1, 2):
+            staff = User.objects.get(username='staff%d' % i)
+            self.assertTrue(staff.is_staff)
+            self.assertFalse(staff.is_superuser)
+            self.assertTrue(staff.check_password('admin123'))
+        self.assertFalse(User.objects.filter(username='staff3').exists())
+
+    def test_password_override(self):
+        self._run(password='S3cret!x')
+        self.assertTrue(User.objects.get(username='admin').check_password('S3cret!x'))
+        # student keeps its documented password
+        self.assertTrue(User.objects.get(username='student').check_password('student123'))

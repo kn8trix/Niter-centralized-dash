@@ -851,7 +851,7 @@ Added a warm light-themed login page (`templates/login.html`) and wired Django's
 6. **Demo Users (SQLite, dev only — `db.sqlite3` is gitignored)**
    - `admin` / `admin123` (superuser)
    - `student` / `student123` (regular user)
-   - Fresh clones must run `venv/bin/python manage.py migrate` and recreate users before real logins work.
+   - Fresh clones must run `venv/bin/python manage.py migrate` and `venv/bin/python manage.py seed_demo_users` before real logins work.
 
 ### Testing
 
@@ -1164,7 +1164,7 @@ Replaced the placeholder `/settings/` and `/signup/` pages with real account sur
 ### Notes
 
 - `@staff_member_required` defaults to redirecting to `admin:index`, which doesn't exist here, so it is bound to `settings.LOGIN_URL` (`/login/`).
-- Demo users recreated locally (`db.sqlite3` is gitignored): `admin` / `admin123` (staff) and `student` / `student123`. See `.freebuff/run.md` for the one-liner to recreate them.
+- Demo users recreated locally (`db.sqlite3` is gitignored): `admin` / `admin123` (staff) and `student` / `student123`. Run `venv/bin/python manage.py seed_demo_users` (idempotent) to recreate them — see README for options.
 - The settings page's Dark toggle is a bonus foundation only — the project theme remains warm-light (section 23).
 
 ---
