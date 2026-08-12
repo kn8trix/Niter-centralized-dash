@@ -4360,3 +4360,83 @@ role `niter` (password `change-me`) + database `niter`, then
 - `.env` (new, **gitignored** — local only, not committed)
 - `.env.example` (tracked template updated)
 - `docs/HANDOVER.md` (this section)
+
+---
+
+## 81. Google OAuth / Drive Connect Flow — Wiring & Setup Status
+
+**Date:** 13 August 2026  
+**Branch:** main
+
+### Overview
+
+Status of the **Google Drive / Sheets OAuth2 connect flow**. The flow is fully
+wired in code and the environment placeholders are ready; only the **real
+Google OAuth client credentials** (from the Google Cloud Console) are pending
+— they cannot be committed and must be entered by the developer into the
+local (gitignored) `.env`.
+
+### How the Flow Works
+
+1. **`GET /drive/connect/`** (`core.views.drive_connect`, `@login_required`)
+   — builds a `google_auth_oauthlib.flow.Flow` from `GOOGLE_CLIENT_ID` /
+   `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` and redirects to Google's
+   consent screen with Drive + Sheets scopes
+   (`drive.file`, `drive.readonly`, `spreadsheets`). The CSRF `state` is
+   stored in the session.
+2. **Google consent** — user grants access (offline access_type + consent
+   prompt, so a refresh token is always issued).
+3. **`GET /drive/callback/`** (`core.views.drive_callback`, `@login_required`)
+   — validates the session `state`, exchanges the code for tokens, and stores
+   them **encrypted at rest** (Fernet, `core/crypto.py`) on the user's
+   `GoogleUserToken` row (`access_token`, `refresh_token`, `token_uri`,
+   `client_id`, `client_secret`, `scopes`, `expiry`).
+4. **allauth mirror (best effort)** — the connection is also reflected into a
+   `SocialAccount`/`SocialToken` so the existing Settings UI and token paths
+   see it.
+5. The Settings → Account & Google tab exposes connect status
+   (`has_google_token`, `has_drive_access`) and the Drive connect/callback
+   are linked from the Notes Engine export flows.
+
+### Environment Variables (in the local `.env`)
+
+| Variable | Purpose | Status |
+| :--- | :--- | :--- |
+| `GOOGLE_CLIENT_ID` | OAuth 2.0 Web client id | **empty — developer must add real value** |
+| `GOOGLE_CLIENT_SECRET` | OAuth 2.0 Web client secret | **empty — developer must add real value** |
+| `GOOGLE_REDIRECT_URI` | Must match an Authorized redirect URI in Google Cloud | `http://localhost:8000/drive/callback/` (dev) |
+| `GOOGLE_TOKEN_ENCRYPTION_KEY` | Optional Fernet key (falls back to `SECRET_KEY` derivation) | empty (ok) |
+
+When `GOOGLE_CLIENT_ID` is set, `config/settings.py` also wires it into
+allauth's `SOCIALACCOUNT_PROVIDERS['google']['APP']`, so social sign-in and
+the Drive flow share one source of truth.
+
+### Google Cloud Console Checklist (developer)
+
+1. Create an **OAuth 2.0 Client ID** (Application type: **Web application**).
+2. Add `http://localhost:8000/drive/callback/` to **Authorized redirect
+   URIs** (or the production `https://niter.edu.bd/drive/callback/`).
+3. Enable the **Google Drive API** (and Sheets API if club sheets are used).
+4. Paste the client id + secret into the local `.env`
+   (`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`).
+
+### Verification
+
+- **Wiring tests (mocked, no credentials needed)** — `core/tests.py`
+  `GoogleDriveOAuthTest` (or equivalent) asserts `/drive/connect/` builds the
+  Flow from the env credentials and `/drive/callback/` stores tokens; run via
+  `python manage.py test core.tests` (or the specific class).
+- **End-to-end (pending real credentials)** — sign in as any user, visit
+  `/drive/connect/`, complete Google consent, and confirm a `GoogleUserToken`
+  row is created and the Settings Account tab shows "connected".
+
+### Note
+
+Local Postgres is now the configured dev database (`.env` `DATABASE_URL`);
+for a quick Drive-flow check without starting Postgres, run the server with
+`DATABASE_URL` unset so settings fall back to SQLite
+(e.g. `env -u DATABASE_URL venv/bin/python manage.py runserver 8000`).
+
+### Files Modified
+
+- `docs/HANDOVER.md` (this section — documentation only; no code changed)
