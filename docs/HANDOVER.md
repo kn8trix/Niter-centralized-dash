@@ -214,7 +214,7 @@ To create a new page, extend the base template:
 - **Static:** WhiteNoise (`CompressedStaticFilesStorage`) — production static serving + `collectstatic`
 - **Auth:** django-allauth (Google OAuth) + Django sessions; Google ID-token verification via `PyJWT[crypto]` (allauth's `socialaccount` extra — pinned in `requirements.txt`, see §42)
 - **Google APIs:** `google-api-python-client`, `gspread` (Drive notes upload, club sheets)
-- **Research AI / LLM (OpenRouter):** `requests`-based chat-completions client in `services/openrouter.py`. Zero-cost models — default `OPENROUTER_DEFAULT_MODEL=nvidia/nemotron-3.5-lightning:free` (NVIDIA Nemotron 3.5 Lightning, free tier, §67) with automatic single retry on HTTP 429/503 via `OPENROUTER_FALLBACK_MODEL=openrouter/free` (auto free router). `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1/chat/completions`, `OPENROUTER_ENABLED = bool(OPENROUTER_API_KEY)`; page falls back to the deterministic offline engine when the key is unset. Reference PDF/DOCX text extracted server-side by `services/parser.py` (`pypdf` + `python-docx`).
+- **Research AI / LLM (OpenRouter):** `requests`-based chat-completions client in `services/openrouter.py`. Zero-cost models — default `OPENROUTER_DEFAULT_MODEL=nvidia/nemotron-3.5-lightning:free` (NVIDIA Nemotron 3.5 Lightning, free tier, §67) with automatic single retry on HTTP 429/503 via `OPENROUTER_FALLBACK_MODEL=openrouter/free` (auto free router). `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1/chat/completions`, `OPENROUTER_ENABLED = bool(OPENROUTER_API_KEY)`; page falls back to the deterministic offline engine when the key is unset. Reference PDF/DOCX text extracted server-side by `services/parser.py` (`pypdf` + `python-docx`). The student dashboard's AI routine extractor (§73) adds `OPENROUTER_VISION_MODEL` (default `meta-llama/llama-3.2-11b-vision-instruct:free`) for image scans and reuses the text models for PDF/DOCX.
 - **Frontend Styling:** Tailwind CSS (via CDN for rapid development)
 - **Icons:** Heroicons (SVG) for a consistent, clean look.
 - **Fonts:** Inter (Google Fonts)
@@ -3251,7 +3251,10 @@ when `OPENROUTER_API_KEY` is not configured.
   added to `config/settings.py`; both documented in `.env.example`. (The
   zero-cost free-model default, `OPENROUTER_FALLBACK_MODEL`, base URL and
   `OPENROUTER_ENABLED` landed in §66; the default slug moved to Nemotron 3.5
-  Lightning in §67.)
+  Lightning in §67; `OPENROUTER_VISION_MODEL` landed in §73.)
+- `OPENROUTER_VISION_MODEL = env('OPENROUTER_VISION_MODEL', default='meta-llama/llama-3.2-11b-vision-instruct:free')`
+  — vision-capable free model for the dashboard routine extractor's image
+  uploads (PNG/JPG), added to `config/settings.py` and `.env.example`.
 - Base URL constant: `https://openrouter.ai/api/v1/chat/completions` (in
   `services/openrouter.py`).
 
