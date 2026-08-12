@@ -3678,3 +3678,57 @@ club-sheet API endpoints are staff-gated.
 
 - `templates/settings.html`, `templates/club_admin.html`, `core/views.py`,
   `core/tests.py`, `docs/HANDOVER.md`
+
+---
+
+## 72. Club Sheets Endpoints Moved to `/clubs/dashboard/sheets/`
+
+**Date:** 12 August 2026  
+**Branch:** main
+
+### Overview
+
+Renamed the club-sheet endpoints from the generic `/api/clubs/sheet/*` prefix
+to the literal clubs-dashboard namespace requested for the settings
+restructure (§71) — sheets management now routes under `/clubs/dashboard/`,
+matching where the UI actually lives (the staff-only Club Management
+dashboard).
+
+### Changes
+
+- **`core/urls.py`** — path rewrites (URL **names** unchanged, so no caller
+  edits were needed — templates use `{% url %}` and tests use `reverse()`):
+
+  | Before | After | View |
+  | :--- | :--- | :--- |
+  | `GET /api/clubs/sheet/` | `GET /clubs/dashboard/sheets/` | `fetch_club_sheet_view` |
+  | `POST /api/clubs/sheet/append/` | `POST /clubs/dashboard/sheets/append/` | `append_club_sheet_view` |
+  | `POST /api/clubs/sheet/verify/` | `POST /clubs/dashboard/sheets/verify/` | `verify_club_sheet_view` |
+
+- **`core/tests.py`** — `VerifyClubSheetApiTest` docstring updated to the new
+  path (all test calls use `reverse()` by name, so they re-pointed
+automatically).
+- **`docs/HANDOVER.md`** — endpoint tables and §71 permission table updated to
+  the new paths (fetch/append also relabelled from `@login_required` to
+  **staff only**, matching the §71 gating).
+
+### Notes
+
+- The old `/api/clubs/sheet/*` URLs now return 404 with no redirect — nothing
+  internal references them (all consumers resolve by URL name), and the
+  §71 task explicitly requested the clean clubs-namespace routing.
+- No route conflicts: `clubs/` and `clubs/manage/` are exact-match `path()`
+  patterns, and there is no generic `clubs/<slug>` pattern to shadow the new
+  routes.
+
+### Testing
+
+- `manage.py check` ✔
+- `reverse()` resolves to `/clubs/dashboard/sheets/`, `/append/`, `/verify/` ✔
+- Repo-wide grep for `api/clubs/sheet` — zero remaining references ✔
+- `GoogleApiViewsTest`, `VerifyClubSheetApiTest`, `ClubSheetsConfigPrefillTest`,
+  `SecurityAuditTest` — **36 tests OK** ✔
+
+### Files Modified
+
+- `core/urls.py`, `core/tests.py`, `docs/HANDOVER.md`
