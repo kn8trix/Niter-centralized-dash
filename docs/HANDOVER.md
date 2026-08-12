@@ -3920,3 +3920,46 @@ push real-time bell alerts.
 - Full suite **646 tests OK** (was 575 — +24 model/API/page tests for reports,
   +4 admin-page gating assertions, +2 endpoint-registry entries) ✔
 - `host` + `payments` suites OK ✔
+
+---
+
+## 75. Hero Button Contrast Fix — "Medical Services" (Dark Ink on White)
+
+**Date:** 12 August 2026  
+**Branch:** main
+
+### Problem
+
+The **Medical Services** hero button next to "Login to Dashboard" showed a
+low-contrast label. Root cause: the homepage's global link reset
+`body.landing a { color: inherit }` (specificity 0,1,2) beat the button's own
+color rule `.hero-btn-secondary` (0,1,0), so the button and its FontAwesome
+heart-pulse icon inherited the body ink instead of their intended styling.
+
+### Fix
+
+- **`static/css/main.css`** — scoped the secondary-button rules under
+  `body.landing` so they win the cascade over the link reset:
+  - `body.landing .hero-btn-secondary` → `background:#ffffff` (white),
+    `color:#111827` (gray-900 dark ink); hover `background:#f3f4f6` (gray-100).
+  - `body.landing .hero-btn-secondary i` → `color:#DC2626` (red-500) so the
+    heart-pulse icon is always visible on white.
+- **`templates/index.html`** — the button element now also carries the exact
+  utility intent (`bg-white text-gray-900 font-semibold hover:bg-gray-100
+  transition-colors`) and the icon gets `text-red-500`. Note the public
+  homepage does **not** load the Tailwind CDN (it uses `theme.css` +
+  `main.css`), so the custom-CSS rules are what actually render; the utility
+  classes document intent and are inert until Tailwind is added there.
+
+### Verification
+
+- `getComputedStyle` on a fresh origin: button color `rgb(17,24,39)`
+  (gray-900), background `rgb(255,255,255)` (white), icon color
+  `rgb(220,38,38)` (red-500), hover background `rgb(243,244,246)` (gray-100).
+- Zero console errors. (An earlier `127.0.0.1` check was served from the
+  browser's stale HTTP cache — `localhost` origin confirmed the fresh CSS.)
+
+### Files Modified
+
+- `static/css/main.css`, `templates/index.html`, `docs/HANDOVER.md` (this
+  section).

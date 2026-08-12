@@ -352,16 +352,23 @@ body.landing [id] {
 
 /* "Medical Services" — pure white with dark ink text. The text colour is a
    fixed hex (not var(--text-primary)) so it stays readable when the token
-   flips light in dark mode — no white-on-white. */
-.hero-btn-secondary {
-    background: #ffffff;
+   flips light in dark mode — no white-on-white. Scoped under ``body.landing``
+   so the shared ``body.landing a { color: inherit }`` reset can never
+   override the button back to the inherited body ink. */
+body.landing .hero-btn-secondary {
+    background: #ffffff;      /* white */
     border: 1px solid var(--border-color);
-    color: #1E1E1E;
+    color: #111827;           /* gray-900 — high-contrast dark ink on white */
 }
 
-.hero-btn-secondary:hover {
+body.landing .hero-btn-secondary:hover {
     transform: translateY(-2px);
-    background: #f3f4f6; /* gray-100 — keeps the dark ink readable */
+    background: #f3f4f6;      /* gray-100 — keeps the dark ink readable */
+}
+
+/* Heart-pulse icon — explicit accent so it is never lost against white. */
+body.landing .hero-btn-secondary i {
+    color: #DC2626;           /* red-500 — medical accent, visible on white */
 }
 
 /* Bottom floating quick-card deck */
