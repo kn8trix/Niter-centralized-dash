@@ -4280,3 +4280,83 @@ still win: anyone who picks Light/Dark in Settings keeps it.
 - `static/js/display-preferences.js`, `templates/partials/display_prefs.html`
 - `core/migrations/0034_alter_usernotificationpreference_theme.py` (new)
 - `docs/HANDOVER.md` (this section)
+
+---
+
+## 80. Local Development `.env` — Populated Environment Template
+
+**Date:** 13 August 2026  
+**Branch:** main
+
+### Overview
+
+Created a fully populated **local-development `.env`** in the repo root and
+kept the tracked **`.env.example`** template in sync. The repo is Django-only
+(there is **no Next.js / NextAuth app** — Django's `SECRET_KEY` is the session
+and cookie signing secret), so the Next.js-style variables
+(`NEXT_PUBLIC_APP_URL`, `NEXTAUTH_URL`, `NEXTAUTH_SECRET`) are intentionally
+**not** part of the configuration.
+
+### What Was Added
+
+1. **`.env`** (gitignored — never committed; secrets live here locally):
+   - `SECRET_KEY` — freshly generated random Django secret
+   - `DEBUG=True`, `ALLOWED_HOSTS=localhost,127.0.0.1`,
+     `CSRF_TRUSTED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000`
+   - `DATABASE_URL=postgres://niter:change-me@127.0.0.1:5432/niter` —
+     **local PostgreSQL is now the dev database** (start Postgres, then
+     `createuser -P niter` + `createdb -O niter niter` + `manage.py migrate`;
+     unset → SQLite fallback).
+   - `REDIS_URL=redis://127.0.0.1:6379/0` — channel layer + Huey queue
+     (unreachable → in-memory fallback, verified).
+   - Google OAuth / Drive: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (empty
+     placeholders), `GOOGLE_REDIRECT_URI=http://localhost:8000/drive/callback/`,
+     `GOOGLE_TOKEN_ENCRYPTION_KEY`.
+   - Nagad / bKash: `NAGAD_MERCHANT_ID`, `NAGAD_PG_PUBLIC_KEY`,
+     `NAGAD_PRIVATE_KEY`, `NAGAD_BASE_URL` (sandbox),
+     `NAGAD_CALLBACK_URL` / `BKASH_CALLBACK_URL`
+     (`/payments/webhook/nagad/` + `/payments/webhook/bkash/`), plus the
+     reserved `BKASH_*` merchant block.
+   - `OPENROUTER_API_KEY` (empty → offline engine fallback) + model defaults.
+2. **`.env.example`** — added the `NAGAD_CALLBACK_URL` / `BKASH_CALLBACK_URL`
+   variables and notes on localhost redirect URIs, so the tracked template
+   matches the populated file.
+
+### How Env Loading Works (verified)
+
+`config/settings.py` reads `.env` via `django-environ`
+(`environ.Env.read_env(BASE_DIR / '.env')`); **real OS environment variables
+always take precedence** over `.env` values (verified: an exported
+`SECRET_KEY` in the shell wins over the file). Every variable has a fallback:
+
+- `SECRET_KEY` → dev fallback when `DEBUG=True`, fail-closed otherwise
+- `DATABASE_URL` / `SUPABASE_DB_URL` → local SQLite when both unset
+- `REDIS_URL` → `InMemoryChannelLayer` when unset/unreachable
+- `GOOGLE_CLIENT_*` / `OPENROUTER_API_KEY` → empty → feature degrades
+  (admin SocialApp / offline engine)
+- Payments → webhooks work with no merchant credentials (invoice-id matching
+  + built-in Nagad sha256 signature verification)
+
+### Verification
+
+- `python manage.py check` ✔ — no issues
+- Settings dump via `manage.py shell` ✔ — `DEBUG=True`, Postgres engine
+  (`django.db.backends.postgresql`, db `niter`, user `niter`,
+  host `127.0.0.1`), `GOOGLE_REDIRECT_URI=localhost`, in-memory channel layer
+  fallback (Redis not running), quoted `SECRET_KEY` with special characters
+  parses correctly
+- Full test suite stays green in CI (CI has no `.env` → SQLite test DB).
+
+### Note for Local Dev
+
+Because `DATABASE_URL` is now active, `runserver` / `migrate` / `test`
+require local PostgreSQL to be running. Quick start: start Postgres, create
+role `niter` (password `change-me`) + database `niter`, then
+`python manage.py migrate`. To go back to SQLite, comment out
+`DATABASE_URL` in `.env`.
+
+### Files Modified
+
+- `.env` (new, **gitignored** — local only, not committed)
+- `.env.example` (tracked template updated)
+- `docs/HANDOVER.md` (this section)
