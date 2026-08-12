@@ -3934,7 +3934,7 @@ class ResearchQueryApiTest(TestCase):
 
     @override_settings(
         OPENROUTER_API_KEY='test-key',
-        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3-ultra-550b-a55b:free',
+        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3.5-lightning:free',
         OPENROUTER_FALLBACK_MODEL='openrouter/free',
         OPENROUTER_BASE_URL='https://openrouter.ai/api/v1/chat/completions',
     )
@@ -3945,7 +3945,7 @@ class ResearchQueryApiTest(TestCase):
         data = response.json()
         self.assertEqual(data['status'], 'success')
         self.assertEqual(data['engine'], 'openrouter')
-        self.assertEqual(data['model'], 'nvidia/nemotron-3-ultra-550b-a55b:free')
+        self.assertEqual(data['model'], 'nvidia/nemotron-3.5-lightning:free')
         self.assertEqual(data['response'], 'Real AI reply.')
 
         # Headers carry auth + branding + dynamic referer.
@@ -3957,7 +3957,7 @@ class ResearchQueryApiTest(TestCase):
         self.assertEqual(headers['HTTP-Referer'], 'https://testserver')
         self.assertEqual(kwargs['timeout'], 30)
         # Default free model sent to the provider.
-        self.assertEqual(kwargs['json']['model'], 'nvidia/nemotron-3-ultra-550b-a55b:free')
+        self.assertEqual(kwargs['json']['model'], 'nvidia/nemotron-3.5-lightning:free')
         # System prompt (prepended) injects the selected citation style.
         system = kwargs['json']['messages'][0]['content']
         self.assertEqual(kwargs['json']['messages'][0]['role'], 'system')
@@ -3965,7 +3965,7 @@ class ResearchQueryApiTest(TestCase):
 
     @override_settings(
         OPENROUTER_API_KEY='test-key',
-        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3-ultra-550b-a55b:free',
+        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3.5-lightning:free',
         OPENROUTER_FALLBACK_MODEL='openrouter/free',
     )
     def test_model_param_passed_to_provider(self):
@@ -3978,20 +3978,20 @@ class ResearchQueryApiTest(TestCase):
 
     @override_settings(
         OPENROUTER_API_KEY='test-key',
-        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3-ultra-550b-a55b:free',
+        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3.5-lightning:free',
         OPENROUTER_FALLBACK_MODEL='openrouter/free',
     )
     def test_unknown_model_falls_back_to_default(self):
         with mock.patch('services.openrouter.requests.post', return_value=_fake_openrouter_response('ok')) as post:
             response = self._query(message='hello', model='openai/gpt-4o')  # not allowed
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['model'], 'nvidia/nemotron-3-ultra-550b-a55b:free')
+        self.assertEqual(response.json()['model'], 'nvidia/nemotron-3.5-lightning:free')
         _, kwargs = post.call_args
-        self.assertEqual(kwargs['json']['model'], 'nvidia/nemotron-3-ultra-550b-a55b:free')
+        self.assertEqual(kwargs['json']['model'], 'nvidia/nemotron-3.5-lightning:free')
 
     @override_settings(
         OPENROUTER_API_KEY='test-key',
-        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3-ultra-550b-a55b:free',
+        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3.5-lightning:free',
         OPENROUTER_FALLBACK_MODEL='openrouter/free',
     )
     def test_rate_limit_retries_with_fallback_model(self):
@@ -4012,12 +4012,12 @@ class ResearchQueryApiTest(TestCase):
         self.assertEqual(post.call_count, 2)
         first_model = post.call_args_list[0][1]['json']['model']
         second_model = post.call_args_list[1][1]['json']['model']
-        self.assertEqual(first_model, 'nvidia/nemotron-3-ultra-550b-a55b:free')
+        self.assertEqual(first_model, 'nvidia/nemotron-3.5-lightning:free')
         self.assertEqual(second_model, 'openrouter/free')
 
     @override_settings(
         OPENROUTER_API_KEY='test-key',
-        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3-ultra-550b-a55b:free',
+        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3.5-lightning:free',
         OPENROUTER_FALLBACK_MODEL='openrouter/free',
     )
     def test_503_retries_with_fallback_model(self):
@@ -4037,7 +4037,7 @@ class ResearchQueryApiTest(TestCase):
 
     @override_settings(
         OPENROUTER_API_KEY='test-key',
-        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3-ultra-550b-a55b:free',
+        OPENROUTER_DEFAULT_MODEL='nvidia/nemotron-3.5-lightning:free',
         OPENROUTER_FALLBACK_MODEL='openrouter/free',
     )
     def test_fallback_exhausted_returns_429_payload(self):

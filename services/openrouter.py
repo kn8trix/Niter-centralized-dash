@@ -71,7 +71,7 @@ class OpenRouterTimeoutError(OpenRouterError):
 def get_default_model():
     """Return the configured default model slug (free Nemotron by default)."""
     return getattr(
-        settings, 'OPENROUTER_DEFAULT_MODEL', 'nvidia/nemotron-3-ultra-550b-a55b:free'
+        settings, 'OPENROUTER_DEFAULT_MODEL', 'nvidia/nemotron-3.5-lightning:free'
     )
 
 

@@ -207,7 +207,7 @@ To create a new page, extend the base template:
 - **Static:** WhiteNoise (`CompressedStaticFilesStorage`) — production static serving + `collectstatic`
 - **Auth:** django-allauth (Google OAuth) + Django sessions; Google ID-token verification via `PyJWT[crypto]` (allauth's `socialaccount` extra — pinned in `requirements.txt`, see §42)
 - **Google APIs:** `google-api-python-client`, `gspread` (Drive notes upload, club sheets)
-- **Research AI / LLM (OpenRouter):** `requests`-based chat-completions client in `services/openrouter.py`. Zero-cost models — default `OPENROUTER_DEFAULT_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free` (NVIDIA Nemotron 3 Ultra 550B, 1M context) with automatic single retry on HTTP 429/503 via `OPENROUTER_FALLBACK_MODEL=openrouter/free` (auto free router). `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1/chat/completions`, `OPENROUTER_ENABLED = bool(OPENROUTER_API_KEY)`; page falls back to the deterministic offline engine when the key is unset. Reference PDF/DOCX text extracted server-side by `services/parser.py` (`pypdf` + `python-docx`).
+- **Research AI / LLM (OpenRouter):** `requests`-based chat-completions client in `services/openrouter.py`. Zero-cost models — default `OPENROUTER_DEFAULT_MODEL=nvidia/nemotron-3.5-lightning:free` (NVIDIA Nemotron 3.5 Lightning, free tier, §67) with automatic single retry on HTTP 429/503 via `OPENROUTER_FALLBACK_MODEL=openrouter/free` (auto free router). `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1/chat/completions`, `OPENROUTER_ENABLED = bool(OPENROUTER_API_KEY)`; page falls back to the deterministic offline engine when the key is unset. Reference PDF/DOCX text extracted server-side by `services/parser.py` (`pypdf` + `python-docx`).
 - **Frontend Styling:** Tailwind CSS (via CDN for rapid development)
 - **Icons:** Heroicons (SVG) for a consistent, clean look.
 - **Fonts:** Inter (Google Fonts)
@@ -3242,10 +3242,11 @@ when `OPENROUTER_API_KEY` is not configured.
 ### 1. Environment & Configuration
 
 - `OPENROUTER_API_KEY = env('OPENROUTER_API_KEY', default='')` and
-  `OPENROUTER_DEFAULT_MODEL = env('OPENROUTER_DEFAULT_MODEL', default='nvidia/nemotron-3-ultra-550b-a55b:free')`
+  `OPENROUTER_DEFAULT_MODEL = env('OPENROUTER_DEFAULT_MODEL', default='nvidia/nemotron-3.5-lightning:free')`
   added to `config/settings.py`; both documented in `.env.example`. (The
   zero-cost free-model default, `OPENROUTER_FALLBACK_MODEL`, base URL and
-  `OPENROUTER_ENABLED` landed in §66.)
+  `OPENROUTER_ENABLED` landed in §66; the default slug moved to Nemotron 3.5
+  Lightning in §67.)
 - Base URL constant: `https://openrouter.ai/api/v1/chat/completions` (in
   `services/openrouter.py`).
 
@@ -3338,7 +3339,7 @@ model selector, and fixed the last low-contrast action buttons.
 ### 1. Environment & Configuration
 
 - `settings.py`: `OPENROUTER_DEFAULT_MODEL` now defaults to
-  `nvidia/nemotron-3-ultra-550b-a55b:free`; new constants
+  `nvidia/nemotron-3.5-lightning:free` (§67); new constants
   `OPENROUTER_FALLBACK_MODEL = 'openrouter/free'`,
   `OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions'` and
   `OPENROUTER_ENABLED = bool(OPENROUTER_API_KEY)`. `.env.example` documents all
@@ -3369,7 +3370,10 @@ model selector, and fixed the last low-contrast action buttons.
 - **`templates/research_ai.html`** — new "AI Model" selector card in the
   sidebar offering `nvidia/nemotron-3-ultra-550b-a55b:free` (default) and
   `openrouter/free`; the selected value is posted as `model` with every
-  FormData query.
+  FormData query. **Note (§67):** the frontend selector was intentionally left
+  unchanged by the backend-only slug update — the view's model allow-list
+  rejects the stale option and silently uses the configured default, so the
+  selector still functions correctly until a UI pass updates its option value.
 - **Contrast fix (`templates/notes/notes_engine.html`)** — the three light
   action buttons (Extract Keywords, Save Note, Export as PDF) now use the
   explicit high-contrast pattern `bg-white hover:bg-[#EADCC9] text-[#2B2927]`
@@ -3399,3 +3403,54 @@ model selector, and fixed the last low-contrast action buttons.
 - `core/views.py`, `core/tests.py`
 - `templates/research_ai.html`, `templates/notes/notes_engine.html`
 - `docs/HANDOVER.md`
+
+---
+
+## 67. OpenRouter Default Model — Nemotron 3.5 Lightning (Backend & Env Only)
+
+**Date:** 12 August 2026  
+**Branch:** main
+
+### Overview
+
+Switched the backend default OpenRouter model slug from
+`nvidia/nemotron-3-ultra-550b-a55b:free` to **`nvidia/nemotron-3.5-lightning:free`**
+across environment files, Django settings, the Render blueprint, unit-test
+mocks, and this documentation. Per the task scope, **no frontend templates or
+UI files were modified** — the model selector in `templates/research_ai.html`
+still lists the previous slug, but the query view's allow-list rejects that
+stale value and silently uses the configured default, so the page keeps
+working until a UI pass updates the option.
+
+### Changes
+
+- **`.env.example`** — `OPENROUTER_DEFAULT_MODEL=nvidia/nemotron-3.5-lightning:free`
+  (+ updated zero-cost-model comment).
+- **`.env`** (local dev, gitignored) — `OPENROUTER_DEFAULT_MODEL` set to the
+  new slug.
+- **`config/settings.py`** — `OPENROUTER_DEFAULT_MODEL` default is now
+  `'nvidia/nemotron-3.5-lightning:free'` (read via django-environ `env()`,
+  equivalent to `os.environ.get(..., default)`).
+- **`services/openrouter.py`** — `get_default_model()` fallback literal updated
+  to the new slug.
+- **`render.yaml`** — web-service env var `OPENROUTER_DEFAULT_MODEL` value set
+  to `nvidia/nemotron-3.5-lightning:free`.
+- **`core/tests.py`** — every mocked OpenRouter payload now asserts the new
+  default slug (11 occurrences across the query/fallback/model tests).
+
+### Testing
+
+- `python manage.py check` ✔
+- Research AI suite (mocked OpenRouter, offline):
+  `python manage.py test core.tests.ResearchQueryApiTest core.tests.OpenRouterServiceTest core.tests.ResearchDocumentTextTest core.tests.ResearchAIPageTest` ✔
+- Full suite: `python manage.py test` ✔ (599 tests OK).
+
+### Files Modified
+
+- `.env.example`, `.env` (gitignored), `config/settings.py`,
+  `services/openrouter.py`, `render.yaml`, `core/tests.py`, `docs/HANDOVER.md`
+
+### Remaining (deliberately out of scope)
+
+- `templates/research_ai.html` model-selector option value still shows
+  `nvidia/nemotron-3-ultra-550b-a55b:free` — update it in a future UI pass.

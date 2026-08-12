@@ -402,12 +402,12 @@ PAYMENTS_VERIFY_SIGNATURES = env.bool('PAYMENTS_VERIFY_SIGNATURES', default=True
 # in requirements.txt) performs the HTTP call against the OpenRouter
 # chat-completions API; the client lives in ``services/openrouter.py``.
 #
-# Zero-cost model strategy: the default model is NVIDIA Nemotron 3 Ultra 550B
+# Zero-cost model strategy: the default model is NVIDIA Nemotron 3.5 Lightning
 # (free tier); when it answers 429/503 the client automatically retries once
 # with ``OPENROUTER_FALLBACK_MODEL`` (``openrouter/free`` auto-router).
 OPENROUTER_API_KEY = env('OPENROUTER_API_KEY', default='')
 OPENROUTER_DEFAULT_MODEL = env(
-    'OPENROUTER_DEFAULT_MODEL', default='nvidia/nemotron-3-ultra-550b-a55b:free'
+    'OPENROUTER_DEFAULT_MODEL', default='nvidia/nemotron-3.5-lightning:free'
 )
 OPENROUTER_FALLBACK_MODEL = 'openrouter/free'
 OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions'
