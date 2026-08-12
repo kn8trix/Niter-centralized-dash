@@ -45,15 +45,22 @@ The theme is built around a warm, paper-like background with neutral accents.
 ## 4. Implemented Templates
 
 ### 4.1 Dashboard Home (`templates/dashboard/home.html`)
-A comprehensive student dashboard with:
-- **Welcome Banner:** Personalized greeting with "+ Quick Action" button.
-- **3-Column Grid:**
-    - Meal Ratio Counter (140/200 slots with progress bar).
-    - Transport Service (Bus Route 1 - 8:00 AM with "Reserve Seat" button).
-    - Medical Center (Doctor availability with "Book Slot" button).
-- **Bottom Split Section:**
-    - Recent Official Notices (with status badges: Urgent, General, Event).
-    - Quick Links to Academic Notes (CS101, Mathematics, Physics Lab, Programming).
+A comprehensive student dashboard (redesigned — see §73 for the full
+overhaul) with:
+- **Live Bangladesh Clock Card:** real-time Asia/Dhaka time (UTC+6) with a
+  next-class countdown and NOW / NEXT UP highlighting on today's routine.
+- **Today's Class Routine Panel:** the signed-in user's weekly schedule
+  (per-user `Routine` JSON, set via Settings → Routine or the AI extractor),
+  with the current/upcoming class auto-highlighted against the live clock.
+- **Interactive Academic Calendar:** monthly grid (Saturday-first) fed by
+  `AcademicEvent` rows — exams, holidays, assignments — with prev/next month
+  navigation via `GET /api/calendar/events/?month=YYYY-MM`.
+- **Recent Activity:** the user's latest notes / transport / medical / meals /
+  clubs actions merged into one reverse-chronological feed.
+- **Quick Campus Info:** latest published notice + shortcut tiles to the
+  standalone service pages.
+- **Bottom Split Section:** Recent Official Notices + Academic Notes shortcuts
+  (compact, linking to `/notices/` and `/academic-notes/`).
 
 ### 4.2 Ticketing System (`templates/ticketing/tickets.html`)
 Bus and meal ticket management with:
@@ -3732,3 +3739,96 @@ automatically).
 ### Files Modified
 
 - `core/urls.py`, `core/tests.py`, `docs/HANDOVER.md`
+
+## 73. Student Dashboard Overhaul — BST Clock, Routine, Calendar, AI Extractor
+
+### Overview
+
+The `/dashboard/` page was redesigned around the student's day instead of the
+old meal/transport/medical summary widgets (which duplicated the standalone
+`/meals/`, `/transport/` and `/medical/` pages and were removed):
+
+- **Live Bangladesh clock card** — Asia/Dhaka (UTC+6) time rendered client-side
+  via `Intl.DateTimeFormat(..., {timeZone: 'Asia/Dhaka'})`, with a countdown to
+  the next class and a pulsing "in class now" state.
+- **Today's Class Routine** — the signed-in user's weekly schedule with NOW /
+  NEXT UP badges on the active/upcoming period, re-evaluated every second.
+- **Interactive Academic Calendar** — a monthly grid (Saturday-first, matching
+  the campus week) of `AcademicEvent` rows (exam / holiday / assignment /
+  event), with prev/next month navigation fetching from the calendar API.
+- **Recent Activity** — the user's newest notes / transport / medical / meals /
+  club actions merged into one reverse-chronological feed (`_recent_activity`).
+- **Quick Campus Info** — the latest published notice + shortcut tiles.
+
+All time logic runs in the browser against the embedded schedule JSON: the
+server is UTC and must not guess Dhaka time, so the clock, countdown and
+highlighting never depend on server timezone configuration.
+
+### New models (`core/models.py`)
+
+- **`Routine`** — OneToOne to `User`; `schedule` JSONField in the canonical
+  `{"days": [{"day": "Sun", "slots": [{"start": "08:30", "end": "10:00",
+  "course": "CSE-1101", "room": "201"}]}]}` shape (24-hour `HH:MM` times,
+  day keys `Sat`…`Fri`), plus `source_name` (uploaded file or "manual").
+- **`AcademicEvent`** — `title`, `category` (exam/holiday/assignment/event),
+  `event_date`, `description`. Seeded with a starter set of BD national
+  holidays + exam windows + assignment deadlines by migration `0031`.
+  Registered in Django admin for staff management.
+
+### AI routine extraction (`services/routine_parser.py`)
+
+`extract_routine_schedule(upload, referer)` drives `POST /api/routine/extract/`:
+
+- **PDF/DOCX** → plain text via `services.parser.extract_document_text`, then a
+  text-mode call to the default free model (`nvidia/nemotron-3.5-lightning:free`).
+- **PNG/JPG** → the image is sent inline (base64 data URL) to the vision model
+  `OPENROUTER_VISION_MODEL` (default `meta-llama/llama-3.2-11b-vision-instruct:free`,
+  overridable via env).
+- The model is asked for strict JSON; `normalize_schedule` validates and
+  coerces the reply into the canonical shape (24-hour times, day aliases,
+  Saturday-first ordering) and drops unreadable slots. The system prompt treats
+  the uploaded file as untrusted data (prompt-injection guard).
+- The endpoint allows only PDF/DOCX/PNG/JPG under 10 MB, requires login, and
+  degrades to a friendly 503 when `OPENROUTER_API_KEY` is unset.
+
+### Settings → Routine tab
+
+`/settings/?tab=routine` (4th tab) lets students:
+- see the current schedule preview grouped by day,
+- upload a routine file and preview the AI extraction before saving
+  (`save=1` persists to their `Routine` row),
+- paste the schedule as JSON manually (`form=routine_json`),
+- clear the saved schedule (`form=routine_clear`).
+
+### New endpoints (`core/urls.py`)
+
+| Method | Path | View | Purpose |
+|---|---|---|---|
+| POST | `/api/routine/extract/` | `routine_extract` | AI-extract a schedule from an uploaded file (`save=1` persists) |
+| GET | `/api/calendar/events/?month=YYYY-MM` | `api_calendar_events` | Academic events + grid metadata for a month |
+
+Both are `@login_required`. The calendar API returns the same shape the
+initial dashboard render embeds, so month navigation reuses one code path.
+
+### Files Modified
+
+- `core/models.py` (+ `Routine`, `AcademicEvent`), `core/migrations/0030_*`,
+  `0031_seed_academic_events.py`
+- `core/views.py` (dashboard rewrite, settings Routine tab, two new views),
+  `core/urls.py`, `core/admin.py`
+- `services/routine_parser.py` (new), `services/openrouter.py` (+`get_vision_model`),
+  `config/settings.py` (+`OPENROUTER_VISION_MODEL`)
+- `templates/dashboard/home.html` (rewrite), `templates/settings.html` (Routine tab)
+- `static/css/dashboard.css`, `static/css/settings.css`
+- `core/tests.py` (see below)
+
+### Testing
+
+- `manage.py check` ✔
+- Full core suite **575 tests OK** (was 553 — +22 new: `DashboardWidgetsTest`
+  rewritten for the new widgets, plus `RoutineParserTest`, `RoutineExtractApiTest`,
+  `CalendarApiTest`, `RoutineSettingsTabTest`, endpoint-auth-matrix entries) ✔
+- `host` + `payments` suites OK ✔
+- Browser-verified (Chrome): login → dashboard renders the live clock, next-class
+  countdown, routine panel, calendar grid and activity feed with **no console
+  errors**; Settings → Routine tab renders preview + upload + JSON entry ✔

@@ -577,3 +577,353 @@ body.dashboard a {
         transition: none;
     }
 }
+
+/* ============================================================================
+   6. Dashboard overhaul — BST clock, routine, calendar, activity
+   ----------------------------------------------------------------------------
+   Added with the student-dashboard redesign (live Bangladesh time, next-class
+   highlighter, interactive academic calendar, recent activity). Reuses the
+   tokens and panel/quick-tile styles from the sections above.
+   ========================================================================== */
+
+/* --- Header clock card --- */
+.clock-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+    padding: 26px 30px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #232326 0%, #323236 100%);
+    color: #faf9f6;
+    box-shadow: var(--shadow-card);
+    margin-bottom: 22px;
+}
+.clock-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #b9b3a8;
+    margin-bottom: 4px;
+}
+.clock-eyebrow i { color: #e8b64c; }
+.clock-time {
+    font-size: 54px;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: .02em;
+    font-variant-numeric: tabular-nums;
+}
+.clock-date { color: #cfc9bd; font-size: 14px; margin-top: 4px; }
+.clock-next { text-align: right; min-width: 250px; }
+.clock-next-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: #b9b3a8;
+    margin-bottom: 6px;
+}
+.clock-next-label i { color: #e8b64c; }
+.clock-next-line { font-size: 14.5px; font-weight: 600; color: #faf9f6; }
+.clock-next-line .next-skeleton { color: #8b8b93; }
+.next-live { color: #7ce2a3; }
+.next-live i {
+    font-size: 9px;
+    vertical-align: middle;
+    margin-right: 5px;
+    animation: pulse-dot 1.6s ease-in-out infinite;
+}
+.clock-countdown {
+    font-size: 26px;
+    font-weight: 800;
+    color: #e8b64c;
+    font-variant-numeric: tabular-nums;
+    margin-top: 2px;
+}
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .25; }
+}
+
+/* --- Routine setup CTA --- */
+.routine-cta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    background: #fff8ec;
+    border: 1px solid #f5e3bd;
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin-bottom: 22px;
+}
+.routine-cta strong { color: var(--text-primary); }
+.routine-cta p { margin: 4px 0 0; color: var(--text-muted); font-size: 13px; }
+
+/* --- Main grid: routine + calendar --- */
+.main-grid {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 22px;
+    margin-bottom: 22px;
+}
+.routine-day {
+    margin: 0 0 10px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+.slot-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.slot-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--border-color);
+    border-radius: 12px;
+    padding: 12px 14px;
+    background: var(--bg-card);
+    transition: border-color .2s, box-shadow .2s;
+}
+.slot-item.is-now {
+    border-left-color: #16a34a;
+    border-color: var(--success-border);
+    box-shadow: 0 0 0 1px var(--success-border);
+}
+.slot-item.is-next {
+    border-left-color: #d97706;
+    border-color: var(--warning-border);
+}
+.slot-time {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 74px;
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--bg-subtle);
+    border-radius: 8px;
+    padding: 6px 8px;
+}
+.slot-time strong { font-size: 14px; color: var(--text-primary); }
+.slot-body { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.slot-course { font-size: 15px; color: var(--text-primary); }
+.slot-meta { font-size: 12.5px; color: var(--text-muted); }
+.slot-meta i { margin-right: 4px; }
+.slot-badge {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+.slot-badge.badge-now { background: var(--success-soft); color: var(--success); }
+.slot-badge.badge-next { background: var(--warning-soft); color: var(--warning); }
+.slot-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+    color: var(--text-muted);
+    padding: 26px 12px;
+    font-size: 14px;
+}
+.slot-empty i { font-size: 26px; opacity: .5; }
+.slot-source { margin-top: 10px; }
+
+/* --- Calendar --- */
+.cal-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+.cal-label { font-weight: 700; color: var(--text-primary); font-size: 15px; }
+.cal-nav {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background .15s, transform .15s;
+}
+.cal-nav:hover { background: var(--bg-subtle); transform: translateY(-1px); }
+.cal-nav:focus-visible { outline: 2px solid var(--accent-dark); }
+.cal-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    margin-bottom: 4px;
+}
+.cal-weekdays span {
+    text-align: center;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-muted);
+    padding: 4px 0;
+}
+.cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+.cal-cell {
+    position: relative;
+    min-height: 52px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 4px;
+    background: var(--bg-card);
+    transition: border-color .15s, box-shadow .15s;
+}
+.cal-cell.is-empty { background: transparent; border-color: transparent; }
+.cal-cell.has-events { cursor: pointer; }
+.cal-cell.has-events:hover {
+    border-color: var(--accent-dark);
+    box-shadow: var(--shadow-card);
+    z-index: 2;
+}
+.cal-cell.is-today {
+    border-color: var(--accent-dark);
+    box-shadow: 0 0 0 1px var(--accent-dark);
+}
+.cal-day-num {
+    display: block;
+    text-align: right;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.cal-cell.is-today .cal-day-num { color: var(--accent-dark); font-weight: 800; }
+.cal-dots { display: flex; gap: 3px; margin-top: 5px; padding-left: 3px; flex-wrap: wrap; }
+.cal-tip {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 190px;
+    max-width: 240px;
+    background: #232326;
+    color: #faf9f6;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    display: none;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, .25);
+    z-index: 20;
+}
+.cal-tip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #232326;
+}
+.cal-cell.has-events:hover .cal-tip { display: block; }
+.cal-tip span { display: block; }
+.cal-tip em { color: #b9b3a8; font-style: normal; font-size: 11px; }
+.cal-legend {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+}
+.dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+}
+.dot-exam { background: #dc2626; }
+.dot-holiday { background: #d97706; }
+.dot-assignment { background: #2563eb; }
+.dot-event { background: #16a34a; }
+.cal-grid.is-loading { opacity: .55; pointer-events: none; }
+
+/* --- Recent activity --- */
+.activity-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.activity-item { display: flex; gap: 12px; align-items: flex-start; }
+.activity-icon {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    font-size: 14px;
+}
+.tone-blue { background: #dbeafe; color: #1d4ed8; }
+.tone-green { background: #dcfce7; color: #15803d; }
+.tone-amber { background: #fef3c7; color: #b45309; }
+.tone-violet { background: #ede9fe; color: #6d28d9; }
+.tone-red { background: #fee2e2; color: #b91c1c; }
+.activity-body { display: flex; flex-direction: column; min-width: 0; }
+.activity-text { font-size: 13.5px; color: var(--text-primary); }
+.activity-ago { font-size: 11.5px; color: var(--text-muted); }
+
+/* --- Quick campus info --- */
+.quick-notice {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    text-decoration: none;
+    color: var(--text-primary);
+    background: var(--bg-card);
+    transition: border-color .15s;
+}
+.quick-notice:hover { border-color: var(--accent-dark); }
+.quick-notice strong { font-size: 14px; }
+.quick-notice > span:last-child { font-size: 12px; color: var(--text-muted); }
+.shortcuts .quick-tile { text-decoration: none; }
+.badge-academic { background: #dbeafe; border: 1px solid #bfdbfe; color: #1d4ed8; }
+
+/* --- Responsive tweaks for the new widgets --- */
+@media (max-width: 1024px) {
+    .main-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+    .clock-card { padding: 20px; }
+    .clock-time { font-size: 40px; }
+    .clock-next { text-align: left; min-width: 0; }
+    .slot-item { flex-wrap: wrap; }
+}

@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    AcademicEvent,
     BusSchedule,
     ClassRoutine,
     Club,
@@ -26,6 +27,7 @@ from .models import (
     PaymentTransaction,
     ResearchMessage,
     ResearchThread,
+    Routine,
     TransportBooking,
     TransportRoute,
     UserNote,
@@ -236,6 +238,25 @@ class ClassRoutineAdmin(admin.ModelAdmin):
     list_filter = ('department', 'semester', 'day_of_week')
     search_fields = ('subject', 'room', 'department__name')
     list_select_related = ('department',)
+
+
+@admin.register(AcademicEvent)
+class AcademicEventAdmin(admin.ModelAdmin):
+    """Academic calendar entries — exams, holidays, assignment deadlines."""
+
+    list_display = ('title', 'category', 'event_date')
+    list_filter = ('category', 'event_date')
+    search_fields = ('title', 'description')
+    date_hierarchy = 'event_date'
+
+
+@admin.register(Routine)
+class RoutineAdmin(admin.ModelAdmin):
+    """Per-user weekly schedules (AI-extracted or pasted as JSON)."""
+
+    list_display = ('user', 'source_name', 'updated_at')
+    search_fields = ('user__username', 'source_name')
+    readonly_fields = ('created_at', 'updated_at')
 
 
 @admin.register(Club)

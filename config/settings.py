@@ -434,6 +434,10 @@ OPENROUTER_DEFAULT_MODEL = env(
     'OPENROUTER_DEFAULT_MODEL', default='nvidia/nemotron-3.5-lightning:free'
 )
 OPENROUTER_FALLBACK_MODEL = 'openrouter/free'
+# Vision-capable free model for image inputs (student dashboard routine scans).
+OPENROUTER_VISION_MODEL = env(
+    'OPENROUTER_VISION_MODEL', default='meta-llama/llama-3.2-11b-vision-instruct:free'
+)
 OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions'
 # Convenience flag — mirrors whether a key is configured (used by the view to
 # decide between the live provider and the offline engine).

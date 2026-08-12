@@ -1,9 +1,11 @@
+import calendar
 import colorsys
 import json
 import re
 import secrets
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.contrib import messages
@@ -46,6 +48,7 @@ from .google_service import (
 # Research AI — OpenRouter LLM client + PDF/DOCX reference extraction
 # (services/openrouter.py + services/parser.py).
 from services.parser import extract_document_text
+from services.routine_parser import extract_routine_schedule, normalize_schedule
 from services.openrouter import (
     OpenRouterAuthError,
     OpenRouterError,
@@ -61,6 +64,7 @@ from services.openrouter import (
 )
 
 from .models import (
+    AcademicEvent,
     ClassRoutine,
     Club,
     ClubEvent,
@@ -86,6 +90,7 @@ from .models import (
     PaymentTransaction,
     ResearchMessage,
     ResearchThread,
+    Routine,
     StudentProfile,
     TransportBooking,
     TransportRoute,
@@ -160,86 +165,182 @@ def service_worker_view(request):
     return response
 
 
-def dashboard(request):
-    """Student dashboard — live widgets + feeds computed from the database.
+def _dhaka_now():
+    """Current datetime in Asia/Dhaka (UTC+6, no DST)."""
+    return datetime.now(ZoneInfo('Asia/Dhaka'))
 
-    The three summary cards are real-time aggregates (not hardcoded):
-      * Meal ratio — tickets claimed today vs the daily capacity caps.
-      * Transport — seats still available on the active catalog routes.
-      * Medical — on-duty doctors and appointment slots open today.
-    The feeds show the latest published notices and the courses with the most
-    uploaded materials.
+
+_DAY_KEYS = ('Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri')
+
+
+def _time_ago(dt):
+    """Short humanised 'x ago' label for the Recent Activity feed."""
+    if dt is None:
+        return ''
+    delta = timezone.now() - dt
+    seconds = max(int(delta.total_seconds()), 0)
+    if seconds < 60:
+        return 'just now'
+    minutes = seconds // 60
+    if minutes < 60:
+        return '%dm ago' % minutes
+    hours = minutes // 60
+    if hours < 24:
+        return '%dh ago' % hours
+    days = hours // 24
+    if days < 7:
+        return '%dd ago' % days
+    return dt.strftime('%b %d')
+
+
+def _recent_activity(user):
+    """The signed-in student's most recent portal actions, newest first.
+
+    Pulls the newest rows across notes / transport / medical / meals / clubs
+    (bounded per source) and merges them into one reverse-chronological feed.
     """
-    today = timezone.now().date()
-
-    # --- Meal Ratio Counter (tickets claimed today / daily capacity) ---
-    total_capacity = sum(DAILY_MEAL_CAPACITY.values())
-    claimed_today = MealTicket.objects.filter(claimed_at__date=today).count()
-    meal_widget = {
-        'used': claimed_today,
-        'remaining': max(total_capacity - claimed_today, 0),
-        'total': total_capacity,
-        # Cap at 100 so an over-capacity day cannot overflow the progress bar.
-        'percent': min(100, round(claimed_today / total_capacity * 100)) if total_capacity else 0,
-    }
-
-    # --- Transport Service (available seats per active route) ---
-    # One grouped query for every DB catalog route instead of a COUNT per route.
-    transport_catalog = _transport_catalog()
-    route_booked = {
-        (row['route_name'], row['departure_time']): row['booked']
-        for row in TransportBooking.objects.values('route_name', 'departure_time')
-        .annotate(booked=Count('id'))
-    }
-    routes = []
-    for route_id, info in transport_catalog.items():
-        booked = route_booked.get((info['route_name'], info['departure_time']), 0)
-        routes.append({
-            'id': route_id,
-            'name': info['route_name'],
-            'time': info['departure_time'],
-            'available': max(info['capacity'] - booked, 0),
-            'booked': booked,
+    items = []
+    for note in user.notes.all()[:2]:
+        items.append({
+            'icon': 'fa-note-sticky', 'tone': 'blue',
+            'text': 'Edited note “%s”' % note.title, 'at': note.updated_at,
         })
-    routes.sort(key=lambda r: r['available'], reverse=True)
-    transport_widget = routes[0] if routes else None
+    for booking in user.transport_bookings.all()[:2]:
+        items.append({
+            'icon': 'fa-bus', 'tone': 'green',
+            'text': 'Booked a seat on %s' % booking.route_name,
+            'at': booking.booked_at,
+        })
+    for appt in user.medical_appointments.all()[:2]:
+        items.append({
+            'icon': 'fa-stethoscope', 'tone': 'amber',
+            'text': 'Booked %s · %s' % (appt.doctor_name, appt.appointment_date),
+            'at': appt.created_at,
+        })
+    for ticket in user.meal_tickets.all()[:2]:
+        items.append({
+            'icon': 'fa-utensils', 'tone': 'violet',
+            'text': 'Claimed a %s meal ticket' % ticket.get_meal_type_display(),
+            'at': ticket.claimed_at,
+        })
+    for reg in user.club_registrations.all()[:2]:
+        items.append({
+            'icon': 'fa-users', 'tone': 'red',
+            'text': 'Joined the %s club' % reg.club.name,
+            'at': reg.joined_at,
+        })
+    items.sort(key=lambda item: item['at'], reverse=True)
+    for item in items[:6]:
+        item['ago'] = _time_ago(item['at'])
+    return items[:6]
 
-    # --- Medical Center (on-duty doctors + slots open today) ---
-    # One query for today's non-cancelled appointments: the row list doubles as
-    # both the booked-slot count and the on-duty doctor set.
-    today_rows = list(
-        MedicalAppointment.objects.filter(appointment_date=today)
-        .exclude(status='cancelled')
-        .values_list('doctor_name', flat=True)
-    )
-    booked_slots = len(today_rows)
-    in_session_today = set(today_rows)
-    total_slots = len(DOCTORS) * MEDICAL_SLOTS_PER_DAY
-    medical_widget = {
-        'doctors': [
-            {
-                'name': doctor_name,
-                'specialty': DOCTOR_SPECIALTIES.get(doctor_name, 'Campus Doctor'),
-                'in_session': doctor_name in in_session_today,
-            }
-            for doctor_name in DOCTORS.values()
-        ],
-        'booked': booked_slots,
-        'available': max(total_slots - booked_slots, 0),
-        'total': total_slots,
+
+def _academic_month_state(year, month):
+    """Events + grid metadata for one month, for the dashboard calendar."""
+    first = date(year, month, 1)
+    days_in_month = calendar.monthrange(year, month)[1]
+    # Saturday-first weekday index (campus week starts Saturday).
+    first_weekday = (first.weekday() + 1) % 7  # Python weekday(): Mon=0 → Sat=0
+    events = AcademicEvent.objects.filter(
+        event_date__year=year, event_date__month=month,
+    ).order_by('event_date', 'id')
+    events_by_day = {}
+    for event in events:
+        events_by_day.setdefault(event.event_date.day, []).append({
+            'title': event.title,
+            'category': event.category,
+        })
+    prev = first - timedelta(days=1)
+    nxt = date(year, month, days_in_month) + timedelta(days=1)
+    return {
+        'year': year,
+        'month': month,
+        'month_name': first.strftime('%B'),
+        'days_in_month': days_in_month,
+        'first_weekday': first_weekday,
+        'events_by_day': events_by_day,
+        'prev_month': '%04d-%02d' % (prev.year, prev.month),
+        'next_month': '%04d-%02d' % (nxt.year, nxt.month),
     }
 
-    # --- Feeds (latest published notices + top courses by material count) ---
+
+def _parse_month_param(value):
+    """Parse 'YYYY-MM' into (year, month), falling back to the Dhaka month."""
+    now = _dhaka_now()
+    if value:
+        parts = value.split('-')
+        if len(parts) == 2:
+            try:
+                year = int(parts[0])
+                month = int(parts[1])
+                if 2000 <= year <= 2100 and 1 <= month <= 12:
+                    return year, month
+            except (TypeError, ValueError):
+                pass
+    return now.year, now.month
+
+
+def dashboard(request):
+    """Student dashboard — BST clock, class routine, academic calendar, feeds.
+
+    The live Asia/Dhaka clock and the NOW / NEXT-UP class highlighting run
+    entirely client-side against the user's Routine schedule embedded as JSON
+    (the server is UTC and must not guess what time it is in Dhaka). The
+    server supplies the schedule, today's slots for the initial render, the
+    current month's academic events, the user's recent activity, and the
+    compact notices / courses feeds.
+    """
+    now_dhaka = _dhaka_now()
+    today_dhaka = now_dhaka.date()
+    # Python weekday(): Mon=0 … Sun=6 → canonical 3-letter key (Sun, Mon, …).
+    today_key = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')[now_dhaka.weekday()]
+
+    routine = None
+    routine_schedule = None
+    routine_source = ''
+    if request.user.is_authenticated:
+        routine = Routine.objects.filter(user=request.user).first()
+        if routine and routine.schedule:
+            routine_schedule = routine.schedule
+            routine_source = routine.source_name
+
+    # Today's slots for the server-rendered list (the client re-highlights
+    # live using the Asia/Dhaka clock).
+    today_slots = []
+    if routine_schedule:
+        for day_entry in routine_schedule.get('days', []):
+            if day_entry.get('day') == today_key:
+                today_slots = day_entry.get('slots', [])
+                break
+        today_slots = sorted(today_slots, key=lambda s: s.get('start', ''))
+
+    month_state = _academic_month_state(now_dhaka.year, now_dhaka.month)
+
+    recent_activity = _recent_activity(request.user) if request.user.is_authenticated else []
+    quick_notice = Notice.objects.filter(is_published=True).order_by('-created_at').first()
     recent_notices = Notice.objects.filter(is_published=True).select_related('author')[:3]
     course_links = (
         Course.objects.annotate(material_count=Count('materials'))
         .order_by('-material_count', 'code')[:4]
     )
 
+    dash_data = {
+        'routine': routine_schedule,
+        'today': {
+            'key': today_key,
+            'date': today_dhaka.isoformat(),
+            'label': today_dhaka.strftime('%A, %b %d, %Y'),
+        },
+        'calendar': month_state,
+    }
+
     return render(request, 'dashboard/home.html', {
-        'meal_widget': meal_widget,
-        'transport_widget': transport_widget,
-        'medical_widget': medical_widget,
+        'dash_data': json.dumps(dash_data),
+        'today_slots': today_slots,
+        'has_routine': bool(routine_schedule),
+        'routine_source': routine_source,
+        'recent_activity': recent_activity,
+        'quick_notice': quick_notice,
         'recent_notices': recent_notices,
         'course_links': course_links,
     })
@@ -1245,6 +1346,7 @@ def settings_view(request):
     """
     prefs, _ = UserNotificationPreference.objects.get_or_create(user=request.user)
     profile = getattr(request.user, 'student_profile', None)
+    routine = Routine.objects.filter(user=request.user).first()
 
     # Google OAuth connection status (allauth SocialAccount + GoogleUserToken).
     google_social = _get_google_social_account(request.user)
@@ -1257,6 +1359,9 @@ def settings_view(request):
     password_updated = False
     profile_updated = False
     profile_errors = []
+    routine_saved = False
+    routine_cleared = False
+    routine_errors = []
     active_tab = 'notifications'
     password_form = PasswordChangeForm(request.user)
 
@@ -1273,14 +1378,40 @@ def settings_view(request):
                 update_session_auth_hash(request, password_form.user)
                 password_updated = True
                 password_form = PasswordChangeForm(request.user)
+        elif request.POST.get('form') == 'routine_json':
+            # Routine tab → save a manually pasted schedule (canonical JSON).
+            active_tab = 'routine'
+            raw = (request.POST.get('schedule_json') or '').strip()
+            if not raw:
+                routine_errors = ['Paste your schedule JSON first.']
+            else:
+                try:
+                    parsed = json.loads(raw)
+                except ValueError:
+                    routine_errors = ['That is not valid JSON — please check the format.']
+                else:
+                    schedule = normalize_schedule(parsed)
+                    if schedule is None:
+                        routine_errors = ['No usable class slots found in that JSON.']
+                    else:
+                        routine, _created = Routine.objects.get_or_create(user=request.user)
+                        routine.schedule = schedule
+                        routine.source_name = 'manual'
+                        routine.save()
+                        routine_saved = True
+        elif request.POST.get('form') == 'routine_clear':
+            # Routine tab → remove the saved schedule.
+            active_tab = 'routine'
+            Routine.objects.filter(user=request.user).delete()
+            routine = None
+            routine_cleared = True
         else:
             # Preference toggles (form-encoded or JSON) — answered directly.
             return _save_settings_prefs(request, prefs)
     else:
-        # Only the three remaining tabs exist; stale ?tab= values (e.g. the
-        # removed google_sheets / google_drive) fall back to the first tab.
+        # Only the four tabs exist; stale ?tab= values fall back to the first.
         active_tab = request.GET.get('tab', 'notifications')
-        if active_tab not in ('notifications', 'account', 'display'):
+        if active_tab not in ('notifications', 'account', 'display', 'routine'):
             active_tab = 'notifications'
 
     # Safe email label for the Google-connected card: the allauth social
@@ -1306,8 +1437,83 @@ def settings_view(request):
         'google_email': google_email,
         'has_google_token': has_google_token,
         'has_drive_access': has_drive_access,
+        'routine': routine,
+        'routine_saved': routine_saved,
+        'routine_cleared': routine_cleared,
+        'routine_errors': routine_errors,
         'active_tab': active_tab,
     })
+
+
+@login_required
+def routine_extract(request):
+    """POST /api/routine/extract/ — AI-extract a class schedule from a file.
+
+    Accepts PDF / DOCX / PNG / JPG (10 MB cap). PDFs and DOCX go through
+    text extraction + the default free model; images are sent inline to the
+    configured vision model. Returns the canonical schedule JSON. With
+    ``save=1`` the schedule is persisted to the user's Routine row
+    immediately; otherwise the client previews it first and saves on confirm.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+
+    upload = request.FILES.get('file')
+    if upload is None:
+        return JsonResponse({'status': 'error', 'message': 'No file uploaded.'}, status=400)
+    name = (getattr(upload, 'name', '') or '')
+    if not name.lower().endswith(('.pdf', '.docx', '.png', '.jpg', '.jpeg')):
+        return JsonResponse(
+            {'status': 'error', 'message': 'Supported formats: PDF, PNG or JPG.'},
+            status=400,
+        )
+    if upload.size and upload.size > 10 * 1024 * 1024:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Routine files must be 10 MB or smaller.'},
+            status=400,
+        )
+    if not openrouter_enabled():
+        return JsonResponse(
+            {'status': 'error', 'message': (
+                'AI routine extraction is not configured. You can still paste '
+                'your schedule as JSON in Settings.'
+            )},
+            status=503,
+        )
+
+    try:
+        schedule = extract_routine_schedule(upload, referer='https://' + request.get_host())
+    except OpenRouterError as exc:
+        return JsonResponse({'status': 'error', 'message': str(exc)}, status=502)
+
+    if schedule is None:
+        return JsonResponse(
+            {'status': 'error', 'message': (
+                'Could not read a class schedule from that file. Try a clearer '
+                'scan, or paste the schedule as JSON in Settings.'
+            )},
+            status=422,
+        )
+
+    if request.POST.get('save') == '1':
+        routine, _created = Routine.objects.get_or_create(user=request.user)
+        routine.schedule = schedule
+        routine.source_name = name
+        routine.save()
+        return JsonResponse({'status': 'success', 'schedule': schedule, 'saved': True})
+
+    return JsonResponse({'status': 'success', 'schedule': schedule, 'saved': False})
+
+
+@login_required
+def api_calendar_events(request):
+    """GET /api/calendar/events/?month=YYYY-MM — academic events for a month.
+
+    Returns the same ``_academic_month_state`` shape the dashboard embeds, so
+    the interactive calendar's prev/next navigation fetches months lazily.
+    """
+    year, month = _parse_month_param(request.GET.get('month') or '')
+    return JsonResponse(_academic_month_state(year, month))
 
 
 def _save_profile_settings(request):

@@ -820,6 +820,91 @@ class ClassRoutine(models.Model):
         return '%s · %s %s' % (self.subject, self.get_day_of_week_display(), self.time_slot)
 
 
+class Routine(models.Model):
+    """A student's weekly class schedule, one row per user.
+
+    ``schedule`` stores the canonical JSON shape produced by the AI routine
+    extractor (or pasted manually) and consumed by the student dashboard's
+    BST clock / next-class highlighter:
+
+    .. code-block:: json
+
+        {
+            "days": [
+                {
+                    "day": "Sun",
+                    "slots": [
+                        {"start": "08:30", "end": "10:00",
+                         "course": "CSE-1101", "room": "201"}
+                    ]
+                }
+            ]
+        }
+
+    Times are normalised to 24-hour ``HH:MM`` so the client-side comparator
+    can compare them against the live Asia/Dhaka clock without parsing.
+    """
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='routine',
+        db_index=True,
+    )
+    schedule = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Weekly schedule in the canonical {"days": [...]} shape',
+    )
+    source_name = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text='Uploaded file name or "manual" when pasted as JSON',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return 'Routine - %s' % self.user.username
+
+
+class AcademicEvent(models.Model):
+    """An academic calendar entry — exam, holiday, assignment deadline or event.
+
+    Feeds the student dashboard's interactive monthly calendar. Rows are
+    managed by staff (a default set is seeded by data migration); students
+    only read them.
+    """
+
+    CATEGORY_CHOICES = [
+        ('exam', 'Exam'),
+        ('holiday', 'Holiday'),
+        ('assignment', 'Assignment'),
+        ('event', 'Event'),
+    ]
+
+    title = models.CharField(max_length=200)
+    category = models.CharField(
+        max_length=20,
+        choices=CATEGORY_CHOICES,
+        default='event',
+        db_index=True,
+    )
+    event_date = models.DateField(db_index=True)
+    description = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['event_date', 'id']
+        indexes = [
+            models.Index(fields=['event_date', 'category']),
+        ]
+
+    def __str__(self):
+        return '%s · %s' % (self.title, self.event_date)
+
+
 class Club(models.Model):
     """A student club shown on the /clubs/ page.
 

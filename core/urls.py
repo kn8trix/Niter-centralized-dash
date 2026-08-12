@@ -20,6 +20,9 @@ urlpatterns = [
     # Account & profile pages
     path('signup/', views.signup_view, name='signup'),
     path('settings/', views.settings_view, name='settings'),
+    # Student dashboard — AI routine extraction + academic calendar month API.
+    path('api/routine/extract/', views.routine_extract, name='api_routine_extract'),
+    path('api/calendar/events/', views.api_calendar_events, name='api_calendar_events'),
     path('profile/', views.profile_view, name='profile'),
 
     # Staff / admin dashboards

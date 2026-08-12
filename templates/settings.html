@@ -52,6 +52,9 @@
             <button type="button" class="tab-btn{% if active_tab == 'display' %} active{% endif %}" data-tab="display" role="tab" aria-selected="{% if active_tab == 'display' %}true{% else %}false{% endif %}" aria-controls="tab-display">
                 <i class="fa-solid fa-palette"></i> Display
             </button>
+            <button type="button" class="tab-btn{% if active_tab == 'routine' %} active{% endif %}" data-tab="routine" role="tab" aria-selected="{% if active_tab == 'routine' %}true{% else %}false{% endif %}" aria-controls="tab-routine">
+                <i class="fa-solid fa-calendar-days"></i> Routine
+            </button>
         </div>
 
         <div class="settings-layout">
@@ -369,6 +372,114 @@
                 </div>
             </section>
 
+            <!-- ============================================================
+                 Tab 4: Class Routine (drives the dashboard clock)
+            ============================================================ -->
+            <section class="card tab-panel" id="tab-routine" role="tabpanel" aria-labelledby="tab-routine-label" {% if active_tab != 'routine' %}hidden{% endif %}>
+                <h2 id="tab-routine-label" class="section-title"><i class="fa-solid fa-calendar-days"></i> Class Routine</h2>
+                <p class="section-subtitle">Your weekly schedule powers the student dashboard's live Bangladesh clock and next-class highlighter.</p>
+
+                {% if routine_saved %}
+                <div class="alert success" role="status">
+                    <i class="fa-solid fa-circle-check"></i>
+                    <span>Your class routine has been saved.</span>
+                </div>
+                {% endif %}
+                {% if routine_cleared %}
+                <div class="alert success" role="status">
+                    <i class="fa-solid fa-circle-check"></i>
+                    <span>Your class routine has been removed.</span>
+                </div>
+                {% endif %}
+                {% if routine_errors %}
+                <div class="alert error" role="alert">
+                    <i class="fa-solid fa-circle-exclamation"></i>
+                    <div>
+                        {% for error in routine_errors %}<p>{{ error }}</p>{% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Current schedule preview -->
+                {% if routine %}
+                <div class="settings-section">
+                    <h3 class="sub-section-title"><i class="fa-solid fa-list-check"></i> Current Schedule</h3>
+                    <p class="section-subtitle">{% if routine.source_name %}Synced from {{ routine.source_name }} · {% endif %}Updated {{ routine.updated_at|date:"M d, Y H:i" }}.</p>
+                    <div class="routine-days">
+                        {% for day in routine.schedule.days %}
+                        <div class="routine-day">
+                            <strong class="routine-day-name">{{ day.day }}</strong>
+                            <ul class="routine-day-slots">
+                                {% for slot in day.slots %}
+                                <li>
+                                    <span class="slot-range">{{ slot.start }} – {{ slot.end }}</span>
+                                    <strong>{{ slot.course|default:"Class" }}</strong>
+                                    {% if slot.room %}<span class="slot-room">Room {{ slot.room }}</span>{% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- AI extraction from an uploaded file -->
+                <div class="settings-section">
+                    <h3 class="sub-section-title"><i class="fa-solid fa-wand-magic-sparkles"></i> Extract with AI</h3>
+                    <p class="section-subtitle">Upload a clear photo of your printed routine (PNG/JPG) or a PDF/DOCX — the AI reads it and fills the schedule for you.</p>
+
+                    <form id="routine-upload-form" class="settings-form" novalidate>
+                        {% csrf_token %}
+                        <div class="field">
+                            <label for="routine-file" class="field-label">Routine file</label>
+                            <div class="field-input">
+                                <i class="fa-solid fa-file-arrow-up"></i>
+                                <input type="file" id="routine-file" name="file" accept=".pdf,.docx,.png,.jpg,.jpeg" required>
+                            </div>
+                            <small class="field-note">PDF, DOCX, PNG or JPG · max 10 MB.</small>
+                        </div>
+                        <button type="submit" class="btn-primary" id="routine-extract-btn">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> Extract Schedule
+                        </button>
+                        <span class="btn-spinner" id="routine-spinner" hidden><i class="fa-solid fa-spinner fa-spin"></i> Reading your routine…</span>
+                    </form>
+
+                    <div class="alert" id="routine-result" hidden></div>
+                    <div id="routine-preview" hidden></div>
+                </div>
+
+                <!-- Manual JSON entry (fallback) -->
+                <div class="settings-section">
+                    <h3 class="sub-section-title"><i class="fa-solid fa-code"></i> Paste Schedule JSON</h3>
+                    <p class="section-subtitle">Prefer to type it out? Paste the schedule in the canonical JSON shape below.</p>
+                    <form method="post" action="{% url 'settings' %}" class="settings-form" novalidate>
+                        {% csrf_token %}
+                        <input type="hidden" name="form" value="routine_json">
+                        <div class="field">
+                            <label for="routine-json" class="field-label">Schedule JSON</label>
+                            <textarea id="routine-json" name="schedule_json" rows="6" class="json-input" placeholder='{"days": [{"day": "Sun", "slots": [{"start": "08:30", "end": "10:00", "course": "CSE-1101", "room": "201"}]}]}'></textarea>
+                        </div>
+                        <button type="submit" class="btn-primary">
+                            <i class="fa-solid fa-floppy-disk"></i> Save Schedule
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Clear saved routine -->
+                {% if routine %}
+                <div class="settings-section">
+                    <form method="post" action="{% url 'settings' %}" class="settings-form" onsubmit="return confirm('Remove your saved class routine?')">
+                        {% csrf_token %}
+                        <input type="hidden" name="form" value="routine_clear">
+                        <button type="submit" class="btn-unlink">
+                            <i class="fa-solid fa-trash-can"></i> Clear Routine
+                        </button>
+                    </form>
+                </div>
+                {% endif %}
+            </section>
+
         </div>
 
         <!-- Floating save toast (works from every tab) -->
@@ -521,6 +632,116 @@
                     }
                 });
             });
+
+            // ---- Routine tab — AI extraction + preview/save ----
+            (function () {
+                const form = document.getElementById('routine-upload-form');
+                if (!form) return;
+                const fileInput = document.getElementById('routine-file');
+                const btn = document.getElementById('routine-extract-btn');
+                const spinner = document.getElementById('routine-spinner');
+                const result = document.getElementById('routine-result');
+                const preview = document.getElementById('routine-preview');
+                const apiUrl = '{% url "api_routine_extract" %}';
+                let lastFile = null;
+
+                function renderPreview(schedule) {
+                    preview.hidden = false;
+                    preview.innerHTML = '';
+                    const head = document.createElement('p');
+                    head.innerHTML = '<strong>Looks good?</strong> ' + schedule.days.length + ' day(s) with ' +
+                        schedule.days.reduce((n, d) => n + d.slots.length, 0) + ' class period(s) found.';
+                    preview.appendChild(head);
+                    // Build the preview with textContent (never innerHTML): the
+                    // course/room strings come from the LLM reading an uploaded
+                    // file, so they are untrusted input.
+                    const list = document.createElement('ul');
+                    list.className = 'routine-days';
+                    schedule.days.forEach((day) => {
+                        const item = document.createElement('li');
+                        item.className = 'routine-day';
+                        const name = document.createElement('strong');
+                        name.className = 'routine-day-name';
+                        name.textContent = day.day;
+                        item.appendChild(name);
+                        const slotText = document.createElement('span');
+                        slotText.textContent = day.slots
+                            .map((s) => s.start + '–' + s.end + ' ' + (s.course || ''))
+                            .join(' · ');
+                        item.appendChild(slotText);
+                        list.appendChild(item);
+                    });
+                    preview.appendChild(list);
+                    const saveBtn = document.createElement('button');
+                    saveBtn.type = 'button';
+                    saveBtn.className = 'btn-primary';
+                    saveBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Schedule';
+                    saveBtn.addEventListener('click', () => saveSchedule(saveBtn));
+                    preview.appendChild(saveBtn);
+                }
+
+                async function saveSchedule(saveBtn) {
+                    if (!lastFile) return;
+                    saveBtn.disabled = true;
+                    const fd = new FormData();
+                    fd.append('file', lastFile);
+                    fd.append('save', '1');
+                    fd.append('csrfmiddlewaretoken', getCookie('csrftoken'));
+                    try {
+                        const response = await fetch(apiUrl, {
+                            method: 'POST', body: fd, headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                        });
+                        const data = await response.json().catch(() => ({}));
+                        if (data.status === 'success' && data.saved) {
+                            location.reload();
+                        } else {
+                            result.hidden = false;
+                            result.className = 'alert error';
+                            result.textContent = data.message || 'Could not save the schedule. Please try again.';
+                        }
+                    } catch (err) {
+                        result.hidden = false;
+                        result.className = 'alert error';
+                        result.textContent = 'Could not reach the server. Please try again.';
+                    } finally {
+                        saveBtn.disabled = false;
+                    }
+                }
+
+                form.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    if (!fileInput.files.length) return;
+                    lastFile = fileInput.files[0];
+                    result.hidden = true;
+                    result.className = 'alert';
+                    preview.hidden = true;
+                    spinner.hidden = false;
+                    btn.disabled = true;
+                    const fd = new FormData();
+                    fd.append('file', lastFile);
+                    fd.append('csrfmiddlewaretoken', getCookie('csrftoken'));
+                    try {
+                        const response = await fetch(apiUrl, {
+                            method: 'POST', body: fd, headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                        });
+                        const data = await response.json().catch(() => ({}));
+                        if (data.status === 'success') {
+                            renderPreview(data.schedule);
+                        } else {
+                            result.hidden = false;
+                            result.className = 'alert error';
+                            result.textContent = data.message || 'Extraction failed. Please try again.';
+                        }
+                    } catch (err) {
+                        result.hidden = false;
+                        result.className = 'alert error';
+                        result.textContent = 'Could not reach the server. Please try again.';
+                    } finally {
+                        spinner.hidden = true;
+                        btn.disabled = false;
+                    }
+                });
+            })();
 
             // ---- Google unlink (AJAX) — Account & Google tab ----
             function wireUnlink(btn) {

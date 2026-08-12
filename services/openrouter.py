@@ -80,6 +80,18 @@ def get_fallback_model():
     return getattr(settings, 'OPENROUTER_FALLBACK_MODEL', 'openrouter/free')
 
 
+def get_vision_model():
+    """Return the vision-capable model used for image inputs (routine scans).
+
+    Defaults to a free OpenRouter vision model; overridable via
+    ``OPENROUTER_VISION_MODEL``.
+    """
+    return getattr(
+        settings, 'OPENROUTER_VISION_MODEL',
+        'meta-llama/llama-3.2-11b-vision-instruct:free',
+    )
+
+
 def get_api_key():
     """Return the configured OpenRouter API key (possibly empty)."""
     return getattr(settings, 'OPENROUTER_API_KEY', '')

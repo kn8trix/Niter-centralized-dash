@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Student Dashboard — Niter Hub</title>
-    <meta name="description" content="Your central campus overview — meals, transport, medical bookings, and updates.">
+    <meta name="description" content="Your campus day at a glance — live Bangladesh time, today's class routine, and the academic calendar.">
 
     {% include 'partials/pwa_head.html' %}
 
@@ -34,80 +34,185 @@
         {% include 'partials/topbar.html' with active='dashboard' %}
 
         <!-- ============================================================
-             Intro — centered hero
+             Intro
         ============================================================ -->
         <div class="intro">
             <h1>Welcome back, {{ user.get_full_name|default:user.username|default:"Guest" }}!</h1>
-            <p>Here is your central campus overview — quick access to meals, transport, medical bookings, and updates.</p>
+            <p>Your campus day at a glance — live Bangladesh time, today's classes, and what's coming up.</p>
         </div>
 
         <!-- ============================================================
-             Row 1 — Quick summary widgets
+             Server payload for the live widgets (routine + calendar)
         ============================================================ -->
-        <div class="summary-grid">
+        <script id="dash-data" type="application/json">{{ dash_data }}</script>
 
-            <!-- Meal Ratio Counter (live: tickets claimed today / capacity) -->
-            <a href="{% url 'meal_dashboard' %}" class="widget-card" data-component="card" data-widget="meal-ratio">
-                <div class="widget-head">
-                    <span class="widget-icon"><i class="fa-solid fa-utensils"></i></span>
-                    <h3 class="widget-title">Meal Ratio Counter</h3>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-number">{{ meal_widget.remaining }} <small>/ {{ meal_widget.total }}</small></span>
-                    <span class="status-chip chip-green"><i class="fa-solid fa-circle-check"></i> Active</span>
-                </div>
-                <p class="stat-caption">slots remaining for today.</p>
-                <div class="progress-track">
-                    <div class="progress-bar" style="width: {{ meal_widget.percent }}%"></div>
-                </div>
-                <div class="progress-legend">
-                    <span>Used: {{ meal_widget.used }}</span>
-                    <span>Remaining: {{ meal_widget.remaining }}</span>
-                </div>
-            </a>
-
-            <!-- Transport Service (live: seats left on the fullest-available route) -->
-            <a href="{% url 'transport_dashboard' %}" class="widget-card" data-component="card" data-widget="transport">
-                <div class="widget-head">
-                    <span class="widget-icon"><i class="fa-solid fa-bus"></i></span>
-                    <h3 class="widget-title">Transport Service</h3>
-                </div>
-                <div class="route-name">{{ transport_widget.name }}</div>
-                <div class="route-time"><i class="fa-regular fa-clock"></i> {{ transport_widget.time }}</div>
-                <p class="route-dest">Next campus shuttle with open seats</p>
-                <div class="widget-footer">
-                    <span class="seats-avail"><span class="status-dot"></span> {{ transport_widget.available }} seats available</span>
-                    <span class="btn-dark"><i class="fa-solid fa-ticket"></i> Reserve Seat</span>
-                </div>
-            </a>
-
-            <!-- Medical Center (live: on-duty doctors + slots open today) -->
-            <a href="{% url 'medical' %}" class="widget-card" data-component="card" data-widget="medical-center">
-                <div class="widget-head">
-                    <span class="widget-icon"><i class="fa-solid fa-stethoscope"></i></span>
-                    <h3 class="widget-title">Medical Center</h3>
-                </div>
-                {% for doctor in medical_widget.doctors %}
-                <div class="doctor-row">
-                    <span class="doctor-id">DR</span>
-                    <div class="doctor-info">
-                        <strong>{{ doctor.name }}</strong>
-                        <span>{{ doctor.specialty }}</span>
-                    </div>
-                    {% if doctor.in_session %}
-                    <span class="status-chip chip-amber">In Session</span>
+        <!-- ============================================================
+             Header widget — live Bangladesh clock + next class countdown
+        ============================================================ -->
+        <section class="clock-card" data-component="card" data-widget="bst-clock" aria-label="Live Bangladesh time">
+            <div class="clock-main">
+                <div class="clock-eyebrow"><i class="fa-solid fa-location-dot"></i> Bangladesh Standard Time · UTC+6</div>
+                <div class="clock-time" id="clock-time" aria-live="off">--:--:--</div>
+                <div class="clock-date" id="clock-date">{{ dash_data.today.label }}</div>
+            </div>
+            <div class="clock-next">
+                <div class="clock-next-label"><i class="fa-regular fa-hourglass-half"></i> Next class</div>
+                <div class="clock-next-line" id="clock-next-line">
+                    {% if has_routine %}
+                    <span class="next-skeleton">—</span>
                     {% else %}
-                    <span class="status-chip chip-green">Available</span>
+                    <span>No routine set yet.</span>
                     {% endif %}
                 </div>
-                {% endfor %}
-                <span class="btn-accent"><i class="fa-solid fa-calendar-check"></i> Book Slot · {{ medical_widget.available }} open today</span>
-            </a>
+                <div class="clock-countdown" id="clock-countdown" aria-live="off">
+                    {% if has_routine %}--h --m --s{% endif %}
+                </div>
+            </div>
+        </section>
+
+        {% if not has_routine %}
+        <!-- Setup nudge when no routine is saved -->
+        <div class="routine-cta" data-component="card">
+            <div>
+                <strong><i class="fa-solid fa-calendar-days"></i> Your routine is empty</strong>
+                <p>Upload a photo of your class schedule (or PDF) and the AI will build it for you — or paste it as JSON.</p>
+            </div>
+            <a href="{% url 'settings' %}?tab=routine" class="btn-accent">Set up routine <i class="fa-solid fa-arrow-right"></i></a>
+        </div>
+        {% endif %}
+
+        <!-- ============================================================
+             Main section — today's routine + academic calendar
+        ============================================================ -->
+        <div class="main-grid">
+
+            <!-- Today's Class Routine -->
+            <section class="panel-card routine-panel" data-component="card" data-widget="class-routine">
+                <div class="panel-head">
+                    <h3 class="section-title"><i class="fa-solid fa-clock"></i> Today's Class Routine</h3>
+                    {% if has_routine %}
+                    <a href="{% url 'settings' %}?tab=routine" class="panel-link">Manage →</a>
+                    {% endif %}
+                </div>
+
+                {% if has_routine %}
+                <p class="stat-caption routine-day" id="routine-day">—</p>
+                <ul class="slot-list" id="slot-list">
+                    {% for slot in today_slots %}
+                    <li class="slot-item" data-start="{{ slot.start }}" data-end="{{ slot.end }}">
+                        <span class="slot-time">
+                            <strong>{{ slot.start }}</strong>–{{ slot.end }}
+                        </span>
+                        <span class="slot-body">
+                            <strong class="slot-course">{{ slot.course|default:"Class" }}</strong>
+                            <span class="slot-meta">{% if slot.room %}<i class="fa-solid fa-door-open"></i> Room {{ slot.room }} · {% endif %}{{ slot.start }} – {{ slot.end }}</span>
+                        </span>
+                        <span class="slot-badge" aria-hidden="true"></span>
+                    </li>
+                    {% empty %}
+                    <li class="slot-empty" id="slot-empty">
+                        <i class="fa-solid fa-mug-hot"></i>
+                        <span>No classes scheduled for today — enjoy the break!</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <p class="stat-caption slot-source" id="slot-source">{% if routine_source %}Synced from {{ routine_source }}{% endif %}</p>
+                {% else %}
+                <div class="slot-empty">
+                    <i class="fa-solid fa-calendar-plus"></i>
+                    <span>Set up your class routine to see today's schedule here.</span>
+                </div>
+                {% endif %}
+            </section>
+
+            <!-- Interactive Academic Calendar -->
+            <section class="panel-card calendar-panel" data-component="card" data-widget="academic-calendar">
+                <div class="panel-head">
+                    <h3 class="section-title"><i class="fa-solid fa-calendar-days"></i> Academic Calendar</h3>
+                </div>
+
+                <div class="cal-toolbar">
+                    <button type="button" class="cal-nav" id="cal-prev" aria-label="Previous month"><i class="fa-solid fa-chevron-left"></i></button>
+                    <div class="cal-label" id="cal-label">—</div>
+                    <button type="button" class="cal-nav" id="cal-next" aria-label="Next month"><i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+
+                <div class="cal-weekdays">
+                    <span>Sat</span><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span>
+                </div>
+                <div class="cal-grid" id="cal-grid" role="grid" aria-label="Month calendar"></div>
+
+                <div class="cal-legend">
+                    <span><i class="dot dot-exam"></i> Exam</span>
+                    <span><i class="dot dot-holiday"></i> Holiday</span>
+                    <span><i class="dot dot-assignment"></i> Assignment</span>
+                    <span><i class="dot dot-event"></i> Event</span>
+                </div>
+            </section>
 
         </div>
 
         <!-- ============================================================
-             Row 2 — Feeds & activity
+             Side widgets — recent activity + quick campus info
+        ============================================================ -->
+        <div class="split-grid">
+
+            <!-- Recent Activity -->
+            <div class="panel-card" data-component="card" data-widget="recent-activity">
+                <div class="panel-head">
+                    <h3 class="section-title"><i class="fa-solid fa-bolt"></i> Recent Activity</h3>
+                </div>
+
+                {% if recent_activity %}
+                <ul class="activity-list">
+                    {% for item in recent_activity %}
+                    <li class="activity-item">
+                        <span class="activity-icon tone-{{ item.tone }}"><i class="fa-solid {{ item.icon }}"></i></span>
+                        <div class="activity-body">
+                            <span class="activity-text">{{ item.text }}</span>
+                            <span class="activity-ago">{{ item.ago }}</span>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="slot-empty">
+                    <i class="fa-solid fa-spa"></i>
+                    <span>Nothing here yet — your recent bookings and edits will show up here.</span>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Quick Campus Info -->
+            <div class="panel-card" data-component="card" data-widget="quick-info">
+                <div class="panel-head">
+                    <h3 class="section-title"><i class="fa-solid fa-circle-info"></i> Quick Campus Info</h3>
+                </div>
+
+                {% if quick_notice %}
+                <a href="{% url 'notices' %}" class="quick-notice">
+                    <span class="notice-badge badge-{{ quick_notice.category }}">{{ quick_notice.get_category_display }}</span>
+                    <strong>{{ quick_notice.title }}</strong>
+                    <span>{{ quick_notice.created_at|date:"M d, Y" }}</span>
+                </a>
+                {% else %}
+                <p class="stat-caption">No active notices right now.</p>
+                {% endif %}
+
+                <div class="quick-grid shortcuts">
+                    <a href="{% url 'meal_dashboard' %}" class="quick-tile"><span class="quick-icon"><i class="fa-solid fa-utensils"></i></span><span class="quick-name">Meals</span></a>
+                    <a href="{% url 'transport_dashboard' %}" class="quick-tile"><span class="quick-icon"><i class="fa-solid fa-bus"></i></span><span class="quick-name">Transport</span></a>
+                    <a href="{% url 'medical' %}" class="quick-tile"><span class="quick-icon"><i class="fa-solid fa-stethoscope"></i></span><span class="quick-name">Medical</span></a>
+                    <a href="{% url 'notices' %}" class="quick-tile"><span class="quick-icon"><i class="fa-solid fa-bullhorn"></i></span><span class="quick-name">Notices</span></a>
+                    <a href="{% url 'academic_notes' %}" class="quick-tile"><span class="quick-icon"><i class="fa-solid fa-book-open"></i></span><span class="quick-name">Notes</span></a>
+                    <a href="{% url 'clubs_dashboard' %}" class="quick-tile"><span class="quick-icon"><i class="fa-solid fa-users"></i></span><span class="quick-name">Clubs</span></a>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ============================================================
+             Feeds — official notices + academic notes (compact)
         ============================================================ -->
         <div class="split-grid">
 
@@ -160,6 +265,223 @@
         </div>
 
     </div>
+
+    <script>
+        (function () {
+            'use strict';
+
+            var dashData = null;
+            try {
+                dashData = JSON.parse(document.getElementById('dash-data').textContent);
+            } catch (err) { /* payload missing — widgets degrade gracefully */ }
+
+            var ROUTINE = (dashData && dashData.routine) || null;
+
+            /* ---------- Live Bangladesh (Asia/Dhaka) clock ---------- */
+            var clockEl = document.getElementById('clock-time');
+            var dateEl = document.getElementById('clock-date');
+            var clockPartsFmt = new Intl.DateTimeFormat('en-GB', {
+                timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+            });
+            var dateFmt = new Intl.DateTimeFormat('en-US', {
+                timeZone: 'Asia/Dhaka', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+            });
+            var weekdayShortFmt = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dhaka', weekday: 'short' });
+
+            function dhakaNowMinutes() {
+                var parts = clockPartsFmt.format(new Date()).split(':');
+                return (+parts[0]) * 60 + (+parts[1]);
+            }
+
+            function tick() {
+                var now = new Date();
+                if (clockEl) clockEl.textContent = clockPartsFmt.format(now);
+                if (dateEl) dateEl.textContent = dateFmt.format(now);
+                refreshRoutineState();
+            }
+
+            /* ---------- Routine highlighting + next-class countdown ---------- */
+            var nextLineEl = document.getElementById('clock-next-line');
+            var countdownEl = document.getElementById('clock-countdown');
+            var routineDayEl = document.getElementById('routine-day');
+            var slotListEl = document.getElementById('slot-list');
+            var slots = slotListEl ? Array.prototype.slice.call(slotListEl.querySelectorAll('.slot-item')) : [];
+
+            function toMinutes(t) {
+                var parts = String(t || '').split(':');
+                return parts.length === 2 ? (+parts[0]) * 60 + (+parts[1]) : null;
+            }
+
+            function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+            function fmtCountdown(seconds) {
+                var s = Math.max(0, Math.floor(seconds));
+                var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+                return h + 'h ' + m + 'm ' + pad(sec) + 's';
+            }
+
+            function formatRange(slot) {
+                var label = slot.course ? slot.course : 'Class';
+                var room = slot.room ? ' · Room ' + slot.room : '';
+                return label + room + ' (' + slot.start + ' – ' + slot.end + ')';
+            }
+
+            function refreshRoutineState() {
+                if (!ROUTINE || !dashData) return;
+                var day = weekdayShortFmt.format(new Date());   // e.g. "Thu"
+                var today = null;
+                for (var i = 0; i < ROUTINE.days.length; i++) {
+                    if (ROUTINE.days[i].day === day) { today = ROUTINE.days[i]; break; }
+                }
+                var now = dhakaNowMinutes();
+                var current = null, next = null;
+                if (today) {
+                    for (var j = 0; j < today.slots.length; j++) {
+                        var s = toMinutes(today.slots[j].start);
+                        var e = toMinutes(today.slots[j].end);
+                        if (s !== null && e !== null && now >= s && now < e) current = today.slots[j];
+                        if (next === null && s !== null && s > now) next = today.slots[j];
+                    }
+                }
+
+                /* Next-class line + countdown */
+                if (nextLineEl && countdownEl) {
+                    if (current) {
+                        nextLineEl.innerHTML = '<span class="next-live"><i class="fa-solid fa-circle"></i> ' +
+                            escapeHtml(current.course || 'Class') + ' is in progress — ends ' + current.end + '</span>';
+                        countdownEl.textContent = 'In class now';
+                    } else if (next) {
+                        nextLineEl.textContent = 'Up next: ' + formatRange(next);
+                        var diffSec = (toMinutes(next.start) - now) * 60;
+                        countdownEl.textContent = fmtCountdown(diffSec);
+                    } else if (today && today.slots.length) {
+                        nextLineEl.textContent = 'All classes done for today.';
+                        countdownEl.textContent = '—';
+                    } else {
+                        nextLineEl.textContent = 'No classes today.';
+                        countdownEl.textContent = '—';
+                    }
+                }
+
+                /* Day label + slot badge highlighting */
+                if (routineDayEl) routineDayEl.textContent = day + ' · ' + todayKeyLabel();
+                slots.forEach(function (row) {
+                    var s = toMinutes(row.getAttribute('data-start'));
+                    var e = toMinutes(row.getAttribute('data-end'));
+                    var badge = row.querySelector('.slot-badge');
+                    row.classList.remove('is-now', 'is-next');
+                    if (badge) { badge.textContent = ''; badge.classList.remove('badge-now', 'badge-next'); }
+                    if (s === null || e === null) return;
+                    if (now >= s && now < e) {
+                        row.classList.add('is-now');
+                        if (badge) { badge.textContent = 'NOW'; badge.classList.add('badge-now'); }
+                    } else if (next && s === toMinutes(next.start)) {
+                        row.classList.add('is-next');
+                        if (badge) { badge.textContent = 'NEXT UP'; badge.classList.add('badge-next'); }
+                    }
+                });
+            }
+
+            function todayKeyLabel() {
+                // Parse the server's YYYY-MM-DD (Dhaka) as UTC midnight so the
+                // instant never shifts to a neighbouring day in any browser
+                // timezone, then format in Asia/Dhaka for the compact label.
+                var dateKey = dashData.today.date;
+                if (!dateKey) return '';
+                var d = new Date(dateKey + 'T00:00:00Z');
+                if (isNaN(d)) return '';
+                return new Intl.DateTimeFormat('en-US', {
+                    timeZone: 'Asia/Dhaka', month: 'short', day: 'numeric'
+                }).format(d);
+            }
+
+            function escapeHtml(value) {
+                var div = document.createElement('div');
+                div.textContent = value == null ? '' : String(value);
+                return div.innerHTML;
+            }
+
+            /* ---------- Interactive academic calendar ---------- */
+            var CATEGORY_LABELS = { exam: 'Exam', holiday: 'Holiday', assignment: 'Assignment', event: 'Event' };
+            var calGrid = document.getElementById('cal-grid');
+            var calLabel = document.getElementById('cal-label');
+            var calState = dashData ? dashData.calendar : null;
+            var calendarApiUrl = "{% url 'api_calendar_events' %}";
+
+            function renderCalendar(state) {
+                if (!calGrid || !calLabel || !state) return;
+                calLabel.textContent = state.month_name + ' ' + state.year;
+                calGrid.innerHTML = '';
+                var totalCells = Math.ceil((state.first_weekday + state.days_in_month) / 7) * 7;
+                var todayStr = dashData ? dashData.today.date : '';
+                for (var i = 0; i < totalCells; i++) {
+                    var cell = document.createElement('div');
+                    cell.className = 'cal-cell';
+                    var dayNum = i - state.first_weekday + 1;
+                    if (dayNum < 1 || dayNum > state.days_in_month) {
+                        cell.classList.add('is-empty');
+                        calGrid.appendChild(cell);
+                        continue;
+                    }
+                    if (todayStr && todayStr.slice(8) === ('0' + dayNum).slice(-2) &&
+                        todayStr.slice(0, 4) === String(state.year) &&
+                        todayStr.slice(5, 7) === ('0' + state.month).slice(-2)) {
+                        cell.classList.add('is-today');
+                    }
+                    var num = document.createElement('span');
+                    num.className = 'cal-day-num';
+                    num.textContent = dayNum;
+                    cell.appendChild(num);
+
+                    var events = (state.events_by_day && state.events_by_day[dayNum]) || [];
+                    if (events.length) {
+                        cell.classList.add('has-events');
+                        var dots = document.createElement('span');
+                        dots.className = 'cal-dots';
+                        var shown = events.slice(0, 3);
+                        shown.forEach(function (ev) {
+                            var d = document.createElement('i');
+                            d.className = 'dot dot-' + (ev.category || 'event');
+                            dots.appendChild(d);
+                        });
+                        cell.appendChild(dots);
+                        var tip = document.createElement('div');
+                        tip.className = 'cal-tip';
+                        events.forEach(function (ev) {
+                            var row = document.createElement('span');
+                            row.innerHTML = '<i class="dot dot-' + (ev.category || 'event') + '"></i> ' +
+                                escapeHtml(ev.title) + ' <em>(' + (CATEGORY_LABELS[ev.category] || ev.category) + ')</em>';
+                            tip.appendChild(row);
+                        });
+                        cell.appendChild(tip);
+                    }
+                    calGrid.appendChild(cell);
+                }
+            }
+
+            function loadMonth(monthParam) {
+                if (!calGrid) return;
+                calGrid.classList.add('is-loading');
+                fetch(calendarApiUrl + '?month=' + encodeURIComponent(monthParam))
+                    .then(function (r) { return r.json(); })
+                    .then(function (state) { calState = state; renderCalendar(state); })
+                    .catch(function () { /* keep previous month on failure */ })
+                    .finally(function () { calGrid.classList.remove('is-loading'); });
+            }
+
+            document.addEventListener('DOMContentLoaded', function () {
+                renderCalendar(calState);
+                var prevBtn = document.getElementById('cal-prev');
+                var nextBtn = document.getElementById('cal-next');
+                if (prevBtn && calState) prevBtn.addEventListener('click', function () { loadMonth(calState.prev_month); });
+                if (nextBtn && calState) nextBtn.addEventListener('click', function () { loadMonth(calState.next_month); });
+
+                tick();
+                setInterval(tick, 1000);
+                setInterval(refreshRoutineState, 30000);
+            });
+        })();
+    </script>
 
     <!-- PWA service worker registration (offline caching) -->
     <script src="{% static 'js/pwa-register.js' %}" defer></script>

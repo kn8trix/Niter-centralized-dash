@@ -1,5 +1,5 @@
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 from unittest import mock
 
 import shutil
@@ -21,6 +21,7 @@ from services.parser import extract_document_text
 
 from core.forms import SignUpForm
 from core.models import (
+    AcademicEvent,
     BusSchedule,
     ClassRoutine,
     Club,
@@ -48,6 +49,7 @@ from core.models import (
     PaymentTransaction,
     ResearchMessage,
     ResearchThread,
+    Routine,
     StudentProfile,
     TransportBooking,
     TransportRoute,
@@ -2994,76 +2996,60 @@ class JoinClubApiTest(TestCase):
 
 
 class DashboardWidgetsTest(TestCase):
-    """The /dashboard/ widgets aggregate real database counts (no hardcoding)."""
+    """The /dashboard/ widgets — BST clock, routine, calendar, activity feeds."""
 
     def setUp(self):
         self.user = User.objects.create_user(username='widget_user', password='x12345678')
 
-    def test_meal_widget_reflects_todays_claims(self):
-        for token in ('#MEAL-1001', '#MEAL-1002'):
-            MealTicket.objects.create(user=self.user, meal_type='lunch', ticket_token=token)
-        html = self.client.get(reverse('dashboard')).content.decode()
-        # 2 claims today → remaining = 440 - 2, used = 2
-        self.assertIn('Used: 2', html)
-        self.assertIn('Remaining: 438', html)
-        self.assertIn('438 <small>/ 440</small>', html)
+    @staticmethod
+    def _full_week_schedule():
+        """A schedule with one class on every weekday (the Dhaka weekday is
+        always covered, so the today's-routine block is deterministic)."""
+        return {'days': [
+            {'day': day, 'slots': [
+                {'start': '09:00', 'end': '10:30', 'course': 'CSE-1101', 'room': '201'},
+            ]}
+            for day in ('Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri')
+        ]}
 
-    def test_meal_widget_counts_only_todays_claims(self):
-        ticket = MealTicket.objects.create(
-            user=self.user, meal_type='dinner', ticket_token='#MEAL-2001',
-        )
-        # auto_now_add overrides on create, so move it to yesterday via update.
-        MealTicket.objects.filter(pk=ticket.pk).update(
-            claimed_at=timezone.now() - timedelta(days=1),
-        )
+    def test_dashboard_embeds_bst_clock_widget(self):
         html = self.client.get(reverse('dashboard')).content.decode()
-        self.assertIn('Used: 0', html)
-        self.assertIn('Remaining: 440', html)
+        self.assertIn('id="clock-time"', html)
+        self.assertIn('Bangladesh Standard Time', html)
+        self.assertIn('id="dash-data"', html)
 
-    def test_transport_widget_shows_available_seats(self):
-        # Fill most of Route 1 (38/40) and Route 2 (30/40) so Route 3 is the
-        # unique route with the most open seats → the widget must show it.
-        for seat in range(1, 39):
-            TransportBooking.objects.create(
-                user=self.user, route_name='Route 1: Main Campus Loop',
-                departure_time='08:00 AM', seat_number=seat,
-                qr_token='TR-1AB%03d' % seat,
-            )
-        for seat in range(1, 31):
-            TransportBooking.objects.create(
-                user=self.user, route_name='Route 2: Sports Complex Shuttle',
-                departure_time='09:30 AM', seat_number=seat,
-                qr_token='TR-2AB%03d' % seat,
-            )
-        html = self.client.get(reverse('dashboard')).content.decode()
-        self.assertIn('40 seats available', html)  # Route 3 still has all 40
-        self.assertIn('Route 3: City Center Express', html)
-        self.assertIn('10:00 AM', html)
-
-    def test_medical_widget_counts_todays_slots(self):
-        today = timezone.now().date()
-        for slot in ('09:00 AM', '11:00 AM'):
-            MedicalAppointment.objects.create(
-                user=self.user, doctor_name='Dr. Ahmed Khan',
-                appointment_date=today, time_slot=slot, reason='Checkup',
-            )
-        html = self.client.get(reverse('dashboard')).content.decode()
-        # 16 total slots (4 doctors × 4), 2 booked today
-        self.assertIn('14 open today', html)
-        self.assertIn('In Session', html)
-        self.assertIn('Dr. Ahmed Khan', html)
-        self.assertIn('General Physician', html)
-
-    def test_medical_widget_ignores_cancelled_appointments(self):
-        today = timezone.now().date()
-        MedicalAppointment.objects.create(
-            user=self.user, doctor_name='Dr. Emily Johnson',
-            appointment_date=today, time_slot='2:00 PM', reason='Checkup',
-            status='cancelled',
+    def test_dashboard_renders_todays_routine_slots(self):
+        self.client.force_login(self.user)
+        Routine.objects.create(
+            user=self.user, schedule=self._full_week_schedule(), source_name='routine.png',
         )
         html = self.client.get(reverse('dashboard')).content.decode()
-        self.assertIn('16 open today', html)
-        self.assertNotIn('In Session', html)
+        self.assertIn('CSE-1101', html)
+        self.assertIn('data-start="09:00"', html)
+        self.assertIn('Room 201', html)
+        self.assertIn('Synced from routine.png', html)
+
+    def test_dashboard_shows_routine_setup_cta_when_missing(self):
+        html = self.client.get(reverse('dashboard')).content.decode()
+        self.assertIn('routine-cta', html)
+        self.assertIn('Set up routine', html)
+
+    def test_dashboard_lists_recent_activity(self):
+        self.client.force_login(self.user)
+        UserNote.objects.create(user=self.user, title='OOP Notes', content='x')
+        html = self.client.get(reverse('dashboard')).content.decode()
+        self.assertIn('Edited note', html)
+        self.assertIn('OOP Notes', html)
+
+    def test_dashboard_shows_quick_campus_notice(self):
+        author = User.objects.create_user(username='admin_q', password='x12345678', is_staff=True)
+        Notice.objects.create(
+            author=author, title='Semester Fee Notice', category='academic',
+            content='Fees due.', is_published=True,
+        )
+        html = self.client.get(reverse('dashboard')).content.decode()
+        self.assertIn('Semester Fee Notice', html)
+        self.assertIn('Quick Campus Info', html)
 
     def test_dashboard_lists_latest_published_notices(self):
         author = User.objects.create_user(username='admin_notice', password='x12345678', is_staff=True)
@@ -6031,6 +6017,9 @@ class SecurityAuditTest(TestCase):
             (reverse('book_transport_ticket'), 'POST'),
             (reverse('book_appointment'), 'POST'),
             (reverse('api_club_join'), 'POST'),
+            # Dashboard — AI routine extraction + academic calendar API
+            (reverse('api_routine_extract'), 'POST'),
+            (reverse('api_calendar_events'), 'GET'),
             # Medical chat (patient) + queue (staff)
             (reverse('api_medical_chat_threads'), 'GET'),
             (reverse('api_medical_chat_start'), 'POST'),
@@ -6776,3 +6765,206 @@ class SeedDemoUsersCommandTest(TestCase):
         self.assertTrue(User.objects.get(username='admin').check_password('S3cret!x'))
         # student keeps its documented password
         self.assertTrue(User.objects.get(username='student').check_password('student123'))
+
+
+class RoutineParserTest(SimpleTestCase):
+    """services.routine_parser — schedule normalisation helpers."""
+
+    def test_to_24h_converts_am_pm(self):
+        from services.routine_parser import to_24h
+        self.assertEqual(to_24h('8:30 AM'), '08:30')
+        self.assertEqual(to_24h('3:00 PM'), '15:00')
+        self.assertEqual(to_24h('12:00 AM'), '00:00')
+        self.assertEqual(to_24h('12:30 PM'), '12:30')
+        self.assertEqual(to_24h('14:05'), '14:05')
+        self.assertEqual(to_24h('9.30'), '09:30')
+        self.assertIsNone(to_24h('noon'))
+        self.assertIsNone(to_24h(''))
+
+    def test_normalize_schedule_canonical(self):
+        from services.routine_parser import normalize_schedule
+        raw = {'days': [{'day': 'Sunday', 'slots': [
+            {'start': '8:30 AM', 'end': '10:00 AM', 'course': 'CSE-1101', 'room': '201'},
+        ]}]}
+        out = normalize_schedule(raw)
+        self.assertEqual(out['days'][0]['day'], 'Sun')
+        self.assertEqual(out['days'][0]['slots'][0]['start'], '08:30')
+        self.assertEqual(out['days'][0]['slots'][0]['end'], '10:00')
+        self.assertEqual(out['days'][0]['slots'][0]['course'], 'CSE-1101')
+        self.assertEqual(out['days'][0]['slots'][0]['room'], '201')
+
+    def test_normalize_schedule_accepts_day_keyed_dict(self):
+        from services.routine_parser import normalize_schedule
+        raw = {'Mon': [{'start': '09:00', 'end': '10:30', 'course': 'MATH-101'}]}
+        out = normalize_schedule(raw)
+        self.assertEqual(out['days'][0]['day'], 'Mon')
+        self.assertEqual(out['days'][0]['slots'][0]['course'], 'MATH-101')
+
+    def test_normalize_schedule_orders_days_saturday_first(self):
+        from services.routine_parser import normalize_schedule
+        raw = {'days': [
+            {'day': 'Mon', 'slots': [{'start': '09:00', 'end': '10:00', 'course': 'A'}]},
+            {'day': 'Sat', 'slots': [{'start': '09:00', 'end': '10:00', 'course': 'B'}]},
+        ]}
+        out = normalize_schedule(raw)
+        self.assertEqual([d['day'] for d in out['days']], ['Sat', 'Mon'])
+
+    def test_normalize_schedule_rejects_garbage(self):
+        from services.routine_parser import normalize_schedule
+        self.assertIsNone(normalize_schedule(None))
+        self.assertIsNone(normalize_schedule('nonsense'))
+        self.assertIsNone(normalize_schedule({'days': []}))
+        self.assertIsNone(normalize_schedule({'days': [
+            {'day': 'Mon', 'slots': [{'start': 'x', 'end': 'y'}]},
+        ]}))
+
+    def test_normalize_schedule_drops_bad_slots_keeps_good(self):
+        from services.routine_parser import normalize_schedule
+        raw = {'days': [{'day': 'Sun', 'slots': [
+            {'start': 'bad', 'end': '10:00', 'course': 'A'},
+            {'start': '11:00', 'end': '12:30', 'course': 'B'},
+        ]}]}
+        out = normalize_schedule(raw)
+        self.assertEqual(len(out['days'][0]['slots']), 1)
+        self.assertEqual(out['days'][0]['slots'][0]['course'], 'B')
+
+
+class RoutineExtractApiTest(TestCase):
+    """POST /api/routine/extract/ — AI routine extraction + persistence."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='routine_ai', password='x12345678')
+        self.client.force_login(self.user)
+
+    def _image(self, name='routine.png'):
+        return SimpleUploadedFile(name, b'\x89PNG\r\n\x1a\n' + b'0' * 64, content_type='image/png')
+
+    SCHEDULE = {'days': [{'day': 'Sun', 'slots': [
+        {'start': '08:30', 'end': '10:00', 'course': 'CSE-1101', 'room': '201'},
+    ]}]}
+
+    @override_settings(OPENROUTER_API_KEY='test-key')
+    def test_extract_returns_schedule_without_saving(self):
+        with mock.patch('core.views.extract_routine_schedule', return_value=self.SCHEDULE) as extractor:
+            response = self.client.post(reverse('api_routine_extract'), {'file': self._image()})
+        extractor.assert_called_once()
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertFalse(data['saved'])
+        self.assertEqual(data['schedule']['days'][0]['day'], 'Sun')
+        self.assertFalse(Routine.objects.filter(user=self.user).exists())
+
+    @override_settings(OPENROUTER_API_KEY='test-key')
+    def test_extract_with_save_persists_routine(self):
+        with mock.patch('core.views.extract_routine_schedule', return_value=self.SCHEDULE):
+            response = self.client.post(
+                reverse('api_routine_extract'), {'file': self._image(), 'save': '1'},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['saved'])
+        routine = Routine.objects.get(user=self.user)
+        self.assertEqual(routine.schedule['days'][0]['slots'][0]['course'], 'CSE-1101')
+        self.assertEqual(routine.source_name, 'routine.png')
+
+    @override_settings(OPENROUTER_API_KEY='')
+    def test_extract_requires_provider(self):
+        response = self.client.post(reverse('api_routine_extract'), {'file': self._image()})
+        self.assertEqual(response.status_code, 503)
+
+    def test_extract_rejects_bad_extension(self):
+        bad = SimpleUploadedFile('notes.txt', b'hello', content_type='text/plain')
+        response = self.client.post(reverse('api_routine_extract'), {'file': bad})
+        self.assertEqual(response.status_code, 400)
+
+    def test_extract_requires_file(self):
+        response = self.client.post(reverse('api_routine_extract'), {})
+        self.assertEqual(response.status_code, 400)
+
+    def test_extract_requires_login(self):
+        self.client.logout()
+        response = self.client.post(reverse('api_routine_extract'), {})
+        self.assertEqual(response.status_code, 302)
+
+    @override_settings(OPENROUTER_API_KEY='test-key')
+    def test_extract_handles_provider_failure(self):
+        from services.openrouter import OpenRouterRateLimitError
+        with mock.patch(
+            'core.views.extract_routine_schedule',
+            side_effect=OpenRouterRateLimitError('slow down'),
+        ):
+            response = self.client.post(reverse('api_routine_extract'), {'file': self._image()})
+        self.assertEqual(response.status_code, 502)
+
+
+class CalendarApiTest(TestCase):
+    """GET /api/calendar/events/ — month-scoped academic events."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='cal_user', password='x12345678')
+        self.client.force_login(self.user)
+
+    def test_returns_events_for_requested_month(self):
+        AcademicEvent.objects.create(title='Midterm Exams', category='exam', event_date=date(2026, 4, 12))
+        AcademicEvent.objects.create(title='Other Month', category='event', event_date=date(2026, 5, 3))
+        response = self.client.get(reverse('api_calendar_events'), {'month': '2026-04'})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['month_name'], 'April')
+        self.assertEqual(data['year'], 2026)
+        self.assertEqual(data['month'], 4)
+        self.assertEqual(data['days_in_month'], 30)
+        self.assertIn('12', data['events_by_day'])
+        self.assertNotIn('3', data['events_by_day'])
+        self.assertEqual(data['events_by_day']['12'][0]['category'], 'exam')
+
+    def test_invalid_month_falls_back_to_current(self):
+        response = self.client.get(reverse('api_calendar_events'), {'month': 'garbage'})
+        data = response.json()
+        self.assertIn('month_name', data)
+        self.assertIn('events_by_day', data)
+
+    def test_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse('api_calendar_events'))
+        self.assertEqual(response.status_code, 302)
+
+
+class RoutineSettingsTabTest(TestCase):
+    """Settings Routine tab — preview, manual JSON save, clear."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='routine_settings', password='x12345678')
+        self.client.force_login(self.user)
+
+    def test_routine_tab_renders(self):
+        html = self.client.get(reverse('settings') + '?tab=routine').content.decode()
+        self.assertIn('id="tab-routine"', html)
+        self.assertIn('routine-upload-form', html)
+        self.assertIn('Paste Schedule JSON', html)
+
+    def test_manual_json_save(self):
+        payload = json.dumps({'days': [{'day': 'Sun', 'slots': [
+            {'start': '09:00', 'end': '10:30', 'course': 'CSE-1101', 'room': '201'},
+        ]}]})
+        response = self.client.post(
+            reverse('settings'), {'form': 'routine_json', 'schedule_json': payload},
+        )
+        self.assertEqual(response.status_code, 200)
+        routine = Routine.objects.get(user=self.user)
+        self.assertEqual(routine.schedule['days'][0]['slots'][0]['course'], 'CSE-1101')
+        self.assertEqual(routine.source_name, 'manual')
+        self.assertContains(response, 'Your class routine has been saved.')
+
+    def test_manual_json_rejects_invalid(self):
+        response = self.client.post(
+            reverse('settings'), {'form': 'routine_json', 'schedule_json': 'not-json'},
+        )
+        self.assertFalse(Routine.objects.filter(user=self.user).exists())
+        self.assertContains(response, 'not valid JSON')
+
+    def test_clear_routine(self):
+        Routine.objects.create(user=self.user, schedule={'days': []}, source_name='manual')
+        response = self.client.post(reverse('settings'), {'form': 'routine_clear'})
+        self.assertFalse(Routine.objects.filter(user=self.user).exists())
+        self.assertContains(response, 'has been removed')
