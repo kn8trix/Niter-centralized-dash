@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 # Render build script — invoked by the render.yaml Blueprint (`buildCommand: ./build.sh`).
-# Installs dependencies and collects static assets (WhiteNoise). Database
-# migrations intentionally run in the release phase (`releaseCommand` in
-# render.yaml): the release command executes after the build succeeds and
-# BEFORE the new version starts serving, so a failed migration aborts the
-# deploy while the current release keeps serving traffic.
+# Installs dependencies, collects static assets (WhiteNoise), applies migrations,
+# and seeds the demo users (admin/student) so every environment has working
+# login credentials from the first deploy.
 #
 # - set -o errexit: any failing step aborts the build immediately.
 # - set -o pipefail: a failure inside a pipeline also aborts the build.
 # - RENDER_BUILD=true: settings.py uses a throwaway SECRET_KEY placeholder for
-#   the build phase only (collectstatic runs before the service's generated
-#   secret is injected); the runtime start command never sets it.
+#   the build phase only (collectstatic/migrate/seed run before the service's
+#   generated secret is injected); the runtime start command never sets it.
 set -o errexit
 set -o pipefail
 
@@ -36,13 +34,16 @@ echo "==> Installing Python dependencies"
 echo "==> Collecting static assets (WhiteNoise -> staticfiles/)"
 RENDER_BUILD=true "$PYTHON" manage.py collectstatic --noinput
 
-# Supabase deployments: when SUPABASE_DB_URL is supplied, apply migrations
-# against it during the build (config/settings.py forces sslmode=require).
-# The render.yaml releaseCommand also runs `migrate --noinput` idempotently
-# for the Render-managed Postgres path, so both databases stay in sync.
-if [ -n "${SUPABASE_DB_URL:-}" ]; then
-    echo "==> Applying migrations against SUPABASE_DB_URL"
-    RENDER_BUILD=true "$PYTHON" manage.py migrate --noinput
-fi
+# Migrations run against whichever database is configured — SUPABASE_DB_URL when
+# set, otherwise DATABASE_URL (the Render-managed Postgres). The render.yaml
+# releaseCommand also runs `migrate --noinput` idempotently before the new
+# release serves, so an already-migrated database is a no-op here.
+echo "==> Applying database migrations"
+RENDER_BUILD=true "$PYTHON" manage.py migrate --noinput
+
+# Seed the demo accounts (idempotent — existing users are never touched):
+# admin/admin123 (superuser + staff) and student/student123.
+echo "==> Seeding demo users"
+RENDER_BUILD=true "$PYTHON" manage.py seed_demo_users
 
 echo "==> Build complete"
