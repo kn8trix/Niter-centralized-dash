@@ -5,12 +5,13 @@
 {% block header %}Reports & Feedback{% endblock %}
 
 {% block content %}
+{% include 'partials/toasts.html' %}
 <div class="max-w-4xl mx-auto space-y-6">
     <!-- Intro -->
     <div class="flex flex-col sm:flex-row sm:items-center gap-3">
         <div class="flex-1">
             <h2 class="text-lg font-semibold tracking-tight">Report an issue or share feedback</h2>
-            <p class="text-sm text-main/60 mt-0.5">Academic, facility, and technical issues — staff review every submission and reply here.</p>
+            <p class="text-sm text-main/60 mt-0.5">Academic, facility, medical, technical, or general — staff review every submission and reply here.</p>
         </div>
         <a href="{{ ENDPOINTS.reports_admin }}" class="{% if not user.is_staff %}hidden{% endif %} inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-card text-sm font-medium hover:bg-base transition-colors">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
@@ -33,20 +34,36 @@
                 <input id="report-title" name="title" type="text" required maxlength="200" placeholder="e.g. Broken projector in Room D-205"
                        class="w-full bg-base border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all">
             </div>
-            <div>
-                <label for="report-category" class="block text-sm font-medium mb-1.5">Category</label>
-                <select id="report-category" name="category" required
-                        class="w-full bg-base border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all">
-                    <option value="" disabled selected>Select a category…</option>
-                    {% for code, label in categories %}
-                    <option value="{{ code }}">{{ label }}</option>
-                    {% endfor %}
-                </select>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="report-category" class="block text-sm font-medium mb-1.5">Category</label>
+                    <select id="report-category" name="category" required
+                            class="w-full bg-base border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all">
+                        <option value="" disabled selected>Select a category…</option>
+                        {% for code, label in categories %}
+                        <option value="{{ code }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="report-severity" class="block text-sm font-medium mb-1.5">Severity</label>
+                    <select id="report-severity" name="severity"
+                            class="w-full bg-base border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all">
+                        {% for code, label in severities %}
+                        <option value="{{ code }}" {% if code == 'medium' %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
             </div>
             <div>
                 <label for="report-description" class="block text-sm font-medium mb-1.5">Description</label>
                 <textarea id="report-description" name="description" required rows="5" placeholder="Describe the issue in detail — what happened, where, and when…"
                           class="w-full bg-base border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all resize-y"></textarea>
+            </div>
+            <div>
+                <label for="report-attachment" class="block text-sm font-medium mb-1.5">Attachment <span class="text-main/40 font-normal">(optional — screenshot, PDF, or document, max 10 MB)</span></label>
+                <input id="report-attachment" name="attachment" type="file" accept="image/*,.pdf,.txt,.doc,.docx"
+                       class="w-full bg-base border border-border rounded-lg px-4 py-2.5 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-chip file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-main/80 hover:file:bg-base/80 cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all">
             </div>
             <div class="flex items-center gap-3">
                 <button type="submit"
@@ -73,12 +90,20 @@
                 <div class="flex flex-wrap items-start justify-between gap-2">
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-chip text-main/70">{{ report.get_category_display }}</span>
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium {% if report.severity == 'critical' %}bg-dangerSoft text-danger{% elif report.severity == 'high' %}bg-warningSoft text-warning{% else %}bg-chip text-main/70{% endif %}">{{ report.get_severity_display }} priority</span>
                         {% include 'reports/_status_badge.html' %}
                     </div>
                     <time class="text-xs text-main/50 shrink-0">{{ report.created_at|date:"M j, Y · g:i A" }}</time>
                 </div>
                 <h4 class="font-medium mt-3">{{ report.title }}</h4>
                 <p class="text-sm text-main/70 mt-1.5 whitespace-pre-wrap">{{ report.description }}</p>
+                {% if report.attachment %}
+                <a href="{{ report.attachment.url }}" target="_blank" rel="noopener"
+                   class="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
+                    {{ report.attachment_name|default:"Attachment" }}
+                </a>
+                {% endif %}
                 {% if report.admin_notes %}
                 <div class="mt-4 bg-base border border-border rounded-lg p-4">
                     <p class="text-xs font-medium text-main/50 uppercase tracking-wider mb-1.5">Staff response</p>
@@ -138,9 +163,19 @@
         return '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-chip text-main/70">' + esc(label) + '</span>';
     }
 
+    function severityChip(report) {
+        const color = report.severity === 'critical' ? 'bg-dangerSoft text-danger'
+            : report.severity === 'high' ? 'bg-warningSoft text-warning'
+            : 'bg-chip text-main/70';
+        return '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ' + color + '">' + esc(report.severity_label) + ' priority</span>';
+    }
+
     function cardHtml(report) {
         const staffNotes = report.admin_notes
             ? '<div class="mt-4 bg-base border border-border rounded-lg p-4"><p class="text-xs font-medium text-main/50 uppercase tracking-wider mb-1.5">Staff response</p><p class="text-sm text-main/80 whitespace-pre-wrap">' + esc(report.admin_notes) + '</p></div>'
+            : '';
+        const attachmentLink = report.attachment
+            ? '<a href="' + esc(report.attachment) + '" target="_blank" rel="noopener" class="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>' + esc(report.attachment_name || 'Attachment') + '</a>'
             : '';
         const created = new Date(report.created_at);
         const stamp = created.toLocaleString(undefined, {
@@ -149,11 +184,11 @@
         });
         return '<article data-report-id="' + report.id + '" data-status="' + esc(report.status) + '" class="bg-card rounded-xl border border-border p-5 hover:border-accent-hover transition-colors">'
             + '<div class="flex flex-wrap items-start justify-between gap-2">'
-            + '<div class="flex items-center gap-2 flex-wrap">' + categoryChip(report.category_label) + statusBadge(report.status) + '</div>'
+            + '<div class="flex items-center gap-2 flex-wrap">' + categoryChip(report.category_label) + severityChip(report) + statusBadge(report.status) + '</div>'
             + '<time class="text-xs text-main/50 shrink-0">' + esc(stamp) + '</time></div>'
             + '<h4 class="font-medium mt-3">' + esc(report.title) + '</h4>'
             + '<p class="text-sm text-main/70 mt-1.5 whitespace-pre-wrap">' + esc(report.description) + '</p>'
-            + staffNotes + '</article>';
+            + attachmentLink + staffNotes + '</article>';
     }
 
     form.addEventListener('submit', async (e) => {
@@ -161,35 +196,38 @@
         const btn = form.querySelector('button[type="submit"]');
         btn.disabled = true;
         msg.textContent = 'Submitting…';
+        msg.classList.remove('text-success', 'text-danger');
         try {
+            const body = new FormData();
+            body.append('title', document.getElementById('report-title').value);
+            body.append('category', document.getElementById('report-category').value);
+            body.append('severity', document.getElementById('report-severity').value);
+            body.append('description', document.getElementById('report-description').value);
+            const fileInput = document.getElementById('report-attachment');
+            if (fileInput.files && fileInput.files[0]) body.append('attachment', fileInput.files[0]);
+
             const resp = await fetch(API_URL, {
                 method: 'POST',
                 credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCookie('csrftoken'),
-                },
-                body: JSON.stringify({
-                    title: document.getElementById('report-title').value,
-                    category: document.getElementById('report-category').value,
-                    description: document.getElementById('report-description').value,
-                }),
+                headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                body,
             });
             const data = await resp.json();
-            if (data.status === 'success') {
+            if (data.success) {
                 if (emptyState) emptyState.remove();
-                history.insertAdjacentHTML('afterbegin', cardHtml(data.report));
+                history.insertAdjacentHTML('afterbegin', cardHtml(data.data.report));
                 form.reset();
-                msg.textContent = 'Report submitted ✓';
-                msg.classList.add('text-success');
-                setTimeout(() => { msg.textContent = ''; msg.classList.remove('text-success'); }, 3000);
+                msg.textContent = '';
+                window.showToast(data.message || 'Report submitted ✓', 'success');
             } else {
                 msg.textContent = data.message || 'Could not submit report.';
                 msg.classList.add('text-danger');
+                window.showToast(data.message || 'Could not submit report.', 'error');
             }
         } catch (err) {
             msg.textContent = 'Could not submit report.';
             msg.classList.add('text-danger');
+            window.showToast('Network error — please try again.', 'error');
         } finally {
             btn.disabled = false;
         }

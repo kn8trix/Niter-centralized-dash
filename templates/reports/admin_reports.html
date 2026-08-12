@@ -39,6 +39,15 @@
                 {% endfor %}
             </select>
         </div>
+        <div class="flex-1">
+            <label for="filter-severity" class="block text-xs font-medium text-main/50 uppercase tracking-wider mb-1.5">Severity</label>
+            <select id="filter-severity" class="w-full bg-base border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all">
+                <option value="all">All severities</option>
+                {% for code, label in severities %}
+                <option value="{{ code }}" {% if active_severity == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
         <div class="sm:self-end">
             <p id="filter-count" class="text-sm text-main/50 pt-2"></p>
         </div>
@@ -52,6 +61,7 @@
                     <tr class="text-left text-xs text-main/50 uppercase tracking-wider border-b border-border">
                         <th class="px-4 py-3 font-medium">Student</th>
                         <th class="px-4 py-3 font-medium">Category</th>
+                        <th class="px-4 py-3 font-medium">Severity</th>
                         <th class="px-4 py-3 font-medium">Report</th>
                         <th class="px-4 py-3 font-medium">Status</th>
                         <th class="px-4 py-3 font-medium">Submitted</th>
@@ -60,7 +70,7 @@
                 </thead>
                 <tbody id="report-rows">
                     {% for report in reports %}
-                    <tr data-report-id="{{ report.id }}" data-status="{{ report.status }}" data-category="{{ report.category }}" class="border-b border-border/60 last:border-0 align-top hover:bg-base/60 transition-colors">
+                    <tr data-report-id="{{ report.id }}" data-status="{{ report.status }}" data-category="{{ report.category }}" data-severity="{{ report.severity }}" class="border-b border-border/60 last:border-0 align-top hover:bg-base/60 transition-colors">
                         <td class="px-4 py-3.5 whitespace-nowrap">
                             <p class="font-medium">{{ report.user.get_full_name|default:report.user.username }}</p>
                             <p class="text-xs text-main/50">
@@ -70,9 +80,18 @@
                         <td class="px-4 py-3.5 whitespace-nowrap">
                             <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-chip text-main/70">{{ report.get_category_display }}</span>
                         </td>
+                        <td class="px-4 py-3.5 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium {% if report.severity == 'critical' %}bg-dangerSoft text-danger{% elif report.severity == 'high' %}bg-warningSoft text-warning{% else %}bg-chip text-main/70{% endif %}">{{ report.get_severity_display }}</span>
+                        </td>
                         <td class="px-4 py-3.5 min-w-[260px]">
                             <p class="font-medium">{{ report.title }}</p>
                             <p class="text-main/60 text-xs mt-1 whitespace-pre-wrap line-clamp-3">{{ report.description }}</p>
+                            {% if report.attachment %}
+                            <a href="{{ report.attachment.url }}" target="_blank" rel="noopener" class="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
+                                {{ report.attachment_name|default:"Attachment" }}
+                            </a>
+                            {% endif %}
                             <div class="mt-2 text-xs text-main/50" data-notes-display>
                                 {% if report.admin_notes %}<span class="text-main/70"><span class="font-medium">Staff notes:</span> {{ report.admin_notes }}</span>{% else %}<span class="italic">No staff notes yet.</span>{% endif %}
                             </div>
@@ -101,7 +120,7 @@
                     </tr>
                     {% empty %}
                     <tr id="empty-row">
-                        <td colspan="6" class="px-4 py-12 text-center">
+                        <td colspan="7" class="px-4 py-12 text-center">
                             <svg class="w-10 h-10 mx-auto text-main/20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                             <p class="text-main/50 text-sm mt-3">No reports match these filters.</p>
                         </td>
@@ -118,6 +137,7 @@
     const rows = Array.from(document.querySelectorAll('#report-rows tr[data-report-id]'));
     const statusFilter = document.getElementById('filter-status');
     const categoryFilter = document.getElementById('filter-category');
+    const severityFilter = document.getElementById('filter-severity');
     const countEl = document.getElementById('filter-count');
     const emptyRow = document.getElementById('empty-row');
 
@@ -135,9 +155,12 @@
     function applyFilters() {
         const s = statusFilter.value;
         const c = categoryFilter.value;
+        const sev = severityFilter.value;
         let visible = 0;
         rows.forEach(row => {
-            const show = (s === 'all' || row.dataset.status === s) && (c === 'all' || row.dataset.category === c);
+            const show = (s === 'all' || row.dataset.status === s)
+                && (c === 'all' || row.dataset.category === c)
+                && (sev === 'all' || row.dataset.severity === sev);
             row.style.display = show ? '' : 'none';
             if (show) visible++;
         });
@@ -147,6 +170,7 @@
 
     statusFilter.addEventListener('change', applyFilters);
     categoryFilter.addEventListener('change', applyFilters);
+    severityFilter.addEventListener('change', applyFilters);
     applyFilters();
 
     // ---- Inline status + notes updates (PATCH) ----
@@ -177,22 +201,26 @@
                     }),
                 });
                 const data = await resp.json();
-                if (data.status === 'success') {
-                    row.dataset.status = data.report.status;
-                    badge.innerHTML = statusBadge(data.report.status, data.report.status_label);
-                    notesDisplay.innerHTML = data.report.admin_notes
-                        ? '<span class="text-main/70"><span class="font-medium">Staff notes:</span> ' + esc(data.report.admin_notes) + '</span>'
+                if (data.success) {
+                    const report = data.data.report;
+                    row.dataset.status = report.status;
+                    badge.innerHTML = statusBadge(report.status, report.status_label);
+                    notesDisplay.innerHTML = report.admin_notes
+                        ? '<span class="text-main/70"><span class="font-medium">Staff notes:</span> ' + esc(report.admin_notes) + '</span>'
                         : '<span class="italic">No staff notes yet.</span>';
                     msgEl.textContent = 'Saved ✓';
                     msgEl.classList.add('text-success');
+                    window.showToast(data.message || 'Report updated.', 'success');
                     applyFilters();
                 } else {
                     msgEl.textContent = data.message || 'Update failed.';
                     msgEl.classList.add('text-danger');
+                    window.showToast(data.message || 'Update failed.', 'error');
                 }
             } catch (err) {
                 msgEl.textContent = 'Update failed.';
                 msgEl.classList.add('text-danger');
+                window.showToast('Network error — please try again.', 'error');
             } finally {
                 btn.disabled = false;
                 setTimeout(() => { if (msgEl.textContent !== 'Update failed.') msgEl.textContent = ''; }, 2500);

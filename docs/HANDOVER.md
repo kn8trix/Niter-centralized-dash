@@ -4611,3 +4611,96 @@ covered by existing tests.
 - `core/google_service.py`, `core/views.py`, `core/urls.py`, `core/tests.py`
 - `templates/notes/notes_engine.html`, `render.yaml`
 - `docs/HANDOVER.md` (this section)
+
+---
+
+## 84. System Audit + Reports Module Upgrade (severity / attachments / envelope)
+
+**Date:** 13 August 2026  
+**Branch:** main
+
+### Audit outcome — what was already in place (no changes needed)
+
+A full-system audit against the "complete audit + fix RBAC + build missing UI"
+brief found most requested items already implemented and tested. Recorded here
+so nobody re-builds them:
+
+| Requirement | Status | Where |
+|---|---|---|
+| Academic calendar (monthly grid, admin-managed events) | ✅ exists | `api_academic_calendar` (§73), color-coded dots red/orange/blue/green for Exam/Holiday/Assignment/Event in `static/css/dashboard.css` |
+| RBAC role dispatch + login redirect | ✅ exists | `core/roles.py`, `core/middleware.py`, §77 |
+| Distinct Admin / Student / Club layouts | ✅ exists | `admin/admin_base.html`, `base.html`, `club/club_base.html`; `/dashboard/club` is club-only (`club_access_required`) |
+| Admin area: Users, Reports, Database Stats, Calendar Manager, Builder/CMS, Club Accounts | ✅ exists | `/dashboard/admin/*` (§77) |
+| Medical booking (doctor/date/time-slot state, validation, toasts) | ✅ wired | `templates/medical/booking.html` — reported bug was from stale deployed code |
+| Google Drive/Sheets auto-refresh on Notes | ✅ fixed | §83 (previous commit) |
+
+### Reports module upgrade (the real gap — built now)
+
+**Model (`Report`)** — new fields + expanded categories (migration `0035`):
+
+- `severity` — `low / medium / high / critical`, default `medium`.
+- `attachment` — `FileField` → `reports/%Y/%m/`, optional, 10 MB cap enforced in
+  the API (not just the form).
+- `attachment_name` — original filename for display, truncated to 255 chars and
+  stripped of path components server-side.
+- Categories now `academic / facility / medical / technical / general`; legacy
+  `other` rows remapped to `general` by the migration's `RunPython` step.
+
+**API — canonical envelope.** All four reports endpoints now return the
+standard `{success: boolean, message: string, data: any}` shape with proper
+HTTP status codes (400/404/405):
+
+- `GET  /api/reports/` → `data: {count, reports}` (own reports only)
+- `POST /api/reports/` → `data: {report}` — multipart or JSON; accepts
+  `title`, `category`, `severity`, `description`, optional `attachment`
+- `GET  /api/admin/reports/?status=&category=&severity=` → `data: {count, reports}` (staff)
+- `PATCH /api/admin/reports/<id>/` → `data: {report}` — status + admin_notes
+  still push a real-time `Notification` (category `report`) to the student
+
+> **Convention note:** the rest of the app (meals, transport, medical, notes)
+> still uses the legacy `{status: 'success', …}` envelope. Reports is the
+> reference implementation of the new convention — migrate other modules
+> incrementally, updating their JS consumers + tests together.
+
+**Upload hardening** (defense in depth):
+
+- Size cap 10 MB checked in the view; `config/settings.py` now sets
+  `DATA_UPLOAD_MAX_MEMORY_SIZE = 20 MB` so Django's own HTML 400
+  (`RequestDataTooBig`, default 2.5 MB) doesn't preempt the JSON error.
+- `content_type` whitelist **and** extension whitelist (`.html/.svg/.js/.xml`
+  rejected even with a spoofed image content-type) — prevents serving
+  same-origin HTML/SVG (stored XSS) from the Django-served `/media/`.
+
+**UI:**
+
+- Student page (`/dashboard/student/reports/`): category + severity selects,
+  optional file picker, FormData submit, toast on success/error, severity chip
+  + attachment link in history cards.
+- Admin page (`/dashboard/admin/reports/`): severity column + client-side
+  severity filter (server-side `?severity=` support added to the view + API),
+  attachment links, toast on update.
+- **Toast fix:** `templates/admin/admin_base.html` now includes
+  `partials/toasts.html` — previously `window.showToast` was undefined on all
+  admin pages, so the Calendar manager's toast calls threw `ReferenceError`.
+  (`partials/toasts.html` is placement-agnostic: it looks up `#app-toasts` at
+  call time.)
+
+### Validation
+
+- New tests: severity default/validation, medical category, multipart
+  attachment accept, >10 MB reject, unsupported-type reject, dangerous
+  extension with spoofed content-type reject, long-filename truncation, and
+  canonical-envelope assertions across all four endpoints.
+- **716 tests OK** (was 707) · `manage.py check` clean · migration `0035`
+  applied to dev DB · live smoke: student login → role-home redirect to
+  `/dashboard/student/`, reports page 200 with severity/attachment/toast
+  markers, `GET /api/reports/` returns the canonical envelope.
+
+### Files Modified
+
+- `core/models.py`, `core/views.py`, `core/tests.py`, `core/admin.py`
+- `core/migrations/0035_report_severity_attachment_categories.py` (new)
+- `config/settings.py` (`DATA_UPLOAD_MAX_MEMORY_SIZE`)
+- `templates/reports/student_reports.html`, `templates/reports/admin_reports.html`
+- `templates/admin/admin_base.html` (toasts include)
+- `docs/HANDOVER.md` (this section)

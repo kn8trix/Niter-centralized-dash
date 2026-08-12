@@ -41,7 +41,7 @@ from .models import (
 class ReportAdmin(admin.ModelAdmin):
     """Student-submitted reports/feedback — triage status and respond."""
 
-    list_display = ('title', 'user', 'category', 'status', 'created_at', 'updated_at')
+    list_display = ('title', 'user', 'category', 'severity', 'status', 'created_at', 'updated_at')
     list_filter = ('status', 'category', 'created_at')
     search_fields = ('title', 'description', 'admin_notes', 'user__username', 'user__email')
     list_select_related = ('user',)

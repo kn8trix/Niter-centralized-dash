@@ -1,6 +1,7 @@
 import calendar
 import colorsys
 import json
+import os
 import re
 import secrets
 from datetime import date, datetime, timedelta
@@ -4539,10 +4540,14 @@ def _serialize_report(report, include_user=False):
         'title': report.title,
         'category': report.category,
         'category_label': report.get_category_display(),
+        'severity': report.severity,
+        'severity_label': report.get_severity_display(),
         'description': report.description,
         'status': report.status,
         'status_label': report.get_status_display(),
         'admin_notes': report.admin_notes,
+        'attachment': report.attachment.url if report.attachment else '',
+        'attachment_name': report.attachment_name or '',
         'created_at': report.created_at.isoformat(),
         'updated_at': report.updated_at.isoformat(),
     }
@@ -4574,6 +4579,7 @@ def reports_student_view(request):
     return render(request, 'reports/student_reports.html', {
         'reports': reports,
         'categories': Report.CATEGORY_CHOICES,
+        'severities': Report.SEVERITY_CHOICES,
     })
 
 
@@ -4596,32 +4602,66 @@ def reports_admin_view(request):
         queryset = queryset.filter(category=active_category)
     else:
         active_category = 'all'
+    active_severity = (request.GET.get('severity') or '').strip().lower()
+    if active_severity in dict(Report.SEVERITY_CHOICES):
+        queryset = queryset.filter(severity=active_severity)
+    else:
+        active_severity = 'all'
     return render(request, 'reports/admin_reports.html', {
         'reports': queryset,
         'categories': Report.CATEGORY_CHOICES,
+        'severities': Report.SEVERITY_CHOICES,
         'status_choices': Report.STATUS_CHOICES,
         'active_status': active_status,
         'active_category': active_category,
+        'active_severity': active_severity,
     })
+
+
+REPORT_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+REPORT_ATTACHMENT_ALLOWED_TYPES = {
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic',
+    'application/pdf',
+    'text/plain',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+}
+# Extension whitelist complements the content-type check: content-type headers
+# are client-controlled, but Django serves media with the type guessed from the
+# file extension — so dangerous extensions (.html/.svg/.js/…) are rejected
+# outright regardless of what the client claims.
+REPORT_ATTACHMENT_ALLOWED_EXTENSIONS = {
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif',
+    '.pdf', '.txt', '.doc', '.docx',
+}
+
+
+def _report_api_error(message, status=400):
+    """Canonical error envelope ``{success: false, message, data: null}``."""
+    return JsonResponse({'success': False, 'message': message, 'data': None}, status=status)
 
 
 @login_required
 def api_reports(request):
     """Student Reports API — ``GET`` lists own reports, ``POST`` submits one.
 
-    POST accepts a JSON body or a regular form (``title``, ``category``,
-    ``description``); new rows always start with status ``pending`` and no
-    admin notes. Only the signed-in student's own reports are ever visible.
+    POST accepts a JSON body or a multipart form (``title``, ``category``,
+    ``severity``, ``description``, optional ``attachment`` file ≤ 10 MB); new
+    rows always start with status ``pending`` and no admin notes. Only the
+    signed-in student's own reports are ever visible. All responses use the
+    canonical ``{success, data, message}`` envelope.
     """
     if request.method == 'GET':
         reports = request.user.reports.select_related('user').order_by('-created_at', '-id')
+        rows = [_serialize_report(r) for r in reports]
         return JsonResponse({
-            'status': 'success',
-            'reports': [_serialize_report(r) for r in reports],
+            'success': True,
+            'message': '',
+            'data': {'count': len(rows), 'reports': rows},
         })
 
     if request.method != 'POST':
-        return JsonResponse({'status': 'error', 'message': 'POST or GET required'}, status=405)
+        return _report_api_error('POST or GET required', 405)
 
     try:
         payload = json.loads(request.body or b'{}')
@@ -4631,26 +4671,45 @@ def api_reports(request):
     title = (payload.get('title') or request.POST.get('title') or '').strip()
     description = (payload.get('description') or request.POST.get('description') or '').strip()
     category = (payload.get('category') or request.POST.get('category') or '').strip().lower()
+    severity = (payload.get('severity') or request.POST.get('severity') or '').strip().lower() or 'medium'
 
     if not title:
-        return JsonResponse({'status': 'error', 'message': 'Report title is required.'}, status=400)
+        return _report_api_error('Report title is required.')
     if len(title) > 200:
-        return JsonResponse({'status': 'error', 'message': 'Report title must be 200 characters or fewer.'}, status=400)
+        return _report_api_error('Report title must be 200 characters or fewer.')
     if not description:
-        return JsonResponse({'status': 'error', 'message': 'Report description is required.'}, status=400)
+        return _report_api_error('Report description is required.')
     if category not in dict(Report.CATEGORY_CHOICES):
-        return JsonResponse({'status': 'error', 'message': 'Invalid report category.'}, status=400)
+        return _report_api_error('Invalid report category.')
+    if severity not in dict(Report.SEVERITY_CHOICES):
+        return _report_api_error('Invalid report severity.')
+
+    attachment = request.FILES.get('attachment')
+    attachment_name = ''
+    if attachment is not None:
+        if attachment.size > REPORT_ATTACHMENT_MAX_BYTES:
+            return _report_api_error('Attachment must be 10 MB or smaller.')
+        ext = os.path.splitext(attachment.name or '')[1].lower()
+        if ext not in REPORT_ATTACHMENT_ALLOWED_EXTENSIONS or \
+                attachment.content_type not in REPORT_ATTACHMENT_ALLOWED_TYPES:
+            return _report_api_error(
+                'Attachment type not allowed — use an image, PDF, text, or Word document.'
+            )
+        attachment_name = os.path.basename(attachment.name or '')[:255]
 
     report = Report.objects.create(
         user=request.user,
         title=title,
         category=category,
+        severity=severity,
         description=description,
+        attachment=attachment,
+        attachment_name=attachment_name,
     )
     return JsonResponse({
-        'status': 'success',
+        'success': True,
         'message': 'Report submitted successfully.',
-        'report': _serialize_report(report),
+        'data': {'report': _serialize_report(report)},
     })
 
 
@@ -4668,10 +4727,13 @@ def api_admin_reports(request):
     category = (request.GET.get('category') or '').strip().lower()
     if category in dict(Report.CATEGORY_CHOICES):
         queryset = queryset.filter(category=category)
+    severity = (request.GET.get('severity') or '').strip().lower()
+    if severity in dict(Report.SEVERITY_CHOICES):
+        queryset = queryset.filter(severity=severity)
     return JsonResponse({
-        'status': 'success',
-        'count': queryset.count(),
-        'reports': [_serialize_report(r, include_user=True) for r in queryset],
+        'success': True,
+        'message': '',
+        'data': {'count': queryset.count(), 'reports': [_serialize_report(r, include_user=True) for r in queryset]},
     })
 
 
@@ -4684,7 +4746,7 @@ def api_admin_report_update(request, report_id):
     (category ``report``) via their WebSocket group.
     """
     if request.method not in ('PATCH', 'POST'):
-        return JsonResponse({'status': 'error', 'message': 'PATCH or POST required'}, status=405)
+        return _report_api_error('PATCH or POST required', 405)
 
     report = get_object_or_404(Report.objects.select_related('user'), pk=report_id)
 
@@ -4699,7 +4761,7 @@ def api_admin_report_update(request, report_id):
     changes = []
     if status:
         if status not in dict(Report.STATUS_CHOICES):
-            return JsonResponse({'status': 'error', 'message': 'Invalid report status.'}, status=400)
+            return _report_api_error('Invalid report status.')
         if status != report.status:
             report.status = status
             changes.append('status')
@@ -4731,9 +4793,9 @@ def api_admin_report_update(request, report_id):
         })
 
     return JsonResponse({
-        'status': 'success',
+        'success': True,
         'message': 'Report updated.',
-        'report': _serialize_report(report, include_user=True),
+        'data': {'report': _serialize_report(report, include_user=True)},
     })
 
 

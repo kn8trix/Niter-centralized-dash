@@ -304,6 +304,11 @@ STORAGES = {
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# Report attachments allow up to 10 MB at the app level; Django's own request-
+# body cap must sit above that so the view's JSON error (not Django's HTML
+# 400 page) is what handles oversized uploads.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20 MB
+
 # --- Real-time channel layer ------------------------------------------------------
 # channels_redis when a reachable ``REDIS_URL`` is configured (multi-worker
 # production); otherwise the in-memory layer so single-process dev, tests, and

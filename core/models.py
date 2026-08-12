@@ -1508,18 +1508,27 @@ class ResearchMessage(models.Model):
 class Report(models.Model):
     """A student-submitted report/feedback item reviewed by staff.
 
-    Students submit a title, category and description; staff triage the item
-    through the status workflow (pending → in_progress → resolved / rejected)
-    and attach ``admin_notes`` as the visible response. Status changes push a
-    real-time ``Notification`` (category ``report``) to the submitting
-    student so they see the outcome without refreshing.
+    Students submit a title, category (academic/facility/medical/technical/
+    general), an optional severity level and an optional screenshot/attachment;
+    staff triage the item through the status workflow (pending → in_progress →
+    resolved / rejected) and attach ``admin_notes`` as the visible response.
+    Status changes push a real-time ``Notification`` (category ``report``) to
+    the submitting student so they see the outcome without refreshing.
     """
 
     CATEGORY_CHOICES = [
         ('academic', 'Academic'),
         ('facility', 'Facility'),
+        ('medical', 'Medical'),
         ('technical', 'Technical'),
-        ('other', 'Other'),
+        ('general', 'General'),
+    ]
+
+    SEVERITY_CHOICES = [
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+        ('critical', 'Critical'),
     ]
 
     STATUS_CHOICES = [
@@ -1542,7 +1551,26 @@ class Report(models.Model):
         choices=CATEGORY_CHOICES,
         db_index=True,
     )
+    severity = models.CharField(
+        max_length=20,
+        choices=SEVERITY_CHOICES,
+        default='medium',
+        db_index=True,
+        help_text='Low / Medium / High / Critical impact of the issue',
+    )
     description = models.TextField()
+    attachment = models.FileField(
+        upload_to='reports/%Y/%m/',
+        blank=True,
+        null=True,
+        help_text='Optional screenshot or supporting file (max 10 MB)',
+    )
+    attachment_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        help_text='Original file name of the attachment for display',
+    )
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,

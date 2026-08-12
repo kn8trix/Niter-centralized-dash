@@ -7710,6 +7710,14 @@ class ReportModelTest(TestCase):
         self.assertEqual(self.report.status, 'pending')
         self.assertEqual(self.report.get_status_display(), 'Pending')
 
+    def test_default_severity_is_medium(self):
+        self.assertEqual(self.report.severity, 'medium')
+        self.assertEqual(self.report.get_severity_display(), 'Medium')
+
+    def test_attachment_defaults_blank(self):
+        self.assertFalse(self.report.attachment)
+        self.assertEqual(self.report.attachment_name, '')
+
     def test_admin_notes_default_blank(self):
         self.assertEqual(self.report.admin_notes, '')
 
@@ -7718,7 +7726,7 @@ class ReportModelTest(TestCase):
             user=self.user, title='Older', category='academic', description='x',
         )
         newer = Report.objects.create(
-            user=self.user, title='Newer', category='other', description='y',
+            user=self.user, title='Newer', category='general', description='y',
         )
         ids = list(Report.objects.values_list('id', flat=True))
         self.assertEqual(ids[0], newer.id)
@@ -7801,14 +7809,105 @@ class ReportsModuleTest(TestCase):
         response = self._submit()
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data['status'], 'success')
-        self.assertEqual(data['report']['title'], 'Broken projector')
-        self.assertEqual(data['report']['category'], 'facility')
-        self.assertEqual(data['report']['status'], 'pending')
+        self.assertTrue(data['success'])
+        report_data = data['data']['report']
+        self.assertEqual(report_data['title'], 'Broken projector')
+        self.assertEqual(report_data['category'], 'facility')
+        self.assertEqual(report_data['severity'], 'medium')
+        self.assertEqual(report_data['severity_label'], 'Medium')
+        self.assertEqual(report_data['status'], 'pending')
         report = Report.objects.get(user=self.student_a)
         self.assertEqual(report.category, 'facility')
+        self.assertEqual(report.severity, 'medium')
         self.assertEqual(report.status, 'pending')
         self.assertEqual(report.admin_notes, '')
+
+    def test_submit_accepts_medical_category_and_high_severity(self):
+        self.client.login(username='S1001', password='student123')
+        response = self._submit(category='medical', severity='high')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['data']['report']['category'], 'medical')
+        self.assertEqual(data['data']['report']['severity'], 'high')
+
+    def test_submit_rejects_invalid_severity(self):
+        self.client.login(username='S1001', password='student123')
+        response = self._submit(severity='apocalyptic')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('severity', response.json()['message'].lower())
+        self.assertFalse(Report.objects.filter(user=self.student_a).exists())
+
+    def test_submit_rejects_oversized_attachment(self):
+        self.client.login(username='S1001', password='student123')
+        big = SimpleUploadedFile(
+            'screenshot.png', b'x' * (10 * 1024 * 1024 + 1),
+            content_type='image/png',
+        )
+        response = self.client.post(reverse('api_reports'), {
+            'title': 'With attachment', 'category': 'technical',
+            'description': 'see file', 'attachment': big,
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('10 MB', response.json()['message'])
+        self.assertFalse(Report.objects.filter(user=self.student_a).exists())
+
+    def test_submit_rejects_unsupported_attachment_type(self):
+        self.client.login(username='S1001', password='student123')
+        bad = SimpleUploadedFile('virus.exe', b'evil', content_type='application/x-msdownload')
+        response = self.client.post(reverse('api_reports'), {
+            'title': 'With attachment', 'category': 'technical',
+            'description': 'see file', 'attachment': bad,
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('not allowed', response.json()['message'])
+        self.assertFalse(Report.objects.filter(user=self.student_a).exists())
+
+    def test_submit_accepts_attachment_multipart(self):
+        self.client.login(username='S1001', password='student123')
+        shot = SimpleUploadedFile('proof.png', b'\x89PNG\r\n\x1a\n', content_type='image/png')
+        response = self.client.post(reverse('api_reports'), {
+            'title': 'With attachment', 'category': 'general',
+            'description': 'see file', 'severity': 'critical', 'attachment': shot,
+        })
+        self.assertEqual(response.status_code, 200)
+        report = Report.objects.get(user=self.student_a)
+        self.assertTrue(report.attachment)
+        self.assertEqual(report.attachment_name, 'proof.png')
+        self.assertEqual(report.severity, 'critical')
+        data = response.json()
+        self.assertEqual(data['data']['report']['attachment_name'], 'proof.png')
+        self.assertTrue(data['data']['report']['attachment'])
+
+    def test_submit_rejects_dangerous_extension_even_with_spoofed_type(self):
+        """A .html/.svg file claiming image/png is rejected by the extension check."""
+        self.client.login(username='S1001', password='student123')
+        for name, ctype in [
+            ('evil.html', 'image/png'),
+            ('bad.svg', 'image/png'),
+            ('script.js', 'text/plain'),
+        ]:
+            spoofed = SimpleUploadedFile(name, b'<script>alert(1)</script>', content_type=ctype)
+            response = self.client.post(reverse('api_reports'), {
+                'title': 'Spoof', 'category': 'technical',
+                'description': 'x', 'attachment': spoofed,
+            })
+            self.assertEqual(response.status_code, 400, msg=name)
+            self.assertIn('not allowed', response.json()['message'], msg=name)
+        self.assertFalse(Report.objects.filter(user=self.student_a).exists())
+
+    def test_submit_truncates_long_attachment_name(self):
+        self.client.login(username='S1001', password='student123')
+        long_name = 'x' * 300 + '.png'
+        shot = SimpleUploadedFile(long_name, b'\x89PNG\r\n\x1a\n', content_type='image/png')
+        response = self.client.post(reverse('api_reports'), {
+            'title': 'Long name', 'category': 'general',
+            'description': 'see file', 'attachment': shot,
+        })
+        self.assertEqual(response.status_code, 200)
+        report = Report.objects.get(user=self.student_a)
+        self.assertLessEqual(len(report.attachment_name), 255)
+        self.assertTrue(report.attachment_name.endswith('.png'))
+        self.assertEqual(report.attachment_name, response.json()['data']['report']['attachment_name'])
 
     def test_submit_accepts_form_encoding(self):
         self.client.login(username='S1001', password='student123')
@@ -7846,21 +7945,23 @@ class ReportsModuleTest(TestCase):
     # ------------------------------------------------------------------
     def test_student_list_returns_only_own_reports(self):
         mine = Report.objects.create(
-            user=self.student_a, title='Mine', category='other', description='a',
+            user=self.student_a, title='Mine', category='general', description='a',
         )
         Report.objects.create(
-            user=self.student_b, title='Theirs', category='other', description='b',
+            user=self.student_b, title='Theirs', category='general', description='b',
         )
         self.client.login(username='S1001', password='student123')
         response = self.client.get(reverse('api_reports'))
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        titles = [r['title'] for r in data['reports']]
+        self.assertTrue(data['success'])
+        titles = [r['title'] for r in data['data']['reports']]
         self.assertEqual(titles, ['Mine'])
         self.assertNotIn('Theirs', titles)
         # Own serialization never leaks the user block
-        self.assertNotIn('user', data['reports'][0])
-        self.assertEqual(data['reports'][0]['id'], mine.id)
+        self.assertNotIn('user', data['data']['reports'][0])
+        self.assertEqual(data['data']['reports'][0]['id'], mine.id)
+        self.assertEqual(data['data']['count'], 1)
 
     # ------------------------------------------------------------------
     # Admin inbox (GET /api/admin/reports/)
@@ -7881,8 +7982,9 @@ class ReportsModuleTest(TestCase):
         response = self.client.get(reverse('api_admin_reports'))
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data['count'], 2)
-        users = {r['title']: r['user'] for r in data['reports']}
+        self.assertTrue(data['success'])
+        self.assertEqual(data['data']['count'], 2)
+        users = {r['title']: r['user'] for r in data['data']['reports']}
         self.assertEqual(users['From Alice']['full_name'], 'Alice Johnson')
         self.assertEqual(users['From Alice']['student_id'], 'S1001')
         self.assertEqual(users['From Alice']['department'], 'CSE')
@@ -7898,11 +8000,11 @@ class ReportsModuleTest(TestCase):
         )
         self.client.login(username='staff', password='staffpass123')
         response = self.client.get(reverse('api_admin_reports'), {'status': 'resolved'})
-        self.assertEqual(response.json()['count'], 1)
-        self.assertEqual(response.json()['reports'][0]['title'], 'Resolved one')
+        self.assertEqual(response.json()['data']['count'], 1)
+        self.assertEqual(response.json()['data']['reports'][0]['title'], 'Resolved one')
         response = self.client.get(reverse('api_admin_reports'), {'category': 'facility', 'status': 'pending'})
-        self.assertEqual(response.json()['count'], 1)
-        self.assertEqual(response.json()['reports'][0]['title'], 'Pending one')
+        self.assertEqual(response.json()['data']['count'], 1)
+        self.assertEqual(response.json()['data']['reports'][0]['title'], 'Pending one')
 
     # ------------------------------------------------------------------
     # Admin update (PATCH /api/admin/reports/<id>/)
@@ -7935,9 +8037,9 @@ class ReportsModuleTest(TestCase):
         response = self._patch(report.id, {'status': 'resolved', 'admin_notes': 'Bulb replaced.'})
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data['status'], 'success')
-        self.assertEqual(data['report']['status'], 'resolved')
-        self.assertEqual(data['report']['admin_notes'], 'Bulb replaced.')
+        self.assertTrue(data['success'])
+        self.assertEqual(data['data']['report']['status'], 'resolved')
+        self.assertEqual(data['data']['report']['admin_notes'], 'Bulb replaced.')
         report.refresh_from_db()
         self.assertEqual(report.status, 'resolved')
         self.assertEqual(report.admin_notes, 'Bulb replaced.')
