@@ -3584,3 +3584,39 @@ venv/bin/python manage.py seed_demo_users
 - `core/management/commands/seed_demo_users.py` (new),
   `core/management/__init__.py` (new), `core/management/commands/__init__.py`
   (new), `core/tests.py`, `README.md`, `docs/HANDOVER.md`
+
+---
+
+## 70. Skip Google OAuth Provider-Confirmation Screen
+
+**Date:** 12 August 2026  
+**Branch:** main
+
+### Overview
+
+By default allauth shows an intermediate **provider-confirmation page** when a
+social login is initiated via GET (e.g. ``{% provider_login_url 'google' %}``
+from the login page or the Google-reconnect modals). Enabled
+``SOCIALACCOUNT_LOGIN_ON_GET`` so clicking the Google button proceeds straight
+to Google's consent screen — one fewer hop in the sign-in flow.
+
+### Changes
+
+- **`config/settings.py`** — added, next to ``SOCIALACCOUNT_STORE_TOKENS``:
+
+  ```python
+  # Skip allauth's intermediate provider-confirmation page: initiating a social
+  # login via GET (e.g. ``{% provider_login_url 'google' %}``) proceeds straight
+  # to the provider instead of asking the user to confirm the sign-in first.
+  SOCIALACCOUNT_LOGIN_ON_GET = True
+  ```
+
+### Testing
+
+- `python manage.py check` ✔ (no issues)
+- Verified via the shell that `settings.SOCIALACCOUNT_LOGIN_ON_GET` resolves to
+  `True`.
+
+### Files Modified
+
+- `config/settings.py`, `docs/HANDOVER.md`

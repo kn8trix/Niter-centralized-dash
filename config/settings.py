@@ -203,8 +203,10 @@ def _build_databases():
 
 DATABASES = _build_databases()
 
-# django.contrib.sites — required by allauth social accounts
-SITE_ID = 1
+# django.contrib.sites — required by allauth social accounts. Defaults to 1
+# (the initial ``Site`` row created by the sites app); override via the
+# ``SITE_ID`` environment variable if your database's site table differs.
+SITE_ID = env.int('SITE_ID', default=1)
 
 # Google OAuth — application credentials
 # --------------------------------------------------------------------------
@@ -260,6 +262,15 @@ if GOOGLE_CLIENT_ID:
         'secret': GOOGLE_CLIENT_SECRET,
         'key': '',
     }
+
+# Persist Google OAuth access/refresh tokens in the SocialToken table so
+# background Drive/Sheets operations can reuse them instead of re-prompting.
+SOCIALACCOUNT_STORE_TOKENS = True
+
+# Skip allauth's intermediate provider-confirmation page: initiating a social
+# login via GET (e.g. ``{% provider_login_url 'google' %}``) proceeds straight
+# to the provider instead of asking the user to confirm the sign-in first.
+SOCIALACCOUNT_LOGIN_ON_GET = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -375,7 +386,20 @@ if not DEBUG:
     # Redirect all plain-HTTP traffic to HTTPS (behind a terminating proxy,
     # SECURE_PROXY_SSL_HEADER keeps redirect detection correct).
     SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=True)
+    # Render/Nginx terminate TLS and forward plain HTTP internally, marking
+    # the original scheme with X-Forwarded-Proto. Trusting that header keeps
+    # request.is_secure() / SECURE_SSL_REDIRECT / secure cookies correct.
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    # Trust the proxy's X-Forwarded-Host so absolute URLs (OAuth redirects)
+    # use the public hostname (niter.edu.bd) instead of the internal one.
+    # Only enabled behind a trusted proxy — host-header checks stay enforced
+    # by ALLOWED_HOSTS on the forwarded value.
+    USE_X_FORWARDED_HOST = True
+    # Force https on allauth-generated absolute URLs (notably the Google
+    # OAuth2 callback / redirect_uri) even when the proxied request arrives
+    # over plain HTTP — this is what prevents "redirect_uri_mismatch" on
+    # Render. (Local dev keeps http so localhost OAuth testing still works.)
+    ACCOUNT_DEFAULT_HTTP_PROTOCOL = env('ACCOUNT_DEFAULT_HTTP_PROTOCOL', default='https')
     # Cookies are only sent over HTTPS.
     SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=True)
     CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=True)
