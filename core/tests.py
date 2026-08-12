@@ -3890,7 +3890,7 @@ class SettingsPreferencesTest(TestCase):
         self.assertEqual(response.status_code, 200)
         prefs = self.user.notification_prefs
         prefs.refresh_from_db()
-        self.assertEqual(prefs.theme, 'light')  # unchanged
+        self.assertEqual(prefs.theme, 'system')  # unchanged
 
     def test_profile_form_updates_name_and_email(self):
         response = self.client.post(reverse('settings'), {
@@ -3991,7 +3991,7 @@ class DisplayPreferencesIntegrationTest(TestCase):
         self.client.force_login(orphan)
         response = self.client.get(reverse('student_dashboard'))
         data = response.context['DISPLAY_PREFS']
-        self.assertEqual(data['theme'], 'light')
+        self.assertEqual(data['theme'], 'system')
         self.assertEqual(data['density'], 'comfortable')
         self.assertTrue(data['authenticated'])
 
@@ -4088,7 +4088,7 @@ class UserTimezoneMiddlewareTest(TestCase):
         self.assertEqual(captured['zone'], 'UTC')
         # request.display_prefs is cached for the context processor.
         self.assertEqual(request.display_prefs['timezone'], 'UTC')
-        self.assertEqual(request.display_prefs['theme'], 'light')
+        self.assertEqual(request.display_prefs['theme'], 'system')
         self.assertEqual(request.display_prefs['density'], 'comfortable')
 
     def test_anonymous_requests_are_left_untouched(self):

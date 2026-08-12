@@ -55,7 +55,8 @@ the save endpoint + authenticated flag for logged-in users.
             if (config.timezone) prefs.timezone = config.timezone;
         }
 
-        var mode = prefs.theme === 'dark' || prefs.theme === 'system' ? prefs.theme : 'light';
+        // No saved preference → follow the OS light/dark setting ('system').
+        var mode = prefs.theme === 'dark' || prefs.theme === 'system' ? prefs.theme : 'system';
         var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
         var resolved = mode === 'system' ? (mq && mq.matches ? 'dark' : 'light') : mode;
         var density = prefs.density === 'compact' ? 'compact' : 'comfortable';

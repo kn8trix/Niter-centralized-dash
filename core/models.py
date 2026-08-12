@@ -1323,7 +1323,7 @@ class UserNotificationPreference(models.Model):
     theme = models.CharField(
         max_length=10,
         choices=THEME_CHOICES,
-        default='light',
+        default='system',
         help_text='Portal theme: light, dark, or follow the system preference',
     )
     compact_layout = models.BooleanField(

@@ -1683,7 +1683,12 @@ def _save_settings_prefs(request, prefs):
         dark = enabled('dark_mode')
         if dark is not None:
             prefs.dark_mode = dark
-            prefs.theme = 'dark' if dark else 'light'
+            if dark:
+                prefs.theme = 'dark'
+            elif prefs.theme != 'system':
+                # Legacy toggle off → light, but never downgrade a user who
+                # is on the tri-state 'system' default.
+                prefs.theme = 'light'
 
     # Timezone — only accept values from the model choices.
     if 'timezone' in data:

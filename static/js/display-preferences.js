@@ -40,8 +40,10 @@
     // Start from the no-flash snapshot (already applied to <html>), then let
     // localStorage refine it; signed-in account prefs (server) win on load.
     var initial = (typeof window.__displayPrefsInitial === 'object' && window.__displayPrefsInitial) || {};
+    // 'system' is the out-of-the-box default: users who never picked a theme
+    // follow their OS light/dark preference (the hero/landing page included).
     var prefs = {
-        theme: VALID_THEMES[initial.theme] ? initial.theme : 'light',
+        theme: VALID_THEMES[initial.theme] ? initial.theme : 'system',
         density: VALID_DENSITIES[initial.density] ? initial.density : 'comfortable',
         timezone: initial.timezone || null,
     };
@@ -72,7 +74,7 @@
 
     // ---- Apply to the DOM ------------------------------------------------------
     function apply() {
-        var mode = VALID_THEMES[prefs.theme] ? prefs.theme : 'light';
+        var mode = VALID_THEMES[prefs.theme] ? prefs.theme : 'system';
         var resolved = resolveTheme(mode);
         var density = VALID_DENSITIES[prefs.density] ? prefs.density : 'comfortable';
         var root = document.documentElement;

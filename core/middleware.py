@@ -17,7 +17,7 @@ from .models import UserNotificationPreference
 from .roles import get_user_role, role_home_path
 
 DEFAULT_DISPLAY_PREFS = {
-    'theme': 'light',
+    'theme': 'system',
     'timezone': None,
     'density': 'comfortable',
 }

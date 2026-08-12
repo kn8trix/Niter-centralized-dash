@@ -4211,3 +4211,72 @@ include). The layout audit fixed the include graph:
 
 - `core/tests.py` (new `ToastPartialRenderTest`)
 - `docs/HANDOVER.md` (this section)
+
+---
+
+## 79. System-Default Theme — Hero Page Follows OS Light/Dark
+
+**Date:** 13 August 2026  
+**Branch:** main
+
+### Overview
+
+The public homepage (hero) already had full dark-mode styling wired through
+`theme.css` (`html[data-theme='dark']` rules for the landing page: navbar,
+glass panels, hero overlay, card deck, `body.landing` background). The only
+gap was that the **default theme was hardcoded to `light`**, so a visitor on
+a dark-OS device always saw the light hero. The default is now **`system`**
+— users with no saved preference follow their OS light/dark setting, live
+(via `matchMedia`), on the hero page and everywhere else. Explicit choices
+still win: anyone who picks Light/Dark in Settings keeps it.
+
+### What Changed
+
+1. **`core/models.py`** — `UserNotificationPreference.theme` default
+   `'light'` → `'system'` (new signups start on System Default).
+2. **`core/middleware.py`** — `DEFAULT_DISPLAY_PREFS['theme']` → `'system'`
+   (signed-in users without a prefs row).
+3. **`static/js/display-preferences.js`** — both `'light'` fallbacks →
+   `'system'` (anonymous visitors with no `localStorage` pref).
+4. **`templates/partials/display_prefs.html`** — the no-flash head script
+   falls back to `'system'` instead of `'light'`, so the OS theme applies
+   before first paint with zero flash.
+5. **`core/views.py`** — the legacy `dark_mode` form path no longer clobbers
+   `'system'`: `dark_mode=False` only downgrades to `'light'` when the
+   current theme is not `'system'` (so a System-Default user is never
+   silently flipped to light by an old client posting the legacy key).
+6. **`core/migrations/0034_alter_usernotificationpreference_theme.py`** —
+   auto-generated `AlterField` (default → `'system'`) for new rows only.
+7. **`core/tests.py`** — three assertions updated to the new default
+   (`test_context_processor_defaults_for_rowless_user`,
+   `test_invalid_theme_rejected`, and the middleware timezone test).
+
+### Behavior Notes
+
+- **Anonymous visitors** (the hero page's main audience): follow the OS via
+  the driver fallback — no saved preference required.
+- **New signups**: prefs row is created with `theme='system'`.
+- **Existing accounts**: their stored theme (mostly the old `light` default)
+  is untouched — deliberate, so explicit choices are never overridden. Only
+  new rows get the `system` default; a data migration to flip existing rows
+  is possible if portal-wide OS-following is desired (safe in practice
+  because `system` resolves to light for light-OS users).
+- Settings → Display still offers the tri-state Light / Dark / System
+  Default buttons; the active one reflects the saved value.
+
+### Verification
+
+- `python manage.py test` ✔ — **698 tests, all pass** (206s)
+- `python manage.py makemigrations --check --dry-run` ✔ — no drift
+- Browser (Chrome, after clearing SW cache): hero page stamps
+  `data-theme-mode="system"` with no saved preference; resolves to `dark`
+  when the OS prefers dark and tracks OS changes live. Zero console errors.
+- Note: `runserver --noreload` caches compiled templates — restart the dev
+  server after editing templates to see changes.
+
+### Files Modified
+
+- `core/models.py`, `core/middleware.py`, `core/views.py`, `core/tests.py`
+- `static/js/display-preferences.js`, `templates/partials/display_prefs.html`
+- `core/migrations/0034_alter_usernotificationpreference_theme.py` (new)
+- `docs/HANDOVER.md` (this section)
