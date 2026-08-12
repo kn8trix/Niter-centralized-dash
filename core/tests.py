@@ -1,4 +1,5 @@
 import json
+from contextlib import contextmanager
 from datetime import date, timedelta
 from unittest import mock
 
@@ -2057,6 +2058,48 @@ class GoogleServiceTest(TestCase):
         token.refresh_from_db()
         self.assertEqual(token.access_token, 'ya29.access')  # stale copy untouched
 
+    def test_get_google_credentials_falls_back_to_allauth_when_legacy_stale(self):
+        """An expired legacy row with no refresh token must not hard-fail when
+        the user's allauth SocialToken is still refreshable — the recurring
+        'Google session expired' popup on Render was caused by exactly this.
+        """
+        from core.google_service import get_google_credentials
+        from google.oauth2.credentials import Credentials
+        from allauth.socialaccount.models import SocialAccount, SocialApp, SocialToken
+
+        token = self.user.google_token
+        token.expiry = timezone.now() - timedelta(minutes=5)
+        token.refresh_token = ''
+        token.save()
+
+        app = SocialApp.objects.create(
+            provider='google', name='Google',
+            client_id='app-id.apps.googleusercontent.com', secret='secret',
+        )
+        account = SocialAccount.objects.create(
+            user=self.user, provider='google', uid='g-test-1',
+        )
+        SocialToken.objects.create(
+            account=account, app=app,
+            token='ya29.social-expired',
+            token_secret='1//social-refresh',
+            expires_at=timezone.now() - timedelta(minutes=5),
+        )
+
+        def fake_refresh(creds, request):
+            creds.token = 'ya29.social-refreshed'
+            creds.expiry = timezone.now() + timedelta(hours=1)
+
+        with mock.patch.object(Credentials, 'refresh', fake_refresh):
+            creds = get_google_credentials(self.user)
+
+        self.assertEqual(creds.token, 'ya29.social-refreshed')
+        # The refreshed allauth token is mirrored back into the legacy row.
+        token.refresh_from_db()
+        from core.crypto import decrypt_secret
+        self.assertEqual(decrypt_secret(token.access_token), 'ya29.social-refreshed')
+        self.assertFalse(token.is_expired)
+
     def test_upload_note_refresh_failure_wrapped_as_reauth(self):
         from core.google_service import GoogleReauthRequired, upload_note_to_user_drive
         from google.auth.exceptions import RefreshError
@@ -2130,7 +2173,9 @@ class GoogleApiViewsTest(TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json(), {
             'status': 'auth_required',
+            'reason': 'not_connected',
             'redirect_url': reverse('google_login'),
+            'drive_connect_url': reverse('drive_connect'),
         })
 
     def test_upload_note_reauth_required_returns_401(self):
@@ -2142,7 +2187,9 @@ class GoogleApiViewsTest(TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json(), {
             'status': 'auth_required',
+            'reason': 'refresh_failed',
             'redirect_url': reverse('google_login'),
+            'drive_connect_url': reverse('drive_connect'),
         })
 
     def test_upload_note_refresh_error_returns_401(self):
@@ -2299,7 +2346,9 @@ class GoogleApiViewsTest(TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json(), {
             'status': 'auth_required',
+            'reason': 'refresh_failed',
             'redirect_url': reverse('google_login'),
+            'drive_connect_url': reverse('drive_connect'),
         })
 
 
@@ -6513,6 +6562,7 @@ class SecurityAuditTest(TestCase):
             (reverse('api_note_analysis_status', args=['00000000-0000-0000-0000-000000000000']), 'GET'),
             (reverse('api_note_export'), 'POST'),
             (reverse('api_upload_note'), 'POST'),
+            (reverse('api_notes_auth_status'), 'GET'),
             (reverse('api_club_sheet_fetch'), 'GET'),
             (reverse('api_club_sheet_append'), 'POST'),
             (reverse('api_google_unlink'), 'POST'),
@@ -6932,6 +6982,154 @@ class DriveOAuthFlowTest(TestCase):
             )
         self.assertEqual(response.status_code, 302)
         self.assertFalse(GoogleUserToken.objects.filter(user=self.user).exists())
+
+    def test_connect_uses_request_origin_when_env_redirect_points_at_localhost(self):
+        """A GOOGLE_REDIRECT_URI left pointing at localhost (the classic
+        .env-copied-to-the-server mistake) must not break the OAuth callback
+        on a real domain — the request origin is used instead."""
+        from django.conf import settings as django_settings
+        with mock.patch('google_auth_oauthlib.flow.Flow') as mock_flow_cls, \
+                mock.patch.object(django_settings, 'GOOGLE_CLIENT_ID', 'app-id.apps.googleusercontent.com'), \
+                mock.patch.object(django_settings, 'GOOGLE_CLIENT_SECRET', 'secret'), \
+                mock.patch.object(django_settings, 'GOOGLE_REDIRECT_URI', 'http://localhost:8000/drive/callback/'), \
+                mock.patch.object(django_settings, 'ALLOWED_HOSTS', ['*']):
+            mock_flow = mock_flow_cls.from_client_config.return_value
+            mock_flow.authorization_url.return_value = ('https://accounts.google.com/o/oauth2/auth?x', 's1')
+            response = self.client.get(
+                reverse('drive_connect'),
+                HTTP_HOST='niter-centralized-dash.onrender.com',
+            )
+        self.assertEqual(response.status_code, 302)
+        _, kwargs = mock_flow_cls.from_client_config.call_args
+        self.assertEqual(
+            kwargs['redirect_uri'],
+            'http://niter-centralized-dash.onrender.com/drive/callback/',
+        )
+
+    def test_connect_keeps_production_env_redirect_uri(self):
+        """A properly configured non-local redirect URI is honoured as-is."""
+        from django.conf import settings as django_settings
+        with mock.patch('google_auth_oauthlib.flow.Flow') as mock_flow_cls, \
+                mock.patch.object(django_settings, 'GOOGLE_CLIENT_ID', 'app-id.apps.googleusercontent.com'), \
+                mock.patch.object(django_settings, 'GOOGLE_CLIENT_SECRET', 'secret'), \
+                mock.patch.object(django_settings, 'GOOGLE_REDIRECT_URI', 'https://niter.edu.bd/drive/callback/'):
+            mock_flow = mock_flow_cls.from_client_config.return_value
+            mock_flow.authorization_url.return_value = ('https://accounts.google.com/o/oauth2/auth?x', 's2')
+            self.client.get(reverse('drive_connect'))
+        _, kwargs = mock_flow_cls.from_client_config.call_args
+        self.assertEqual(kwargs['redirect_uri'], 'https://niter.edu.bd/drive/callback/')
+
+
+class NotesAuthStatusTest(TestCase):
+    """GET /api/notes/auth-status/ — Drive connection health + env audit.
+
+    The Notes Engine calls this on page load: the server silently renews an
+    expired access token (so the re-auth popup stops recurring), and reports
+    whether the deployment has Google credentials configured at all.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='authstatus', password='x12345678')
+        self.client.force_login(self.user)
+
+    @contextmanager
+    def _google_env_configured(self):
+        """Simulate a server with Google application credentials set."""
+        from django.conf import settings as django_settings
+        with mock.patch.object(django_settings, 'GOOGLE_CLIENT_ID', 'app-id.apps.googleusercontent.com'), \
+                mock.patch.object(django_settings, 'GOOGLE_CLIENT_SECRET', 'secret'):
+            yield
+
+    def test_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse('api_notes_auth_status'))
+        self.assertEqual(response.status_code, 302)
+
+    def test_reports_not_connected_without_any_token(self):
+        with self._google_env_configured():
+            response = self.client.get(reverse('api_notes_auth_status'))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data['connected'])
+        self.assertEqual(data['status'], 'auth_required')
+        self.assertEqual(data['reason'], 'not_connected')
+        self.assertTrue(data['google_configured'])
+        self.assertIn('google', data['redirect_url'])
+
+    def test_reports_connected_with_valid_token(self):
+        GoogleUserToken.objects.create(
+            user=self.user,
+            access_token='ya29.access',
+            refresh_token='1//refresh',
+            client_id='app-id.apps.googleusercontent.com',
+            client_secret='secret',
+            scopes=['email', 'https://www.googleapis.com/auth/drive.file'],
+            expiry=timezone.now() + timedelta(hours=1),
+        )
+        with self._google_env_configured():
+            response = self.client.get(reverse('api_notes_auth_status'))
+        data = response.json()
+        self.assertTrue(data['connected'])
+        self.assertEqual(data['status'], 'ok')
+        self.assertIsNone(data['reason'])
+        self.assertTrue(data['google_configured'])
+
+    def test_silently_refreshes_expired_token(self):
+        from google.oauth2.credentials import Credentials
+        token = GoogleUserToken.objects.create(
+            user=self.user,
+            access_token='ya29.expired',
+            refresh_token='1//refresh',
+            client_id='app-id.apps.googleusercontent.com',
+            client_secret='secret',
+            scopes=['email', 'https://www.googleapis.com/auth/drive.file'],
+            expiry=timezone.now() - timedelta(minutes=5),
+        )
+
+        def fake_refresh(creds, request):
+            creds.token = 'ya29.refreshed-status'
+            creds.expiry = timezone.now() + timedelta(hours=1)
+
+        with mock.patch.object(Credentials, 'refresh', fake_refresh):
+            response = self.client.get(reverse('api_notes_auth_status'))
+        data = response.json()
+        self.assertTrue(data['connected'])
+        self.assertEqual(data['status'], 'ok')
+        # The silent refresh persisted the new access token.
+        token.refresh_from_db()
+        from core.crypto import decrypt_secret
+        self.assertEqual(decrypt_secret(token.access_token), 'ya29.refreshed-status')
+
+    def test_reports_refresh_failed_when_refresh_breaks(self):
+        from google.auth.exceptions import RefreshError
+        from google.oauth2.credentials import Credentials
+        GoogleUserToken.objects.create(
+            user=self.user,
+            access_token='ya29.expired',
+            refresh_token='1//refresh',
+            client_id='app-id.apps.googleusercontent.com',
+            client_secret='secret',
+            scopes=['email', 'https://www.googleapis.com/auth/drive.file'],
+            expiry=timezone.now() - timedelta(minutes=5),
+        )
+        with mock.patch.object(Credentials, 'refresh', side_effect=RefreshError('revoked')):
+            response = self.client.get(reverse('api_notes_auth_status'))
+        data = response.json()
+        self.assertFalse(data['connected'])
+        self.assertEqual(data['reason'], 'refresh_failed')
+
+    def test_flags_missing_env_credentials(self):
+        """A server without GOOGLE_CLIENT_ID/SECRET must be reported (and
+        logged server-side) instead of failing into the generic popup."""
+        from django.conf import settings as django_settings
+        with mock.patch.object(django_settings, 'GOOGLE_CLIENT_ID', ''), \
+                mock.patch.object(django_settings, 'GOOGLE_CLIENT_SECRET', ''), \
+                self.assertLogs('core.views', level='WARNING'):
+            response = self.client.get(reverse('api_notes_auth_status'))
+        data = response.json()
+        self.assertFalse(data['google_configured'])
+        self.assertFalse(data['connected'])
+        self.assertEqual(data['reason'], 'not_connected')
 
 
 class VerifyClubSheetApiTest(TestCase):

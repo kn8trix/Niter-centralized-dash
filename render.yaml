@@ -83,6 +83,19 @@ services:
       - key: OPENROUTER_DEFAULT_MODEL
         value: nvidia/nemotron-3.5-lightning:free
 
+      # Google Drive / Sheets OAuth — application credentials for the
+      # /drive/connect/ + /drive/callback/ flow and club sheets. sync: false
+      # => set them once in the Render dashboard. GOOGLE_REDIRECT_URI must be
+      # registered as an Authorized redirect URI in the Google Cloud console
+      # (the app also falls back to the request origin when it is unset or
+      # points at localhost, so the .onrender.com host works out of the box).
+      # - key: GOOGLE_CLIENT_ID
+      #   sync: false
+      # - key: GOOGLE_CLIENT_SECRET
+      #   sync: false
+      # - key: GOOGLE_REDIRECT_URI
+      #   value: https://niter.edu.bd/drive/callback/
+
       # NOTE: ALLOWED_HOSTS / CSRF_TRUSTED_ORIGINS are intentionally NOT set
       # here. config/settings.py auto-appends the platform domain AND the
       # custom domain (niter.edu.bd + www) whenever RENDER=true (set by the

@@ -48,6 +48,7 @@ from .google_service import (
     GoogleServiceError,
     append_club_sheet_row,
     get_club_sheet_data,
+    get_google_credentials,
     upload_note_to_user_drive,
     user_has_drive_access,
     verify_club_transaction,
@@ -2554,8 +2555,10 @@ def verify_club_transaction_view(request):
 
     try:
         row = verify_club_transaction(sheet_url, trx_id, request.user)
-    except (GoogleAccountNotConnected, GoogleReauthRequired, RefreshError):
-        return _auth_required_response()
+    except GoogleAccountNotConnected:
+        return _auth_required_response(reason='not_connected')
+    except (GoogleReauthRequired, RefreshError):
+        return _auth_required_response(reason='refresh_failed')
     except GoogleServiceError as exc:
         return JsonResponse({'status': 'error', 'message': str(exc)}, status=400)
 
@@ -2871,15 +2874,22 @@ _DRIVE_SCOPES = [
 ]
 
 
-def _flow_client_config():
+def _flow_client_config(redirect_uri=None):
     """Build a ``google_auth_oauthlib`` client config from settings env vars.
 
     Raises ``GoogleServiceError`` when the Drive/Sheets application
-    credentials are not configured (client id/secret unset).
+    credentials are not configured (client id/secret unset) — and logs a
+    warning first so a production deployment without the env vars is visible
+    in the server logs instead of failing silently into a user-facing error.
     """
     client_id = getattr(settings, 'GOOGLE_CLIENT_ID', '') or ''
     client_secret = getattr(settings, 'GOOGLE_CLIENT_SECRET', '') or ''
     if not client_id or not client_secret:
+        logger.warning(
+            'Google OAuth application credentials are not configured '
+            '(GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET unset) — the '
+            'Drive/Sheets connect flow is unavailable.'
+        )
         raise GoogleServiceError(
             'Google application credentials are not configured. Set '
             'GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in the environment.'
@@ -2890,9 +2900,39 @@ def _flow_client_config():
             'client_secret': client_secret,
             'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
             'token_uri': 'https://oauth2.googleapis.com/token',
-            'redirect_uris': [getattr(settings, 'GOOGLE_REDIRECT_URI', '') or ''],
+            'redirect_uris': [
+                redirect_uri or (getattr(settings, 'GOOGLE_REDIRECT_URI', '') or ''),
+            ],
         }
     }
+
+
+def _drive_redirect_uri(request):
+    """Resolve the Drive OAuth redirect URI for the current request origin.
+
+    Prefers the configured ``GOOGLE_REDIRECT_URI`` when it points at a
+    non-local host (the canonical production callback). When it is set to a
+    localhost origin while the request arrives from a real domain (the classic
+    ``.env``-copied-to-the-server mistake), it is ignored with a warning and
+    the request origin is used instead — so the same deployment serves both
+    ``http://localhost:PORT`` (dev) and ``https://<app>.onrender.com``
+    (production) without reconfiguring Google Cloud per environment.
+    """
+    configured = (getattr(settings, 'GOOGLE_REDIRECT_URI', '') or '').strip()
+    if configured:
+        from urllib.parse import urlparse
+        env_host = (urlparse(configured).hostname or '').lower()
+        if env_host not in ('localhost', '127.0.0.1', '0.0.0.0'):
+            return configured
+        request_host = (request.get_host() or '').split(':')[0].lower()
+        if request_host in ('localhost', '127.0.0.1', '0.0.0.0', 'testserver'):
+            return configured  # local request against a local redirect URI
+        logger.warning(
+            'GOOGLE_REDIRECT_URI points at %s but the request host is %s — '
+            'using the request origin for the OAuth callback.',
+            configured, request.get_host(),
+        )
+    return request.build_absolute_uri(reverse('drive_callback'))
 
 
 @login_required
@@ -2908,11 +2948,9 @@ def drive_connect(request):
     try:
         from google_auth_oauthlib.flow import Flow
 
-        redirect_uri = getattr(settings, 'GOOGLE_REDIRECT_URI', '') or request.build_absolute_uri(
-            reverse('drive_callback')
-        )
+        redirect_uri = _drive_redirect_uri(request)
         flow = Flow.from_client_config(
-            _flow_client_config(),
+            _flow_client_config(redirect_uri),
             scopes=_DRIVE_SCOPES,
             redirect_uri=redirect_uri,
         )
@@ -2955,11 +2993,9 @@ def drive_callback(request):
         from .crypto import encrypt_secret
         from .google_service import _configured_google_scopes
 
-        redirect_uri = getattr(settings, 'GOOGLE_REDIRECT_URI', '') or request.build_absolute_uri(
-            reverse('drive_callback')
-        )
+        redirect_uri = _drive_redirect_uri(request)
         flow = Flow.from_client_config(
-            _flow_client_config(),
+            _flow_client_config(redirect_uri),
             scopes=_DRIVE_SCOPES,
             redirect_uri=redirect_uri,
         )
@@ -3036,8 +3072,10 @@ def verify_club_sheet_view(request):
     try:
         from .club_sheets import verify_and_setup_sheet
         summary = verify_and_setup_sheet(request.user, sheet_ref)
-    except (GoogleAccountNotConnected, GoogleReauthRequired, RefreshError):
-        return _auth_required_response()
+    except GoogleAccountNotConnected:
+        return _auth_required_response(reason='not_connected')
+    except (GoogleReauthRequired, RefreshError):
+        return _auth_required_response(reason='refresh_failed')
     except GoogleServiceError as exc:
         return _google_error_response(exc)
 
@@ -4285,16 +4323,21 @@ def save_page_css(request):
 # Google integration — API endpoints (Phase 4)
 # ============================================================================
 
-def _auth_required_response():
+def _auth_required_response(reason=None):
     """401 JSON telling the client the user must (re)connect their Google account.
 
     Used for missing tokens, expired sessions, and failed token refreshes. The
-    ``redirect_url`` points at allauth's Google re-consent flow so the frontend
-    can open it in a new window and continue after re-authenticating.
+    ``reason`` distinguishes ``not_connected`` (no stored token at all) from
+    ``refresh_failed`` (a stored token could not be renewed) so the frontend
+    can show an accurate message instead of one generic popup. ``redirect_url``
+    points at allauth's Google re-consent flow; ``drive_connect_url`` at the
+    dedicated Drive-scope flow.
     """
     return JsonResponse({
         'status': 'auth_required',
+        'reason': reason,
         'redirect_url': reverse('google_login'),
+        'drive_connect_url': reverse('drive_connect'),
     }, status=401)
 
 
@@ -4333,8 +4376,10 @@ def upload_note_view(request):
     try:
         from academic_notes.drive_service import upload_file_to_drive
         result = upload_file_to_drive(request.user, file_obj)
-    except (GoogleAccountNotConnected, GoogleReauthRequired, RefreshError):
-        return _auth_required_response()
+    except GoogleAccountNotConnected:
+        return _auth_required_response(reason='not_connected')
+    except (GoogleReauthRequired, RefreshError):
+        return _auth_required_response(reason='refresh_failed')
     except GoogleServiceError as exc:
         return _google_error_response(exc)
 
@@ -4371,6 +4416,52 @@ def upload_note_view(request):
     })
 
 
+@login_required
+def notes_auth_status(request):
+    """GET /api/notes/auth-status/ — Google Drive connection health.
+
+    Consumed by the Notes Engine upload UI. Unlike a stored-token-only check,
+    this attempts a **silent refresh** of an expired access token via
+    ``get_google_credentials`` (which also falls back to the user's allauth
+    ``SocialToken`` when the legacy row is stale), so a merely-expiring session
+    is renewed behind the scenes instead of immediately popping the re-auth
+    modal. The response also reports whether the server has Google application
+    credentials configured, so a deployment without ``GOOGLE_CLIENT_ID`` /
+    ``GOOGLE_CLIENT_SECRET`` surfaces a clear toast instead of a mystery 401.
+
+    Always answers 200 with the state in the body (the client acts on
+    ``status`` / ``reason``); only the login gate redirects.
+    """
+    configured = bool(
+        (getattr(settings, 'GOOGLE_CLIENT_ID', '') or '') and
+        (getattr(settings, 'GOOGLE_CLIENT_SECRET', '') or '')
+    )
+    if not configured:
+        logger.warning(
+            'Google OAuth credentials are not configured on this server '
+            '(GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET unset) — Drive '
+            'uploads will fail for user %s.', request.user.username,
+        )
+
+    try:
+        creds = get_google_credentials(request.user)
+        connected = bool(creds is not None and creds.token)
+        reason = None
+    except GoogleAccountNotConnected:
+        connected, reason = False, 'not_connected'
+    except (GoogleReauthRequired, RefreshError):
+        connected, reason = False, 'refresh_failed'
+
+    return JsonResponse({
+        'status': 'ok' if connected else 'auth_required',
+        'connected': connected,
+        'reason': reason,
+        'google_configured': configured,
+        'redirect_url': reverse('google_login'),
+        'drive_connect_url': reverse('drive_connect'),
+    })
+
+
 @club_access_required
 def fetch_club_sheet_view(request):
     """Return every row of the club Google Sheet as JSON records.
@@ -4389,8 +4480,10 @@ def fetch_club_sheet_view(request):
 
     try:
         records = get_club_sheet_data(sheet_url, request.user)
-    except (GoogleAccountNotConnected, GoogleReauthRequired, RefreshError):
-        return _auth_required_response()
+    except GoogleAccountNotConnected:
+        return _auth_required_response(reason='not_connected')
+    except (GoogleReauthRequired, RefreshError):
+        return _auth_required_response(reason='refresh_failed')
     except GoogleServiceError as exc:
         return _google_error_response(exc)
 
@@ -4419,8 +4512,10 @@ def append_club_sheet_view(request):
 
     try:
         append_club_sheet_row(sheet_url, row_data, request.user)
-    except (GoogleAccountNotConnected, GoogleReauthRequired, RefreshError):
-        return _auth_required_response()
+    except GoogleAccountNotConnected:
+        return _auth_required_response(reason='not_connected')
+    except (GoogleReauthRequired, RefreshError):
+        return _auth_required_response(reason='refresh_failed')
     except GoogleServiceError as exc:
         return _google_error_response(exc)
 

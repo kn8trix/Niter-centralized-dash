@@ -13,6 +13,7 @@ Missing tokens and underlying Google API failures are both surfaced as
 """
 
 import io
+import logging
 
 from django.utils import timezone
 from google.auth.exceptions import RefreshError
@@ -23,6 +24,8 @@ from googleapiclient.http import MediaIoBaseUpload
 
 from .crypto import decrypt_secret, encrypt_secret
 from .models import GoogleUserToken
+
+logger = logging.getLogger(__name__)
 
 FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder'
 DEFAULT_FOLDER_NAME = 'CampusDash Notes'
@@ -88,36 +91,54 @@ def get_google_credentials(user):
     # naive UTC, while this project stores naive *local* time (USE_TZ=False),
     # which would make valid future tokens look expired on non-UTC hosts.
     if not token.is_expired:
+        # Fresh access token. But if the row is structurally broken — no
+        # refresh token or client credentials to ever renew it — prefer the
+        # allauth path, which may hold a usable token and mirrors a fresh row.
+        if not creds.refresh_token or not token.client_id or not token.client_secret:
+            if _get_user_google_social_token(user) is not None:
+                return get_user_google_credentials(user)
         return creds
-
-    if not creds.refresh_token:
-        # Nothing to refresh with — the user must re-consent.
-        raise GoogleReauthRequired(
-            'Your Google session has expired. Connect Google again to continue.'
-        )
 
     # Proactively refresh the expired access token and persist the result so
     # the DB copy stays valid for as long as possible.
-    try:
-        creds.refresh(GoogleAuthRequest())
-    except RefreshError as exc:
-        raise GoogleReauthRequired(
-            'Your Google session has expired or was revoked. '
-            'Connect Google again to continue.'
-        ) from exc
+    refreshed = False
+    if creds.refresh_token:
+        try:
+            creds.refresh(GoogleAuthRequest())
+        except RefreshError as exc:
+            # Log, then fall through to the allauth fallback below — a
+            # re-consent stored in SocialToken may still be refreshable.
+            logger.warning(
+                'Google access-token refresh failed for user %s: %s',
+                user.username, exc,
+            )
+        else:
+            refreshed = True
 
-    token.access_token = encrypt_secret(creds.token)
-    # google-auth normally hands back an aware UTC expiry — normalize it to the
-    # project's stored convention (local time) so ``is_expired`` keeps comparing
-    # like with like. Some callers (tests, offline flows) leave ``creds.expiry``
-    # as a naive local datetime; ``localtime()`` would raise ``ValueError`` on
-    # those, so store naive values untouched.
-    if timezone.is_aware(creds.expiry):
-        token.expiry = timezone.localtime(creds.expiry)
-    else:
-        token.expiry = creds.expiry
-    token.save(update_fields=['access_token', 'expiry'])
-    return creds
+    if refreshed:
+        token.access_token = encrypt_secret(creds.token)
+        # google-auth normally hands back an aware UTC expiry — normalize it to
+        # the project's stored convention (local time) so ``is_expired`` keeps
+        # comparing like with like. Some callers (tests, offline flows) leave
+        # ``creds.expiry`` as a naive local datetime; ``localtime()`` would
+        # raise ``ValueError`` on those, so store naive values untouched.
+        if timezone.is_aware(creds.expiry):
+            token.expiry = timezone.localtime(creds.expiry)
+        else:
+            token.expiry = creds.expiry
+        token.save(update_fields=['access_token', 'expiry'])
+        return creds
+
+    # The legacy row cannot refresh (missing refresh token or a failed
+    # refresh). If the user holds a (possibly fresher) allauth SocialToken,
+    # try that path before declaring the session expired — it refreshes
+    # silently and mirrors a usable GoogleUserToken row on success.
+    if _get_user_google_social_token(user) is not None:
+        return get_user_google_credentials(user)
+
+    raise GoogleReauthRequired(
+        'Your Google session has expired. Connect Google again to continue.'
+    )
 
 
 # ---------------------------------------------------------------------------

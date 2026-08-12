@@ -259,7 +259,7 @@
             </button>
         </div>
         <h3 id="reauth-title" class="text-lg font-bold text-main">Google access required</h3>
-        <p class="text-sm text-main/70 mt-1 mb-6">Google Drive/Sheets access required or session expired. Connect your Google account to continue.</p>
+        <p id="reauth-desc" class="text-sm text-main/70 mt-1 mb-6">Google Drive/Sheets access required or session expired. Connect your Google account to continue.</p>
         <div class="flex gap-3">
             <button type="button" id="reauth-later" class="flex-1 py-2 rounded-lg border border-border text-sm font-medium text-main hover:bg-base transition-colors">Later</button>
             <a href="{% url 'google_login' %}" target="_blank" rel="noopener" class="flex-1 py-2 rounded-lg bg-accent hover:bg-accentHover text-main text-sm font-medium text-center transition-colors">Connect Google Account</a>
@@ -282,7 +282,11 @@
         const reauthModal = document.getElementById('reauth-modal');
         const reauthClose = document.getElementById('reauth-close');
         const reauthLater = document.getElementById('reauth-later');
+        const AUTH_STATUS_URL = "{% url 'api_notes_auth_status' %}";
         let toastTimer;
+        // Google Drive connection state (populated by checkGoogleStatus).
+        let googleReason = null;
+        let googleConfigured = true;
 
         function getCookie(name) {
             let value = null;
@@ -326,6 +330,42 @@
             reauthModal.classList.remove('flex');
         }
 
+        // Swap the modal copy to match why re-auth is actually needed.
+        function setReauthCopy(reason) {
+            const copy = reauthModal ? reauthModal.querySelector('#reauth-desc') : null;
+            if (!copy) return;
+            const messages = {
+                not_connected: 'You haven\u2019t connected Google Drive yet — connect your Google account to upload notes.',
+                refresh_failed: 'Your Google session expired or was revoked — reconnect your Google account to continue.',
+                not_configured: 'Google Drive is not configured on this server — contact the administrator.',
+            };
+            copy.textContent = messages[reason] ||
+                'Google Drive/Sheets access required or session expired. Connect your Google account to continue.';
+        }
+
+        // Probe Drive connection health on load. The server silently renews an
+        // expired access token, so an expiring session never pops the modal —
+        // and a server without Google credentials surfaces a clear toast.
+        async function checkGoogleStatus() {
+            try {
+                const response = await fetch(AUTH_STATUS_URL);
+                const data = await response.json().catch(() => ({}));
+                googleReason = data.reason || null;
+                googleConfigured = data.google_configured !== false;
+                // Warn only when the server lacks Google credentials AND the
+                // user isn't already connected (e.g. a DB-configured allauth
+                // SocialApp keeps uploads working without env vars).
+                if (!googleConfigured && !data.connected) {
+                    googleReason = 'not_configured';
+                    showToast('Google Drive is not configured on this server — contact the administrator.', false);
+                }
+            } catch (err) {
+                // Best-effort: anonymous visitors and offline probes fall
+                // through — the upload attempt still reports failures.
+            }
+        }
+        checkGoogleStatus();
+
         function escapeHtml(value) {
             return String(value).replace(/[&<>"']/g, (c) => ({
                 '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -362,7 +402,12 @@
                 });
                 const data = await response.json().catch(() => ({}));
                 if (data.status === 'auth_required') {
-                    showReauthModal();
+                    if (googleReason === 'not_configured') {
+                        showToast('Google Drive is not configured on this server — contact the administrator.', false);
+                    } else {
+                        setReauthCopy(data.reason || googleReason || 'expired');
+                        showReauthModal();
+                    }
                     return;
                 }
                 if (!response.ok || data.status !== 'success') {

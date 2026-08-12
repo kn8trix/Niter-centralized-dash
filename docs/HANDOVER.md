@@ -4504,3 +4504,110 @@ Settings → Display preference. (Earlier work made the portal default
 - `templates/index.html`
 - `static/css/main.css`
 - `docs/HANDOVER.md` (this section)
+
+---
+
+## 83. Google OAuth / Drive — Recurring "Google Access Required" Popup Fix
+
+**Date:** 13 August 2026  
+**Branch:** main
+
+### Problem
+
+Notes Engine uploads on Render kept popping the **"Google access required / session
+expired"** re-auth modal. The modal only appeared *after* an upload failed with
+`auth_required`, and the failures repeated — every attempt ended in the same popup
+because the underlying causes were never addressed: no pre-flight session check,
+a token-refresh path that gave up too early, an environment-locked redirect URI,
+and no diagnostics for a deployment missing the Google credentials.
+
+### Root causes fixed
+
+1. **No session re-validation before upload.** There was no auth-status endpoint:
+   the page only learned about a dead session when the upload itself 401'd. An
+   expired (but refreshable) access token was never renewed ahead of time.
+2. **`get_google_credentials` gave up on stale legacy rows.** When the
+   `GoogleUserToken` row was expired and its refresh token was missing or the
+   refresh failed, it raised `GoogleReauthRequired` even though the user's
+   fresher allauth `SocialToken` was perfectly refreshable. On Render, where
+   users sign in via Google (allauth), the legacy row went stale → permanent
+   popup.
+3. **Redirect URI locked to the environment value.** `GOOGLE_REDIRECT_URI` copied
+   from a local `.env` points at `http://localhost:8000` — on Render the OAuth
+   callback would hit the wrong origin and Google would reject the code exchange.
+4. **Silent deployment misconfiguration.** `GOOGLE_CLIENT_ID` /
+   `GOOGLE_CLIENT_SECRET` were still empty placeholders on the deployed server
+   (§81) — the failure surfaced as the generic "session expired" popup with no
+   server-side log or user-facing hint.
+
+### Changes
+
+**1. `core/google_service.py` — `get_google_credentials` allauth fallback.**
+When the legacy `GoogleUserToken` row is expired and cannot refresh (no refresh
+token, or the refresh raised `RefreshError` — now logged at WARNING), the user's
+allauth `SocialToken` is consulted before raising: `get_user_google_credentials`
+refreshes with its own refresh token and **mirrors a fresh `GoogleUserToken` row**
+on success. A user who re-consented via Google sign-in keeps working even when
+an older Drive-connect row went bad. Behavior with no allauth token is unchanged
+(still `GoogleReauthRequired` / `GoogleAccountNotConnected`).
+
+**2. New `GET /api/notes/auth-status/` (`notes_auth_status`, `@login_required`).**
+Connection-health check consumed by the Notes Engine on page load:
+- calls `get_google_credentials` — an expired access token is **silently
+  refreshed** server-side before the user does anything, so an expiring session
+  no longer triggers the modal;
+- reports `connected`, `reason` (`not_connected` | `refresh_failed`), and
+  `google_configured` — when `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are
+  unset it logs a WARNING (visible in Render logs) so the misconfiguration is
+  diagnosable;
+- returns `redirect_url` (allauth consent) + `drive_connect_url`; always 200
+  (the client acts on the body); only the login gate redirects.
+
+**3. Redirect URI resolution — `_drive_redirect_uri(request)`.**
+`drive_connect` / `drive_callback` now resolve the callback URL per request: the
+configured `GOOGLE_REDIRECT_URI` is honoured when it points at a non-local host;
+when it points at `localhost` while the request arrives from a real domain (the
+classic `.env`-copied-to-the-server mistake) it is ignored with a WARNING and the
+request origin is used instead — so `http://localhost:PORT` (dev) and
+`https://<app>.onrender.com` (production) both work without per-environment
+Google Cloud changes. `_flow_client_config` also logs a WARNING when the
+application credentials are missing.
+
+**4. `_auth_required_response(reason=...)`** — the 401 payload now carries
+`reason` (`not_connected` vs `refresh_failed`) and `drive_connect_url`;
+`upload_note_view`, `fetch/append/verify club-sheet views`, and
+`verify_club_transaction_view` pass the accurate reason.
+
+**5. Notes Engine frontend (`templates/notes/notes_engine.html`).** On load the
+page calls `checkGoogleStatus()`: a server without Google credentials shows a
+one-time toast ("Google Drive is not configured on this server…") instead of the
+modal; upload failures now show the modal with **reason-specific copy** (not
+connected / session expired / not configured).
+
+**6. `render.yaml`** — commented `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
+(`sync: false`) and `GOOGLE_REDIRECT_URI` guidance so the Blueprint documents
+exactly where the production credentials go.
+
+### Scopes audit (requested check)
+
+`drive.file`, `drive.readonly` and `spreadsheets` are requested both by the
+Flow-based connect (`_DRIVE_SCOPES` in `core/views.py`) and by the allauth
+`SOCIALACCOUNT_PROVIDERS['google']['SCOPE']` block — verified, unchanged, and
+covered by existing tests.
+
+### Testing
+
+- `python manage.py check` ✔ · `makemigrations --check` ✔ (no model changes)
+- Full suite **707 tests OK** (was 698 — 9 new): `NotesAuthStatusTest` (login
+  gate, not-connected, connected, silent refresh + persistence, refresh-failed,
+  missing-env-credentials with `assertLogs`), allauth-fallback test in
+  `GoogleServiceTest`, `_drive_redirect_uri` tests in `DriveOAuthFlowTest`
+  (localhost-env → request origin; production env URI honoured), updated
+  upload/club-sheet `auth_required` payload assertions, and the new endpoint in
+  the SecurityAuditTest anonymous-access matrix.
+
+### Files Modified
+
+- `core/google_service.py`, `core/views.py`, `core/urls.py`, `core/tests.py`
+- `templates/notes/notes_engine.html`, `render.yaml`
+- `docs/HANDOVER.md` (this section)

@@ -79,6 +79,9 @@ urlpatterns = [
     # namespace) — the sheets management UI is the staff-only Club Management
     # dashboard, not Account Settings.
     path('api/notes/upload/', views.upload_note_view, name='api_upload_note'),
+    # Google Drive — connection health for the Notes Engine upload UI (silent
+    # refresh + deployment config audit).
+    path('api/notes/auth-status/', views.notes_auth_status, name='api_notes_auth_status'),
     path('clubs/dashboard/sheets/', views.fetch_club_sheet_view, name='api_club_sheet_fetch'),
     path('clubs/dashboard/sheets/append/', views.append_club_sheet_view, name='api_club_sheet_append'),
     # Verify & Connect a club spreadsheet (creates default tabs/headers)
