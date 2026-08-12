@@ -16,6 +16,8 @@ from django.utils import timezone
 
 from core.context_processors import custom_pages_nav
 
+from services.document_text import extract_document_text
+
 from core.forms import SignUpForm
 from core.models import (
     BusSchedule,
@@ -43,6 +45,8 @@ from core.models import (
     Notification,
     PageTemplate,
     PaymentTransaction,
+    ResearchMessage,
+    ResearchThread,
     StudentProfile,
     TransportBooking,
     TransportRoute,
@@ -245,8 +249,8 @@ class ResearchAIPageTest(TestCase):
             'Brainstorm literature reviews, summarize methodology papers, analyze IEEE-style citations, and edit your academic draft.',
             'Upload Paper / Abstract',
             'Recent Research Threads',
-            'Superposition Circuit Analysis',
-            'Textile IoT Automation Models',
+            'No saved threads yet',
+            'New Thread',
             'IEEE',
             'APA 7',
             'Quick Prompt Starters',
@@ -3840,56 +3844,332 @@ class NoteAnalysisAsyncTests(TestCase):
         self.assertEqual(response.status_code, 302)
 
 
+def _fake_openrouter_response(content='Mocked assistant reply.'):
+    """A requests.Response stand-in for mocked OpenRouter HTTP calls."""
+    response = mock.Mock()
+    response.status_code = 200
+    response.text = '{"choices": []}'
+    response.json.return_value = {
+        'choices': [{'message': {'content': content}}],
+    }
+    return response
+
+
 class ResearchQueryApiTest(TestCase):
-    """POST /api/research/query/ — structured server-side assistant responses."""
+    """POST /research-ai/api/query/ — OpenRouter-backed chat with persisted
+    threads, graceful offline fallback, and friendly provider error payloads.
+
+    OpenRouter HTTP calls are mocked with ``unittest.mock.patch`` so the suite
+    runs fully offline.
+    """
 
     def setUp(self):
         self.user = User.objects.create_user(username='researcher', password='x12345678')
         self.client.login(username='researcher', password='x12345678')
 
-    def _query(self, prompt, style='IEEE'):
-        return self.client.post(reverse('api_research_query'), {'prompt': prompt, 'citation_style': style})
+    def _query(self, **payload):
+        return self.client.post(reverse('api_research_query'), payload)
+
+    # ------------------------------------------------------------------
+    # Request validation
+    # ------------------------------------------------------------------
 
     def test_requires_login(self):
         self.client.logout()
-        response = self._query('hello')
+        response = self._query(message='hello')
         self.assertEqual(response.status_code, 302)
 
-    def test_requires_prompt(self):
-        response = self.client.post(reverse('api_research_query'), {'prompt': '   '})
+    def test_requires_message(self):
+        response = self._query(message='   ')
         self.assertEqual(response.status_code, 400)
+
+    def test_legacy_prompt_alias_still_accepted(self):
+        with override_settings(OPENROUTER_API_KEY=''):
+            response = self._query(prompt='literature review')
+        self.assertEqual(response.status_code, 200)
 
     def test_requires_post(self):
         response = self.client.get(reverse('api_research_query'))
         self.assertEqual(response.status_code, 405)
 
-    def test_structured_response_routes_by_keyword(self):
+    # ------------------------------------------------------------------
+    # Offline fallback (OPENROUTER_API_KEY empty/missing) — no crash
+    # ------------------------------------------------------------------
+
+    @override_settings(OPENROUTER_API_KEY='')
+    def test_missing_key_degrades_to_offline_engine(self):
+        """Empty/missing key → a well-formed success JSON from the offline
+        engine (graceful fallback, never a crash)."""
+        response = self._query(message='Draft a literature review on IoT in textiles', citation_style='APA 7')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertEqual(data['engine'], 'offline')
+        self.assertIsNone(data['model'])
+        self.assertTrue(data['response'].startswith('## '))
+        self.assertIn('References (APA 7)', data['response'])
+        self.assertTrue(data['thread_id'])
+
+    @override_settings(OPENROUTER_API_KEY='')
+    def test_offline_engine_routes_by_keyword(self):
         cases = {
-            'Draft a literature review on IoT in textiles': 'literature',
-            'Break down the methodology section': 'methodology',
-            'Check this citation in IEEE': 'citation',
-            '/summarize the abstract I pasted': 'summary',
-            'Explain the superposition theorem': 'superposition',
-            'Compare IoT architectures for looms': 'iot',
-            'Tell me about your day': 'fallback',
+            'Draft a literature review on IoT in textiles': 'IoT in Textile Manufacturing',
+            'Break down the methodology section': 'Methodology Breakdown',
+            'Check this citation in IEEE': 'Citation Formatting Check',
+            '/summarize the abstract I pasted': 'Abstract Summary',
+            'Explain the superposition theorem': 'Superposition Circuit Analysis',
+            'Compare IoT architectures for looms': 'Textile IoT Automation Models',
+            'Tell me about your day': 'Here is how I can help',
         }
-        for prompt, expected_topic in cases.items():
+        for prompt, heading in cases.items():
             with self.subTest(prompt=prompt):
-                data = self._query(prompt).json()
+                data = self._query(message=prompt).json()
                 self.assertEqual(data['status'], 'success')
-                self.assertEqual(data['topic'], expected_topic)
-                self.assertTrue(data['response_markdown'].startswith('## '))
+                self.assertIn(heading, data['response'])
 
-    def test_references_formatted_for_selected_style(self):
-        data = self._query('check my citation', style='APA 7').json()
-        self.assertEqual(data['citation_style'], 'APA 7')
-        self.assertEqual(len(data['references']), 2)
-        self.assertTrue(data['references'][0]['text'].startswith('M. H. Rahman, & K. Ahmed. (2021).'))
+    # ------------------------------------------------------------------
+    # OpenRouter path (key configured, HTTP mocked)
+    # ------------------------------------------------------------------
 
-    def test_references_default_to_ieee(self):
-        data = self._query('literature review').json()
-        self.assertEqual(data['citation_style'], 'IEEE')
-        self.assertTrue(data['references'][0]['text'].startswith('[1]'))
+    @override_settings(OPENROUTER_API_KEY='test-key', OPENROUTER_DEFAULT_MODEL='google/gemini-2.5-pro')
+    def test_openrouter_used_when_key_configured(self):
+        with mock.patch('services.openrouter.requests.post', return_value=_fake_openrouter_response('Real AI reply.')) as post:
+            response = self._query(message='Explain superposition', citation_style='APA 7')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertEqual(data['engine'], 'openrouter')
+        self.assertEqual(data['model'], 'google/gemini-2.5-pro')
+        self.assertEqual(data['response'], 'Real AI reply.')
+
+        # Headers carry auth + branding + dynamic referer.
+        args, kwargs = post.call_args
+        headers = kwargs['headers']
+        self.assertEqual(args[0], 'https://openrouter.ai/api/v1/chat/completions')
+        self.assertEqual(headers['Authorization'], 'Bearer test-key')
+        self.assertEqual(headers['X-Title'], 'NITER Centralized Dash')
+        self.assertEqual(headers['HTTP-Referer'], 'https://testserver')
+        self.assertEqual(kwargs['timeout'], 30)
+        # System prompt injects the selected citation style.
+        system = kwargs['json']['messages'][0]['content']
+        self.assertEqual(kwargs['json']['messages'][0]['role'], 'system')
+        self.assertIn('APA 7', system)
+
+    @override_settings(OPENROUTER_API_KEY='test-key')
+    def test_rate_limit_returns_429_payload(self):
+        response = mock.Mock()
+        response.status_code = 429
+        response.text = 'rate limited'
+        with mock.patch('services.openrouter.requests.post', return_value=response):
+            resp = self._query(message='hello')
+        self.assertEqual(resp.status_code, 429)
+        data = resp.json()
+        self.assertEqual(data['status'], 'error')
+        self.assertIn('rate-limited', data['message'].lower())
+        self.assertIn('thread_id', data)
+
+    @override_settings(OPENROUTER_API_KEY='test-key')
+    def test_timeout_returns_504_payload(self):
+        from requests.exceptions import Timeout
+        with mock.patch('services.openrouter.requests.post', side_effect=Timeout('slow')):
+            resp = self._query(message='hello')
+        self.assertEqual(resp.status_code, 504)
+        self.assertEqual(resp.json()['status'], 'error')
+
+    @override_settings(OPENROUTER_API_KEY='bad-key')
+    def test_auth_error_returns_502_payload(self):
+        response = mock.Mock()
+        response.status_code = 401
+        response.text = 'invalid key'
+        with mock.patch('services.openrouter.requests.post', return_value=response):
+            resp = self._query(message='hello')
+        self.assertEqual(resp.status_code, 502)
+        self.assertEqual(resp.json()['status'], 'error')
+        self.assertIn('API key', resp.json()['message'])
+
+    @override_settings(OPENROUTER_API_KEY='test-key')
+    def test_transport_error_returns_502_payload(self):
+        from requests.exceptions import ConnectionError
+        with mock.patch('services.openrouter.requests.post', side_effect=ConnectionError('no route')):
+            resp = self._query(message='hello')
+        self.assertEqual(resp.status_code, 502)
+        self.assertEqual(resp.json()['status'], 'error')
+
+    # ------------------------------------------------------------------
+    # Persisted threads
+    # ------------------------------------------------------------------
+
+    @override_settings(OPENROUTER_API_KEY='')
+    def test_creates_thread_and_persists_messages(self):
+        data = self._query(message='First question').json()
+        thread = ResearchThread.objects.get(pk=data['thread_id'])
+        self.assertEqual(thread.user, self.user)
+        self.assertEqual(thread.citation_style, 'IEEE')
+        self.assertEqual(thread.title, 'First question')
+        self.assertEqual(thread.messages.count(), 2)
+        self.assertEqual(
+            list(thread.messages.values_list('role', flat=True)),
+            ['user', 'assistant'],
+        )
+        self.assertEqual(thread.messages.get(role='user').content, 'First question')
+
+    @override_settings(OPENROUTER_API_KEY='')
+    def test_reuses_thread_when_thread_id_sent(self):
+        first = self._query(message='First').json()
+        second = self._query(message='Second', thread_id=first['thread_id']).json()
+        self.assertEqual(first['thread_id'], second['thread_id'])
+        thread = ResearchThread.objects.get(pk=first['thread_id'])
+        self.assertEqual(thread.messages.count(), 4)
+
+    @override_settings(OPENROUTER_API_KEY='')
+    def test_unknown_thread_returns_404(self):
+        response = self._query(message='hello', thread_id=999999)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()['status'], 'error')
+
+    @override_settings(OPENROUTER_API_KEY='')
+    def test_citation_style_updates_thread(self):
+        first = self._query(message='First', citation_style='IEEE').json()
+        self._query(message='Second', citation_style='Chicago', thread_id=first['thread_id'])
+        thread = ResearchThread.objects.get(pk=first['thread_id'])
+        self.assertEqual(thread.citation_style, 'Chicago')
+
+    @override_settings(OPENROUTER_API_KEY='')
+    def test_title_truncated_from_first_message(self):
+        data = self._query(message='x' * 100).json()
+        thread = ResearchThread.objects.get(pk=data['thread_id'])
+        self.assertLessEqual(len(thread.title), 61)
+
+    @override_settings(OPENROUTER_API_KEY='')
+    def test_oversized_upload_rejected_with_400(self):
+        big = SimpleUploadedFile(
+            'big.pdf', b'x' * (10 * 1024 * 1024 + 1), content_type='application/pdf'
+        )
+        response = self._query(message='hello', file=big)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('10 MB', response.json()['message'])
+        # Rejected before any row is created.
+        self.assertEqual(ResearchThread.objects.count(), 0)
+
+    @override_settings(OPENROUTER_API_KEY='')
+    def test_active_thread_floats_to_top(self):
+        first = self._query(message='First').json()
+        second = self._query(message='Second').json()
+        # Replying inside the older thread bumps its ``updated_at``.
+        self._query(message='Third', thread_id=first['thread_id'])
+        threads = self.client.get(reverse('api_research_threads')).json()
+        self.assertEqual(threads['threads'][0]['id'], first['thread_id'])
+        self.assertEqual(threads['threads'][0]['message_count'], 4)
+
+    def test_thread_list_and_detail_owner_scoped(self):
+        created = self._query(message='Hello world').json()
+        thread_id = created['thread_id']
+
+        threads = self.client.get(reverse('api_research_threads')).json()
+        self.assertEqual(threads['status'], 'success')
+        self.assertEqual(threads['threads'][0]['id'], thread_id)
+
+        detail = self.client.get(reverse('api_research_thread_detail', args=[thread_id])).json()
+        self.assertEqual(detail['thread']['id'], thread_id)
+        self.assertEqual(len(detail['messages']), 2)
+        self.assertEqual(detail['messages'][0]['role'], 'user')
+
+        # Another user's threads are invisible (owner-scoped).
+        other = User.objects.create_user(username='other-researcher', password='x12345678')
+        ResearchThread.objects.create(user=other, title='Not yours')
+        data = self.client.get(reverse('api_research_threads')).json()
+        self.assertEqual([t['id'] for t in data['threads']], [thread_id])
+
+    def test_thread_detail_404_for_foreign_thread(self):
+        other = User.objects.create_user(username='stranger', password='x12345678')
+        thread = ResearchThread.objects.create(user=other, title='Private')
+        response = self.client.get(reverse('api_research_thread_detail', args=[thread.pk]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_delete_thread(self):
+        created = self._query(message='Bye').json()
+        thread_id = created['thread_id']
+        response = self.client.delete(reverse('api_research_thread_detail', args=[thread_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(ResearchThread.objects.filter(pk=thread_id).exists())
+        self.assertFalse(ResearchMessage.objects.filter(thread_id=thread_id).exists())
+
+
+class ResearchDocumentTextTest(TestCase):
+    """services.document_text — plain-text extraction from PDF/DOCX uploads."""
+
+    @staticmethod
+    def _make_docx(text):
+        from docx import Document
+        import io
+        buffer = io.BytesIO()
+        document = Document()
+        for line in text.split('\n'):
+            document.add_paragraph(line)
+        document.save(buffer)
+        buffer.seek(0)
+        return SimpleUploadedFile(
+            'paper.docx',
+            buffer.read(),
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        )
+
+    @staticmethod
+    def _make_pdf(text):
+        """Build a minimal single-page PDF whose only text is ``text``."""
+        content = b'BT /F1 12 Tf 72 720 Td (' + text.encode('ascii') + b') Tj ET'
+        objects = [
+            b'<< /Type /Catalog /Pages 2 0 R >>',
+            b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+            b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+            b'<< /Length %d >>\nstream\n%s\nendstream' % (len(content), content),
+            b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+        ]
+        out = [b'%PDF-1.4\n']
+        offsets = []
+        for index, obj in enumerate(objects, start=1):
+            offsets.append(len(b''.join(out)))
+            out.append(b'%d 0 obj\n%s\nendobj\n' % (index, obj))
+        xref_pos = len(b''.join(out))
+        out.append(b'xref\n0 %d\n' % (len(objects) + 1))
+        out.append(b'0000000000 65535 f \n')
+        for offset in offsets:
+            out.append(b'%010d 00000 n \n' % offset)
+        out.append(b'trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF' % (len(objects) + 1, xref_pos))
+        return SimpleUploadedFile('paper.pdf', b''.join(out), content_type='application/pdf')
+
+    def test_extracts_docx_paragraphs(self):
+        upload = self._make_docx('Abstract: IoT looms with edge inference.\nKeywords: textile automation')
+        text = extract_document_text(upload)
+        self.assertIn('Abstract: IoT looms with edge inference.', text)
+        self.assertIn('Keywords: textile automation', text)
+
+    def test_extracts_pdf_text(self):
+        upload = self._make_pdf('Hello Research AI')
+        text = extract_document_text(upload)
+        self.assertIsNotNone(text)
+        self.assertIn('Hello Research AI', text)
+
+    def test_unsupported_format_returns_none(self):
+        upload = SimpleUploadedFile('notes.txt', b'plain', content_type='text/plain')
+        self.assertIsNone(extract_document_text(upload))
+
+    def test_query_endpoint_accepts_uploaded_docx(self):
+        """The API extracts the attached reference and passes it to the prompt."""
+        user = User.objects.create_user(username='paper-user', password='x12345678')
+        self.client.login(username='paper-user', password='x12345678')
+        upload = self._make_docx('This loom uses an edge gateway for vibration analysis.')
+        with override_settings(OPENROUTER_API_KEY='test-key'):
+            with mock.patch('services.openrouter.requests.post', return_value=_fake_openrouter_response('grounded answer')) as post:
+                response = self.client.post(
+                    reverse('api_research_query'),
+                    {'message': 'summarize the paper', 'citation_style': 'IEEE', 'file': upload},
+                )
+        self.assertEqual(response.status_code, 200)
+        _, kwargs = post.call_args
+        system = kwargs['json']['messages'][0]['content']
+        self.assertIn('edge gateway for vibration analysis', system)
+        self.assertIn('uploaded a reference document', system)
 
 
 class NotificationPushResilienceTest(TestCase):
@@ -5577,6 +5857,8 @@ class SecurityAuditTest(TestCase):
             (reverse('api_google_unlink'), 'POST'),
             # Research AI
             (reverse('api_research_query'), 'POST'),
+            (reverse('api_research_threads'), 'GET'),
+            (reverse('api_research_thread_detail', args=[1]), 'GET'),
             # Notifications
             (reverse('api_notifications'), 'GET'),
             (reverse('api_notification_read', args=[1]), 'POST'),

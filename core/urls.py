@@ -83,8 +83,12 @@ urlpatterns = [
     path('api/notes/analysis/<uuid:analysis_id>/', views.note_analysis_status, name='api_note_analysis_status'),
     path('api/notes/export/', views.export_note, name='api_note_export'),
 
-    # Research AI — structured query endpoint
-    path('api/research/query/', views.research_query, name='api_research_query'),
+    # Research AI — OpenRouter-backed chat endpoint + persisted thread APIs
+    path('research-ai/api/query/', views.research_query, name='api_research_query'),
+    path('research-ai/api/threads/', views.research_threads, name='api_research_threads'),
+    path('research-ai/api/threads/<int:thread_id>/', views.research_thread_detail, name='api_research_thread_detail'),
+    # Legacy alias — /api/research/query/ keeps working for old clients/tests.
+    path('api/research/query/', views.research_query, name='api_research_query_legacy'),
 
     # Real-time notification & system alert engine
     path('api/notifications/', views.fetch_notifications, name='api_notifications'),

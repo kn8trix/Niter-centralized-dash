@@ -40,6 +40,12 @@ huey[django-redis]>=2.5,<3.0
 # — strips scripts/event handlers/unsafe URL schemes from authored block HTML.
 bleach>=6.0,<7.0
 
+# Research AI — server-side document text extraction (services/document_text.py)
+# for reference PDFs/DOCX uploaded to the OpenRouter-backed research assistant.
+# pypdf parses .pdf files; python-docx reads .docx paragraph text.
+pypdf>=4.0,<6.0
+python-docx>=1.1,<2.0
+
 # Production deployment & configuration
 # Environment-driven settings (secrets, DB URL, hosts) via a local .env
 django-environ>=0.11

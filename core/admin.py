@@ -24,6 +24,8 @@ from .models import (
     Notification,
     PageTemplate,
     PaymentTransaction,
+    ResearchMessage,
+    ResearchThread,
     TransportBooking,
     TransportRoute,
     UserNote,
@@ -304,6 +306,25 @@ class UserNoteAdmin(admin.ModelAdmin):
     search_fields = ('title', 'content', 'user__username')
     list_filter = ('updated_at',)
     list_select_related = ('user',)
+
+
+class ResearchMessageInline(admin.TabularInline):
+    """Messages inside a Research AI thread."""
+
+    model = ResearchMessage
+    extra = 0
+    readonly_fields = ('role', 'content', 'created_at')
+
+
+@admin.register(ResearchThread)
+class ResearchThreadAdmin(admin.ModelAdmin):
+    """Research AI conversations (OpenRouter-backed chat threads)."""
+
+    list_display = ('title', 'user', 'citation_style', 'updated_at')
+    list_filter = ('citation_style', 'updated_at')
+    search_fields = ('title', 'user__username', 'user__email')
+    list_select_related = ('user',)
+    inlines = [ResearchMessageInline]
 
 
 @admin.register(GoogleUserToken)

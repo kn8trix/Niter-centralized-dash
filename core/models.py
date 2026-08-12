@@ -1301,6 +1301,68 @@ class NoteAnalysis(models.Model):
         return '%s · %s' % (self.analysis_id, self.status)
 
 
+class ResearchThread(models.Model):
+    """A persisted conversation in the Academic Research & Thesis Assistant.
+
+    Backs the ``/research-ai/`` chat console so "Recent Research Threads" is a
+    real, per-user list: a thread owns the citation style used and its message
+    history, and carries an auto-generated title from the first user message.
+    """
+
+    CITATION_STYLE_CHOICES = [
+        ('IEEE', 'IEEE'),
+        ('APA 7', 'APA 7'),
+        ('Harvard', 'Harvard'),
+        ('Chicago', 'Chicago'),
+    ]
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='research_threads',
+        db_index=True,
+    )
+    title = models.CharField(max_length=200, default='New Research Thread')
+    citation_style = models.CharField(
+        max_length=20,
+        choices=CITATION_STYLE_CHOICES,
+        default='IEEE',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return '%s (%s)' % (self.title, self.user.username)
+
+
+class ResearchMessage(models.Model):
+    """One user/assistant turn inside a ``ResearchThread``."""
+
+    ROLE_CHOICES = [
+        ('user', 'User'),
+        ('assistant', 'Assistant'),
+    ]
+
+    thread = models.ForeignKey(
+        ResearchThread,
+        on_delete=models.CASCADE,
+        related_name='messages',
+        db_index=True,
+    )
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, db_index=True)
+    content = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return '%s · %s' % (self.get_role_display(), (self.content or '')[:60])
+
+
 # ----------------------------------------------------------------------------
 # Signal: auto-create default notification preferences for every new user
 # ----------------------------------------------------------------------------

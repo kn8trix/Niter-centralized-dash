@@ -44,6 +44,22 @@ from .google_service import (
     verify_club_transaction,
 )
 from academic_notes.drive_service import get_drive_storage_info
+
+# Research AI — OpenRouter LLM client + PDF/DOCX reference extraction
+# (services/openrouter.py + services/document_text.py).
+from services.document_text import extract_document_text
+from services.openrouter import (
+    OpenRouterAuthError,
+    OpenRouterError,
+    OpenRouterNotConfigured,
+    OpenRouterRateLimitError,
+    OpenRouterTimeoutError,
+    build_system_prompt,
+    chat_completion,
+    get_api_key as get_openrouter_api_key,
+    get_default_model as get_openrouter_default_model,
+)
+
 from .models import (
     ClassRoutine,
     Club,
@@ -68,6 +84,8 @@ from .models import (
     Notification,
     PageTemplate,
     PaymentTransaction,
+    ResearchMessage,
+    ResearchThread,
     StudentProfile,
     TransportBooking,
     TransportRoute,
@@ -2947,7 +2965,7 @@ def export_note(request):
 
 
 # ============================================================================
-# Research AI — server-side structured query endpoint
+# Research AI — OpenRouter-backed chat endpoint + persisted thread APIs
 # ============================================================================
 
 # Canned-but-server-side assistant knowledge base, routed by prompt keywords.
@@ -3073,24 +3091,22 @@ def _research_references(style):
     return refs
 
 
-@login_required
-def research_query(request):
-    """Research AI query endpoint — returns a structured assistant response.
+def _derive_thread_title(message):
+    """Short human title from the first user message of a thread."""
+    title = ' '.join(message.split())
+    if len(title) > 60:
+        title = title[:60].rstrip() + '…'
+    return title or 'New Research Thread'
 
-    Accepts ``prompt`` and an optional ``citation_style`` (IEEE / APA 7 /
-    Harvard / Chicago). The response is routed server-side by prompt keywords
-    and carries a ``topic`` id plus style-aware structured ``references``.
+
+def _offline_research_response(prompt, style):
+    """Deterministic offline engine used when no OpenRouter key is configured.
+
+    Returns ``(markdown, topic)`` — the canned topic response plus a
+    style-aware references section, so the API contract (``response`` text) is
+    identical whether the answer came from OpenRouter or from this engine.
     """
-    if request.method != 'POST':
-        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
-
-    prompt = request.POST.get('prompt', '').strip()
-    if not prompt:
-        return JsonResponse({'status': 'error', 'message': 'prompt is required.'}, status=400)
-
-    style = request.POST.get('citation_style', 'IEEE').strip()
     lowered = prompt.lower()
-
     if lowered.startswith('/summarize') or 'summarize' in lowered or 'abstract' in lowered:
         topic = 'summary'
     elif 'literature' in lowered or 'review' in lowered:
@@ -3106,13 +3122,190 @@ def research_query(request):
     else:
         topic = 'fallback'
 
+    markdown = _RESEARCH_RESPONSES.get(topic, _RESEARCH_FALLBACK)
+    references = _research_references(style)
+    if references:
+        ref_lines = '\n\n'.join('[%d] %s' % (r['index'], r['text']) for r in references)
+        markdown += '\n\n### References (%s)\n\n%s' % (style, ref_lines)
+    return markdown, topic
+
+
+# OpenRouter failure types → HTTP status codes returned to the frontend.
+_OPENROUTER_ERROR_STATUS = {
+    OpenRouterRateLimitError: 429,
+    OpenRouterTimeoutError: 504,
+    OpenRouterAuthError: 502,
+    OpenRouterNotConfigured: 503,
+    OpenRouterError: 502,
+}
+
+
+@login_required
+def research_query(request):
+    """Research AI query endpoint — OpenRouter-backed chat with persisted threads.
+
+    Accepts a POST with ``message`` (or the legacy ``prompt`` alias), an
+    optional ``thread_id`` (a new thread is created when absent), the
+    ``citation_style`` dropdown value, and an optional ``file`` upload
+    (PDF/DOCX) whose plain text is extracted server-side and injected into the
+    OpenRouter system prompt.
+
+    When ``OPENROUTER_API_KEY`` is configured the assistant reply comes from
+    OpenRouter; otherwise the deterministic offline engine answers, so the
+    page stays fully usable with zero configuration. Provider failures
+    (timeout / rate limit / bad key) are returned as user-friendly JSON errors
+    with the matching HTTP status (429 / 504 / 502). The thread and the user
+    turn are persisted before the provider call, so a failed request can be
+    retried from where the user left off.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+
+    message = (request.POST.get('message') or request.POST.get('prompt') or '').strip()
+    if not message:
+        return JsonResponse({'status': 'error', 'message': 'message is required.'}, status=400)
+
+    style = (request.POST.get('citation_style') or 'IEEE').strip() or 'IEEE'
+    valid_styles = {code for code, _label in ResearchThread.CITATION_STYLE_CHOICES}
+    if style not in valid_styles:
+        style = 'IEEE'
+
+    # --- Reject oversized reference uploads before any row is created ---
+    # (10 MB cap — extraction reads the whole file into memory server-side).
+    attached_file = request.FILES.get('file')
+    if attached_file is not None and attached_file.size and attached_file.size > 10 * 1024 * 1024:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Reference files must be 10 MB or smaller.'},
+            status=400,
+        )
+
+    # --- Resolve or create the thread (owner-scoped) ---
+    thread_id_raw = request.POST.get('thread_id', '').strip()
+    if thread_id_raw:
+        try:
+            thread = ResearchThread.objects.filter(
+                user=request.user, pk=int(thread_id_raw)
+            ).first()
+        except (TypeError, ValueError):
+            thread = None
+        if thread is None:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Thread not found.'}, status=404
+            )
+        if thread.citation_style != style:
+            thread.citation_style = style
+            thread.save()
+    else:
+        thread = ResearchThread.objects.create(
+            user=request.user,
+            title=_derive_thread_title(message),
+            citation_style=style,
+        )
+
+    # Persist the user turn first (survives a provider failure for retries).
+    ResearchMessage.objects.create(thread=thread, role='user', content=message)
+
+    # --- Extract uploaded reference text (PDF/DOCX) for the prompt context ---
+    document_text = extract_document_text(attached_file) if attached_file is not None else None
+
+    try:
+        if get_openrouter_api_key():
+            assistant_text = chat_completion(
+                [
+                    {'role': 'system', 'content': build_system_prompt(style, document_text)},
+                    {'role': 'user', 'content': message},
+                ],
+                referer='https://' + request.get_host(),
+            )
+            engine, model = 'openrouter', get_openrouter_default_model()
+        else:
+            assistant_text, _topic = _offline_research_response(message, style)
+            engine, model = 'offline', None
+    except OpenRouterError as exc:
+        # Friendly JSON error; the user turn stays in the thread for retry.
+        return JsonResponse(
+            {'status': 'error', 'message': str(exc), 'thread_id': thread.pk},
+            status=_OPENROUTER_ERROR_STATUS.get(type(exc), 502),
+        )
+
+    ResearchMessage.objects.create(thread=thread, role='assistant', content=assistant_text)
+    # Bump ``updated_at`` so the sidebar's "most recently active first"
+    # ordering reflects this new turn (auto_now only fires on save).
+    thread.save()
+
     return JsonResponse({
         'status': 'success',
-        'topic': topic,
-        'response_markdown': _RESEARCH_RESPONSES.get(topic, _RESEARCH_FALLBACK),
-        'references': _research_references(style),
+        'response': assistant_text,
+        'thread_id': thread.pk,
+        'engine': engine,
+        'model': model,
         'citation_style': style,
+        'message': (
+            'Answered via OpenRouter (%s).' % model
+            if engine == 'openrouter'
+            else 'Answered by the built-in research engine.'
+        ),
     })
+
+
+@login_required
+def research_threads(request):
+    """JSON API: the signed-in user's research threads (most recent first)."""
+    if request.method != 'GET':
+        return JsonResponse({'status': 'error', 'message': 'GET required'}, status=405)
+
+    threads = request.user.research_threads.annotate(
+        message_count=Count('messages')
+    )[:20]
+    return JsonResponse({
+        'status': 'success',
+        'threads': [
+            {
+                'id': thread.pk,
+                'title': thread.title,
+                'citation_style': thread.citation_style,
+                'updated_at': thread.updated_at.isoformat(),
+                'message_count': thread.message_count,
+            }
+            for thread in threads
+        ],
+    })
+
+
+@login_required
+def research_thread_detail(request, thread_id):
+    """JSON API: one thread's message history, or delete it (owner-scoped).
+
+    GET returns the full conversation so the frontend can resume a saved
+    thread; DELETE removes the thread and its messages.
+    """
+    thread = get_object_or_404(request.user.research_threads, pk=thread_id)
+
+    if request.method == 'GET':
+        return JsonResponse({
+            'status': 'success',
+            'thread': {
+                'id': thread.pk,
+                'title': thread.title,
+                'citation_style': thread.citation_style,
+                'created_at': thread.created_at.isoformat(),
+                'updated_at': thread.updated_at.isoformat(),
+            },
+            'messages': [
+                {
+                    'role': message.role,
+                    'content': message.content,
+                    'created_at': message.created_at.isoformat(),
+                }
+                for message in thread.messages.all()
+            ],
+        })
+
+    if request.method == 'DELETE':
+        thread.delete()
+        return JsonResponse({'status': 'success', 'message': 'Thread deleted.'})
+
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
 
 
 # ============================================================================

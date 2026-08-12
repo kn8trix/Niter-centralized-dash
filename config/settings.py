@@ -393,3 +393,15 @@ if not DEBUG:
 # production confirmation goes through the bKash status API with merchant
 # credentials (see .env.example; not yet wired).
 PAYMENTS_VERIFY_SIGNATURES = env.bool('PAYMENTS_VERIFY_SIGNATURES', default=True)
+
+# --- Research AI (OpenRouter) ---------------------------------------------------
+# Backend LLM provider for the Academic Research & Thesis Assistant
+# (/research-ai/). ``OPENROUTER_API_KEY`` empty/missing → the query endpoint
+# degrades gracefully to the deterministic offline engine (no external calls,
+# so the page stays fully usable without configuration). ``requests`` (pinned
+# in requirements.txt) performs the HTTP call against the OpenRouter
+# chat-completions API; the client lives in ``services/openrouter.py``.
+OPENROUTER_API_KEY = env('OPENROUTER_API_KEY', default='')
+OPENROUTER_DEFAULT_MODEL = env(
+    'OPENROUTER_DEFAULT_MODEL', default='google/gemini-2.5-pro'
+)

@@ -335,6 +335,11 @@ Niter-centralized-dash/
 │   ├── views.py                 # Host portal views (medical host + admin dashboards)
 │   ├── urls.py                  # Host app URL routes
 │   └── tests.py                 # Host app tests
+├── services/                   # Third-party service adapters (§65)
+│   ├── __init__.py
+│   ├── openrouter.py            # OpenRouter chat-completions client (headers,
+│   │                            #   system prompt, typed error hierarchy, 30s cap)
+│   └── document_text.py         # PDF/DOCX → plain-text extraction for references
 ├── static/
 │   └── css/
 │       ├── theme.css            # Global design tokens (:root variables)
@@ -459,7 +464,10 @@ CSRF_COOKIE_SECURE=True
 | POST | `/api/notes/summarize/` | Student: server-side extractive TF summarization of note content |
 | POST | `/api/notes/keywords/` | Student: TF keyword ranking for note content |
 | POST/GET | `/api/notes/export/` | Student: export a `UserNote` as `.txt` or a dependency-free generated PDF |
-| POST | `/api/research/query/` | Student: structured research responses (topic, markdown, IEEE/APA7/Harvard/Chicago references) |
+| POST | `/research-ai/api/query/` | Student: OpenRouter-backed research chat — `message` + `citation_style` + optional PDF/DOCX `file` → `{status, response, thread_id, engine}`; offline engine fallback when `OPENROUTER_API_KEY` is unset; friendly 429/504/502 error payloads (§65) |
+| GET | `/research-ai/api/threads/` | Student: list the signed-in user's research threads (title, citation style, updated-at) (§65) |
+| GET/DELETE | `/research-ai/api/threads/<id>/` | Student: fetch a thread's full message history / delete the thread (owner-scoped 404) (§65) |
+| POST | `/api/research/query/` | Legacy alias of the query endpoint (kept so old clients/tests keep working) |
 | GET | `/notices/` | Published `Notice` feed with optional `?category=` filter (server-rendered) |
 | GET | `/academic-notes/` | Live `Course`/`CourseMaterial` drive (server-rendered) |
 | GET | `/departments/` + `/departments/<slug>/` | Live department directory + detail hubs (server-rendered) |
@@ -494,7 +502,7 @@ CSRF_COOKIE_SECURE=True
 - **Department Directory & Detail Hubs** — `Department`/`FacultyMember`/`ClassRoutine` models + seed migration; `/departments/<slug>/` hubs render live data
 - **Club student view** — `Club`/`ClubEvent`/`ClubRegistration` models; `POST /api/clubs/join/` (pending membership, duplicate → 409, lead notified)
 - **Checkout / payments** — `PaymentTransaction` model + server-backed `POST /checkout/` (unique `NTR-` ids, meal purpose activates `MealSubscription`)
-- **Research AI** — `POST /api/research/query/` returns structured responses with style-aware references
+- **Research AI** — OpenRouter-backed `/research-ai/api/query/` chat with persisted `ResearchThread`/`ResearchMessage` rows, server-side PDF/DOCX reference extraction, and graceful offline-engine fallback when no `OPENROUTER_API_KEY` is configured (§65)
 - **Dashboard live widgets** — meal ratio, transport seats, medical availability + feeds computed from the database
 - **Notes Engine AI actions + live sidebar** — server-side save / summarize / keywords / export (.txt + PDF); the sidebar reads the live academic catalog (`Department` folders, `CourseMaterial` PDFs, owner-scoped `UserNote` fetch via `/api/notes/<id>/`) — §43
 - **Deployment** — env-driven settings (django-environ), `DEBUG=False` + `ALLOWED_HOSTS` from env, WhiteNoise static, `channels_redis` with offline fallback, `check --deploy` clean
@@ -508,7 +516,7 @@ CSRF_COOKIE_SECURE=True
 1. **~~LOW — Transport live status / route catalog~~ — DONE in §39**: `TRANSPORT_ROUTES` is replaced by DB models (`TransportRoute`/`BusSchedule`/`Driver`); the transport page, dashboard widget, and booking handler read live seat counts and driver details from the database.
 2. **LOW — Cafeteria kitchen inventory + System Admin driver/scan tables**: still mock forms — needs inventory/scan models + staff CRUD (drivers themselves now live in the DB via `Driver`).
 3. **~~LOW — Medical admin chat~~ — DONE in §39**: persistent patient–doctor consultation threads (models + REST + WebSockets). The doctor-schedule panel is now **real** (§63 — DB `Doctor`/`DoctorSchedule` + availability toggles + slot caps enforced at booking); only the content-management and home-page-information panels remain mock.
-4. **LOW — Research AI persisted threads & real LLM**: `/api/research/query/` is deterministic server-side (no external AI calls); persisted thread history + an actual LLM integration would be the next step.
+4. **~~LOW — Research AI persisted threads & real LLM~~ — DONE in §65**: `/research-ai/api/query/` now calls OpenRouter (`services/openrouter.py`) when `OPENROUTER_API_KEY` is set and persists `ResearchThread`/`ResearchMessage` history; uploaded PDF/DOCX reference text is extracted server-side (`services/document_text.py`) and injected into the LLM system prompt.
 5. **LOW — Media at scale**: media is served by Django — swap to django-storages/CDN if uploads grow (noted in `.env.example`).
 
 ## 13. Update by Tajkia Tasnim
@@ -3213,3 +3221,98 @@ Scopes configured: `drive.file` + `spreadsheets` (also mirrored in
 - Updated `GoogleServiceTest` / `ClubSheetsModuleTest` for the sheets-v4 mocks
   and encrypted-token assertions.
 - Full suite — **572 tests OK** (run via `./venv/bin/python manage.py test`).
+
+---
+
+## 65. Research AI — OpenRouter LLM Integration & Persisted Threads
+
+**Date:** 12 August 2026  
+**Branch:** main
+
+### Overview
+
+Connected the Academic Research & Thesis Assistant (`/research-ai/`) to the
+**OpenRouter** chat-completions API. The chat console, paper/abstract file
+parser, citation selector, and saved-thread list now all execute through the
+backend endpoint `POST /research-ai/api/query/`, which persists real
+conversation threads and answers via OpenRouter — with graceful offline fallback
+when `OPENROUTER_API_KEY` is not configured.
+
+### 1. Environment & Configuration
+
+- `OPENROUTER_API_KEY = env('OPENROUTER_API_KEY', default='')` and
+  `OPENROUTER_DEFAULT_MODEL = env('OPENROUTER_DEFAULT_MODEL', default='google/gemini-2.5-pro')`
+  added to `config/settings.py`; both documented in `.env.example`.
+- Base URL constant: `https://openrouter.ai/api/v1/chat/completions` (in
+  `services/openrouter.py`).
+
+### 2. Backend Service & API Routes
+
+- **`services/openrouter.py`** (new package) — `requests.post` to OpenRouter
+  with `Authorization: Bearer <key>`, `HTTP-Referer: https://<request host>`
+  (fallback `https://niter.edu.bd`), and `X-Title: NITER Centralized Dash`;
+  30s timeout cap. `build_system_prompt(style, document_text)` injects the
+  selected citation style (IEEE / APA 7 / Harvard / Chicago) and the extracted
+  reference text. Typed error hierarchy
+  (`OpenRouterNotConfigured` / `OpenRouterAuthError` / `OpenRouterRateLimitError` /
+  `OpenRouterTimeoutError` / `OpenRouterError`) is translated by the view into
+  friendly JSON payloads with matching HTTP statuses (401/403→502, 429→429,
+  timeout→504, transport→502).
+- **`services/document_text.py`** (new) — lazily-imported `pypdf` (`.pdf`) and
+  `python-docx` (`.docx`) extraction; returns `None` gracefully when the
+  libraries or the file are unparseable, so a bad upload never breaks a query.
+- **`research_query` view** (`/research-ai/api/query/`) — reads `message`,
+  `thread_id`, `citation_style`, and optional `file`; creates/reuses the
+  owner-scoped thread, persists the user turn before the provider call (so a
+  failure is retryable), returns
+  `{status, response, thread_id, engine, model, citation_style, message}`.
+  Missing key → `engine: 'offline'` deterministic fallback (the old keyword
+  engine + style-aware references), so the page works with zero config.
+- **Thread APIs** — `GET /research-ai/api/threads/` (list) and
+  `GET|DELETE /research-ai/api/threads/<id>/` (history / delete, owner-scoped
+  404). Legacy `POST /api/research/query/` is kept as an alias.
+- **Models** — `ResearchThread` (user, title auto-derived from the first
+  message, citation_style, timestamps) + `ResearchMessage` (role user/assistant,
+  content); migration `0028`, registered in `core/admin.py` with an inline
+  message list.
+
+### 3. Frontend Wiring (`templates/research_ai.html` + `static/css/research_ai.css`)
+
+- Send button / Enter submits via `fetch('/research-ai/api/query/')` using
+  **FormData** (supports the attached file); user and assistant bubbles render
+  dynamically; the returned `thread_id` becomes the active thread.
+- **Upload dropzone / attach clip** — the selected PDF/DOCX is held as the
+  pending reference, shown in an attachment status chip under the input, and
+  sent with the next query; the extracted text is used server-side.
+- **Citation selector** — the dropdown value is posted in the payload each
+  turn; changing it mid-thread updates the thread's stored style.
+- **Recent Research Threads** — loaded live from `/research-ai/api/threads/`;
+  clicking one loads its full history via the detail endpoint and sets the
+  active highlight; each thread has a delete button; "New Thread" resets the
+  console. Canned JS responses remain only as a last-resort offline fallback.
+
+### Testing
+
+- OpenRouter HTTP calls mocked with `unittest.mock.patch` (offline suite):
+  success path (headers / referer / model / timeout / system-prompt style),
+  429→429, timeout→504, 401→502, transport→502.
+- Missing-key test: endpoint returns a well-formed success JSON from the
+  offline engine (graceful degradation, no crash).
+- File-parser tests: in-memory DOCX (python-docx) and a hand-built minimal PDF
+  extract the expected text; unsupported formats return `None`; an uploaded
+  DOCX's text is asserted to appear in the OpenRouter system prompt.
+- Thread tests: create/persist, thread_id reuse, 404 for unknown/foreign
+  threads, style update, list/detail/delete, owner scoping.
+- `python manage.py check` ✔; full suite **589 tests OK**
+  (`./venv/bin/python manage.py test`). End-to-end verified in Chrome:
+  login → research page → send (offline engine) → sidebar thread appears →
+  resume history → New Thread reset — zero console errors.
+
+### Files Added / Modified
+
+- `services/` (new: `__init__.py`, `openrouter.py`, `document_text.py`)
+- `config/settings.py`, `.env.example`, `requirements.txt` (pypdf, python-docx)
+- `core/models.py` (`ResearchThread`, `ResearchMessage`) + `0028_*` migration
+- `core/views.py` (rewritten `research_query` + `research_threads` +
+  `research_thread_detail`), `core/urls.py`, `core/admin.py`
+- `templates/research_ai.html`, `static/css/research_ai.css`, `core/tests.py`
