@@ -54,10 +54,15 @@
                 <button type="button" class="btn-primary" id="connect-sheet-btn">
                     <i class="fa-solid fa-link"></i> Connect Sheet
                 </button>
+                <button type="button" class="btn-small" id="verify-sheet-btn">
+                    <i class="fa-solid fa-circle-check"></i> Verify &amp; Connect
+                </button>
                 <button type="button" class="btn-small" id="refresh-sheet-btn">
                     <i class="fa-solid fa-rotate"></i> Refresh
                 </button>
             </div>
+
+            <div class="alert" id="verify-sheet-result" role="status" hidden></div>
 
             <p class="sheet-status" id="sheet-status" role="status"></p>
             {% if sheet_error %}
@@ -625,7 +630,58 @@
                 }
             }
 
+            // Verify & Connect — setup default tabs/headers on the linked sheet
+            // (moved here from Account Settings so club sheets management lives
+            // exclusively in the Club Management dashboard).
+            const verifyBtn = document.getElementById('verify-sheet-btn');
+            const verifyResult = document.getElementById('verify-sheet-result');
+            async function verifyClubSheet() {
+                const sheetUrl = urlInput.value.trim();
+                if (!sheetUrl) {
+                    setStatus('Enter a Google Sheet URL first.', true);
+                    return;
+                }
+                verifyBtn.disabled = true;
+                verifyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying…';
+                try {
+                    const response = await fetch("{% url 'api_club_sheet_verify' %}", {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCookie('csrftoken'),
+                        },
+                        body: JSON.stringify({ sheet_ref: sheetUrl }),
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (data.status === 'auth_required') {
+                        showReauthModal();
+                        return;
+                    }
+                    if (response.ok && data.status === 'success') {
+                        verifyResult.className = 'alert success';
+                        verifyResult.innerHTML = '<i class="fa-solid fa-circle-check"></i><span>Connected — “' + escapeHtml(data.title || 'Spreadsheet') + '” verified' +
+                            (data.created && data.created.length ? ' · created tabs: ' + escapeHtml(data.created.join(', ')) : '') + '. Default column headers are ready.</span>';
+                        verifyResult.hidden = false;
+                        localStorage.setItem(SHEET_URL_KEY, sheetUrl);
+                        fetchClubSheetRecords();
+                    } else {
+                        verifyResult.className = 'alert error';
+                        verifyResult.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>' + escapeHtml(data.message || 'Could not verify the sheet.') + '</span>';
+                        verifyResult.hidden = false;
+                    }
+                } catch (err) {
+                    verifyResult.className = 'alert error';
+                    verifyResult.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>Could not reach the verification service.</span>';
+                    verifyResult.hidden = false;
+                } finally {
+                    verifyBtn.disabled = false;
+                    verifyBtn.innerHTML = '<i class="fa-solid fa-circle-check"></i> Verify &amp; Connect';
+                }
+            }
+
             connectBtn.addEventListener('click', fetchClubSheetRecords);
+            if (verifyBtn) verifyBtn.addEventListener('click', verifyClubSheet);
             refreshBtn.addEventListener('click', fetchClubSheetRecords);
             urlInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') { e.preventDefault(); fetchClubSheetRecords(); }
@@ -642,7 +698,7 @@
             }
 
             // Restore the saved sheet URL and auto-load on refresh.
-            // A server-side prefill (Settings → Club Google Sheets) takes
+            // A server-side prefill (the saved club spreadsheet) takes
             // precedence over the localStorage copy so the dashboard
             // auto-connects after setup — fetch only when the sheet changed.
             const saved = localStorage.getItem(SHEET_URL_KEY);

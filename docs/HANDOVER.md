@@ -3085,14 +3085,12 @@ consoles.
   - All Google/transport failures surface as `GoogleServiceError` (with
     `GoogleAccountNotConnected` / `GoogleReauthRequired` subtypes) so views
     answer 401 (re-connect Google) or 500 correctly.
-- **Settings → Club Google Sheets tab** (`/settings/?tab=google_sheets`):
-  - OAuth via the existing Google connect button (allauth) — tokens stored in
-    `GoogleUserToken`; no new OAuth flow added.
-  - New `ClubSheetsConfig` model (OneToOne→User) stores the club
-    spreadsheet reference; the tab saves/validates it via `form=sheets` POST.
 - **Club Management auto-connect**: `club_admin_view` falls back to the saved
   `ClubSheetsConfig.sheet_ref` when no `?sheet_url=` param is given, and the
-  page prefills the input from it.
+  page prefills the input from it. **Note (§71):** the sheets reference was
+  originally saved from a Settings tab (`/settings/?tab=google_sheets`); that
+  tab is now removed and the spreadsheet is managed from the Club Management
+  dashboard only.
 
 ### Dedicated admin dashboards
 
@@ -3199,12 +3197,12 @@ Scopes configured: `drive.file` + `spreadsheets` (also mirrored in
 
 ### Settings tabs (`/settings/`)
 
-- **Google Drive tab** (`?tab=google_drive`): connection status, account email
-  (safe `google_email` context var — no chained template lookups on `None`),
-  storage-quota card with progress bar, unlink button.
-- **Club Google Sheets tab** (`?tab=google_sheets`): sheet ID/URL input, Save,
-  and **Verify & Connect Sheet** button → `POST /api/clubs/sheet/verify/`
-  (`verify_club_sheet_view`), which saves `ClubSheetsConfig` + sets up headers.
+- **Notifications / Account & Google / Display** — the three user-preference
+  tabs. **Note (§71):** the former **Google Drive** (`?tab=google_drive`) and
+  **Club Google Sheets** (`?tab=google_sheets`) tabs were removed in a later
+  restructure — Google Drive connect/callback still runs from `/drive/*` and
+  club sheets management now lives exclusively in the Club Management
+  dashboard.
 
 ### Tests (all offline, Google APIs mocked)
 
@@ -3620,3 +3618,63 @@ to Google's consent screen — one fewer hop in the sign-in flow.
 ### Files Modified
 
 - `config/settings.py`, `docs/HANDOVER.md`
+
+---
+
+## 71. Account Settings Restructure — Sheets/Drive Tabs Removed
+
+**Date:** 12 August 2026  
+**Branch:** main
+
+### Overview
+
+Removed the **"Club Google Sheets"** and **"Google Drive"** tabs from Account
+Settings (`/settings/`) so the page holds only the user-preference tabs
+(Notifications / Account & Google / Display). Google Sheets integration now
+lives **exclusively** in the staff-only Club Management dashboard, and the
+club-sheet API endpoints are staff-gated.
+
+### Changes
+
+- **`templates/settings.html`** — removed the two tab buttons and their content
+  panes (`tab-google_sheets`, `tab-google_drive`), the spreadsheet verify AJAX
+  block, and the Drive-tab unlink wiring. The Account & Google tab keeps its
+  Google connection status + Drive access status card.
+- **`core/views.py::settings_view`** — dropped `form=sheets` handling and the
+  `club_sheets` / `sheet_saved` / `sheet_errors` / `drive_info` context; the
+  GET `?tab=` value is sanitised to the three remaining tabs. Removed the now
+  unused `get_drive_storage_info` import.
+- **`core/views.py`** — `fetch_club_sheet_view`, `append_club_sheet_view`, and
+  `verify_club_sheet_view` changed from `@login_required` to
+  `@staff_member_required(login_url=settings.LOGIN_URL)` — they are consumed
+  only by the staff-only Club Management dashboard. (`upload_note_view` stays
+  `@login_required` — students still upload notes.)
+- **`core/views.py::drive_connect` / `drive_callback`** — error/success
+  redirects now point at `?tab=account` (the removed `?tab=google_drive`
+  target is gone).
+- **`templates/club_admin.html`** — added a **Verify & Connect** button next
+  to Connect/Refresh that calls `POST /api/clubs/sheet/verify/` (moved from
+  the removed Settings tab), with a success/error result panel; the prefill
+  comment now references the saved spreadsheet instead of Settings.
+
+### Permissions summary
+
+| Endpoint | Guard |
+| :--- | :--- |
+| `GET/POST /api/clubs/sheet/fetch` / `append` / `verify` | staff only |
+| `POST /api/clubs/verify-transaction/` | staff only (unchanged) |
+| `POST /api/notes/upload/` | any authenticated user (unchanged) |
+
+### Tests
+
+- `GoogleApiViewsTest` / `VerifyClubSheetApiTest` users now `is_staff=True`;
+  added non-staff denial tests (authenticated student → bounced to login).
+- Removed `GoogleDriveSettingsTabTest` and the Settings-sheets POST tests;
+  replaced `SettingsGoogleSheetsTabTest` with `ClubSheetsConfigPrefillTest`.
+- `DriveOAuthFlowTest` redirect assertion now expects `?tab=account`.
+- Full core suite **553 tests OK**; `host` + `payments` suites OK.
+
+### Files Modified
+
+- `templates/settings.html`, `templates/club_admin.html`, `core/views.py`,
+  `core/tests.py`, `docs/HANDOVER.md`

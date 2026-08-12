@@ -1579,7 +1579,10 @@ class GoogleApiViewsTest(TestCase):
     """Phase 4 — Google API endpoints (Drive upload + club sheets)."""
 
     def setUp(self):
-        self.user = User.objects.create_user(username='sheet_user', password='x12345678')
+        # Club sheet endpoints are staff-only (Club Management dashboard).
+        self.user = User.objects.create_user(
+            username='sheet_user', password='x12345678', is_staff=True,
+        )
         self.client.login(username='sheet_user', password='x12345678')
 
     # ------------------------------------------------------------------
@@ -1682,6 +1685,17 @@ class GoogleApiViewsTest(TestCase):
     # ------------------------------------------------------------------
     # fetch_club_sheet_view
     # ------------------------------------------------------------------
+    def test_fetch_sheet_denied_for_non_staff(self):
+        student = User.objects.create_user(username='plain_student', password='x12345678')
+        self.client.logout()
+        self.client.login(username='plain_student', password='x12345678')
+        # staff_member_required bounces authenticated non-staff to the login
+        # page (Django default) — never serves sheet data to students.
+        response = self.client.get(reverse('api_club_sheet_fetch'), {'sheet_url': 'https://x'})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+        self.assertNotEqual(response.status_code, 200)
+
     def test_fetch_sheet_success(self):
         records = [{'Name': 'Alice', 'Amount': '200'}]
         with mock.patch('core.views.get_club_sheet_data', return_value=records) as service:
@@ -6390,7 +6404,7 @@ class DriveOAuthFlowTest(TestCase):
                 reverse('drive_callback'), {'state': 's', 'code': 'auth-code'},
             )
         self.assertEqual(response.status_code, 302)
-        self.assertIn('tab=google_drive', response.url)
+        self.assertIn('tab=account', response.url)
         stored = GoogleUserToken.objects.get(user=self.user)
         self.assertEqual(decrypt_secret(stored.access_token), 'ya29.flow-access')
         self.assertEqual(decrypt_secret(stored.refresh_token), '1//flow-refresh')
@@ -6412,13 +6426,30 @@ class VerifyClubSheetApiTest(TestCase):
     """POST /api/clubs/sheet/verify/ — save + setup default tabs/headers."""
 
     def setUp(self):
-        self.user = User.objects.create_user(username='verify_sheets_user', password='x12345678')
+        # Verify & Connect is staff-only (Club Management dashboard).
+        self.user = User.objects.create_user(
+            username='verify_sheets_user', password='x12345678', is_staff=True,
+        )
         self.client.force_login(self.user)
 
     def test_verify_requires_login(self):
         self.client.logout()
         response = self.client.post(reverse('api_club_sheet_verify'), data=json.dumps({'sheet_ref': 'x'}), content_type='application/json')
         self.assertEqual(response.status_code, 302)
+
+    def test_verify_denied_for_non_staff(self):
+        student = User.objects.create_user(username='plain_student_v', password='x12345678')
+        self.client.logout()
+        self.client.login(username='plain_student_v', password='x12345678')
+        # Same staff gate as fetch/append — authenticated students are bounced
+        # to the login page rather than reaching the sheet setup endpoint.
+        response = self.client.post(
+            reverse('api_club_sheet_verify'),
+            data=json.dumps({'sheet_ref': 'x'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
 
     def test_verify_rejects_missing_ref(self):
         response = self.client.post(reverse('api_club_sheet_verify'), data=json.dumps({'sheet_ref': '  '}), content_type='application/json')
@@ -6463,51 +6494,6 @@ class VerifyClubSheetApiTest(TestCase):
                 content_type='application/json',
             )
         self.assertEqual(response.status_code, 500)
-
-
-class GoogleDriveSettingsTabTest(TestCase):
-    """/settings/?tab=google_drive — connection status + storage quota."""
-
-    def setUp(self):
-        self.user = User.objects.create_user(username='drive_tab_user', password='x12345678')
-        self.client.force_login(self.user)
-
-    def test_tab_renders_connection_prompt_when_not_connected(self):
-        html = self.client.get(reverse('settings'), {'tab': 'google_drive'}).content.decode()
-        self.assertIn('id="tab-google_drive"', html)
-        self.assertIn('Connect Google Drive', html)
-        self.assertIn('NITER Centralized Dash Notes', html)
-
-    def test_tab_renders_quota_when_connected(self):
-        GoogleUserToken.objects.create(
-            user=self.user, access_token='ya29.x', refresh_token='1//r',
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id='app', client_secret='secret',
-            scopes=['https://www.googleapis.com/auth/drive.file'],
-            expiry=timezone.now() + timedelta(hours=1),
-        )
-        with mock.patch('core.views.get_drive_storage_info', return_value={
-            'email': 'd@niter.edu.bd',
-            'quota_total': 15 * 1024 ** 3,
-            'quota_used': 3 * 1024 ** 3,
-            'quota_remaining': 12 * 1024 ** 3,
-        }):
-            html = self.client.get(reverse('settings'), {'tab': 'google_drive'}).content.decode()
-        self.assertIn('d@niter.edu.bd', html)
-        self.assertIn('15.0\xa0GB', html)  # filesizeformat emits \xa0 separators
-        self.assertIn('quota-bar', html)
-
-    def test_tab_renders_gracefully_when_quota_fails(self):
-        GoogleUserToken.objects.create(
-            user=self.user, access_token='ya29.x', refresh_token='1//r',
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id='app', client_secret='secret',
-            scopes=['https://www.googleapis.com/auth/drive.file'],
-            expiry=timezone.now() + timedelta(hours=1),
-        )
-        with mock.patch('core.views.get_drive_storage_info', return_value=None):
-            response = self.client.get(reverse('settings'), {'tab': 'google_drive'})
-        self.assertEqual(response.status_code, 200)
 
 
 class DriveServiceModuleTest(TestCase):
@@ -6559,40 +6545,18 @@ class DriveServiceModuleTest(TestCase):
             self.assertIsNone(get_drive_storage_info(self.user))
 
 
-class SettingsGoogleSheetsTabTest(TestCase):
-    """Settings → Club Google Sheets tab — save/validate the sheet reference."""
+class ClubSheetsConfigPrefillTest(TestCase):
+    """Club Management dashboard — the saved club spreadsheet is prefilled
+    from ``ClubSheetsConfig`` (the settings-side sheets tab was removed)."""
 
     def setUp(self):
-        self.user = User.objects.create_user(username='sheets_tab_user', password='x12345678')
+        self.user = User.objects.create_user(
+            username='sheets_tab_user', password='x12345678', is_staff=True,
+        )
         self.client.force_login(self.user)
-
-    def test_post_saves_sheet_reference(self):
-        response = self.client.post(reverse('settings'), {
-            'form': 'sheets',
-            'sheet_ref': 'https://docs.google.com/spreadsheets/d/1AbCxYz/edit',
-        })
-        self.assertEqual(response.status_code, 200)
-        config = ClubSheetsConfig.objects.get(user=self.user)
-        self.assertEqual(config.sheet_ref, 'https://docs.google.com/spreadsheets/d/1AbCxYz/edit')
-        self.assertContains(response, 'Club spreadsheet saved')
-
-    def test_post_rejects_empty_reference(self):
-        response = self.client.post(reverse('settings'), {'form': 'sheets', 'sheet_ref': '   '})
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(ClubSheetsConfig.objects.filter(user=self.user).exists())
-        self.assertContains(response, 'Enter your club Google Sheet ID or URL.')
-
-    def test_get_with_tab_renders_sheets_panel(self):
-        response = self.client.get(reverse('settings'), {'tab': 'google_sheets'})
-        self.assertEqual(response.status_code, 200)
-        html = response.content.decode()
-        self.assertIn('id="tab-google_sheets"', html)
-        self.assertIn('Club Google Sheets', html)
 
     def test_club_admin_prefills_saved_sheet(self):
         ClubSheetsConfig.objects.create(user=self.user, sheet_ref='1AbCxYz')
-        self.user.is_staff = True
-        self.user.save()
         html = self.client.get(reverse('club_admin')).content.decode()
         self.assertIn('value="1AbCxYz"', html)
 

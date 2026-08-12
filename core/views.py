@@ -43,8 +43,6 @@ from .google_service import (
     user_has_drive_access,
     verify_club_transaction,
 )
-from academic_notes.drive_service import get_drive_storage_info
-
 # Research AI — OpenRouter LLM client + PDF/DOCX reference extraction
 # (services/openrouter.py + services/parser.py).
 from services.parser import extract_document_text
@@ -1238,6 +1236,12 @@ def settings_view(request):
     POST requests are disambiguated by payload: a hidden ``form=profile``
     marker means the profile form, ``old_password`` means the password form,
     and anything else means preference toggles (form-encoded or JSON).
+
+    Club Google Sheets and Google Drive are NOT managed here — club sheets
+    management lives exclusively in the Club Management dashboard
+    (``club_admin_view``, staff-only) and Drive connect/callback flows are
+    wired from the Notes Engine. This page keeps only the user preference
+    tabs (Notifications / Account & Google / Display).
     """
     prefs, _ = UserNotificationPreference.objects.get_or_create(user=request.user)
     profile = getattr(request.user, 'student_profile', None)
@@ -1253,30 +1257,11 @@ def settings_view(request):
     password_updated = False
     profile_updated = False
     profile_errors = []
-    sheet_saved = False
-    sheet_errors = []
     active_tab = 'notifications'
     password_form = PasswordChangeForm(request.user)
 
-    # Clubs module — the spreadsheet reference saved from the google_sheets tab.
-    # ``getattr`` is safe: the reverse OneToOne accessor raises
-    # ``RelatedObjectDoesNotExist`` (an AttributeError subclass) when missing.
-    club_sheets = getattr(request.user, 'club_sheets_config', None)
-
     if request.method == 'POST':
-        if request.POST.get('form') == 'sheets':
-            # Club Google Sheets tab → save the club spreadsheet reference.
-            active_tab = 'google_sheets'
-            sheet_ref = (request.POST.get('sheet_ref') or '').strip()
-            if not sheet_ref:
-                sheet_errors.append('Enter your club Google Sheet ID or URL.')
-            else:
-                config, _ = ClubSheetsConfig.objects.get_or_create(user=request.user)
-                config.sheet_ref = sheet_ref
-                config.save(update_fields=['sheet_ref', 'updated_at'])
-                club_sheets = config
-                sheet_saved = True
-        elif request.POST.get('form') == 'profile':
+        if request.POST.get('form') == 'profile':
             # Account & Google tab → Profile Details form (full name + email).
             active_tab = 'account'
             profile_updated, profile_errors = _save_profile_settings(request)
@@ -1292,21 +1277,16 @@ def settings_view(request):
             # Preference toggles (form-encoded or JSON) — answered directly.
             return _save_settings_prefs(request, prefs)
     else:
+        # Only the three remaining tabs exist; stale ?tab= values (e.g. the
+        # removed google_sheets / google_drive) fall back to the first tab.
         active_tab = request.GET.get('tab', 'notifications')
+        if active_tab not in ('notifications', 'account', 'display'):
+            active_tab = 'notifications'
 
-    # Google Drive tab — account email + storage quota (only queried when the
-    # tab is active AND the user is connected; failures render gracefully as
-    # ``None`` so the tab never hard-fails on a quota API hiccup).
-    drive_info = None
-    if active_tab == 'google_drive' and has_google_token:
-        drive_info = get_drive_storage_info(request.user)
-
-    # Safe email label for the Google-connected cards: the quota response wins,
-    # then the allauth social account, then a fallback. Computed here so the
-    # template never does a chained ``google_social.uid`` lookup on ``None``.
-    if drive_info and drive_info.get('email'):
-        google_email = drive_info['email']
-    elif google_social is not None:
+    # Safe email label for the Google-connected card: the allauth social
+    # account first, then a fallback. Computed here so the template never does
+    # a chained ``google_social.uid`` lookup on ``None``.
+    if google_social is not None:
         google_email = (
             (google_social.extra_data or {}).get('email')
             or google_social.uid
@@ -1326,10 +1306,6 @@ def settings_view(request):
         'google_email': google_email,
         'has_google_token': has_google_token,
         'has_drive_access': has_drive_access,
-        'club_sheets': club_sheets,
-        'sheet_saved': sheet_saved,
-        'sheet_errors': sheet_errors,
-        'drive_info': drive_info,
         'active_tab': active_tab,
     })
 
@@ -2652,10 +2628,10 @@ def drive_connect(request):
         )
     except GoogleServiceError as exc:
         messages.error(request, str(exc))
-        return redirect(reverse('settings') + '?tab=google_drive')
+        return redirect(reverse('settings') + '?tab=account')
     except Exception:
         messages.error(request, 'Could not start the Google connection flow.')
-        return redirect(reverse('settings') + '?tab=google_drive')
+        return redirect(reverse('settings') + '?tab=account')
 
     request.session['drive_oauth_state'] = state
     return redirect(authorization_url)
@@ -2672,12 +2648,12 @@ def drive_callback(request):
     expected_state = request.session.pop('drive_oauth_state', None)
     if expected_state is None or request.GET.get('state') != expected_state:
         messages.error(request, 'Google connection was not completed (state mismatch).')
-        return redirect(reverse('settings') + '?tab=google_drive')
+        return redirect(reverse('settings') + '?tab=account')
 
     error = request.GET.get('error')
     if error:
         messages.error(request, 'Google access was not granted.')
-        return redirect(reverse('settings') + '?tab=google_drive')
+        return redirect(reverse('settings') + '?tab=account')
 
     try:
         from google_auth_oauthlib.flow import Flow
@@ -2697,7 +2673,7 @@ def drive_callback(request):
     except Exception as exc:
         logger.exception('Google Drive OAuth callback failed for user %s', request.user.pk)
         messages.error(request, 'Google could not complete the connection — try again.')
-        return redirect(reverse('settings') + '?tab=google_drive')
+        return redirect(reverse('settings') + '?tab=account')
 
     token, _ = GoogleUserToken.objects.update_or_create(
         user=request.user,
@@ -2738,16 +2714,18 @@ def drive_callback(request):
         pass  # GoogleUserToken row is the source of truth for the service layer
 
     messages.success(request, 'Google Drive connected — you can upload notes and sync club sheets.')
-    return redirect(reverse('settings') + '?tab=google_drive')
+    return redirect(reverse('settings') + '?tab=account')
 
 
-@login_required
+@staff_member_required(login_url=settings.LOGIN_URL)
 def verify_club_sheet_view(request):
-    """Verify & Connect a club spreadsheet (Settings → Club Google Sheets).
+    """Verify & Connect a club spreadsheet (Club Management dashboard).
 
     Saves the spreadsheet reference and asks Google Sheets to create the
     default tabs + column headers (Members / Registrations / Notices). Answers
-    JSON with the sheet title + created tabs so the settings UI can confirm.
+    JSON with the sheet title + created tabs so the club dashboard UI can
+    confirm. Staff-only — club sheet management lives in the Club Management
+    dashboard, not in Account Settings.
     """
     data, error = _parse_json_body(request)
     if error is not None:
@@ -4098,9 +4076,12 @@ def upload_note_view(request):
     })
 
 
-@login_required
+@staff_member_required(login_url=settings.LOGIN_URL)
 def fetch_club_sheet_view(request):
-    """Return every row of the club Google Sheet as JSON records."""
+    """Return every row of the club Google Sheet as JSON records.
+
+    Staff-only — consumed exclusively by the Club Management dashboard.
+    """
     if request.method != 'GET':
         return JsonResponse({'status': 'error', 'message': 'GET required'}, status=405)
 
@@ -4121,9 +4102,12 @@ def fetch_club_sheet_view(request):
     return JsonResponse({'status': 'success', 'records': records})
 
 
-@login_required
+@staff_member_required(login_url=settings.LOGIN_URL)
 def append_club_sheet_view(request):
-    """Append a row of values to the club Google Sheet."""
+    """Append a row of values to the club Google Sheet.
+
+    Staff-only — consumed exclusively by the Club Management dashboard.
+    """
     data, error = _parse_json_body(request)
     if error is not None:
         return error
