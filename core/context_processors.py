@@ -84,12 +84,14 @@ def endpoints(request):
             'home': reverse('home'),
             'dashboard': reverse('dashboard'),
             'student_dashboard': reverse('student_dashboard'),
+            'club_dashboard': reverse('club_dashboard'),
             'admin_dashboard': reverse('admin_dashboard'),
             'admin_users': reverse('admin_users'),
             'admin_club_accounts': reverse('admin_club_accounts'),
             'admin_database': reverse('admin_database'),
             'admin_content': reverse('admin_content'),
             'admin_settings': reverse('admin_settings'),
+            'admin_calendar': reverse('admin_calendar'),
             'academic_notes': reverse('academic_notes'),
             'notices': reverse('notices'),
             'tickets': reverse('tickets'),
@@ -114,6 +116,7 @@ def endpoints(request):
             'api_club_verify_transaction': reverse('api_club_verify_transaction'),
             'api_admin_update_role': reverse('api_admin_update_role'),
             'api_club_accounts': reverse('api_club_accounts'),
+            'api_admin_academic_calendar': reverse('api_admin_academic_calendar'),
 
             # Authentication
             'login': reverse('login'),

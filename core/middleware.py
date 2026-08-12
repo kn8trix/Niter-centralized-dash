@@ -58,6 +58,11 @@ class RoleAccessMiddleware:
         if path.startswith('/dashboard/admin/'):
             if role != 'admin':
                 return redirect(role_home_path(role))
+        # Club area (/dashboard/club/*) — club accounts (staff may preview as
+        # club leads); students are bounced to their own dashboard.
+        elif path.startswith('/dashboard/club/'):
+            if role not in ('club', 'admin'):
+                return redirect(role_home_path(role))
         # Student area (/dashboard/student/*) — students (admins may preview).
         elif path.startswith('/dashboard/student/'):
             if role == 'club':

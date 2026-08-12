@@ -1,40 +1,14 @@
+{% extends "club/club_base.html" %}
 {% load static %}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Club Management — Niter Hub</title>
-    <meta name="description" content="Club admin — member approvals, role assignments, event posts, and payment verification.">
 
-    <!-- Global design tokens -->
-    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
-    <!-- Global display preferences (theme / timezone / density) -- no-flash driver -->
-    {% include 'partials/display_prefs.html' %}
-    <!-- Shared top navigation -->
-    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
-    <!-- Shared admin dashboard styles -->
-    <link rel="stylesheet" href="{% static 'css/admin.css' %}">
+{% block title %}Club Management — Niter Hub{% endblock %}
 
-    <!-- Google Fonts (Inter) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
-    <!-- FontAwesome icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
-</head>
-
-<body class="club-admin" data-app="campusdash-public">
-
-    <div class="shell">
-
-        {% include 'partials/topbar.html' with active='' %}
+{% block content %}
 
         <!-- ============================================================
              Intro
         ============================================================ -->
-        <div class="intro">
+        <div id="overview" class="club-section-anchor intro">
             <h1>Club Management</h1>
             <p>Approve members, assign roles, publish events, and verify payments.</p>
         </div>
@@ -42,7 +16,7 @@
         <!-- ============================================================
              Google Sheets — live registrations & payments
         ============================================================ -->
-        <div class="card">
+        <div class="card" id="sheet-card">
             <h2 class="section-title"><i class="fa-brands fa-google"></i> Live Google Sheet</h2>
             <p class="section-subtitle">Connect your club's Google Sheet to track registrations and payments in real time.</p>
 
@@ -110,7 +84,7 @@
         <!-- ============================================================
              Member approvals
         ============================================================ -->
-        <div class="card">
+        <div class="card" id="approvals-card">
             <h2 class="section-title"><i class="fa-solid fa-user-check"></i> Member Approvals</h2>
             <p class="section-subtitle">Students waiting for club membership approval.</p>
             <div class="table-wrap">
@@ -147,7 +121,7 @@
         <!-- ============================================================
              Role assignments
         ============================================================ -->
-        <div class="card">
+        <div class="card" id="roles-card">
             <h2 class="section-title"><i class="fa-solid fa-user-tag"></i> Role Assignments</h2>
             <p class="section-subtitle">Set or change roles for club executives and members.</p>
             <div class="table-wrap">
@@ -185,7 +159,7 @@
         <!-- ============================================================
              Event post creator
         ============================================================ -->
-        <div class="card">
+        <div class="card" id="events-card">
             <h2 class="section-title"><i class="fa-solid fa-calendar-plus"></i> Event Post Creator</h2>
             <p class="section-subtitle">Publish a new club event to the student calendar.</p>
             <form class="event-form" id="event-form">
@@ -251,7 +225,7 @@
         <!-- ============================================================
              Transaction verifier
         ============================================================ -->
-        <div class="card">
+        <div class="card" id="verify-card">
             <h2 class="section-title"><i class="fa-solid fa-money-check-dollar"></i> Transaction Verifier</h2>
             <p class="section-subtitle">Verify bKash / Nagad / Rocket payments for event registrations.</p>
 
@@ -314,8 +288,6 @@
             </div>
         </div>
 
-    </div>
-
     <!-- Google re-auth modal (shown when a sheet API answers auth_required) -->
     <div class="modal-overlay" id="reauth-modal" hidden role="dialog" aria-modal="true" aria-labelledby="reauth-title">
         <div class="modal">
@@ -332,25 +304,13 @@
         </div>
     </div>
 
-    <div class="toast" id="admin-toast" role="status" hidden>
-        <i class="fa-solid fa-circle-check"></i> <span id="admin-toast-text">Saved</span>
-    </div>
-
     <script>
         // ====================================================================
-        // Mock toast helper
+        // Toast helper — delegates to the shared toasts.html widget
         // ====================================================================
         (function () {
-            const toast = document.getElementById('admin-toast');
-            const text = document.getElementById('admin-toast-text');
-            let timer;
-
             function show(msg) {
-                text.textContent = msg;
-                toast.hidden = false;
-                toast.classList.add('show');
-                clearTimeout(timer);
-                timer = setTimeout(() => { toast.classList.remove('show'); toast.hidden = true; }, 2600);
+                if (window.showToast) window.showToast(msg, 'success');
             }
             window.__clubToast = show;
 
@@ -713,5 +673,4 @@
             }
         })();
     </script>
-</body>
-</html>
+{% endblock %}

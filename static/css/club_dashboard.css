@@ -1,0 +1,44 @@
+/* ==========================================================================
+   Club Dashboard Layout — distinct club-executive shell (club/club_base.html)
+   --------------------------------------------------------------------------
+   Same dark-sidebar shell family as the Admin console (admin_dashboard.css)
+   but with a club-green accent so the three role surfaces — Admin, Student,
+   Club Executive — are visually distinct. Workspace panel styles (cards,
+   tables, buttons, fields) come from admin.css (scoped to body.club-admin).
+   ========================================================================== */
+
+/* Reuse the admin shell scaffolding; the club body carries both classes. */
+body.club-admin.admin-area {
+    background: rgb(var(--color-base, 251 249 245));
+    color: rgb(var(--color-main, 43 41 39));
+}
+
+/* ---- Club-green accent overrides for the shared dark sidebar ---- */
+.club-sidebar .admin-nav-link.active {
+    background: #1e7d5a;
+    color: #ffffff;
+}
+
+.club-sidebar .admin-nav-link.active i {
+    opacity: 1;
+}
+
+.club-brand-icon {
+    background: #1e7d5a !important;
+    color: #ffffff !important;
+}
+
+/* Workspace content sits inside the admin main column but keeps a readable
+   max width — the admin.css `.card` panels flow unchanged inside. */
+.club-main {
+    max-width: 1080px;
+}
+
+.club-main .card {
+    margin-bottom: 1.25rem;
+}
+
+/* Section anchor offsets for the fixed sidebar links. */
+.club-section-anchor {
+    scroll-margin-top: 1.5rem;
+}

@@ -14,6 +14,10 @@ from django.test import RequestFactory, SimpleTestCase, TestCase, TransactionTes
 from django.urls import reverse, resolve
 from django.utils import timezone
 
+from core.test_compat import apply_test_compat
+
+apply_test_compat()
+
 from core.context_processors import custom_pages_nav
 
 from services.openrouter import call_openrouter
@@ -98,8 +102,9 @@ class StudentPagesSmokeTest(TestCase):
             'claim_meal_ticket', 'book_transport_ticket', 'book_appointment', 'login', 'logout',
             'settings', 'profile', 'sys_admin', 'cafeteria_admin', 'club_admin',
             'reports_student', 'reports_admin',
-            'student_dashboard', 'admin_dashboard', 'admin_users', 'admin_club_accounts',
-            'admin_database', 'admin_content', 'admin_settings', 'api_club_accounts',
+            'student_dashboard', 'club_dashboard', 'admin_dashboard', 'admin_users', 'admin_club_accounts',
+            'admin_database', 'admin_content', 'admin_settings', 'admin_calendar',
+            'api_club_accounts', 'api_admin_academic_calendar',
         ]:
             with self.subTest(endpoint=name):
                 self.assertIn(name, mapping)
@@ -402,7 +407,7 @@ class RoleRoutingTest(TestCase):
         ClubAccount.objects.create(user=self.student, club=self.club, role='manager')
         self.client.force_login(self.student)
         response = self.client.get(reverse('dashboard'))
-        self.assertRedirects(response, reverse('club_admin'))
+        self.assertRedirects(response, reverse('club_dashboard'))
 
     def test_inactive_club_account_is_treated_as_student(self):
         ClubAccount.objects.create(
@@ -424,9 +429,33 @@ class RoleRoutingTest(TestCase):
         ClubAccount.objects.create(user=self.student, club=self.club, role='executive')
         self.client.force_login(self.student)
         response = self.client.get(reverse('student_dashboard'))
-        self.assertRedirects(response, reverse('club_admin'))
+        self.assertRedirects(response, reverse('club_dashboard'))
         response = self.client.get(reverse('admin_dashboard'))
-        self.assertRedirects(response, reverse('club_admin'))
+        self.assertRedirects(response, reverse('club_dashboard'))
+
+    def test_student_blocked_from_club_area(self):
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('club_dashboard'))
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('student_dashboard'))
+
+    def test_club_manager_can_open_club_dashboard(self):
+        ClubAccount.objects.create(user=self.student, club=self.club, role='president')
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('club_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'club-sidebar')
+        self.assertContains(response, 'data-app="campusdash-club"')
+
+    def test_staff_can_open_club_area(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse('club_dashboard'))
+        self.assertEqual(response.status_code, 200)
+
+    def test_anonymous_blocked_from_club_area(self):
+        response = self.client.get(reverse('club_dashboard'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
 
     def test_staff_can_open_admin_area(self):
         self.client.force_login(self.staff)
@@ -447,6 +476,42 @@ class RoleRoutingTest(TestCase):
                 response = self.client.get(url)
                 self.assertEqual(response.status_code, 302)
                 self.assertIn(reverse('login'), response.url)
+
+
+class ToastPartialRenderTest(TestCase):
+    """The shared toast partial must never render recursively.
+
+    Regression guard: ``partials/toasts.html`` once infinite-looped when a
+    base template included it while the partial (or another partial it pulled
+    in) also included it — the engine re-rendered ``toasts.html`` forever.
+    The partial must stay include-free and each layout must pull it in
+    exactly once, at the outer shell level.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='toast_user', password='x12345678')
+        self.club = Club.objects.create(name='Toast Club', slug='toast-club')
+
+    def test_toasts_partial_has_no_self_include_or_extends(self):
+        import re
+        from django.template.loader import get_template
+        source = get_template('partials/toasts.html').template.source
+        # Ignore the usage docstring inside {% comment %} blocks — Django never
+        # executes nested tags there, so only the live markup matters.
+        source = re.sub(r'{%\s*comment\s*%}.*?{%\s*endcomment\s*%}', '', source, flags=re.S)
+        self.assertNotIn("{% include 'partials/toasts.html' %}", source)
+        self.assertNotIn('{% extends', source)
+
+    def test_club_layout_renders_toast_host_exactly_once(self):
+        ClubAccount.objects.create(user=self.user, club=self.club, role='president')
+        self.client.force_login(self.user)
+        html = self.client.get(reverse('club_dashboard')).content.decode()
+        self.assertEqual(html.count('id="app-toasts"'), 1)
+
+    def test_medical_layout_renders_toast_host_exactly_once(self):
+        self.client.force_login(self.user)
+        html = self.client.get(reverse('medical')).content.decode()
+        self.assertEqual(html.count('id="app-toasts"'), 1)
 
 
 class AdminDashboardPagesTest(TestCase):
@@ -492,11 +557,149 @@ class AdminDashboardPagesTest(TestCase):
 
     def test_student_blocked_from_all_admin_pages(self):
         self.client.force_login(self.student)
-        for name in ('admin_dashboard', 'admin_users', 'admin_club_accounts', 'admin_database', 'admin_content', 'admin_settings'):
+        for name in ('admin_dashboard', 'admin_users', 'admin_club_accounts', 'admin_database', 'admin_content', 'admin_settings', 'admin_calendar'):
             with self.subTest(page=name):
                 response = self.client.get(reverse(name))
                 self.assertEqual(response.status_code, 302)
                 self.assertRedirects(response, reverse('student_dashboard'))
+
+
+class AdminCalendarApiTest(TestCase):
+    """Academic Calendar Manager — admin page + CRUD API + role guards."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(username='cal_admin', password='x12345678', is_staff=True)
+        self.student = User.objects.create_user(username='cal_student', password='x12345678')
+        self.event = AcademicEvent.objects.create(
+            title='Midterm Exams', category='exam', event_date=date(2026, 4, 12),
+        )
+
+    def test_calendar_page_renders_for_staff(self):
+        self.client.force_login(self.staff)
+        # The event was created for April 2026; the page defaults to the
+        # current month, so navigate to the event's month.
+        response = self.client.get(reverse('admin_calendar'), {'month': '2026-04'})
+        self.assertEqual(response.status_code, 200)
+        for needle in ['Academic Calendar Manager', 'Add an Event', 'Midterm Exams']:
+            self.assertContains(response, needle, msg_prefix=needle)
+
+    def test_calendar_page_blocked_for_student(self):
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('admin_calendar'))
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('student_dashboard'))
+
+    def test_api_list_requires_login(self):
+        response = self.client.get(reverse('api_admin_academic_calendar'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_api_list_requires_admin(self):
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('api_admin_academic_calendar'))
+        self.assertEqual(response.status_code, 403)
+
+    def test_api_create_and_envelope(self):
+        self.client.force_login(self.staff)
+        response = self.client.post(reverse('api_admin_academic_calendar'), {
+            'title': 'Assignment Deadline',
+            'category': 'assignment',
+            'event_date': '2026-05-01',
+            'description': 'Submit by midnight',
+        })
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        self.assertTrue(body['success'])
+        self.assertEqual(body['data']['category'], 'assignment')
+        self.assertTrue(body['message'])
+        self.assertTrue(AcademicEvent.objects.filter(title='Assignment Deadline').exists())
+
+    def test_api_create_rejects_bad_input(self):
+        self.client.force_login(self.staff)
+        # Missing title
+        response = self.client.post(
+            reverse('api_admin_academic_calendar'),
+            {'title': '', 'category': 'exam', 'event_date': '2026-05-01'},
+        )
+        self.assertEqual(response.status_code, 400)
+        # Invalid category
+        response = self.client.post(
+            reverse('api_admin_academic_calendar'),
+            {'title': 'X', 'category': 'bogus', 'event_date': '2026-05-01'},
+        )
+        self.assertEqual(response.status_code, 400)
+        # Malformed date
+        response = self.client.post(
+            reverse('api_admin_academic_calendar'),
+            {'title': 'X', 'category': 'exam', 'event_date': '01-05-2026'},
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_api_delete(self):
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse('api_admin_academic_calendar_item', args=[self.event.pk]),
+            {'action': 'delete'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        self.assertFalse(AcademicEvent.objects.filter(pk=self.event.pk).exists())
+
+    def test_api_update(self):
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse('api_admin_academic_calendar_item', args=[self.event.pk]),
+            {'action': 'update', 'title': 'Final Exams', 'category': 'exam', 'event_date': '2026-04-20'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        self.event.refresh_from_db()
+        self.assertEqual(self.event.title, 'Final Exams')
+        self.assertEqual(self.event.event_date, date(2026, 4, 20))
+
+    def test_api_update_delete_require_admin(self):
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('api_admin_academic_calendar_item', args=[self.event.pk]),
+            {'action': 'delete'},
+        )
+        self.assertEqual(response.status_code, 403)
+
+
+class ClubsPublicPageTest(TestCase):
+    """The public /clubs/ page must not expose the club executive workspace."""
+
+    def test_public_page_has_no_executive_workspace(self):
+        response = self.client.get(reverse('clubs_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Club Executive Workspace')
+        self.assertNotContains(response, 'panel-exec')
+        self.assertNotContains(response, 'Executive Overview')
+
+    def test_public_page_shows_clubs_and_events(self):
+        club = Club.objects.create(name='Computer Club', slug='pc-club')
+        ClubEvent.objects.create(
+            title='CodeStorm', club=club, event_date=date(2026, 9, 10),
+        )
+        response = self.client.get(reverse('clubs_dashboard'))
+        self.assertContains(response, 'Featured Clubs')
+        self.assertContains(response, 'Upcoming Events')
+
+
+class MedicalBookingFormTest(TestCase):
+    """The medical booking page renders the persisted Doctor catalog."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='med_form', password='x12345678')
+        self.client.force_login(self.user)
+
+    def test_page_lists_active_doctors_from_db(self):
+        Doctor.objects.create(name='Dr. Test Doc', specialty='General Physician')
+        response = self.client.get(reverse('medical'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Dr. Test Doc')
+        self.assertContains(response, 'name="doctor_name"')
+        self.assertContains(response, 'err-doctor')
 
 
 class ClubAccountApiTest(TestCase):
@@ -565,10 +768,11 @@ class ClubAccountApiTest(TestCase):
         self.assertEqual(response.status_code, 200)
         account = ClubAccount.objects.get(user=self.student)
         self.assertEqual(account.role, 'executive')
-        # The assigned user becomes a club-role user at the dashboard dispatcher.
+        # The assigned user becomes a club-role user at the dashboard dispatcher
+        # and is redirected to the protected club workspace.
         self.client.force_login(self.student)
         response = self.client.get(reverse('dashboard'))
-        self.assertRedirects(response, reverse('club_admin'))
+        self.assertRedirects(response, reverse('club_dashboard'))
 
     def test_assign_rejects_double_assignment(self):
         ClubAccount.objects.create(user=self.student, club=self.club)
@@ -2705,7 +2909,7 @@ class BookAppointmentApiTest(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data['status'], 'success')
-        self.assertEqual(data['appointment_status'], 'pending')
+        self.assertEqual(data['data']['appointment_status'], 'pending')
         appointment = MedicalAppointment.objects.get(user=self.user)
         self.assertEqual(appointment.doctor_name, 'Dr. Ahmed Khan')
         self.assertEqual(appointment.reason, 'Persistent headache')

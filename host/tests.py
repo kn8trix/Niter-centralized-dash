@@ -2,6 +2,10 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
+from core.test_compat import apply_test_compat
+
+apply_test_compat()
+
 from core.models import MedicalAppointment, MedicalChatThread, StudentProfile
 
 

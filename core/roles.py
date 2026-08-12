@@ -50,5 +50,5 @@ def role_home_path(role):
     if role == ROLE_ADMIN:
         return reverse('admin_dashboard')
     if role == ROLE_CLUB:
-        return reverse('club_admin')
+        return reverse('club_dashboard')
     return reverse('student_dashboard')

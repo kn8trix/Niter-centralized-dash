@@ -54,18 +54,19 @@
 
                     <div class="field">
                         <label for="doctor-select" class="field-label">Select Doctor</label>
-                        <select id="doctor-select" name="doctor" class="field-select">
+                        <select id="doctor-select" name="doctor_name" class="field-select" required>
                             <option value="">-- Choose a Doctor --</option>
-                            <option value="1">Dr. Ahmed Khan — General Physician</option>
-                            <option value="2">Dr. Sarah Smith — Pediatrician</option>
-                            <option value="3">Dr. Michael Chen — Cardiologist</option>
-                            <option value="4">Dr. Emily Johnson — Dermatologist</option>
+                            {% for doctor in doctors %}
+                            <option value="{{ doctor.name }}">{{ doctor.name }}{% if doctor.specialty %} — {{ doctor.specialty }}{% endif %}</option>
+                            {% endfor %}
                         </select>
+                        <p class="field-error" id="err-doctor" hidden>Please choose a doctor.</p>
                     </div>
 
                     <div class="field">
                         <label for="appt-date" class="field-label">Preferred Date</label>
-                        <input type="date" id="appt-date" name="appointment_date" class="field-input">
+                        <input type="date" id="appt-date" name="appointment_date" class="field-input" required>
+                        <p class="field-error" id="err-date" hidden>Please pick a date.</p>
                     </div>
 
                     <div class="field">
@@ -78,6 +79,7 @@
                             <label class="slot-chip"><input type="radio" name="time_slot" value="15:30"><span>03:30 PM</span></label>
                             <label class="slot-chip"><input type="radio" name="time_slot" value="17:00"><span>05:00 PM</span></label>
                         </div>
+                        <p class="field-error" id="err-slot" hidden>Please pick a time slot.</p>
                     </div>
 
                     <div class="field">
@@ -162,6 +164,8 @@
             </aside>
 
         </div>
+
+        {% include 'partials/toasts.html' %}
 
         <!-- ============================================================
              My Consultations (patient ↔ doctor chat, real-time WebSockets)
@@ -290,8 +294,9 @@
 
         // Pull the specialty label from the doctor <select> option text,
         // e.g. "Dr. Ahmed Khan — General Physician" -> "General Physician".
-        function doctorSpecialty(doctorId) {
-            const opt = document.querySelector('#doctor-select option[value="' + doctorId + '"]');
+        function doctorSpecialty(doctorName) {
+            if (!doctorName) return '';
+            const opt = document.querySelector('#doctor-select option[value="' + doctorName + '"]');
             if (!opt) return '';
             return opt.textContent.replace(/^[^—]*—\s*/, '').trim();
         }
@@ -317,13 +322,46 @@
             apptList.prepend(item);
         }
 
+        const errDoctor = document.getElementById('err-doctor');
+        const errDate = document.getElementById('err-date');
+        const errSlot = document.getElementById('err-slot');
+
+        function setFieldError(el, show) {
+            if (!el) return;
+            el.hidden = !show;
+        }
+
+        // Clear a field error as soon as the visitor fixes that field.
+        if (form) {
+            ['doctor_name', 'appointment_date', 'time_slot'].forEach((name) => {
+                const el = form.elements[name];
+                if (!el) return;
+                const onFix = () => {
+                    if (name === 'doctor_name') setFieldError(errDoctor, false);
+                    if (name === 'appointment_date') setFieldError(errDate, false);
+                    if (name === 'time_slot') setFieldError(errSlot, false);
+                };
+                el.addEventListener('change', onFix);
+                el.addEventListener('input', onFix);
+            });
+        }
+
         if (form) {
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 hideAlert();
 
                 const formData = new FormData(form);
-                if (!formData.get('doctor') || !formData.get('appointment_date') || !formData.get('time_slot')) {
+                const doctor = formData.get('doctor_name');
+                const apptDate = formData.get('appointment_date');
+                const slot = formData.get('time_slot');
+
+                // Inline pre-submission validation — highlight each missing field.
+                const valid = Boolean(doctor) && Boolean(apptDate) && Boolean(slot);
+                setFieldError(errDoctor, !doctor);
+                setFieldError(errDate, !apptDate);
+                setFieldError(errSlot, !slot);
+                if (!valid) {
                     showAlert('Please choose a doctor, date and time slot.', 'error');
                     return;
                 }
@@ -345,14 +383,18 @@
                     const body = await resp.json();
 
                     if (resp.ok) {
-                        appendAppointment(body);
+                        appendAppointment(body.data || body);
                         form.reset();
                         if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
                         showAlert('Appointment booked — pending confirmation.', 'success');
+                        if (window.showToast) window.showToast('Appointment booked — pending confirmation.', 'success');
                     } else if (resp.status === 409) {
                         showAlert('That time slot is already booked for this doctor. Please pick another slot.', 'error');
+                        if (window.showToast) window.showToast('That slot is already booked — please pick another.', 'error');
                     } else {
-                        showAlert(body.message || 'Could not book the appointment. Please try again.', 'error');
+                        const msg = (body && body.message) || 'Could not book the appointment. Please try again.';
+                        showAlert(msg, 'error');
+                        if (window.showToast) window.showToast(msg, 'error');
                     }
                 } finally {
                     btn.disabled = false;

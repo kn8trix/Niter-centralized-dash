@@ -1,0 +1,207 @@
+{% extends "admin/admin_base.html" %}
+{% load static %}
+
+{% block title %}Academic Calendar Manager — Admin{% endblock %}
+
+{% block header %}Academic Calendar Manager{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+
+    <!-- Category legend + month jump -->
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div class="flex items-center gap-4 text-xs text-main/70">
+            <span><i class="dot dot-exam inline-block w-2.5 h-2.5 rounded-full mr-1" style="background:#dc2626"></i> Exam</span>
+            <span><i class="dot dot-holiday inline-block w-2.5 h-2.5 rounded-full mr-1" style="background:#d97706"></i> Holiday</span>
+            <span><i class="dot dot-assignment inline-block w-2.5 h-2.5 rounded-full mr-1" style="background:#2563eb"></i> Assignment</span>
+            <span><i class="dot dot-event inline-block w-2.5 h-2.5 rounded-full mr-1" style="background:#16a34a"></i> Event</span>
+        </div>
+        <form method="get" class="flex items-center gap-2">
+            <input type="month" name="month" value="{{ month }}" class="rounded-lg border border-border bg-card px-3 py-2 text-sm focus:ring-2 focus:ring-accent focus:outline-none">
+            <button type="submit" class="rounded-lg bg-main text-card px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity">Go</button>
+        </form>
+    </div>
+
+    <!-- Create event form -->
+    <div class="bg-card rounded-xl border border-border shadow-sm p-6 mb-6">
+        <h2 class="text-lg font-semibold tracking-tight mb-1"><i class="fa-solid fa-calendar-plus text-main/70 mr-2"></i>Add an Event</h2>
+        <p class="text-sm text-main/60 mb-5">Exams, holidays, assignment deadlines and events appear instantly on the student dashboard calendar.</p>
+
+        <form id="calendar-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {% csrf_token %}
+            <div class="md:col-span-2">
+                <label for="ev-title" class="block text-sm font-medium mb-1">Title</label>
+                <input type="text" id="ev-title" name="title" class="w-full rounded-lg border border-border bg-base px-3 py-2 text-sm focus:ring-2 focus:ring-accent focus:outline-none" placeholder="e.g. Midterm Examinations Begin" required>
+            </div>
+            <div>
+                <label for="ev-category" class="block text-sm font-medium mb-1">Category</label>
+                <select id="ev-category" name="category" class="w-full rounded-lg border border-border bg-base px-3 py-2 text-sm focus:ring-2 focus:ring-accent focus:outline-none">
+                    {% for code, label in categories %}
+                    <option value="{{ code }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="ev-date" class="block text-sm font-medium mb-1">Date</label>
+                <input type="date" id="ev-date" name="event_date" class="w-full rounded-lg border border-border bg-base px-3 py-2 text-sm focus:ring-2 focus:ring-accent focus:outline-none" required>
+            </div>
+            <div class="md:col-span-2">
+                <label for="ev-description" class="block text-sm font-medium mb-1">Description <span class="text-main/40 font-normal">(optional)</span></label>
+                <textarea id="ev-description" name="description" rows="2" class="w-full rounded-lg border border-border bg-base px-3 py-2 text-sm focus:ring-2 focus:ring-accent focus:outline-none" placeholder="What students should know…"></textarea>
+            </div>
+            <div class="md:col-span-2">
+                <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-main text-card px-5 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity">
+                    <i class="fa-solid fa-plus"></i> Add to Calendar
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Events for the selected month -->
+    <div class="bg-card rounded-xl border border-border shadow-sm p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold tracking-tight"><i class="fa-solid fa-calendar-days text-main/70 mr-2"></i>Events — {{ month_name }}</h2>
+            <span class="text-xs text-main/50" id="ev-count">{{ events|length }} event{{ events|length|pluralize }}</span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-xs uppercase tracking-wider text-main/50 border-b border-border">
+                        <th class="py-2 pr-3">Date</th>
+                        <th class="py-2 pr-3">Title</th>
+                        <th class="py-2 pr-3">Category</th>
+                        <th class="py-2 pr-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="events-body">
+                    {% for event in events %}
+                    <tr data-event-id="{{ event.pk }}" data-title="{{ event.title }}" data-category="{{ event.category }}" data-date="{{ event.event_date|date:'Y-m-d' }}" class="border-b border-border/60">
+                        <td class="py-2.5 pr-3 whitespace-nowrap">{{ event.event_date|date:"M d, Y" }}</td>
+                        <td class="py-2.5 pr-3 font-medium">{{ event.title }}</td>
+                        <td class="py-2.5 pr-3">
+                            <span class="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full category-pill category-{{ event.category }}">{{ event.get_category_display }}</span>
+                        </td>
+                        <td class="py-2.5">
+                            <button type="button" class="inline-flex items-center gap-1.5 text-xs font-medium text-red-700 hover:text-red-900 transition-colors" data-delete-event>
+                                <i class="fa-solid fa-trash-can"></i> Delete
+                            </button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="py-8 text-center text-sm text-main/50">No events for this month yet — add one above.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<style>
+    .category-pill { background: #f3f1ec; }
+    .category-exam { background: #fee2e2; color: #b91c1c; }
+    .category-holiday { background: #fef3c7; color: #92400e; }
+    .category-assignment { background: #dbeafe; color: #1d4ed8; }
+    .category-event { background: #dcfce7; color: #166534; }
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    (function () {
+        'use strict';
+        const API_URL = '{{ ENDPOINTS.api_admin_academic_calendar }}';
+        const csrf = document.querySelector('[name=csrfmiddlewaretoken]');
+        const form = document.getElementById('calendar-form');
+        const body = document.getElementById('events-body');
+
+        function cookie(name) {
+            const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+            return m ? decodeURIComponent(m[1]) : '';
+        }
+
+        function esc(value) {
+            const div = document.createElement('div');
+            div.textContent = value == null ? '' : String(value);
+            return div.innerHTML;
+        }
+
+        function refreshCount() {
+            const rows = body.querySelectorAll('tr[data-event-id]').length;
+            const el = document.getElementById('ev-count');
+            if (el) el.textContent = rows + ' event' + (rows === 1 ? '' : 's');
+        }
+
+        if (form) {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const payload = new URLSearchParams(new FormData(form));
+                try {
+                    const resp = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': cookie('csrftoken') },
+                        body: payload.toString(),
+                    });
+                    const json = await resp.json().catch(() => ({}));
+                    if (resp.ok && json.success) {
+                        window.showToast(json.message || 'Event added.', 'success');
+                        form.reset();
+                        const empty = body.querySelector('td[colspan]');
+                        if (empty) empty.parentElement.remove();
+                        const row = document.createElement('tr');
+                        row.dataset.eventId = json.data.id;
+                        row.dataset.title = json.data.title;
+                        row.dataset.category = json.data.category;
+                        row.dataset.date = json.data.event_date;
+                        row.className = 'border-b border-border/60';
+                        row.innerHTML =
+                            '<td class="py-2.5 pr-3 whitespace-nowrap">' + esc(json.data.event_date) + '</td>' +
+                            '<td class="py-2.5 pr-3 font-medium">' + esc(json.data.title) + '</td>' +
+                            '<td class="py-2.5 pr-3"><span class="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full category-pill category-' + esc(json.data.category) + '">' + esc(json.data.category_label) + '</span></td>' +
+                            '<td class="py-2.5"><button type="button" class="inline-flex items-center gap-1.5 text-xs font-medium text-red-700 hover:text-red-900 transition-colors" data-delete-event><i class="fa-solid fa-trash-can"></i> Delete</button></td>';
+                        body.prepend(row);
+                        refreshCount();
+                    } else {
+                        window.showToast(json.message || 'Could not add the event.', 'error');
+                    }
+                } catch (err) {
+                    window.showToast('Network error — please try again.', 'error');
+                }
+            });
+        }
+
+        if (body) {
+            body.addEventListener('click', async (e) => {
+                const btn = e.target.closest('[data-delete-event]');
+                if (!btn) return;
+                const row = btn.closest('tr[data-event-id]');
+                if (!row) return;
+                if (!window.confirm('Delete "' + row.dataset.title + '" from the academic calendar?')) return;
+                try {
+                    const resp = await fetch(API_URL + row.dataset.eventId + '/', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': cookie('csrftoken'),
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: new URLSearchParams({ action: 'delete' }).toString(),
+                    });
+                    const json = await resp.json().catch(() => ({}));
+                    if (resp.ok && json.success) {
+                        row.remove();
+                        refreshCount();
+                        window.showToast(json.message || 'Event deleted.', 'success');
+                    } else {
+                        window.showToast(json.message || 'Could not delete the event.', 'error');
+                    }
+                } catch (err) {
+                    window.showToast('Network error — please try again.', 'error');
+                }
+            });
+        }
+    })();
+</script>
+{% endblock %}

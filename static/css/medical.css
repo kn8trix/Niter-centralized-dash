@@ -537,3 +537,18 @@ body.medical a {
     word-break: break-word;
     white-space: pre-wrap;
 }
+
+/* --- Inline field validation errors (booking form) --- */
+.field-error {
+    margin: 6px 2px 0;
+    font-size: 12.5px;
+    color: #b91c1c;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.field-error::before {
+    content: '\f06a';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+}

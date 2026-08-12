@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clubs &amp; Events — Niter Hub</title>
-    <meta name="description" content="Discover campus clubs and events, register online, and manage your club executive workspace.">
+    <meta name="description" content="Discover campus clubs and events and register online.">
 
     <!-- Global design tokens -->
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
@@ -39,20 +39,13 @@
         ============================================================ -->
         <div class="intro">
             <h1>Clubs &amp; Events</h1>
-            <p>Discover clubs, register for events, and manage your club workspace — all in one place.</p>
-        </div>
-
-        <div class="view-toggle-wrap">
-            <div class="view-toggle" role="tablist" aria-label="View switcher">
-                <button type="button" id="tab-student" class="active" role="tab" aria-controls="panel-student" aria-selected="true">Student View</button>
-                <button type="button" id="tab-exec" role="tab" aria-controls="panel-exec" aria-selected="false">Club Executive Workspace</button>
-            </div>
+            <p>Discover clubs, register for events, and join your campus community.</p>
         </div>
 
         <!-- ============================================================
              View 1 — Public Student View (live database clubs & events)
         ============================================================ -->
-        <section id="panel-student" class="view-panel" role="tabpanel" aria-labelledby="tab-student">
+        <section id="panel-student">
 
             <h2 class="section-title">Featured Clubs</h2>
             <p class="section-subtitle">Find your community and join an active campus club.</p>
@@ -107,66 +100,7 @@
 
         </section>
 
-        <!-- ============================================================
-             View 2 — Club Executive Workspace (management lives at
-             /clubs/manage/; this panel keeps the quick overview).
-        ============================================================ -->
-        <section id="panel-exec" class="view-panel hidden" role="tabpanel" aria-labelledby="tab-exec">
 
-            <h2 class="section-title">Executive Overview</h2>
-            <p class="section-subtitle">Track membership, registrations, revenue, and approvals.</p>
-            <div class="stats-grid" id="stats-grid"><!-- JS-rendered stat cards --></div>
-
-            <div class="table-card">
-                <div class="table-card-head">
-                    <div>
-                        <h2 class="section-title">Registrations &amp; Payment Tracking</h2>
-                        <p class="section-subtitle">Verify bKash / Nagad payments before approving seats.</p>
-                    </div>
-                    <span class="table-count" id="reg-count">0 total</span>
-                </div>
-                <div class="table-scroll">
-                    <div class="overflow-x-auto"><table class="reg-table">
-                        <thead>
-                            <tr>
-                                <th>Student Name</th>
-                                <th>Student ID</th>
-                                <th>Event</th>
-                                <th>Payment Method</th>
-                                <th>Amount Paid</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="reg-tbody"><!-- JS-rendered rows --></tbody>
-                    </table></div>
-                </div>
-            </div>
-
-            <div class="announce-card">
-                <h3>Announcement Publisher</h3>
-                <p class="section-subtitle">Broadcast updates to your club audience instantly.</p>
-                <form id="announcement-form" novalidate>
-                    <div class="field">
-                        <label for="ann-title" class="field-label">Announcement Title</label>
-                        <input type="text" id="ann-title" class="field-input" placeholder="e.g. Club meeting moved to Room 302" required>
-                    </div>
-                    <div class="field">
-                        <label for="ann-audience" class="field-label">Target Audience</label>
-                        <select id="ann-audience" class="field-select">
-                            <option value="All Students">All Students</option>
-                            <option value="Participants">Participants</option>
-                            <option value="Club Members">Club Members</option>
-                        </select>
-                    </div>
-                    <div class="field">
-                        <label for="ann-details" class="field-label">Announcement Details</label>
-                        <textarea id="ann-details" class="field-textarea" placeholder="Write the full announcement here…" required></textarea>
-                    </div>
-                    <button type="submit" class="publish-btn"><i class="fa-solid fa-bullhorn"></i> Publish Announcement</button>
-                </form>
-            </div>
-
-        </section>
 
     </div>
 
@@ -174,25 +108,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <script>
-        // ====================================================================
-        // Executive workspace mock data (club management lives at /clubs/manage/)
-        // ====================================================================
-        const STATS = [
-            { label: 'Total Members', value: '1,360', icon: 'fa-users' },
-            { label: 'Active Registrations', value: '84', icon: 'fa-clipboard-list' },
-            { label: 'Event Revenue', value: '৳28,400', icon: 'fa-sack-dollar' },
-            { label: 'Pending Approvals', value: '12', icon: 'fa-clock', warning: true },
-        ];
-
-        const REGISTRATIONS = [
-            { name: 'Rifat Hasan', id: 'CSE-22014', event: 'CodeStorm 2026', method: 'bKash', trx: '9JXK2L4M8N', amount: '৳0', status: 'Verified' },
-            { name: 'Nusrat Jahan', id: 'TEX-21008', event: 'Spring Cultural Night', method: 'Nagad', trx: '8PLK3Q7R2T', amount: '৳200', status: 'Verified' },
-            { name: 'Tanim Ahmed', id: 'IPE-23005', event: 'Football Cup', method: 'bKash', trx: '7MNB2V9C1Q', amount: '৳150', status: 'Pending Review' },
-            { name: 'Farhana Akter', id: 'FD-22019', event: 'Cultural Night', method: 'bKash', trx: '6ZXC5T3R8W', amount: '৳200', status: 'Verified' },
-            { name: 'Shakil Mahmud', id: 'EEE-21031', event: 'Tech Talk', method: 'Nagad', trx: '5QWE4R2T9Y', amount: '৳0', status: 'Pending Review' },
-            { name: 'Moumita Saha', id: 'CSE-23027', event: 'CodeStorm 2026', method: 'bKash', trx: '4UIO1P7A3S', amount: '৳0', status: 'Verified' },
-        ];
-
         // ====================================================================
         // DOM refs + toast
         // ====================================================================
@@ -206,76 +121,6 @@
             clearTimeout(toastTimer);
             toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3800);
         }
-
-        // ====================================================================
-        // Render executive workspace (mock)
-        // ====================================================================
-        function renderStats() {
-            const grid = document.getElementById('stats-grid');
-            grid.innerHTML = STATS.map(s => `
-                <div class="stat-card">
-                    <span class="stat-icon"><i class="fa-solid ${s.icon}"></i></span>
-                    <div>
-                        <div class="stat-value ${s.warning ? 'warning' : ''}">${s.value}</div>
-                        <div class="stat-label">${s.label}</div>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function renderRegistrations() {
-            const tbody = document.getElementById('reg-tbody');
-            tbody.innerHTML = REGISTRATIONS.map(r => {
-                const methodClass = r.method === 'bKash' ? 'method-bkash' : 'method-nagad';
-                const statusClass = r.status === 'Verified' ? 'status-verified' : 'status-pending';
-                return `
-                    <tr>
-                        <td class="name">${r.name}</td>
-                        <td>${r.id}</td>
-                        <td>${r.event}</td>
-                        <td><span class="method-chip ${methodClass}">${r.method} · ${r.trx}</span></td>
-                        <td><span class="amount">${r.amount}</span></td>
-                        <td><span class="status-pill ${statusClass}">${r.status}</span></td>
-                    </tr>
-                `;
-            }).join('');
-            document.getElementById('reg-count').textContent = REGISTRATIONS.length + ' total';
-        }
-
-        // ====================================================================
-        // Dual-view toggle
-        // ====================================================================
-        const tabs = document.querySelectorAll('.view-toggle button');
-        const panels = document.querySelectorAll('.view-panel');
-
-        function setView(view) {
-            panels.forEach(p => p.classList.toggle('hidden', p.id !== 'panel-' + view));
-            tabs.forEach(t => {
-                const active = t.id === 'tab-' + view;
-                t.classList.toggle('active', active);
-                t.setAttribute('aria-selected', active ? 'true' : 'false');
-            });
-        }
-
-        tabs.forEach(tab => {
-            tab.addEventListener('click', () => setView(tab.id.replace('tab-', '')));
-        });
-
-        // Keyboard navigation for the view tabs (Left/Right/Home/End)
-        const tabList = document.querySelector('.view-toggle');
-        tabList.addEventListener('keydown', (e) => {
-            const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
-            if (!keys.includes(e.key)) return;
-            e.preventDefault();
-            const current = tabs.indexOf(document.activeElement);
-            let next = current;
-            if (e.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length;
-            else if (e.key === 'ArrowRight') next = (current + 1) % tabs.length;
-            else if (e.key === 'Home') next = 0;
-            else if (e.key === 'End') next = tabs.length - 1;
-            tabs[next].focus();
-            setView(tabs[next].id.replace('tab-', ''));
-        });
 
         // ====================================================================
         // Join club — real POST to /api/clubs/join/ (CSRF protected)
@@ -313,21 +158,6 @@
             }
         });
 
-        // ====================================================================
-        // Announcement publisher (mock)
-        // ====================================================================
-        document.getElementById('announcement-form').addEventListener('submit', (e) => {
-            e.preventDefault();
-            const audience = document.getElementById('ann-audience').value;
-            showToast('Announcement published to ' + audience + '.');
-            e.target.reset();
-        });
-
-        // ====================================================================
-        // Init
-        // ====================================================================
-        renderStats();
-        renderRegistrations();
     </script>
 </body>
 </html>

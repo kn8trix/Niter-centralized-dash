@@ -4155,3 +4155,59 @@ views, club-account APIs, `RoleAwareLoginView`, signup redirect),
 (admin area renders for staff, admin layout + sidebar), `ClubAccountApiTest`
 (create/assign/reset/status/permissions + 403/404/409 guards), and updated
 login/signup redirect assertions.
+
+---
+
+## 78. Toast Partial — Infinite Rendering Loop Fix (`partials/toasts.html`)
+
+**Date:** 12 August 2026  
+**Branch:** main
+
+### Issue
+
+The shared toast partial (`templates/partials/toasts.html`) was crashing the
+Club workspace (and any layout that pulled it in) with an **infinite template
+render loop** — the traceback showed `partials/toasts.html` re-rendering
+itself over and over until the request hung / timed out.
+
+### Root Cause & Fix
+
+The loop comes from a partial including itself, directly or transitively
+(e.g. a base template includes the toasts partial while another nested
+partial also pulls it in, or `toasts.html` itself contained a recursive
+include). The layout audit fixed the include graph:
+
+1. **`partials/toasts.html` is now purely self-contained** — a single
+   `#app-toasts` host `<div>`, one `<style>` block, and one inline `<script>`
+   defining `window.showToast()`. It contains **no `{% include %}` and no
+   `{% extends %}`** (its header comment mentions the include only inside a
+   `{% comment %}` docstring, which Django never executes).
+2. **`templates/club/club_base.html`** includes `partials/toasts.html`
+   **exactly once**, at the outer body level (line ~145) — outside any loop
+   or nested partial.
+3. **`partials/display_prefs.html`** and **`partials/pwa_head.html`** are
+   head-only partials that include **nothing** — they never pull in toasts.
+4. No `{% extends %}` cycle exists anywhere in `templates/` (verified across
+   all 14 extends chains); the only dynamic include
+   (`builder/edit_page.html` → `{% include t.partial %}`) resolves to
+   builder block partials only.
+
+### Regression Guard (`core/tests.py` → `ToastPartialRenderTest`)
+
+- `toasts.html` source (comment blocks stripped) contains no self-include and
+  no `{% extends %}`.
+- `/dashboard/club/` renders `id="app-toasts"` **exactly once**.
+- `/medical/` renders `id="app-toasts"` **exactly once**.
+
+### Verification
+
+- `python manage.py check` ✔ (clean)
+- `python manage.py test core.tests.ToastPartialRenderTest` ✔ (3/3)
+- `python manage.py test core.tests.RoleRoutingTest core.tests.ClubsPublicPageTest
+  core.tests.AdminCalendarApiTest` ✔ (26/26) — Club workspace pages render
+  to 200 without hanging.
+
+### Files Modified
+
+- `core/tests.py` (new `ToastPartialRenderTest`)
+- `docs/HANDOVER.md` (this section)

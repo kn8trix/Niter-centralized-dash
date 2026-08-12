@@ -1,0 +1,64 @@
+{% comment %}
+============================================================================
+Shared toast notifications (success / error) — partials/toasts.html
+--------------------------------------------------------------------------
+Usage: add `{% verbatim %}{% include 'partials/toasts.html' %}{% endverbatim %}`
+to the page, then call `window.showToast(msg, 'success' | 'error')`.
+============================================================================
+{% endcomment %}
+<div class="app-toasts" id="app-toasts" role="status" aria-live="polite"></div>
+<style>
+    .app-toasts {
+        position: fixed;
+        top: 1rem;
+        right: 1rem;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        max-width: 340px;
+        pointer-events: none;
+    }
+    .app-toast {
+        pointer-events: auto;
+        background: #232326;
+        color: #ffffff;
+        border-radius: 10px;
+        padding: 0.7rem 0.9rem;
+        font-size: 0.875rem;
+        line-height: 1.45;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+        display: flex;
+        gap: 0.55rem;
+        align-items: flex-start;
+        animation: appToastIn 0.2s ease;
+    }
+    .app-toast.success { background: #166534; }
+    .app-toast.error { background: #b91c1c; }
+    .app-toast i { margin-top: 2px; width: 1rem; text-align: center; }
+    .app-toast span { flex: 1; }
+    @keyframes appToastIn {
+        from { opacity: 0; transform: translateY(-6px); }
+        to { opacity: 1; transform: none; }
+    }
+</style>
+<script>
+    (function () {
+        'use strict';
+        window.showToast = function (message, kind) {
+            var host = document.getElementById('app-toasts');
+            if (!host) return;
+            var el = document.createElement('div');
+            el.className = 'app-toast ' + (kind === 'error' ? 'error' : 'success');
+            var icon = kind === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check';
+            el.innerHTML = '<i class="fa-solid ' + icon + '"></i><span></span>';
+            el.querySelector('span').textContent = message == null ? '' : String(message);
+            host.appendChild(el);
+            setTimeout(function () {
+                el.style.transition = 'opacity .3s';
+                el.style.opacity = '0';
+                setTimeout(function () { el.remove(); }, 320);
+            }, 3200);
+        };
+    })();
+</script>

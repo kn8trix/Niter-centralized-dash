@@ -12,12 +12,14 @@ urlpatterns = [
     # Role-based dashboard areas: students live under /dashboard/student/*,
     # admins under /dashboard/admin/* (see core.roles + RoleAccessMiddleware).
     path('dashboard/student/', views.student_dashboard, name='student_dashboard'),
+    path('dashboard/club/', views.club_dashboard, name='club_dashboard'),
     path('dashboard/admin/', views.admin_dashboard, name='admin_dashboard'),
     path('dashboard/admin/users/', views.admin_users_view, name='admin_users'),
     path('dashboard/admin/users/clubs/', views.admin_club_accounts_view, name='admin_club_accounts'),
     path('dashboard/admin/database/', views.admin_database_view, name='admin_database'),
     path('dashboard/admin/content/', views.admin_content_view, name='admin_content'),
     path('dashboard/admin/settings/', views.admin_settings_view, name='admin_settings'),
+    path('dashboard/admin/calendar/', views.admin_calendar_view, name='admin_calendar'),
     path('tickets/', views.tickets, name='tickets'),
     path('medical/', views.medical, name='medical'),
     path('notes/', views.notes, name='notes'),
@@ -122,6 +124,8 @@ urlpatterns = [
     path('api/admin/update-role/', views.update_user_role, name='api_admin_update_role'),
 
     # Admin Dashboard — club account management (create/assign/reset/toggle)
+    path('api/admin/academic-calendar/', views.api_academic_calendar, name='api_admin_academic_calendar'),
+    path('api/admin/academic-calendar/<int:event_id>/', views.api_academic_calendar_item, name='api_admin_academic_calendar_item'),
     path('api/admin/club-accounts/', views.api_club_accounts, name='api_club_accounts'),
     path('api/admin/club-accounts/<int:account_id>/password/', views.api_club_account_password, name='api_club_account_password'),
     path('api/admin/club-accounts/<int:account_id>/status/', views.api_club_account_status, name='api_club_account_status'),

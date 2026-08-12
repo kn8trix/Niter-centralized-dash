@@ -373,8 +373,15 @@ def tickets(request):
 
 def medical(request):
     """Medical booking page — form plus the signed-in student's live
-    appointments and consultation threads (patient-side chat UI)."""
-    context = {}
+    appointments and consultation threads (patient-side chat UI).
+
+    The doctor dropdown is rendered from the persisted ``Doctor`` catalog
+    (the same rows Medical Admin manages), so the booking payload can post the
+    doctor's name straight to ``book_appointment`` with no id mapping.
+    """
+    context = {
+        'doctors': Doctor.objects.filter(is_active=True),
+    }
     if request.user.is_authenticated:
         context['my_appointments'] = request.user.medical_appointments.all()
         context['my_threads'] = MedicalChatThread.objects.filter(
@@ -1230,8 +1237,13 @@ def book_appointment(request):
     double-booking the same doctor time slot; a conflicting request is 409.
     """
     if request.method != 'POST':
-        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+        return JsonResponse(
+            {'status': 'error', 'success': False, 'message': 'POST required'},
+            status=405,
+        )
 
+    # Canonical field: doctor_name (aligns with the booking form). The legacy
+    # ``doctor`` id is still honoured as a fallback for older clients.
     doctor_id = request.POST.get('doctor', '').strip()
     doctor_name = request.POST.get('doctor_name', '').strip()
     if not doctor_name and doctor_id in DOCTORS:
@@ -1243,7 +1255,12 @@ def book_appointment(request):
 
     if not doctor_name or not date_raw or not time_slot:
         return JsonResponse(
-            {'status': 'error', 'message': 'doctor, appointment_date and time_slot are required.'},
+            {
+                'status': 'error',
+                'success': False,
+                'message': 'doctor, appointment_date and time_slot are required.',
+                'data': None,
+            },
             status=400,
         )
 
@@ -1307,12 +1324,15 @@ def book_appointment(request):
     _broadcast_notification(notification)
     return JsonResponse({
         'status': 'success',
-        'appointment_id': appointment.pk,
-        'doctor_name': appointment.doctor_name,
-        'appointment_date': appointment.appointment_date.isoformat(),
-        'time_slot': appointment.time_slot,
-        'appointment_status': appointment.status,
+        'success': True,
         'message': 'Appointment booked successfully.',
+        'data': {
+            'appointment_id': appointment.pk,
+            'doctor_name': appointment.doctor_name,
+            'appointment_date': appointment.appointment_date.isoformat(),
+            'time_slot': appointment.time_slot,
+            'appointment_status': appointment.status,
+        },
     })
 
 
@@ -2680,10 +2700,9 @@ def create_notice(request):
     })
 
 
-@club_access_required
-def club_admin_view(request):
-    """Club admin — member approvals, role assignments, event posts, and
-    bKash/Nagad/Rocket transaction verification.
+def _club_workspace_context(request):
+    """Shared context for the club workspace (both club_admin_view and
+    club_dashboard render the same template).
 
     When a ``sheet_url`` query parameter is present the pending registrations,
     member roster, and transactions are synced live from the club's linked
@@ -2735,14 +2754,36 @@ def club_admin_view(request):
         except GoogleServiceError as exc:
             sheet_error = str(exc)
 
-    return render(request, 'club_admin.html', {
+    return {
         'pending_members': pending_members,
         'members': members,
         'events': events,
         'transactions': transactions,
         'sheet_url': sheet_url,
         'sheet_error': sheet_error,
-    })
+    }
+
+
+@club_access_required
+def club_admin_view(request):
+    """Legacy club workspace URL (/clubs/manage/) — kept for existing links
+    and tests; renders the same distinct club layout as ``club_dashboard``."""
+    return render(request, 'club_admin.html', _club_workspace_context(request))
+
+
+@club_access_required
+def club_dashboard(request):
+    """Club Executive Dashboard — the role home for ``club`` accounts.
+
+    Renders the club workspace (Google Sheets, member approvals, role
+    assignments, event posts, payment verification) inside the distinct club
+    layout ``club/club_base.html`` — a completely separate shell and sidebar
+    from the student and admin areas. Only staff or active ``ClubAccount``
+    holders can open it; ``RoleAccessMiddleware`` bounces everyone else.
+    """
+    context = _club_workspace_context(request)
+    context['club_section'] = 'overview'
+    return render(request, 'club_admin.html', context)
 
 
 # ============================================================================
@@ -4807,6 +4848,179 @@ def admin_settings_view(request):
     return render(request, 'admin/settings.html', {
         'admin_section': 'settings',
         'env_summary': env_summary,
+    })
+
+
+@admin_required
+def admin_calendar_view(request):
+    """Academic Calendar Manager — admin CRUD for ``AcademicEvent`` rows.
+
+    Lists events grouped by category (Exam / Holiday / Assignment / Event)
+    with the current month's grid summary, plus a create form. The same rows
+    feed the student dashboard's interactive calendar, so changes here show
+    up there immediately.
+    """
+    now = _dhaka_now()
+    year, month = _parse_month_param(request.GET.get('month') or '')
+    events = AcademicEvent.objects.filter(
+        event_date__year=year, event_date__month=month,
+    ).order_by('event_date', 'id')
+    return render(request, 'admin/calendar.html', {
+        'admin_section': 'calendar',
+        'events': events,
+        'categories': AcademicEvent.CATEGORY_CHOICES,
+        'month': '%04d-%02d' % (year, month),
+        'month_name': date(year, month, 1).strftime('%B %Y'),
+        'today': now.strftime('%Y-%m-%d'),
+    })
+
+
+@admin_required
+def api_academic_calendar(request):
+    """Admin API for academic calendar events — standardized envelope.
+
+    GET  /api/admin/academic-calendar/?month=YYYY-MM — list a month's events
+         (or all events when no month is given)
+    POST /api/admin/academic-calendar/ — create (title, category, event_date,
+         description)
+    Responses use the canonical ``{success, data, message}`` envelope.
+    """
+    if request.method == 'GET':
+        month_param = (request.GET.get('month') or '').strip()
+        queryset = AcademicEvent.objects.all()
+        if month_param:
+            year, month = _parse_month_param(month_param)
+            queryset = queryset.filter(event_date__year=year, event_date__month=month)
+        events = queryset.order_by('event_date', 'id')
+        return JsonResponse({
+            'success': True,
+            'message': 'Events loaded.',
+            'data': [{
+                'id': event.pk,
+                'title': event.title,
+                'category': event.category,
+                'category_label': event.get_category_display(),
+                'event_date': event.event_date.isoformat(),
+                'description': event.description,
+            } for event in events],
+        })
+
+    if request.method != 'POST':
+        return JsonResponse(
+            {'success': False, 'message': 'GET or POST required.', 'data': None},
+            status=405,
+        )
+
+    title = (request.POST.get('title') or '').strip()
+    category = (request.POST.get('category') or '').strip()
+    date_raw = (request.POST.get('event_date') or '').strip()
+    description = (request.POST.get('description') or '').strip()
+
+    if not title:
+        return JsonResponse(
+            {'success': False, 'message': 'Title is required.', 'data': None},
+            status=400,
+        )
+    if category not in dict(AcademicEvent.CATEGORY_CHOICES):
+        return JsonResponse(
+            {'success': False, 'message': 'Invalid category.', 'data': None},
+            status=400,
+        )
+    try:
+        event_date = datetime.strptime(date_raw, '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {'success': False, 'message': 'event_date must be YYYY-MM-DD.', 'data': None},
+            status=400,
+        )
+
+    event = AcademicEvent.objects.create(
+        title=title,
+        category=category,
+        event_date=event_date,
+        description=description,
+    )
+    return JsonResponse({
+        'success': True,
+        'message': 'Event added to the academic calendar.',
+        'data': {
+            'id': event.pk,
+            'title': event.title,
+            'category': event.category,
+            'category_label': event.get_category_display(),
+            'event_date': event.event_date.isoformat(),
+            'description': event.description,
+        },
+    }, status=201)
+
+
+@admin_required
+def api_academic_calendar_item(request, event_id):
+    """Update or delete one academic calendar event (admin area).
+
+    POST ``action=update`` applies title/category/event_date/description;
+    ``action=delete`` removes the row. Canonical ``{success, data, message}``
+    envelope with proper HTTP status codes.
+    """
+    event = get_object_or_404(AcademicEvent, pk=event_id)
+    if request.method != 'POST':
+        return JsonResponse(
+            {'success': False, 'message': 'POST required.', 'data': None},
+            status=405,
+        )
+
+    action = (request.POST.get('action') or '').strip()
+    if action == 'delete':
+        event.delete()
+        return JsonResponse({
+            'success': True,
+            'message': 'Event removed from the academic calendar.',
+            'data': {'id': event_id},
+        })
+
+    if action != 'update':
+        return JsonResponse(
+            {'success': False, 'message': 'action must be update or delete.', 'data': None},
+            status=400,
+        )
+
+    title = (request.POST.get('title') or '').strip()
+    category = (request.POST.get('category') or '').strip()
+    date_raw = (request.POST.get('event_date') or '').strip()
+    if not title:
+        return JsonResponse(
+            {'success': False, 'message': 'Title is required.', 'data': None},
+            status=400,
+        )
+    if category and category not in dict(AcademicEvent.CATEGORY_CHOICES):
+        return JsonResponse(
+            {'success': False, 'message': 'Invalid category.', 'data': None},
+            status=400,
+        )
+    event.title = title
+    if category:
+        event.category = category
+    if date_raw:
+        try:
+            event.event_date = datetime.strptime(date_raw, '%Y-%m-%d').date()
+        except ValueError:
+            return JsonResponse(
+                {'success': False, 'message': 'event_date must be YYYY-MM-DD.', 'data': None},
+                status=400,
+            )
+    event.description = (request.POST.get('description') or '').strip()
+    event.save()
+    return JsonResponse({
+        'success': True,
+        'message': 'Event updated.',
+        'data': {
+            'id': event.pk,
+            'title': event.title,
+            'category': event.category,
+            'category_label': event.get_category_display(),
+            'event_date': event.event_date.isoformat(),
+            'description': event.description,
+        },
     })
 
 

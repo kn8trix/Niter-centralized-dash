@@ -1,0 +1,180 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Club Workspace — Niter Hub{% endblock %}</title>
+
+    {% include 'partials/pwa_head.html' %}
+
+    <!-- Global Design Tokens (theme.css) — single source of truth -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Global display preferences (theme / timezone / density) — no-flash driver -->
+    {% include 'partials/display_prefs.html' %}
+
+    <!-- Tailwind CSS via CDN (layout shell only) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+
+    <!-- Club workspace panel styles (cards / tables / buttons / forms) -->
+    <link rel="stylesheet" href="{% static 'css/admin.css' %}">
+    <!-- Shared admin shell layout -->
+    <link rel="stylesheet" href="{% static 'css/admin_dashboard.css' %}">
+    <!-- Club-specific layout overrides (green accent, distinct from admin) -->
+    <link rel="stylesheet" href="{% static 'css/club_dashboard.css' %}">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        base: 'rgb(var(--color-base, 251 249 245) / <alpha-value>)',
+                        card: 'rgb(var(--color-card, 255 255 255) / <alpha-value>)',
+                        border: 'rgb(var(--color-border, 235 230 223) / <alpha-value>)',
+                        main: 'rgb(var(--color-main, 43 41 39) / <alpha-value>)',
+                        accent: 'rgb(var(--color-accent, 234 220 201) / <alpha-value>)',
+                        accentHover: 'rgb(var(--color-accent-hover, 216 202 180) / <alpha-value>)',
+                        chip: 'rgb(var(--color-chip, 240 235 225) / <alpha-value>)',
+                    },
+                    fontFamily: {
+                        sans: ['var(--font-main, "Inter", sans-serif)'],
+                    },
+                }
+            }
+        }
+    </script>
+
+    {{ ENDPOINTS|json_script:"app-endpoints" }}
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="club-admin admin-area font-sans antialiased min-h-screen flex overflow-x-hidden" data-app="campusdash-club">
+
+    <!-- ======================= Club Sidebar ======================= -->
+    <aside data-region="sidebar" data-role="club-sidebar" class="w-64 club-sidebar admin-sidebar h-screen fixed top-0 left-0 flex flex-col overflow-y-auto -translate-x-full lg:translate-x-0 transition-transform duration-200 z-40 lg:z-auto">
+        <!-- Brand -->
+        <div data-component="brand" class="p-6 border-b border-white/10">
+            <a href="{{ ENDPOINTS.club_dashboard }}" class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg club-brand-icon flex items-center justify-center">
+                    <i class="fa-solid fa-user-group text-sm"></i>
+                </div>
+                <div>
+                    <span class="font-semibold text-lg tracking-tight text-white block leading-tight">Niter Hub</span>
+                    <span class="text-xs text-white/60 tracking-wide uppercase">Club Console</span>
+                </div>
+            </a>
+        </div>
+
+        <!-- Navigation -->
+        <nav data-region="nav" class="flex-1 p-4 space-y-1">
+            <p class="text-xs font-medium text-white/40 uppercase tracking-wider px-3 mb-3">Club Workspace</p>
+
+            <a href="{{ ENDPOINTS.club_dashboard }}#overview" data-route="club_dashboard" class="admin-nav-link">
+                <i class="fa-solid fa-gauge-high"></i> Overview
+            </a>
+            <a href="{{ ENDPOINTS.club_dashboard }}#sheet-card" class="admin-nav-link">
+                <i class="fa-brands fa-google"></i> Live Google Sheet
+            </a>
+            <a href="{{ ENDPOINTS.club_dashboard }}#approvals-card" class="admin-nav-link">
+                <i class="fa-solid fa-user-check"></i> Member Approvals
+            </a>
+            <a href="{{ ENDPOINTS.club_dashboard }}#roles-card" class="admin-nav-link">
+                <i class="fa-solid fa-user-tag"></i> Role Assignments
+            </a>
+            <a href="{{ ENDPOINTS.club_dashboard }}#events-card" class="admin-nav-link">
+                <i class="fa-solid fa-calendar-plus"></i> Events
+            </a>
+            <a href="{{ ENDPOINTS.club_dashboard }}#verify-card" class="admin-nav-link">
+                <i class="fa-solid fa-money-check-dollar"></i> Transaction Verifier
+            </a>
+        </nav>
+
+        <!-- User / logout -->
+        <div data-component="profile" class="p-4 border-t border-white/10">
+            <div class="flex items-center gap-3 px-2">
+                <div class="w-9 h-9 rounded-full bg-accent flex items-center justify-center text-sm font-medium">
+                    {{ user.get_full_name|default:user.username|slice:":1"|upper }}
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium truncate text-white">{{ user.get_full_name|default:user.username }}</p>
+                    <p class="text-xs text-white/50 truncate">Club Manager</p>
+                </div>
+                <a href="{{ ENDPOINTS.dashboard }}" class="p-2 hover:bg-white/10 rounded-lg transition-colors" title="Back to student view">
+                    <i class="fa-solid fa-arrow-up-right-from-square text-white/60 text-sm"></i>
+                </a>
+                <form method="post" action="{% url 'logout' %}" class="inline">
+                    {% csrf_token %}
+                    <button type="submit" class="p-2 hover:bg-white/10 rounded-lg transition-colors" aria-label="Log out">
+                        <i class="fa-solid fa-arrow-right-from-bracket text-white/60 text-sm"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ======================= Main Content ======================= -->
+    <main data-region="main" id="main-content" class="flex-1 min-w-0 ml-0 lg:ml-64 transition-all duration-200">
+        <header data-region="header" class="sticky top-0 z-10 bg-base/80 backdrop-blur-md border-b border-border">
+            <div class="px-4 md:px-8 py-4 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <button id="club-menu-btn" data-component="sidebar-toggle" aria-label="Toggle menu" aria-expanded="false" class="lg:hidden p-2 -ml-2 bg-card rounded-lg border border-border shadow-sm">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <h1 class="text-xl font-semibold tracking-tight">{% block header %}Club Management{% endblock %}</h1>
+                </div>
+            </div>
+        </header>
+
+        <div data-region="content" class="p-4 md:p-8">
+            <div class="club-main">
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </main>
+
+    <!-- Mobile backdrop -->
+    <div id="club-backdrop" data-component="sidebar-backdrop" class="lg:hidden fixed inset-0 z-30 bg-black/40 opacity-0 pointer-events-none transition-opacity duration-200"></div>
+
+    {% include 'partials/toasts.html' %}
+
+    <script>
+        // Mobile / Desktop club sidebar toggle (mirrors admin_base behaviour)
+        const clubMenuBtn = document.getElementById('club-menu-btn');
+        const clubSidebar = document.querySelector('aside[data-role="club-sidebar"]');
+        const clubBackdrop = document.getElementById('club-backdrop');
+
+        function setClubSidebar(open) {
+            if (!clubSidebar) return;
+            clubSidebar.classList.toggle('-translate-x-full', !open);
+            if (clubBackdrop) {
+                clubBackdrop.classList.toggle('opacity-0', !open);
+                clubBackdrop.classList.toggle('pointer-events-none', !open);
+            }
+            if (clubMenuBtn) clubMenuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+
+        if (clubMenuBtn) {
+            clubMenuBtn.addEventListener('click', () => {
+                if (!clubSidebar) return;
+                setClubSidebar(clubSidebar.classList.contains('-translate-x-full'));
+            });
+        }
+        if (clubBackdrop) clubBackdrop.addEventListener('click', () => setClubSidebar(false));
+
+        document.querySelectorAll('.admin-nav-link').forEach(link => {
+            link.addEventListener('click', () => setClubSidebar(false));
+        });
+    </script>
+
+    <!-- PWA service worker registration -->
+    <script src="{% static 'js/pwa-register.js' %}" defer></script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>
