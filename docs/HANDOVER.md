@@ -445,8 +445,8 @@ CSRF_COOKIE_SECURE=True
 | POST | `/api/notifications/<id>/read/` | Mark one of the user's notifications as read (`mark_notification_read`, `@login_required`) |
 | WS | `ws/notifications/` | Real-time notification stream (`NotificationConsumer`, joins `user_<id>` group) |
 | GET | `/api/notes/upload/` | Upload a note to the user's Google Drive (`@login_required`) |
-| GET | `/api/clubs/sheet/` | Fetch club Google Sheet records (`@login_required`) |
-| POST | `/api/clubs/sheet/append/` | Append a row to the club Google Sheet (`@login_required`) |
+| GET | `/clubs/dashboard/sheets/` | Fetch club Google Sheet records (staff only) |
+| POST | `/clubs/dashboard/sheets/append/` | Append a row to the club Google Sheet (staff only) |
 | GET | `/api/builder/create-page/` | Super-admin: create a builder page |
 | POST | `/api/builder/save-block/` | Super-admin: save a ContentBlock |
 | POST | `/api/builder/save-css/` | Super-admin: save page custom CSS |
@@ -3653,15 +3653,15 @@ club-sheet API endpoints are staff-gated.
   redirects now point at `?tab=account` (the removed `?tab=google_drive`
   target is gone).
 - **`templates/club_admin.html`** — added a **Verify & Connect** button next
-  to Connect/Refresh that calls `POST /api/clubs/sheet/verify/` (moved from
-  the removed Settings tab), with a success/error result panel; the prefill
-  comment now references the saved spreadsheet instead of Settings.
+  to Connect/Refresh that calls `POST /clubs/dashboard/sheets/verify/` (moved
+  from the removed Settings tab), with a success/error result panel; the
+  prefill comment now references the saved spreadsheet instead of Settings.
 
 ### Permissions summary
 
 | Endpoint | Guard |
 | :--- | :--- |
-| `GET/POST /api/clubs/sheet/fetch` / `append` / `verify` | staff only |
+| `GET/POST /clubs/dashboard/sheets/` / `append` / `verify` | staff only |
 | `POST /api/clubs/verify-transaction/` | staff only (unchanged) |
 | `POST /api/notes/upload/` | any authenticated user (unchanged) |
 

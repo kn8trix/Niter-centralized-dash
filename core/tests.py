@@ -6423,7 +6423,7 @@ class DriveOAuthFlowTest(TestCase):
 
 
 class VerifyClubSheetApiTest(TestCase):
-    """POST /api/clubs/sheet/verify/ — save + setup default tabs/headers."""
+    """POST /clubs/dashboard/sheets/verify/ — save + setup default tabs/headers."""
 
     def setUp(self):
         # Verify & Connect is staff-only (Club Management dashboard).

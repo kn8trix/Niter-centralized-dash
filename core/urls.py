@@ -60,12 +60,15 @@ urlpatterns = [
     path('api/builder/save-block/', views.save_content_block, name='save_content_block'),
     path('api/builder/save-css/', views.save_page_css, name='save_page_css'),
 
-    # Google integration — Drive notes upload + club sheets (Phase 4)
+    # Google integration — Drive notes upload + club sheets (Phase 4).
+    # Club sheets endpoints live under /clubs/dashboard/sheets/ (the clubs
+    # namespace) — the sheets management UI is the staff-only Club Management
+    # dashboard, not Account Settings.
     path('api/notes/upload/', views.upload_note_view, name='api_upload_note'),
-    path('api/clubs/sheet/', views.fetch_club_sheet_view, name='api_club_sheet_fetch'),
-    path('api/clubs/sheet/append/', views.append_club_sheet_view, name='api_club_sheet_append'),
+    path('clubs/dashboard/sheets/', views.fetch_club_sheet_view, name='api_club_sheet_fetch'),
+    path('clubs/dashboard/sheets/append/', views.append_club_sheet_view, name='api_club_sheet_append'),
     # Verify & Connect a club spreadsheet (creates default tabs/headers)
-    path('api/clubs/sheet/verify/', views.verify_club_sheet_view, name='api_club_sheet_verify'),
+    path('clubs/dashboard/sheets/verify/', views.verify_club_sheet_view, name='api_club_sheet_verify'),
 
     # Google Drive — OAuth2 connect/callback (google_auth_oauthlib Flow)
     path('drive/connect/', views.drive_connect, name='drive_connect'),
