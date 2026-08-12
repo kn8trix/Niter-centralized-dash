@@ -275,7 +275,7 @@ python manage.py check --deploy
 | **Cafeteria Admin** | [http://127.0.0.1:8000/cafeteria/admin/](http://127.0.0.1:8000/cafeteria/admin/) | Staff-only meal slots, inventory, QR redemption |
 | **Club Management** | [http://127.0.0.1:8000/clubs/manage/](http://127.0.0.1:8000/clubs/manage/) | Staff-only club executive workspace |
 | **Checkout** | [http://127.0.0.1:8000/checkout/](http://127.0.0.1:8000/checkout/) | Payment gateway (bKash/Nagad/Rocket) for events, transport, meals |
-| **Research AI** | [http://127.0.0.1:8000/research-ai/](http://127.0.0.1:8000/research-ai/) | Academic research & thesis assistant (frontend-only) |
+| **Research AI** | [http://127.0.0.1:8000/research-ai/](http://127.0.0.1:8000/research-ai/) | Academic research & thesis assistant — OpenRouter-backed chat, persisted threads, PDF/DOCX reference parsing (server-driven; §65–§67) |
 | **Departments** | [http://127.0.0.1:8000/departments/](http://127.0.0.1:8000/departments/) | Department directory & hub (`/departments/<slug>/`) |
 | **Builder** | [http://127.0.0.1:8000/builder/](http://127.0.0.1:8000/builder/) | Website Builder dashboard (super-admin) + `/builder/edit/<slug>/` editor |
 | **Builder Pages** | [http://127.0.0.1:8000/page/<slug>/](http://127.0.0.1:8000/page/<slug>/) | Public render of builder-authored pages (e.g. `/page/research-ai/`) |
