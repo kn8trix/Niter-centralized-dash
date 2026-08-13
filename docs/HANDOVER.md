@@ -4934,6 +4934,32 @@ Hardened the `/medical/` appointment booking form
 - `core/tests.py` (`MedicalBookingFormTest`)
 - `docs/HANDOVER.md` (this section)
 
+### Independent verification (no code changes needed)
+
+A follow-up audit of the form-state binding + validation-clearing requirements
+confirmed every behaviour in §87 is already live and working, so no further
+code changes were made:
+
+- **Input → state binding:** the doctor `<select>`, date input and each
+  time-slot radio are individually bound via `change`/`input` listeners
+  (`formControls` resolves the `RadioNodeList` to plain inputs, so the
+  bind never throws).
+- **Dynamic warning clearing:** `onFix` flips `#err-doctor` / `#err-date` /
+  `#err-slot` to `hidden` the moment the field is filled and hides the generic
+  alert once doctor + date + slot are all valid; warnings are only re-shown on
+  submission when a field is empty.
+- **Payload contract:** the POST sends `doctor_name`, `appointment_date`,
+  `time_slot`, `reason` (matching `book_appointment` in `core/views.py`, which
+  answers `{status: 'success', success: true, data: {...}}`).
+- **Success flow:** resets the form, hides errors, shows the toast, prepends
+  the new appointment to Upcoming Appointments and adds it to the consultation
+  dropdown.
+- **Live E2E (Chrome, logged in as demo student):** warnings appeared on an
+  incomplete submit, cleared dynamically as each field was fixed, submission
+  succeeded with no page reload, the new appointment prepended to the list,
+  and the form reset — zero console errors. Test appointment cleaned up
+  afterwards.
+
 ## 88. Google OAuth — 401/Invalid-Credentials Hardening + Upload Session Guard
 
 **Date:** 13 August 2026  
