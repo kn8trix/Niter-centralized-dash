@@ -1,5 +1,19 @@
 # Niter Centralized Dash - Handover Document
 
+## Changelog — Recent Work (Aug 2026)
+
+| § | Title | Commit(s) |
+|---|---|---|
+| 86 | Final Integration Status — Module Matrix, OAuth Refresh & Health Check | `fc74649` |
+| 85 | Android WebView Wrapper (`/mobile-webview`) | `83b1d80`, `fc74649` |
+| 84 | System Audit + Reports Module Upgrade (severity / attachments / envelope) | `b5fdb0e` |
+| 83 | Google OAuth / Drive — Recurring "Google Access Required" Popup Fix | `c983640` |
+
+See the end of this document for full sections. Older feature history follows
+in §1–§82.
+
+---
+
 ## 1. Project Overview
 The **Niter Centralized Dash** is a student-centric dashboard designed to provide a unified interface for academic management, official notices, and campus services. It follows a "Warm Minimal Notion-style" aesthetic, focusing on readability, clean layouts, and subtle interactions.
 
@@ -34,7 +48,10 @@ The theme is built around a warm, paper-like background with neutral accents.
     - **Transport Tickets:** Bus routes, seat booking, QR boarding pass (`/transport/`).
     - **Meal System:** Meal slot ratio, claim, supply stats (`/meals/`).
     - **Medical Booking:** Appointment scheduling.
-    - **Clubs & Events:** Club discovery + executive workspace (`/clubs/`).
+    - **Clubs & Events:** Club discovery + events (`/clubs/`). *Note:* the
+      executive workspace is **not** in the public sidebar — it moved behind the
+      role-protected `/dashboard/club/` (and legacy `/clubs/manage/`) routes,
+      see §77 and §86.
 - **Footer:** User profile section with avatar and logout option (posts to `/logout/` when signed in).
 
 ### 3.2 Main Content Area
