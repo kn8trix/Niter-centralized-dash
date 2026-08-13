@@ -3227,6 +3227,19 @@ class EmergencyBroadcastApiTest(TestCase):
         # No active alert → the idle state is rendered.
         self.assertContains(response, 'campus is all clear')
 
+    def test_emergency_modal_starts_hidden_and_css_respects_hidden(self):
+        # .emergency-modal used display:flex, which overrode the UA's
+        # [hidden] { display:none } — the trigger modal was permanently
+        # visible on load and the close button could not dismiss it.
+        # Regression guard: the markup ships with `hidden` AND the CSS has
+        # an explicit [hidden] override so display:flex can never win
+        # (same fix as .field-error in medical.css).
+        from django.conf import settings
+        html = self.client.get(reverse('admin_dashboard')).content.decode()
+        self.assertIn('id="emergency-modal" hidden', html)
+        css = (settings.BASE_DIR / 'static' / 'css' / 'admin_dashboard.css').read_text()
+        self.assertIn('.emergency-modal[hidden]', css)
+
     def test_admin_overview_marks_live_alert(self):
         EmergencyAlert.objects.create(
             title='Flood Warning', message='Avoid low areas.',

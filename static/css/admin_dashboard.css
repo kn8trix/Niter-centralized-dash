@@ -457,6 +457,11 @@ body.admin-area {
 
 /* Trigger modal */
 .emergency-modal { position: fixed; inset: 0; z-index: 7000; display: flex; align-items: center; justify-content: center; padding: 1.25rem; }
+/* The modal ships with the `hidden` attribute and JS toggles it — author
+   styles with `display: flex` above would otherwise override the UA's
+   [hidden] { display:none }, leaving the modal permanently visible and
+   unclosable. Keep the hidden state explicit (same fix as .field-error). */
+.emergency-modal[hidden] { display: none; }
 .emergency-modal-backdrop {
     position: absolute; inset: 0;
     background: rgba(15, 4, 4, 0.6);
