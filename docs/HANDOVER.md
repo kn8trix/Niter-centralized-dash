@@ -4,7 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 101 | dash-data dashboard JSON embedding — verified present, calendar grid guards green |  |
+| 101 | dash-data dashboard JSON embedding — verified present, calendar grid guards green | `8905493` |
 | 100 | CI hardening — pytest-proof channel layer + dash-data/Huey regression guards | `0a90ad5` |
 | 99 | Test-suite Redis isolation — in-memory channel layer under the test runner | `0c38e45` |
 | 98 | Emergency Alert modal — auto-open / unclosable state fix (admin dashboard) | `4a3e9ea` |
