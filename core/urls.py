@@ -116,6 +116,7 @@ urlpatterns = [
     
     # Campus services — meal, transport, medical action handlers
     path('claim-meal/', views.claim_meal, name='claim_meal_ticket'),
+    path('cancel-meal/', views.cancel_meal, name='cancel_meal_ticket'),
     path('book-transport/', views.book_transport, name='book_transport_ticket'),
     path('book-appointment/', views.book_appointment, name='book_appointment'),
 

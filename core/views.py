@@ -4,7 +4,7 @@ import json
 import os
 import re
 import secrets
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
@@ -630,9 +630,102 @@ def transport_dashboard(request):
     return render(request, 'transport.html', {'routes': routes})
 
 
+def _meal_ticket_date(ticket):
+    """The calendar date a meal ticket is for (legacy rows fall back to claim day)."""
+    return ticket.meal_date or ticket.claimed_at.date()
+
+
+def _meal_ticket_can_cancel(ticket):
+    """A ticket may be cancelled only before 21:00 on the night before the meal."""
+    meal_date = _meal_ticket_date(ticket)
+    cutoff = datetime.combine(meal_date - timedelta(days=1), time(21, 0))
+    return (
+        not ticket.is_redeemed
+        and ticket.payment_status == 'paid'
+        and timezone.now() < cutoff
+    )
+
+
 def meal_dashboard(request):
-    """Online meal ticket system — frontend-only page driven by mock JS data."""
-    return render(request, 'meals.html')
+    """Online meal ticket system — live subscription, tickets and slot stats.
+
+    Serves the authenticated student's MealSubscription balance, their paid
+    tickets (for the digital pass + cancellable list), and today's live
+    claim/capacity numbers; anonymous visitors get the empty-state UI. The
+    ``state_json`` blob drives the front-end ring/pass widgets without a
+    second API round-trip.
+    """
+    today = timezone.now().date()
+
+    claimed_today = {
+        meal: MealTicket.objects.filter(
+            meal_type=meal,
+        ).filter(Q(meal_date=today) | Q(meal_date__isnull=True, claimed_at__date=today)).count()
+        for meal in DAILY_MEAL_CAPACITY
+    }
+
+    context = {
+        'capacity': DAILY_MEAL_CAPACITY,
+        'claimed_today': claimed_today,
+        'total_capacity': sum(DAILY_MEAL_CAPACITY.values()),
+        'total_claimed_today': sum(claimed_today.values()),
+        'meal_monthly_fee': MEAL_MONTHLY_FEE,
+        'cancel_cutoff': '9:00 PM',
+        'today_iso': today.isoformat(),
+        'sub_active': False,
+        'slots_remaining': 0,
+        'sub_expires': None,
+        'my_tickets': [],
+        'latest_ticket': None,
+        'student_id': '',
+        'student_name': '',
+    }
+
+    if request.user.is_authenticated:
+        profile = getattr(request.user, 'student_profile', None)
+        context['student_id'] = profile.student_id if profile else request.user.username
+        context['student_name'] = request.user.get_full_name() or request.user.username
+
+        subscription = getattr(request.user, 'meal_subscription', None)
+        if subscription is not None and subscription.is_active and not subscription.is_expired:
+            context['sub_active'] = True
+            context['slots_remaining'] = subscription.slots_remaining
+            context['sub_expires'] = subscription.expires_at.strftime('%d %b %Y')
+
+        tickets = MealTicket.objects.filter(
+            user=request.user, payment_status='paid',
+        ).order_by('-claimed_at')[:10]
+        context['my_tickets'] = [
+            {'ticket': t, 'can_cancel': _meal_ticket_can_cancel(t)} for t in tickets
+        ]
+        context['latest_ticket'] = tickets[0] if tickets else None
+
+    latest = context['latest_ticket']
+    context['state_json'] = {
+        'capacity': context['capacity'],
+        'claimed_today': context['claimed_today'],
+        'total_capacity': context['total_capacity'],
+        'total_claimed_today': context['total_claimed_today'],
+        'sub_active': context['sub_active'],
+        'slots_remaining': context['slots_remaining'],
+        'sub_expires': context['sub_expires'],
+        'fee': str(context['meal_monthly_fee']),
+        'student_id': context['student_id'],
+        'student_name': context['student_name'],
+        'latest_ticket': (
+            {
+                'token': latest.ticket_token,
+                'meal_type': latest.meal_type,
+                'meal_date': str(_meal_ticket_date(latest)),
+                'student_id': context['student_id'],
+                'student_name': context['student_name'],
+            }
+            if latest is not None
+            else None
+        ),
+    }
+
+    return render(request, 'meals.html', context)
 
 
 # Wallet number + TrxID validation rules for the checkout form.
@@ -737,10 +830,24 @@ def _process_checkout(request):
 
     linked = None
     if purpose == 'meal':
-        # The paid item is the monthly meal entitlement — activate it now.
+        # The paid item is the monthly meal entitlement — activate it for the
+        # current calendar month and pre-allocate one Lunch + one Dinner slot
+        # for every remaining day of the month.
+        now = timezone.now()
+        today = now.date()
+        last_day = calendar.monthrange(today.year, today.month)[1]
+        month_end = datetime.combine(
+            date(today.year, today.month, last_day), time(23, 59, 59)
+        )
+        remaining_days = (month_end.date() - today).days + 1
         subscription, _ = MealSubscription.objects.update_or_create(
             user=request.user,
-            defaults={'is_active': True, 'expires_at': timezone.now() + timedelta(days=30)},
+            defaults={
+                'is_active': True,
+                'expires_at': month_end,
+                'month_start': today,
+                'slots_remaining': 2 * remaining_days,
+            },
         )
         linked = 'meal_subscription' if subscription.is_active else None
 
@@ -874,11 +981,14 @@ def department_detail(request, dept_slug):
 # ============================================================================
 
 # Daily claim caps per meal type (mirrors the cafeteria admin capacities).
+# Breakfast was removed from the system (UI + API) — Lunch and Dinner only.
 DAILY_MEAL_CAPACITY = {
-    'breakfast': 80,
     'lunch': 200,
     'dinner': 160,
 }
+
+# Monthly cafeteria subscription fee (BDT) — charged via the checkout gateway.
+MEAL_MONTHLY_FEE = Decimal('2000.00')
 
 # Transport route catalog — fallback when no DB routes exist yet. The DB is
 # the source of truth (TransportRoute + BusSchedule + Driver, seeded in
@@ -1027,12 +1137,37 @@ def claim_meal(request):
     # USE_TZ=False → timezone.now() is already naive local time.
     today = timezone.now().date()
 
-    # One ticket per meal type per user per day.
+    # The meal may be claimed for today or any future day still covered by the
+    # subscription (the balance is pre-allocated across the whole month, and
+    # future-day claims can be cancelled before 9 PM the previous night).
+    meal_date_raw = request.POST.get('meal_date', '').strip()
+    if meal_date_raw:
+        try:
+            meal_date = date.fromisoformat(meal_date_raw)
+        except ValueError:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Invalid meal date format.'},
+                status=400,
+            )
+    else:
+        meal_date = today
+    if meal_date < today:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Meal date cannot be in the past.'},
+            status=400,
+        )
+    if meal_date > subscription.expires_at.date():
+        return JsonResponse(
+            {'status': 'error', 'message': 'That date is outside your subscription period.'},
+            status=400,
+        )
+
+    # One ticket per meal type per user per date.
     if MealTicket.objects.filter(
-        user=request.user, meal_type=meal_type, claimed_at__date=today
+        user=request.user, meal_type=meal_type, meal_date=meal_date
     ).exists():
         return JsonResponse(
-            {'status': 'error', 'message': 'You already claimed %s today.' % meal_type},
+            {'status': 'error', 'message': 'You already claimed %s for %s.' % (meal_type, meal_date)},
             status=409,
         )
 
@@ -1040,7 +1175,9 @@ def claim_meal(request):
     # the DB cannot express "capacity" as a constraint, so a rare concurrent
     # oversubscription is bounded by the ticket_token unique constraint and is
     # reconciled at redemption time by the cafeteria staff.
-    claimed_today = MealTicket.objects.filter(meal_type=meal_type, claimed_at__date=today).count()
+    claimed_today = MealTicket.objects.filter(meal_type=meal_type).filter(
+        Q(meal_date=meal_date) | Q(meal_date__isnull=True, claimed_at__date=meal_date)
+    ).count()
     if claimed_today >= DAILY_MEAL_CAPACITY[meal_type]:
         return JsonResponse(
             {'status': 'error', 'message': 'Daily capacity reached for %s.' % meal_type},
@@ -1049,14 +1186,26 @@ def claim_meal(request):
 
     try:
         with transaction.atomic():
+            # Lock the subscription row so concurrent claims cannot overspend
+            # the pre-allocated monthly balance.
+            subscription = MealSubscription.objects.select_for_update().get(pk=subscription.pk)
+            if subscription.slots_remaining <= 0:
+                return JsonResponse(
+                    {'status': 'error', 'message': 'Your monthly meal balance is exhausted. Renew your subscription to claim more meals.'},
+                    status=403,
+                )
+
             is_paid_flow = bool(payment_method)
             ticket = MealTicket.objects.create(
                 user=request.user,
                 meal_type=meal_type,
+                meal_date=meal_date,
                 ticket_token=None if is_paid_flow else generate_meal_token(),
                 payment_status='pending' if is_paid_flow else 'paid',
                 paid_at=None if is_paid_flow else timezone.now(),
             )
+            subscription.slots_remaining -= 1
+            subscription.save(update_fields=['slots_remaining'])
             payment_order = None
             if is_paid_flow:
                 payment_order = create_payment_order(request.user, ticket, payment_method, amount_raw)
@@ -1088,11 +1237,84 @@ def claim_meal(request):
     _broadcast_notification(notification)
     return JsonResponse({
         'status': 'success',
+        'ticket_id': ticket.pk,
         'ticket_token': ticket.ticket_token,
         'meal_type': ticket.meal_type,
+        'meal_date': str(ticket.meal_date),
         'payment_status': ticket.payment_status,
         'payment_order': payment_order.merchant_invoice_id if payment_order else None,
+        'slots_remaining': subscription.slots_remaining,
         'message': 'Meal ticket claimed successfully.',
+    })
+
+
+@login_required
+def cancel_meal(request):
+    """Cancel a claimed meal ticket before the 9 PM previous-night cutoff.
+
+    A ticket for date D may only be cancelled before 21:00 on D−1 (so the
+    kitchen can drop the portion and the slot/capacity is released). After the
+    cutoff the cancellation is blocked with the standard warning, and the
+    student's monthly slot balance is only refunded on a successful cancel.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+
+    ticket_id = request.POST.get('ticket_id', '').strip()
+    try:
+        ticket = MealTicket.objects.get(pk=ticket_id, user=request.user)
+    except (MealTicket.DoesNotExist, ValueError, TypeError):
+        return JsonResponse(
+            {'status': 'error', 'message': 'Ticket not found.'},
+            status=404,
+        )
+
+    if ticket.is_redeemed:
+        return JsonResponse(
+            {'status': 'error', 'message': 'This ticket has already been redeemed and cannot be cancelled.'},
+            status=400,
+        )
+    if ticket.payment_status != 'paid':
+        return JsonResponse(
+            {'status': 'error', 'message': 'Only active tickets can be cancelled.'},
+            status=400,
+        )
+
+    meal_date = _meal_ticket_date(ticket)
+    now = timezone.now()
+    # Cutoff: 9:00 PM (21:00) on the night before the meal.
+    cutoff = datetime.combine(meal_date - timedelta(days=1), time(21, 0))
+    if now >= cutoff:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Meals for tomorrow can only be cancelled before 9:00 PM tonight.'},
+            status=403,
+        )
+
+    with transaction.atomic():
+        # Release the slot: delete the ticket (frees today's capacity count)
+        # and refund the meal back into the monthly balance.
+        ticket.delete()
+        subscription = getattr(request.user, 'meal_subscription', None)
+        if subscription is not None:
+            subscription.slots_remaining += 1
+            subscription.save(update_fields=['slots_remaining'])
+
+    notification = Notification.objects.create(
+        user=request.user,
+        title='Meal ticket cancelled',
+        message='Your %s ticket for %s was cancelled and the meal slot was refunded to your balance.' % (
+            ticket.get_meal_type_display(), meal_date,
+        ),
+        category='meal',
+    )
+    _broadcast_notification(notification)
+
+    return JsonResponse({
+        'status': 'success',
+        'meal_type': ticket.meal_type,
+        'meal_date': str(meal_date),
+        'slots_remaining': subscription.slots_remaining if subscription is not None else 0,
+        'message': 'Meal cancelled — slot released and credited back to your balance.',
     })
 
 
@@ -1978,10 +2200,10 @@ def cafeteria_admin_view(request):
             'meal': meal.capitalize(),
             'capacity': DAILY_MEAL_CAPACITY[meal],
             'claimed': MealTicket.objects.filter(
-                meal_type=meal, claimed_at__date=today
-            ).count(),
+                meal_type=meal,
+            ).filter(Q(meal_date=today) | Q(meal_date__isnull=True, claimed_at__date=today)).count(),
         }
-        for meal in ('breakfast', 'lunch', 'dinner')
+        for meal in ('lunch', 'dinner')
     ]
 
     # Live subscription counts.

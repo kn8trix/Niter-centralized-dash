@@ -1,6 +1,6 @@
 import json
 from contextlib import contextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from unittest import mock
 
 import shutil
@@ -259,6 +259,34 @@ class CheckoutPageTest(TestCase):
         self.assertIn('Monthly Meal Subscription', html)
         # Static banner text (rendered markup, not JS source)
         self.assertIn('Pay your monthly fee to claim tickets.', html)
+
+    def test_meal_dashboard_shows_active_subscription_balance(self):
+        user = User.objects.create_user(username='meal_page', password='x12345678')
+        MealSubscription.objects.create(
+            user=user, expires_at=timezone.now() + timedelta(days=30), slots_remaining=7,
+        )
+        self.client.login(username='meal_page', password='x12345678')
+        html = self.client.get(reverse('meal_dashboard')).content.decode()
+        self.assertIn('meal-sub active', html)
+        self.assertIn('meals left in your balance', html)
+
+    def test_meal_dashboard_lists_tickets_with_cancel_buttons(self):
+        user = User.objects.create_user(username='meal_page2', password='x12345678')
+        MealSubscription.objects.create(
+            user=user, expires_at=timezone.now() + timedelta(days=30), slots_remaining=7,
+        )
+        MealTicket.objects.create(
+            user=user, meal_type='dinner',
+            meal_date=(timezone.now() + timedelta(days=1)).date(),
+            ticket_token='#MEAL-7777', payment_status='paid', paid_at=timezone.now(),
+        )
+        self.client.login(username='meal_page2', password='x12345678')
+        now = datetime.combine(timezone.now().date(), time(10, 0))
+        with mock.patch('core.views.timezone.now', return_value=now):
+            html = self.client.get(reverse('meal_dashboard')).content.decode()
+        self.assertIn('#MEAL-7777', html)
+        self.assertIn('data-ticket-id', html)
+        self.assertIn('Cancel Meal', html)
 
 
 class ResearchAIPageTest(TestCase):
@@ -1024,7 +1052,8 @@ class AccountAndAdminPagesTest(TestCase):
             'Daily Meal Slot Capacity',
             'Kitchen Inventory',
             'QR Token / Meal Coupon Redemption',
-            'Breakfast',
+            'Lunch',
+            'Dinner',
             'Basmati Rice',
             'Redeemed At',
             'Active meal subscriptions',
@@ -2701,6 +2730,7 @@ class MealSubscriptionModelTest(TestCase):
         self.sub = MealSubscription.objects.create(
             user=self.user,
             expires_at=timezone.now() + timedelta(days=30),
+            slots_remaining=10,
         )
 
     def test_str_reports_username(self):
@@ -2745,6 +2775,7 @@ class ClaimMealApiTest(TestCase):
         self.sub = MealSubscription.objects.create(
             user=self.user,
             expires_at=timezone.now() + timedelta(days=30),
+            slots_remaining=10,
         )
 
     def _claim(self, **overrides):
@@ -2826,7 +2857,7 @@ class ClaimMealApiTest(TestCase):
         self.assertEqual(MealTicket.objects.filter(user=self.user, meal_type='lunch').count(), 1)
 
     def test_claim_different_meal_same_day_allowed(self):
-        self.assertEqual(self._claim(meal_type='breakfast').status_code, 200)
+        self.assertEqual(self._claim(meal_type='dinner').status_code, 200)
         response = self._claim(meal_type='lunch')
         self.assertEqual(response.status_code, 200)
 
@@ -2837,7 +2868,7 @@ class ClaimMealApiTest(TestCase):
             MealTicket.objects.create(
                 user=other, meal_type='lunch', ticket_token='#MEAL-%04d' % (5000 + i),
             )
-        with mock.patch('core.views.DAILY_MEAL_CAPACITY', {'breakfast': 80, 'lunch': 2, 'dinner': 160}):
+        with mock.patch('core.views.DAILY_MEAL_CAPACITY', {'lunch': 2, 'dinner': 160}):
             response = self._claim()
         self.assertEqual(response.status_code, 429)
         self.assertFalse(MealTicket.objects.filter(user=self.user, meal_type='lunch').exists())
@@ -2846,12 +2877,158 @@ class ClaimMealApiTest(TestCase):
         tokens = set()
         for i in range(5):
             other = User.objects.create_user(username='u_%d' % i, password='x12345678')
-            MealSubscription.objects.create(user=other, expires_at=timezone.now() + timedelta(days=30))
+            MealSubscription.objects.create(
+                user=other, expires_at=timezone.now() + timedelta(days=30), slots_remaining=10,
+            )
             self.client.logout()
             self.client.login(username='u_%d' % i, password='x12345678')
             data = self._claim().json()
             tokens.add(data['ticket_token'])
         self.assertEqual(len(tokens), 5)
+
+    # ------------------------------------------------------------------
+    # Breakfast removal + date-specific claims + monthly balance
+    # ------------------------------------------------------------------
+    def test_claim_rejects_breakfast_removed_meal_type(self):
+        response = self._claim(meal_type='breakfast')
+        self.assertEqual(response.status_code, 400)
+
+    def test_claim_accepts_future_meal_date(self):
+        future = (timezone.now() + timedelta(days=2)).date().isoformat()
+        response = self._claim(meal_date=future)
+        self.assertEqual(response.status_code, 200)
+        ticket = MealTicket.objects.get(user=self.user, meal_type='lunch')
+        self.assertEqual(ticket.meal_date.isoformat(), future)
+
+    def test_claim_rejects_past_meal_date(self):
+        past = (timezone.now() - timedelta(days=1)).date().isoformat()
+        response = self._claim(meal_date=past)
+        self.assertEqual(response.status_code, 400)
+
+    def test_claim_rejects_duplicate_for_same_meal_date(self):
+        future = (timezone.now() + timedelta(days=1)).date().isoformat()
+        self.assertEqual(self._claim(meal_date=future).status_code, 200)
+        response = self._claim(meal_date=future)
+        self.assertEqual(response.status_code, 409)
+
+    def test_claim_same_meal_different_dates_allowed(self):
+        d1 = (timezone.now() + timedelta(days=1)).date().isoformat()
+        d2 = (timezone.now() + timedelta(days=2)).date().isoformat()
+        self.assertEqual(self._claim(meal_date=d1).status_code, 200)
+        response = self._claim(meal_date=d2)
+        self.assertEqual(response.status_code, 200)
+
+    def test_claim_decrements_monthly_balance(self):
+        response = self._claim()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['slots_remaining'], 9)
+        self.sub.refresh_from_db()
+        self.assertEqual(self.sub.slots_remaining, 9)
+
+    def test_claim_blocked_when_balance_exhausted(self):
+        self.sub.slots_remaining = 0
+        self.sub.save()
+        response = self._claim()
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('balance is exhausted', response.json()['message'])
+        self.assertFalse(MealTicket.objects.filter(user=self.user).exists())
+
+
+class CancelMealApiTest(TestCase):
+    """cancel_meal — 9 PM previous-night cutoff, slot refund, ownership."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='cancel_user', password='x12345678')
+        self.client.login(username='cancel_user', password='x12345678')
+        self.sub = MealSubscription.objects.create(
+            user=self.user,
+            expires_at=timezone.now() + timedelta(days=30),
+            slots_remaining=5,
+        )
+
+    def _ticket(self, meal_date=None, user=None, payment_status='paid', is_redeemed=False):
+        meal_date = meal_date or (timezone.now() + timedelta(days=2)).date()
+        return MealTicket.objects.create(
+            user=user or self.user,
+            meal_type='lunch',
+            meal_date=meal_date,
+            ticket_token='#MEAL-%04d' % MealTicket.objects.count(),
+            payment_status=payment_status,
+            paid_at=timezone.now() if payment_status == 'paid' else None,
+            is_redeemed=is_redeemed,
+        )
+
+    def test_cancel_requires_login(self):
+        self.client.logout()
+        response = self.client.post(reverse('cancel_meal_ticket'), {'ticket_id': 1})
+        self.assertEqual(response.status_code, 302)
+
+    def test_cancel_requires_post(self):
+        response = self.client.get(reverse('cancel_meal_ticket'))
+        self.assertEqual(response.status_code, 405)
+
+    def test_cancel_unknown_ticket_returns_404(self):
+        response = self.client.post(reverse('cancel_meal_ticket'), {'ticket_id': 99999})
+        self.assertEqual(response.status_code, 404)
+
+    def test_cancel_other_users_ticket_returns_404(self):
+        other = User.objects.create_user(username='other_u', password='x12345678')
+        ticket = self._ticket(user=other)
+        response = self.client.post(reverse('cancel_meal_ticket'), {'ticket_id': ticket.pk})
+        self.assertEqual(response.status_code, 404)
+
+    def test_cancel_before_cutoff_refunds_balance(self):
+        meal_date = (timezone.now() + timedelta(days=2)).date()
+        ticket = self._ticket(meal_date=meal_date)
+        now = datetime.combine(meal_date - timedelta(days=1), time(10, 0))
+        with mock.patch('core.views.timezone.now', return_value=now):
+            response = self.client.post(reverse('cancel_meal_ticket'), {'ticket_id': ticket.pk})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertFalse(MealTicket.objects.filter(pk=ticket.pk).exists())
+        self.sub.refresh_from_db()
+        self.assertEqual(self.sub.slots_remaining, 6)
+
+    def test_cancel_after_cutoff_blocked_with_warning(self):
+        meal_date = (timezone.now() + timedelta(days=2)).date()
+        ticket = self._ticket(meal_date=meal_date)
+        now = datetime.combine(meal_date - timedelta(days=1), time(22, 0))
+        with mock.patch('core.views.timezone.now', return_value=now):
+            response = self.client.post(reverse('cancel_meal_ticket'), {'ticket_id': ticket.pk})
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json()['message'],
+            'Meals for tomorrow can only be cancelled before 9:00 PM tonight.',
+        )
+        self.assertTrue(MealTicket.objects.filter(pk=ticket.pk).exists())
+        self.sub.refresh_from_db()
+        self.assertEqual(self.sub.slots_remaining, 5)
+
+    def test_cancel_on_meal_day_blocked(self):
+        # Same-day cancels are always past the cutoff (previous night 9 PM).
+        meal_date = timezone.now().date()
+        ticket = self._ticket(meal_date=meal_date)
+        now = datetime.combine(meal_date, time(8, 0))
+        with mock.patch('core.views.timezone.now', return_value=now):
+            response = self.client.post(reverse('cancel_meal_ticket'), {'ticket_id': ticket.pk})
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(MealTicket.objects.filter(pk=ticket.pk).exists())
+
+    def test_cancel_redeemed_ticket_blocked(self):
+        meal_date = (timezone.now() + timedelta(days=3)).date()
+        ticket = self._ticket(meal_date=meal_date, is_redeemed=True)
+        now = datetime.combine(meal_date - timedelta(days=2), time(10, 0))
+        with mock.patch('core.views.timezone.now', return_value=now):
+            response = self.client.post(reverse('cancel_meal_ticket'), {'ticket_id': ticket.pk})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('already been redeemed', response.json()['message'])
+
+    def test_cancel_pending_payment_ticket_blocked(self):
+        meal_date = (timezone.now() + timedelta(days=3)).date()
+        ticket = self._ticket(meal_date=meal_date, payment_status='pending')
+        response = self.client.post(reverse('cancel_meal_ticket'), {'ticket_id': ticket.pk})
+        self.assertEqual(response.status_code, 400)
 
 
 class TransportBookingModelTest(TestCase):
@@ -3888,6 +4065,18 @@ class CheckoutPaymentApiTest(TestCase):
         self._pay(type='meal', fee='2000')
         self.user.meal_subscription.refresh_from_db()
         self.assertTrue(self.user.meal_subscription.is_active)
+
+    def test_meal_payment_credits_slots_for_remaining_month(self):
+        from calendar import monthrange
+        today = timezone.now().date()
+        last = monthrange(today.year, today.month)[1]
+        remaining = (date(today.year, today.month, last) - today).days + 1
+        response = self._pay(type='meal', item='Monthly Meal Subscription', fee='2000')
+        self.assertEqual(response.status_code, 200)
+        subscription = self.user.meal_subscription
+        self.assertTrue(subscription.is_active)
+        self.assertEqual(subscription.slots_remaining, 2 * remaining)
+        self.assertEqual(subscription.expires_at.date(), date(today.year, today.month, last))
 
     def test_payment_creates_notification(self):
         self._pay()

@@ -495,10 +495,14 @@ class CourseMaterial(models.Model):
 
 
 class MealSubscription(models.Model):
-    """A user's active meal plan entitlement.
+    """A user's active monthly meal plan entitlement.
 
     While ``is_active`` and not yet ``expires_at``, the student may claim
-    daily ``MealTicket`` rows through ``core.views.claim_meal``.
+    daily ``MealTicket`` rows through ``core.views.claim_meal``. ``month_start``
+    marks the paid billing month and ``slots_remaining`` is the pre-allocated
+    meal balance for that month (one Lunch + one Dinner slot per remaining
+    calendar day, credited on payment). A successful cancellation refunds a
+    slot back into the balance.
     """
 
     user = models.OneToOneField(
@@ -508,6 +512,15 @@ class MealSubscription(models.Model):
     )
     is_active = models.BooleanField(default=True)
     expires_at = models.DateTimeField()
+    month_start = models.DateField(
+        null=True,
+        blank=True,
+        help_text='First day of the paid billing month',
+    )
+    slots_remaining = models.PositiveIntegerField(
+        default=0,
+        help_text='Unused meal slots in the current billing month — claimed tickets decrement, cancellations refund',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     @property
@@ -567,6 +580,14 @@ class MealTicket(models.Model):
         db_index=True,
     )
     meal_type = models.CharField(max_length=20, choices=MEAL_TYPE_CHOICES)
+    # NOTE: 'breakfast' stays in MEAL_TYPE_CHOICES only for legacy rows — the
+    # claim API and every booking UI accept just Lunch / Dinner.
+    meal_date = models.DateField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text='The calendar date this meal is for — defaults to the claim date for legacy rows',
+    )
     ticket_token = models.CharField(
         max_length=20,
         unique=True,

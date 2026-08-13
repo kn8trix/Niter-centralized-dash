@@ -331,6 +331,7 @@ class PaidFlowViewTests(TestCase):
         MealSubscription.objects.create(
             user=self.user, is_active=True,
             expires_at=timezone.now() + timedelta(days=30),
+            slots_remaining=10,
         )
         response = self.client.post('/claim-meal/', {
             'meal_type': 'lunch',
@@ -355,6 +356,7 @@ class PaidFlowViewTests(TestCase):
         MealSubscription.objects.create(
             user=self.user, is_active=True,
             expires_at=timezone.now() + timedelta(days=30),
+            slots_remaining=10,
         )
         response = self.client.post('/claim-meal/', {
             'meal_type': 'lunch',
@@ -370,6 +372,7 @@ class PaidFlowViewTests(TestCase):
         MealSubscription.objects.create(
             user=self.user, is_active=True,
             expires_at=timezone.now() + timedelta(days=30),
+            slots_remaining=10,
         )
         response = self.client.post('/claim-meal/', {'meal_type': 'lunch'})
         self.assertEqual(response.status_code, 200)

@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 89 | Meal Ticket System — monthly subscription + QR passes + 9 PM cancel rule | `TBD` |
 | 88 | Google OAuth — 401/Invalid-Credentials hardening + upload session guard | `62ba895` |
 | 87 | Medical Booking — form state binding + AJAX submission fix | `bf1a05e` |
 | 86 | Final Integration Status — Module Matrix, OAuth Refresh & Health Check | `fc74649` |
@@ -4999,3 +5000,76 @@ verifies each against the code and closes the remaining gaps found in review.
 - `templates/notes/notes_engine.html`
 - `core/tests.py`
 - `docs/HANDOVER.md` (this section)
+
+## 89. Meal Ticket System — Monthly Subscriptions, QR Passes & 9 PM Cancel Rule
+
+**Date:** 13 August 2026  
+**Branch:** main
+
+Overhaul of the Online Meal Ticket System (`/meals/`) from a front-end-only
+mock into a live, payment-backed monthly subscription with QR meal passes
+and a time-locked advance-cancellation rule.
+
+### 1. Breakfast removed (UI + API)
+
+- `DAILY_MEAL_CAPACITY` now holds **Lunch (200) / Dinner (160)** only — the
+  claim API rejects `breakfast` with 400, and the meal-type selector on
+  `/meals/` and `/tickets/` renders just the two chips/radios.
+- The `breakfast` choice stays on the `MealTicket` model purely for legacy
+  rows; old tickets still render in the cafeteria admin redemptions feed.
+
+### 2. Monthly subscription + payment gateway
+
+- New **Pay Monthly Meal Subscription** modal on `/meals/` (bKash / Nagad /
+  Rocket) posts wallet number + TrxID to the existing checkout gateway
+  (`/checkout/`, `type=meal`) and activates the subscription on success.
+- `_process_checkout` now scopes the entitlement to the **current calendar
+  month** (`expires_at` = last day of month 23:59:59, `month_start` = today)
+  and **pre-allocates one Lunch + one Dinner slot per remaining day** into the
+  new `MealSubscription.slots_remaining` balance (2 × remaining days).
+- `claim_meal` accepts a `meal_date` (today or any future date inside the
+  subscription), locks the subscription row (`select_for_update`) and
+  decrements the balance atomically; an exhausted balance answers 403 with a
+  clear renewal message.
+
+### 3. Claim → QR digital meal pass
+
+- A successful claim returns the backend token and the page renders a
+  scannable QR code (qrcodejs via CDN) inside the **Active Digital Meal Pass**
+  card. Payload: `MEAL|<token>|<date>|<student-id>|<meal-type>`.
+- The pass card + ring/supply stats are now driven by the server-rendered
+  `state_json` blob (live capacity, subscription balance, latest ticket).
+
+### 4. Advance cancellation rule (before 9:00 PM previous night)
+
+- New `POST /cancel-meal/` endpoint: a ticket for date D may be cancelled
+  **only before 21:00 on D−1**. After the cutoff it answers 403 with
+  "Meals for tomorrow can only be cancelled before 9:00 PM tonight." and the
+  front-end swaps the button for a locked state; same-day cancels are always
+  blocked (the cutoff has already passed).
+- On success the ticket row is deleted (slot + capacity released) and the
+  meal is **refunded back into `slots_remaining`**. Upcoming tickets render
+  server-side with a Cancel Meal button (hidden once the window closes) and
+  a real-time `Notification` is pushed on claim/cancel.
+
+### Files
+
+- `core/models.py` + `core/migrations/0036_…` (slots_remaining, month_start,
+  meal_date)
+- `core/views.py` (meal_dashboard context, claim/cancel, checkout month
+  crediting, cafeteria admin Lunch/Dinner)
+- `core/urls.py` (`cancel-meal/`)
+- `templates/meals.html` (modal, QR pass, ticket list) + `static/css/meals.css`
+- `templates/ticketing/tickets.html` (breakfast radio removed)
+- `core/tests.py` + `payments/tests.py`
+
+### Verification
+
+- Full suite: **749 tests OK** (new: breakfast rejection, date-scoped claims,
+  balance decrement/exhaustion, cancel before/after cutoff, redeemed/pending
+  blocks, checkout month-slot crediting, meal dashboard balance/ticket
+  rendering).
+- Live E2E against `runserver`: login → `/meals/` markup (no breakfast chip,
+  qrcodejs wired, subscription banner) → claim for tomorrow returned
+  `#MEAL-0697` (balance 20→19) → cancel refunded the slot (19→20) and
+  removed the ticket.

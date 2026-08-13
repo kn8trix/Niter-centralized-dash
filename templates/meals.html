@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meal Tickets — Niter Hub</title>
-    <meta name="description" content="Claim your campus meal ticket online — live slot ratio, meal passes, and cafeteria supply.">
+    <meta name="description" content="Claim your campus meal ticket online — monthly subscriptions, live slot ratio, QR meal passes, and advance cancellation.">
 
     <!-- Global design tokens -->
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
@@ -23,6 +23,9 @@
 
     <!-- FontAwesome icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+
+    <!-- QR code rendering for the digital meal pass -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
 </head>
 
 <body class="meals" data-app="campusdash-public">
@@ -39,7 +42,7 @@
         ============================================================ -->
         <div class="intro">
             <h1>Online Meal Ticket System</h1>
-            <p>Claim your meal slot and board the line with a digital pass.</p>
+            <p>Subscribe monthly, claim your meal slot, and board the line with a scannable digital pass.</p>
         </div>
 
         <!-- ============================================================
@@ -50,7 +53,7 @@
             <!-- Live ratio ring -->
             <div class="card">
                 <h2 class="section-title">Live Meal Ratio</h2>
-                <p class="section-subtitle">Today's cafeteria slot usage.</p>
+                <p class="section-subtitle">Today's cafeteria slot usage (Lunch + Dinner).</p>
                 <div class="ring-wrap">
                     <div class="ring" role="img" aria-label="Meal slot progress">
                         <svg viewBox="0 0 200 200">
@@ -58,32 +61,37 @@
                             <circle class="ring-bar" id="ring-bar" cx="100" cy="100" r="88"></circle>
                         </svg>
                         <div class="ring-center">
-                            <div class="ring-claimed"><span id="ring-claimed">142</span><small> / <span id="ring-total">200</span></small></div>
-                            <span class="ring-remaining" id="ring-remaining">58 remaining</span>
+                            <div class="ring-claimed"><span id="ring-claimed">{{ total_claimed_today }}</span><small> / <span id="ring-total">{{ total_capacity }}</span></small></div>
+                            <span class="ring-remaining" id="ring-remaining">{{ total_capacity|add:"-"|add:total_claimed_today }} remaining</span>
                         </div>
                     </div>
-                    <p class="ring-caption">Slots claimed today. Claim early — once 200 slots are gone, the kitchen closes for the day.</p>
+                    <p class="ring-caption">Slots claimed today. Claim early — once all slots are gone, the kitchen closes for the day.</p>
                 </div>
             </div>
 
             <!-- Meal booking & claim -->
             <div class="card">
                 <h2 class="section-title">Claim a Meal Ticket</h2>
-                <p class="section-subtitle">Meal claims are covered by your monthly cafeteria subscription.</p>
+                <p class="section-subtitle">Claims draw from your monthly meal balance.</p>
 
-                <!-- Monthly subscription status (paid via /checkout/) -->
-                <div class="meal-sub inactive" id="meal-sub" role="status">
-                    <i class="fa-solid fa-circle-exclamation" id="meal-sub-icon"></i>
+                <!-- Monthly subscription status (paid via the checkout gateway) -->
+                <div class="meal-sub {% if sub_active %}active{% else %}inactive{% endif %}" id="meal-sub" role="status">
+                    <i class="fa-solid {% if sub_active %}fa-circle-check{% else %}fa-circle-exclamation{% endif %}" id="meal-sub-icon"></i>
                     <div>
                         <strong id="meal-sub-title">Monthly Meal Subscription</strong>
+                        {% if sub_active %}
+                        <span id="meal-sub-text">Active until <b>{{ sub_expires }}</b> · <b id="slots-remaining">{{ slots_remaining }}</b> meals left in your balance.</span>
+                        <button type="button" class="sub-pay-btn" id="sub-open-btn"><i class="fa-solid fa-credit-card"></i> Renew / Top up</button>
+                        {% else %}
                         <span id="meal-sub-text">Pay your monthly fee to claim tickets.</span>
+                        <button type="button" class="sub-pay-btn" id="sub-open-btn"><i class="fa-solid fa-credit-card"></i> Pay ৳{{ meal_monthly_fee }}</button>
+                        {% endif %}
                     </div>
                 </div>
 
                 <div class="field">
                     <span class="field-label">Meal Type</span>
                     <div class="meal-chips">
-                        <button type="button" class="meal-chip" data-meal="breakfast" aria-pressed="false"><i class="fa-solid fa-mug-saucer"></i> Breakfast</button>
                         <button type="button" class="meal-chip selected" data-meal="lunch" aria-pressed="true"><i class="fa-solid fa-sun"></i> Lunch</button>
                         <button type="button" class="meal-chip" data-meal="dinner" aria-pressed="false"><i class="fa-solid fa-moon"></i> Dinner</button>
                     </div>
@@ -91,7 +99,7 @@
 
                 <div class="field">
                     <label for="meal-date" class="field-label">Date</label>
-                    <input type="date" id="meal-date" class="field-input">
+                    <input type="date" id="meal-date" class="field-input" min="{{ today_iso }}">
                 </div>
 
                 <button type="button" class="claim-btn" id="claim-btn">
@@ -99,7 +107,7 @@
                     <span id="claim-label">Claim Meal Ticket</span>
                 </button>
 
-                <!-- Inline errors: subscription / duplicate claim / capacity -->
+                <!-- Inline errors: subscription / duplicate claim / capacity / balance -->
                 <div class="meal-alert" id="meal-alert" role="alert" hidden></div>
             </div>
 
@@ -109,22 +117,27 @@
              Active digital meal pass
         ============================================================ -->
         <h2 class="section-title">Active Digital Meal Pass</h2>
-        <p class="section-subtitle">Show this pass at the cafeteria counter.</p>
+        <p class="section-subtitle">Show this pass — QR side up — at the cafeteria counter.</p>
 
         <div class="pass">
             <div class="pass-strip">
                 <strong><i class="fa-solid fa-utensils"></i> Niter Cafeteria Meal Pass</strong>
-                <span class="pass-token" id="pass-token">#MEAL-8921</span>
+                <span class="pass-token" id="pass-token">—</span>
             </div>
             <div class="pass-body">
+                <div class="pass-qr" id="pass-qr" aria-label="Meal pass QR code"></div>
                 <div class="pass-details">
                     <div>
                         <span class="pass-k">Student Name</span>
-                        <span class="pass-v" id="pass-name">Rifat Hasan</span>
+                        <span class="pass-v" id="pass-name">{{ student_name|default:"—" }}</span>
+                    </div>
+                    <div>
+                        <span class="pass-k">Student ID</span>
+                        <span class="pass-v" id="pass-sid">{{ student_id|default:"—" }}</span>
                     </div>
                     <div>
                         <span class="pass-k">Meal Type</span>
-                        <span class="pass-v" id="pass-type">Lunch</span>
+                        <span class="pass-v" id="pass-type">—</span>
                     </div>
                     <div>
                         <span class="pass-k">Date</span>
@@ -132,8 +145,37 @@
                     </div>
                 </div>
                 <span class="status-badge status-unused" id="pass-status"><i class="fa-solid fa-circle-check"></i> Unused</span>
-                <button type="button" class="redeem-btn" id="redeem-btn"><i class="fa-solid fa-check"></i> Mark as Redeemed</button>
             </div>
+        </div>
+
+        <!-- ============================================================
+             Upcoming meal tickets (cancellable)
+        ============================================================ -->
+        <h2 class="section-title">Upcoming Meal Tickets</h2>
+        <p class="section-subtitle">A meal can be cancelled before {{ cancel_cutoff }} on the previous night — the slot is released and refunded to your monthly balance.</p>
+
+        <div class="tickets-card card">
+            {% if my_tickets %}
+            <ul class="ticket-list" id="ticket-list">
+                {% for row in my_tickets %}
+                <li class="meal-ticket-row" data-ticket-id="{{ row.ticket.pk }}">
+                    <span class="ticket-meal"><i class="fa-solid {% if row.ticket.meal_type == 'dinner' %}fa-moon{% else %}fa-sun{% endif %}"></i> {{ row.ticket.get_meal_type_display }}</span>
+                    <span class="ticket-date">{{ row.ticket.meal_date|default:row.ticket.claimed_at.date|date:"D, M j" }}</span>
+                    <span class="ticket-token">{{ row.ticket.ticket_token|default:"—" }}</span>
+                    <span class="ticket-status {% if row.ticket.is_redeemed %}is-redeemed{% endif %}">
+                        {% if row.ticket.is_redeemed %}<i class="fa-solid fa-circle-check"></i> Redeemed{% else %}<i class="fa-solid fa-hourglass-half"></i> Unused{% endif %}
+                    </span>
+                    {% if row.can_cancel %}
+                    <button type="button" class="cancel-btn" data-cancel-id="{{ row.ticket.pk }}"><i class="fa-solid fa-ban"></i> Cancel Meal</button>
+                    {% else %}
+                    <span class="cancel-locked" title="Cancellation closes at {{ cancel_cutoff }} the night before the meal"><i class="fa-solid fa-lock"></i> Cancellation closed</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="tickets-empty" id="tickets-empty">No tickets yet — claim a meal above and it will appear here.</p>
+            {% endif %}
         </div>
 
         <!-- ============================================================
@@ -146,28 +188,28 @@
             <div class="stat-card">
                 <span class="stat-icon"><i class="fa-solid fa-kitchen-set"></i></span>
                 <div>
-                    <div class="stat-value" id="stat-prepared">500</div>
+                    <div class="stat-value" id="stat-prepared">{{ total_capacity }}</div>
                     <div class="stat-label">Meals Prepared</div>
                 </div>
             </div>
             <div class="stat-card">
                 <span class="stat-icon"><i class="fa-solid fa-ticket"></i></span>
                 <div>
-                    <div class="stat-value" id="stat-claimed">142</div>
+                    <div class="stat-value" id="stat-claimed">{{ total_claimed_today }}</div>
                     <div class="stat-label">Tickets Claimed</div>
                 </div>
             </div>
             <div class="stat-card">
                 <span class="stat-icon"><i class="fa-solid fa-utensils"></i></span>
                 <div>
-                    <div class="stat-value" id="stat-supply">358</div>
+                    <div class="stat-value" id="stat-supply">{{ total_capacity|add:"-"|add:total_claimed_today }}</div>
                     <div class="stat-label">Remaining Supply</div>
                 </div>
             </div>
             <div class="stat-card">
                 <span class="stat-icon"><i class="fa-solid fa-hourglass-half"></i></span>
                 <div>
-                    <div class="stat-value warning" id="stat-slots">58</div>
+                    <div class="stat-value warning" id="stat-slots">{{ total_capacity|add:"-"|add:total_claimed_today }}</div>
                     <div class="stat-label">Slots Remaining</div>
                 </div>
             </div>
@@ -175,26 +217,79 @@
 
     </div>
 
+    <!-- ============================================================
+         Monthly subscription payment modal
+    ============================================================ -->
+    <div class="modal-backdrop" id="sub-modal" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sub-modal-title">
+            <button type="button" class="modal-close" id="sub-modal-close" aria-label="Close subscription payment">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <div class="modal-head">
+                <span class="modal-icon"><i class="fa-solid fa-utensils"></i></span>
+                <h3 id="sub-modal-title">Pay Monthly Meal Subscription</h3>
+                <p class="modal-sub">৳{{ meal_monthly_fee }} unlocks one Lunch + one Dinner slot for every remaining day of this month.</p>
+            </div>
+
+            <div class="field">
+                <span class="field-label">Payment Method</span>
+                <div class="pay-methods" id="sub-methods">
+                    <label class="pay-method selected">
+                        <input type="radio" name="sub-method" value="bkash" checked>
+                        <span class="pay-logo pay-bkash"><i class="fa-solid fa-mobile-screen-button"></i></span>
+                        <span class="pay-info"><strong>bKash</strong><small>Send money, then verify</small></span>
+                    </label>
+                    <label class="pay-method">
+                        <input type="radio" name="sub-method" value="nagad">
+                        <span class="pay-logo pay-nagad"><i class="fa-solid fa-mobile-screen-button"></i></span>
+                        <span class="pay-info"><strong>Nagad</strong><small>Send money, then verify</small></span>
+                    </label>
+                    <label class="pay-method">
+                        <input type="radio" name="sub-method" value="rocket">
+                        <span class="pay-logo pay-rocket"><i class="fa-solid fa-credit-card"></i></span>
+                        <span class="pay-info"><strong>Rocket</strong><small>Send money, then verify</small></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="field">
+                <label for="sub-wallet" class="field-label">Your Mobile Wallet Account Number</label>
+                <input type="tel" id="sub-wallet" class="field-input" inputmode="numeric" autocomplete="tel" placeholder="e.g. 017XXXXXXXX">
+            </div>
+
+            <div class="field">
+                <label for="sub-trx" class="field-label">Transaction ID (TrxID)</label>
+                <input type="text" id="sub-trx" class="field-input" autocomplete="off" spellcheck="false" placeholder="e.g. 9J32X8KL">
+            </div>
+
+            <p class="modal-note"><i class="fa-solid fa-circle-info"></i> Sandbox gateway — send ৳{{ meal_monthly_fee }} to the cafeteria merchant number, then enter your wallet number and TrxID to activate instantly.</p>
+
+            <div class="modal-alert" id="sub-alert" role="alert" hidden></div>
+
+            <button type="button" class="claim-btn" id="sub-pay-btn">
+                <i class="fa-solid fa-lock" id="sub-pay-icon"></i>
+                <span id="sub-pay-label">Pay ৳{{ meal_monthly_fee }}</span>
+            </button>
+        </div>
+    </div>
+
     <!-- Toast -->
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+    <!-- Server-rendered live state -->
+    {{ state_json|json_script:"meal-state" }}
+
     <script>
         // ====================================================================
-        // State + backend wiring
+        // State (server-rendered) + backend wiring
         // ====================================================================
-        const state = {
-            total: 200,
-            claimed: 142,
-            prepared: 500,
-            mealType: 'lunch',
-        };
+        const state = JSON.parse(document.getElementById('meal-state').textContent);
 
         const CLAIM_URL = '{% url "claim_meal_ticket" %}';
-        const LOGIN_URL = '{% url "login" %}';
-        const MEAL_MONTHLY_FEE = 2000; // ৳/month — cafeteria subscription fee
-
-        // Payment gateway — the monthly subscription is paid via /checkout/.
+        const CANCEL_URL = '{% url "cancel_meal_ticket" %}';
         const CHECKOUT_URL = '{% url "checkout" %}';
+        const LOGIN_URL = '{% url "login" %}';
+        const FEE = parseInt(state.fee, 10) || 2000;
 
         const ringBar = document.getElementById('ring-bar');
         const R = 88;
@@ -203,7 +298,7 @@
 
         // Date input defaults to today
         const dateInput = document.getElementById('meal-date');
-        dateInput.value = new Date().toISOString().slice(0, 10);
+        if (!dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
 
         const toastEl = document.getElementById('toast');
         let toastTimer;
@@ -222,7 +317,13 @@
         }
 
         function mealLabel(key) {
-            return { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner' }[key] || key;
+            return { lunch: 'Lunch', dinner: 'Dinner' }[key] || key;
+        }
+
+        function escapeHtml(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
         function getCookie(name) {
@@ -250,24 +351,62 @@
         // Rendering
         // ====================================================================
         function updateRing() {
-            const ratio = state.claimed / state.total;
+            const total = state.total_capacity;
+            const claimed = state.total_claimed_today;
+            const ratio = total > 0 ? claimed / total : 0;
             ringBar.style.strokeDashoffset = CIRC * (1 - ratio);
-            document.getElementById('ring-claimed').textContent = state.claimed;
-            document.getElementById('ring-total').textContent = state.total;
-            document.getElementById('ring-remaining').textContent = (state.total - state.claimed) + ' remaining';
-            document.getElementById('stat-claimed').textContent = state.claimed;
-            document.getElementById('stat-supply').textContent = state.prepared - state.claimed;
-            document.getElementById('stat-slots').textContent = state.total - state.claimed;
+            document.getElementById('ring-claimed').textContent = claimed;
+            document.getElementById('ring-total').textContent = total;
+            document.getElementById('ring-remaining').textContent = (total - claimed) + ' remaining';
+            document.getElementById('stat-claimed').textContent = claimed;
+            document.getElementById('stat-supply').textContent = total - claimed;
+            document.getElementById('stat-slots').textContent = total - claimed;
+        }
+
+        function updateSlotsDisplay() {
+            const el = document.getElementById('slots-remaining');
+            if (el) el.textContent = state.slots_remaining;
+        }
+
+        // QR pass — payload: MEAL|<token>|<date>|<student id>|<meal type>
+        function ticketPayload(token, mealDate, mealType) {
+            return 'MEAL|' + token + '|' + mealDate + '|' + state.student_id + '|' + mealType;
+        }
+
+        function renderQR(payload) {
+            const box = document.getElementById('pass-qr');
+            box.innerHTML = '';
+            box.classList.add('has-qr');
+            if (typeof QRCode !== 'undefined') {
+                new QRCode(box, {
+                    text: payload,
+                    width: 132,
+                    height: 132,
+                    correctLevel: QRCode.CorrectLevel.M,
+                });
+            } else {
+                // QR library not loaded yet (offline/CDN hiccup) — show the token.
+                box.innerHTML = '<span class="qr-fallback">' + escapeHtml(payload.split('|')[1]) + '</span>';
+            }
         }
 
         function resetPass() {
             document.getElementById('pass-status').className = 'status-badge status-unused';
             document.getElementById('pass-status').innerHTML = '<i class="fa-solid fa-circle-check"></i> Unused';
-            document.getElementById('redeem-btn').disabled = false;
+        }
+
+        function applyTicket(ticket) {
+            document.getElementById('pass-token').textContent = ticket.ticket_token || '—';
+            document.getElementById('pass-name').textContent = state.student_name || '—';
+            document.getElementById('pass-sid').textContent = state.student_id || '—';
+            document.getElementById('pass-type').textContent = mealLabel(ticket.meal_type);
+            document.getElementById('pass-date').textContent = fmtDate(ticket.meal_date);
+            resetPass();
+            renderQR(ticketPayload(ticket.ticket_token, ticket.meal_date, ticket.meal_type));
         }
 
         // ====================================================================
-        // Interactions
+        // Meal type + claim
         // ====================================================================
         function selectMeal(meal) {
             state.mealType = meal;
@@ -282,19 +421,41 @@
             chip.addEventListener('click', () => selectMeal(chip.dataset.meal));
         });
 
-        // Render the backend-issued pass into the digital meal pass card.
-        function applyTicket(ticket) {
-            document.getElementById('pass-token').textContent = ticket.ticket_token;
-            document.getElementById('pass-name').textContent = 'Rifat Hasan';
-            document.getElementById('pass-type').textContent = mealLabel(ticket.meal_type);
-            document.getElementById('pass-date').textContent = fmtDate(dateInput.value);
-            resetPass();
+        // Client mirror of the 9 PM previous-night cutoff.
+        function canCancelOnClient(mealDate) {
+            const cutoff = new Date(mealDate + 'T00:00:00');
+            cutoff.setDate(cutoff.getDate() - 1);
+            cutoff.setHours(21, 0, 0, 0);
+            return Date.now() < cutoff.getTime();
+        }
+
+        function appendTicketRow(ticket) {
+            const list = document.getElementById('ticket-list');
+            const empty = document.getElementById('tickets-empty');
+            if (empty) empty.remove();
+            if (!list) return;
+            const li = document.createElement('li');
+            li.className = 'meal-ticket-row';
+            li.dataset.ticketId = ticket.id;
+            const icon = ticket.meal_type === 'dinner' ? 'fa-moon' : 'fa-sun';
+            const cancelable = canCancelOnClient(ticket.meal_date);
+            li.innerHTML =
+                '<span class="ticket-meal"><i class="fa-solid ' + icon + '"></i> ' + mealLabel(ticket.meal_type) + '</span>' +
+                '<span class="ticket-date">' + fmtDate(ticket.meal_date) + '</span>' +
+                '<span class="ticket-token">' + escapeHtml(ticket.ticket_token) + '</span>' +
+                '<span class="ticket-status"><i class="fa-solid fa-hourglass-half"></i> Unused</span>' +
+                (cancelable
+                    ? '<button type="button" class="cancel-btn" data-cancel-id="' + ticket.id + '"><i class="fa-solid fa-ban"></i> Cancel Meal</button>'
+                    : '<span class="cancel-locked"><i class="fa-solid fa-lock"></i> Cancellation closed</span>');
+            list.prepend(li);
         }
 
         document.getElementById('claim-btn').addEventListener('click', async () => {
             hideMealAlert();
-            if (state.claimed >= state.total) {
-                showToast('All ' + state.total + ' slots are claimed for today.');
+            if (!state.sub_active) {
+                showMealAlert('No active meal subscription. <a href="#" id="alert-pay-link">Pay ৳' + FEE + ' to subscribe for this month.</a>');
+                const link = document.getElementById('alert-pay-link');
+                if (link) link.addEventListener('click', (e) => { e.preventDefault(); openSubModal(); });
                 return;
             }
 
@@ -309,7 +470,10 @@
                         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
                         'X-CSRFToken': getCookie('csrftoken'),
                     },
-                    body: new URLSearchParams({ meal_type: state.mealType }).toString(),
+                    body: new URLSearchParams({
+                        meal_type: state.mealType,
+                        meal_date: dateInput.value,
+                    }).toString(),
                 });
                 const ct = resp.headers.get('content-type') || '';
                 if (!ct.includes('application/json')) {
@@ -323,40 +487,201 @@
             if (!result) return;
 
             if (result.ok) {
-                // Backend-issued #MEAL-XXXX token — refresh the pass + live slots.
-                state.claimed += 1;
-                applyTicket(result.body);
-                updateRing();
-                showToast(result.body.message || (mealLabel(state.mealType) + ' ticket claimed — ' + result.body.ticket_token + ' is ready to use.'));
+                const body = result.body;
+                state.slots_remaining = body.slots_remaining;
+                updateSlotsDisplay();
+                const ticket = {
+                    id: body.ticket_id,
+                    ticket_token: body.ticket_token,
+                    meal_type: body.meal_type,
+                    meal_date: body.meal_date,
+                };
+                applyTicket(ticket);
+                // Only a same-day claim moves today's ring/supply numbers.
+                const todayISO = new Date().toISOString().slice(0, 10);
+                if (body.meal_date === todayISO) {
+                    state.total_claimed_today += 1;
+                    updateRing();
+                }
+                appendTicketRow(ticket);
+                showToast(body.message || (mealLabel(body.meal_type) + ' ticket claimed — ' + body.ticket_token + ' is ready to use.'));
                 return;
             }
 
-            // 403 (no subscription) / 409 (duplicate) / 429 (capacity) → inline alert.
+            // 403 (no subscription / balance exhausted) / 409 (duplicate) / 429 (capacity).
             const message = result.body && result.body.message;
-            if (result.status === 403) {
-                showMealAlert('No active meal subscription. Pay ৳' + MEAL_MONTHLY_FEE + ' via bKash / Nagad / Rocket to claim tickets — <a href="' + CHECKOUT_URL + '?type=meal&item=Monthly%20Meal%20Subscription&issuer=NITER%20Cafeteria&fee=' + MEAL_MONTHLY_FEE + '">pay now</a>.');
+            if (result.status === 403 && /no active meal subscription/i.test(message || '')) {
+                showMealAlert('No active meal subscription. <a href="#" id="alert-pay-link">Pay ৳' + FEE + ' to subscribe for this month.</a>');
+                const link = document.getElementById('alert-pay-link');
+                if (link) link.addEventListener('click', (e) => { e.preventDefault(); openSubModal(); });
             } else if (result.status === 409) {
-                showMealAlert('You already claimed ' + mealLabel(state.mealType) + ' today. One ticket per meal per day.');
-            } else if (result.status === 429) {
-                showMealAlert('Daily capacity reached for ' + mealLabel(state.mealType) + '. Please try another meal or come back tomorrow.');
+                showMealAlert(message || 'You already claimed this meal for that date. One ticket per meal per day.');
             } else {
                 showMealAlert(message || 'Could not claim the meal ticket. Please try again.');
             }
         });
 
-        document.getElementById('redeem-btn').addEventListener('click', () => {
-            const badge = document.getElementById('pass-status');
-            badge.className = 'status-badge status-redeemed';
-            badge.innerHTML = '<i class="fa-solid fa-circle-check"></i> Redeemed';
-            document.getElementById('redeem-btn').disabled = true;
-            showToast('Meal pass marked as redeemed at the counter.');
+        // ====================================================================
+        // Cancellation (9 PM previous-night cutoff, enforced server-side too)
+        // ====================================================================
+        document.getElementById('ticket-list')?.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.cancel-btn');
+            if (!btn) return;
+            const ticketId = btn.dataset.cancelId;
+            btn.disabled = true;
+            let result = null;
+            try {
+                const resp = await fetch(CANCEL_URL, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'X-CSRFToken': getCookie('csrftoken'),
+                    },
+                    body: new URLSearchParams({ ticket_id: ticketId }).toString(),
+                });
+                const ct = resp.headers.get('content-type') || '';
+                if (!ct.includes('application/json')) {
+                    window.location.href = LOGIN_URL;
+                    return;
+                }
+                result = { ok: resp.ok, status: resp.status, body: await resp.json() };
+            } catch (err) {
+                result = null;
+            } finally {
+                btn.disabled = false;
+            }
+            if (!result) return;
+
+            if (result.ok) {
+                const row = document.querySelector('.meal-ticket-row[data-ticket-id="' + ticketId + '"]');
+                if (row) row.remove();
+                state.slots_remaining = result.body.slots_remaining;
+                updateSlotsDisplay();
+                const empty = document.getElementById('tickets-empty');
+                const list = document.getElementById('ticket-list');
+                if (empty && (!list || list.children.length === 0)) empty.style.display = 'block';
+                showToast(result.body.message || 'Meal cancelled — slot released.');
+                return;
+            }
+
+            if (result.status === 403) {
+                showToast('Meals for tomorrow can only be cancelled before 9:00 PM tonight.');
+                const row = document.querySelector('.meal-ticket-row[data-ticket-id="' + ticketId + '"]');
+                if (row) {
+                    const btnEl = row.querySelector('.cancel-btn');
+                    if (btnEl) btnEl.replaceWith(Object.assign(document.createElement('span'), { className: 'cancel-locked', textContent: 'Cancellation closed' }));
+                }
+            } else {
+                showToast((result.body && result.body.message) || 'Could not cancel the meal.');
+            }
+        });
+
+        // ====================================================================
+        // Monthly subscription payment modal (checkout gateway)
+        // ====================================================================
+        const subModal = document.getElementById('sub-modal');
+
+        function openSubModal() {
+            document.getElementById('sub-alert').hidden = true;
+            subModal.hidden = false;
+        }
+
+        function closeSubModal() {
+            subModal.hidden = true;
+        }
+
+        document.getElementById('sub-open-btn').addEventListener('click', openSubModal);
+        document.getElementById('sub-modal-close').addEventListener('click', closeSubModal);
+        subModal.addEventListener('click', (e) => {
+            if (e.target === subModal) closeSubModal();
+        });
+
+        function selectedSubMethod() {
+            const el = document.querySelector('input[name="sub-method"]:checked');
+            return el ? el.value : 'bkash';
+        }
+
+        document.getElementById('sub-pay-btn').addEventListener('click', async () => {
+            const alert = document.getElementById('sub-alert');
+            alert.hidden = true;
+
+            const wallet = document.getElementById('sub-wallet').value.trim();
+            const trx = document.getElementById('sub-trx').value.trim();
+            if (!/^01\d{9}$/.test(wallet)) {
+                alert.textContent = 'Please enter a valid 11-digit wallet number (e.g. 017XXXXXXXX).';
+                alert.hidden = false;
+                return;
+            }
+            if (!/^[A-Za-z0-9-]{6,}$/.test(trx)) {
+                alert.textContent = 'Please enter the TrxID shown in your payment confirmation.';
+                alert.hidden = false;
+                return;
+            }
+
+            const payBtn = document.getElementById('sub-pay-btn');
+            payBtn.disabled = true;
+            document.getElementById('sub-pay-icon').className = 'fa-solid fa-spinner fa-spin';
+            let result = null;
+            try {
+                const resp = await fetch(CHECKOUT_URL, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'X-CSRFToken': getCookie('csrftoken'),
+                    },
+                    body: new URLSearchParams({
+                        type: 'meal',
+                        item: 'Monthly Meal Subscription',
+                        issuer: 'NITER Cafeteria',
+                        fee: String(FEE),
+                        method: selectedSubMethod(),
+                        wallet_no: wallet,
+                        trx_id: trx,
+                    }).toString(),
+                });
+                const ct = resp.headers.get('content-type') || '';
+                if (!ct.includes('application/json')) {
+                    window.location.href = LOGIN_URL;
+                    return;
+                }
+                result = { ok: resp.ok, body: await resp.json() };
+            } catch (err) {
+                result = null;
+            } finally {
+                payBtn.disabled = false;
+                document.getElementById('sub-pay-icon').className = 'fa-solid fa-lock';
+            }
+            if (!result) {
+                alert.textContent = 'Could not reach the payment gateway. Please try again.';
+                alert.hidden = false;
+                return;
+            }
+
+            if (result.ok && result.body.status === 'success') {
+                showToast('Subscription active — meal slots for the rest of the month have been credited.');
+                // Refresh so the server-rendered balance + ticket state stay accurate.
+                setTimeout(() => window.location.reload(), 900);
+            } else {
+                alert.textContent = (result.body && result.body.message) || 'Payment could not be verified. Please try again.';
+                alert.hidden = false;
+            }
         });
 
         // ====================================================================
         // Init
         // ====================================================================
+        state.mealType = 'lunch';
         updateRing();
-        document.getElementById('pass-date').textContent = fmtDate(dateInput.value);
+        if (state.slots_remaining > 0) updateSlotsDisplay();
+        if (state.latest_ticket) {
+            applyTicket({
+                ticket_token: state.latest_ticket.token,
+                meal_type: state.latest_ticket.meal_type,
+                meal_date: state.latest_ticket.meal_date,
+            });
+        }
     </script>
 </body>
 </html>
