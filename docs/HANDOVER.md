@@ -5,7 +5,7 @@
 | § | Title | Commit(s) |
 |---|---|---|
 | 90 | Dynamic user names on all passes + cleaned-up profile dropdown | `71ed77b` |
-| 91 | QR Attendance System + Academic Calendar grid fix | `TBD` |
+| 91 | QR Attendance System + Academic Calendar grid fix | `f832515` |
 | 89 | Meal Ticket System — monthly subscription + QR passes + 9 PM cancel rule | `a73e4a5` |
 | 88 | Google OAuth — 401/Invalid-Credentials hardening + upload session guard | `62ba895` |
 | 87 | Medical Booking — form state binding + AJAX submission fix | `bf1a05e` |
