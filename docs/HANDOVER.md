@@ -5220,3 +5220,25 @@ the date cells.
   duplicate rejected (409) → stats show CSE-1101 1/1 100% → live counter
   reported 1 with `is_live: True` → records listed the student → student
   blocked from admin API (403). E2E data cleaned afterwards.
+
+### 6. Code-review hardening (included in `f832515`)
+
+- **Precedence bug in the student page:** `if (!body.status === 'success')`
+  parsed as `(!body.status) === 'success'` — always false for a truthy
+  status, so the check was a no-op. Now `body.status !== 'success' ||
+  !body.data`.
+- **Stored-XSS hardening on the student page:** `renderStats` and the
+  check-in history injected `course_code` / `status` into `innerHTML`
+  unescaped; both now go through an `escapeHtml` helper (the admin console
+  already escaped `student_name`, `student_id`, `course_code`, `session_token`,
+  `status`, `ip_address`).
+- **Race safety (already in the first pass):** the scan endpoint uses
+  `get_or_create` inside `transaction.atomic` with an `IntegrityError` catch,
+  so simultaneous double-scans surface as 409 — not a 500.
+- **Server-side duration clamp (already in the first pass):**
+  `duration_minutes` is clamped to 5–240 in the view, mirroring the admin
+  form's `min`/`max`.
+- **X-Forwarded-For caveat:** `core/middleware._client_ip` documents that the
+  header is client-spoofable and only trustworthy behind a reverse proxy;
+  harden it (e.g. trust `REMOTE_ADDR` unless a proxy is configured) before
+  enforcing `ENFORCE_CAMPUS_WIFI` in production.
