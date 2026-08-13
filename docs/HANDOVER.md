@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 93 | Attendance page dark-mode theming (shared CSS tokens) | `TBD` |
 | 90 | Dynamic user names on all passes + cleaned-up profile dropdown | `71ed77b` |
 | 91 | QR Attendance System + Academic Calendar grid fix | `f832515` |
 | 92 | Two-step signup verification (Django Gmail SMTP) | `46585c0` |
@@ -5243,6 +5244,56 @@ the date cells.
   header is client-spoofable and only trustworthy behind a reverse proxy;
   harden it (e.g. trust `REMOTE_ADDR` unless a proxy is configured) before
   enforcing `ENFORCE_CAMPUS_WIFI` in production.
+## 93. Attendance Page Dark-Mode Theming (Shared CSS Tokens)
+
+**Date:** 13 August 2026  
+**Branch:** main
+
+The student-facing QR Attendance page (`/attendance/`, `templates/attendance.html`)
+now follows the global Dark Mode toggle from Settings → Display preferences,
+matching `/meals/` and `/medical/`.
+
+### 1. Root cause
+
+`static/css/attendance.css` hardcoded the warm-light palette (`#faf9f6`,
+`#ffffff`, `#f7f4ef`, `#f0ebe1`, `#1f2937`, `#6b7280`) everywhere and defined
+no CSS custom properties, so the global theme driver's `html[data-theme='dark']`
+overrides in `theme.css` had nothing to flip — the page stayed permanently light
+while the rest of the app went dark.
+
+The template already loads the theme system correctly (`theme.css` +
+`partials/display_prefs.html` + the shared topbar), so the fix was pure CSS.
+
+### 2. Changes
+
+- **`static/css/attendance.css`** — converted to the same `:root` token block
+  used by `meals.css` / `medical.css` (`--bg-main`, `--bg-card`, `--bg-subtle`,
+  `--text-primary`, `--text-muted`, `--border-color`, `--shadow-card`,
+  `--accent-primary`, `--accent-primary-hover`, `--accent-dark`, plus the
+  success / warning / danger soft-border trios). Every hardcoded colour now
+  references a token, so `theme.css`'s dark override flips the page in one shot:
+  - body canvas, cards, the camera preview box (`.scanner-box`), the overall
+    summary row and table separators → `--bg-main` / `--bg-card` / `--bg-subtle`
+    / `--border-color`;
+  - titles ("Class Attendance", "Scan Class QR", "My Attendance"), table
+    headers and cells → `--text-primary`; subtitles, labels, scanner status,
+    empty states and timestamps → `--text-muted`;
+  - percentage badges (`pct-good/warn/bad`) → the semantic soft tokens;
+  - manual code input (`.field-input`) and `::placeholder` now dark-adapt.
+- **Dark-mode repairs:** `--accent-dark` reads as a light cream in dark mode,
+  so the ink-inverted "Start Camera" button (`.btn-start`) gets an explicit
+  `html[data-theme='dark']` override keeping a dark surface with white text
+  (mirrors the existing `.btn-dark` / `.redeem-btn` repairs in `theme.css`).
+- **No template change needed** — `/attendance/` already includes
+  `partials/display_prefs.html`, which stamps the `dark` class + `data-theme`
+  on `<html>` before first paint.
+
+### 3. Verification
+
+- Manual: toggling Dark Mode in Settings now repaints `/attendance/` with the
+  dark canvas, slate cards and high-contrast text, matching `/meals/` and
+  `/medical/`; light mode is pixel-identical to before (tokens resolve to the
+  exact same hex values).
 ## 92. Two-Step Student Signup Verification (Django Gmail SMTP)
 
 **Date:** 13 August 2026  

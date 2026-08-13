@@ -1,22 +1,69 @@
 /* ============================================================================
-   CampusDash — QR Class Attendance (Warm Light Theme)
+   CampusDash — QR Class Attendance (Warm Light Theme · Dark-Mode Aware)
    ----------------------------------------------------------------------------
    Standalone styles for templates/attendance.html — the student-facing camera
    QR scanner, manual session-code entry, and per-course attendance stats.
 
    Palette: bg #faf9f6 · card #ffffff · border #f0ebe1 · accent #e8e2d8
             text #1f2937 · muted #6b7280
+
+   All colours are CSS custom properties defined in the :root token block
+   below. The global theme driver (theme.css, loaded first) redefines the
+   same token names under ``html[data-theme='dark']``, so this page follows
+   the app-wide Dark Mode (Settings → Display preferences) automatically —
+   cards, the camera preview box, tables and text all flip together with
+   meals / medical / transport.
+
+   Sections:
+     1. Tokens
+     2. Base
+     3. Scanner card
+     4. Stats card
+     5. Toast
+     6. Responsive
+     7. Dark-mode repairs
    ========================================================================== */
 
 /* ---------------------------------------------------------------------------
-   1. Base
+   1. Tokens
+--------------------------------------------------------------------------- */
+:root {
+    --bg-main: #faf9f6;
+    --bg-card: #ffffff;
+    --bg-subtle: #f7f4ef;
+
+    --text-primary: #1f2937;
+    --text-muted: #6b7280;
+
+    --border-color: #f0ebe1;
+    --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.03);
+
+    --accent-primary: #e8e2d8;
+    --accent-primary-hover: #dfd7cb;
+    --accent-dark: #27272a;
+
+    --success: #166534;
+    --success-soft: #dcfce7;
+    --success-border: #bbf7d0;
+    --warning: #92400e;
+    --warning-soft: #fef3c7;
+    --warning-border: #fde68a;
+    --danger: #b91c1c;
+    --danger-soft: #fee2e2;
+    --danger-border: #fecaca;
+
+    --attendance-font: var(--font-main, 'Inter', system-ui, sans-serif);
+}
+
+/* ---------------------------------------------------------------------------
+   2. Base
 --------------------------------------------------------------------------- */
 body.attendance {
     margin: 0;
     min-height: 100vh;
-    font-family: var(--font-main, 'Inter', system-ui, sans-serif);
-    background: #faf9f6;
-    color: #1f2937;
+    font-family: var(--attendance-font);
+    background: var(--bg-main);
+    color: var(--text-primary);
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
@@ -39,11 +86,12 @@ body.attendance *::after {
     font-size: 1.6rem;
     font-weight: 800;
     letter-spacing: -0.02em;
+    color: var(--text-primary);
 }
 
 .intro p {
     margin: 0 0 1.4rem;
-    color: #6b7280;
+    color: var(--text-muted);
     font-size: 0.92rem;
 }
 
@@ -51,25 +99,27 @@ body.attendance *::after {
     margin: 0 0 0.2rem;
     font-size: 1.1rem;
     font-weight: 700;
+    color: var(--text-primary);
 }
 
 .section-subtitle {
     margin: 0 0 1.1rem;
     font-size: 0.86rem;
-    color: #6b7280;
+    color: var(--text-muted);
 }
 
 .sub-title {
     margin: 1.4rem 0 0.6rem;
     font-size: 0.95rem;
     font-weight: 700;
+    color: var(--text-primary);
 }
 
 .card {
-    background: #ffffff;
-    border: 1px solid #f0ebe1;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
     border-radius: 1rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+    box-shadow: var(--shadow-card);
     padding: 1.4rem 1.5rem;
 }
 
@@ -81,14 +131,14 @@ body.attendance *::after {
 }
 
 /* ---------------------------------------------------------------------------
-   2. Scanner card
+   3. Scanner card
 --------------------------------------------------------------------------- */
 .scanner-box {
     width: 100%;
     min-height: 200px;
-    border: 1px dashed #e4ddd0;
+    border: 1px dashed var(--border-color);
     border-radius: 0.9rem;
-    background: #f7f4ef;
+    background: var(--bg-subtle);
     overflow: hidden;
     display: flex;
     align-items: center;
@@ -108,7 +158,7 @@ body.attendance *::after {
 .scanner-status {
     margin: 0.6rem 0 0;
     font-size: 0.8rem;
-    color: #6b7280;
+    color: var(--text-muted);
     text-align: center;
 }
 
@@ -143,23 +193,23 @@ body.attendance *::after {
 }
 
 .btn-start {
-    background: #27272a;
+    background: var(--accent-dark);
     color: #ffffff;
 }
 
 .btn-stop {
-    background: #f7f4ef;
-    color: #6b7280;
-    border-color: #f0ebe1;
+    background: var(--bg-subtle);
+    color: var(--text-muted);
+    border-color: var(--border-color);
 }
 
 .btn-primary {
-    background: #e8e2d8;
-    color: #1f2937;
+    background: var(--accent-primary);
+    color: var(--text-primary);
 }
 
 .btn-primary:hover:not(:disabled) {
-    background: #dfd7cb;
+    background: var(--accent-primary-hover);
 }
 
 .divider {
@@ -167,7 +217,7 @@ body.attendance *::after {
     align-items: center;
     gap: 0.8rem;
     margin: 1.1rem 0;
-    color: #6b7280;
+    color: var(--text-muted);
     font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -178,7 +228,7 @@ body.attendance *::after {
     content: "";
     flex: 1;
     height: 1px;
-    background: #f0ebe1;
+    background: var(--border-color);
 }
 
 .manual-row {
@@ -189,19 +239,23 @@ body.attendance *::after {
 .field-input {
     flex: 1;
     padding: 0.7rem 0.95rem;
-    background: #faf9f6;
-    border: 1px solid #f0ebe1;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
     border-radius: 0.65rem;
     font-family: inherit;
     font-size: 0.92rem;
-    color: #1f2937;
+    color: var(--text-primary);
     outline: none;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.field-input::placeholder {
+    color: var(--text-muted);
 }
 
 .field-input:focus {
-    background: #ffffff;
-    border-color: #e8e2d8;
+    background: var(--bg-card);
+    border-color: var(--accent-primary);
     box-shadow: 0 0 0 3px rgba(232, 226, 216, 0.55);
 }
 
@@ -210,13 +264,13 @@ body.attendance *::after {
     padding: 0.75rem 0.95rem;
     border-radius: 0.7rem;
     font-size: 0.84rem;
-    background: #fef3c7;
-    border: 1px solid #fde68a;
-    color: #92400e;
+    background: var(--warning-soft);
+    border: 1px solid var(--warning-border);
+    color: var(--warning);
 }
 
 /* ---------------------------------------------------------------------------
-   3. Stats card
+   4. Stats card
 --------------------------------------------------------------------------- */
 .overall-row {
     display: flex;
@@ -225,19 +279,19 @@ body.attendance *::after {
     padding: 0.9rem 1rem;
     margin-bottom: 1rem;
     border-radius: 0.8rem;
-    background: #f7f4ef;
-    border: 1px solid #f0ebe1;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
 }
 
 .overall-value {
     font-size: 1.5rem;
     font-weight: 800;
-    color: #166534;
+    color: var(--success);
 }
 
 .overall-label {
     font-size: 0.8rem;
-    color: #6b7280;
+    color: var(--text-muted);
 }
 
 .table-wrap {
@@ -257,14 +311,14 @@ body.attendance *::after {
     font-weight: 700;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: #6b7280;
-    border-bottom: 1px solid #f0ebe1;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-color);
 }
 
 .stats-table td {
     padding: 0.6rem;
-    border-bottom: 1px solid #f7f4ef;
-    color: #1f2937;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
 }
 
 .stats-table tr:last-child td {
@@ -273,12 +327,12 @@ body.attendance *::after {
 
 .course-cell i {
     margin-right: 0.4rem;
-    color: #27272a;
+    color: var(--accent-dark);
 }
 
 .stats-empty {
     text-align: center;
-    color: #6b7280;
+    color: var(--text-muted);
     padding: 1.4rem 0.6rem !important;
 }
 
@@ -292,21 +346,21 @@ body.attendance *::after {
 }
 
 .pct-good {
-    background: #dcfce7;
-    border: 1px solid #bbf7d0;
-    color: #166534;
+    background: var(--success-soft);
+    border: 1px solid var(--success-border);
+    color: var(--success);
 }
 
 .pct-warn {
-    background: #fef3c7;
-    border: 1px solid #fde68a;
-    color: #92400e;
+    background: var(--warning-soft);
+    border: 1px solid var(--warning-border);
+    color: var(--warning);
 }
 
 .pct-bad {
-    background: #fee2e2;
-    border: 1px solid #fecaca;
-    color: #b91c1c;
+    background: var(--danger-soft);
+    border: 1px solid var(--danger-border);
+    color: var(--danger);
 }
 
 /* Recent check-ins */
@@ -323,7 +377,7 @@ body.attendance *::after {
     align-items: center;
     gap: 0.8rem;
     padding: 0.55rem 0.2rem;
-    border-bottom: 1px solid #f7f4ef;
+    border-bottom: 1px solid var(--border-color);
     font-size: 0.84rem;
 }
 
@@ -337,23 +391,23 @@ body.attendance *::after {
 }
 
 .history-status {
-    color: #166534;
+    color: var(--success);
     font-weight: 600;
     font-size: 0.8rem;
 }
 
 .history-time {
     margin-left: auto;
-    color: #6b7280;
+    color: var(--text-muted);
     font-size: 0.78rem;
 }
 
 .history-empty {
-    color: #6b7280;
+    color: var(--text-muted);
 }
 
 /* ---------------------------------------------------------------------------
-   4. Toast
+   5. Toast
 --------------------------------------------------------------------------- */
 .toast {
     position: fixed;
@@ -364,7 +418,7 @@ body.attendance *::after {
     max-width: min(90vw, 560px);
     padding: 0.8rem 1.3rem;
     border-radius: 999px;
-    background: #27272a;
+    background: var(--accent-dark);
     color: #ffffff;
     font-size: 0.88rem;
     font-weight: 500;
@@ -392,7 +446,7 @@ body.attendance *::after {
 }
 
 /* ---------------------------------------------------------------------------
-   5. Responsive
+   6. Responsive
 --------------------------------------------------------------------------- */
 @media (max-width: 900px) {
     .att-layout {
@@ -404,4 +458,36 @@ body.attendance *::after {
     .manual-row {
         flex-direction: column;
     }
+}
+
+/* ---------------------------------------------------------------------------
+   7. Dark-mode repairs
+--------------------------------------------------------------------------- */
+/* The global theme driver flips every --token above under
+   ``html[data-theme='dark']``. Two ink-inverted components need extra care:
+   --accent-dark reads as a light cream in dark mode, so the dark "Start
+   Camera" button (and the base toast shell — covered globally in theme.css)
+   must keep a dark surface with white text. */
+html[data-theme='dark'] .btn-start {
+    background: #52525b;
+}
+
+html[data-theme='dark'] .btn-start:hover:not(:disabled) {
+    background: #5d5d66;
+}
+
+/* theme.css repairs the base .toast shell to a dark gray in dark mode —
+   re-assert the semantic variant colours (higher-specificity repair beats
+   the flat .toast override). The saturated ink backgrounds read fine on
+   the dark canvas, so the white text stays high-contrast. */
+html[data-theme='dark'] .toast-success {
+    background: #166534;
+}
+
+html[data-theme='dark'] .toast-error {
+    background: #b91c1c;
+}
+
+html[data-theme='dark'] .toast-info {
+    background: #1d4ed8;
 }
