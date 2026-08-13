@@ -139,6 +139,64 @@
 
     </div>
 
+    <!-- ============================================================
+         Payment gateway modal (bKash / Nagad)
+    ============================================================ -->
+    <div class="modal-backdrop" id="pay-modal" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pay-modal-title">
+            <button type="button" class="modal-close" id="pay-modal-close" aria-label="Close payment">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <div class="modal-head">
+                <span class="modal-icon"><i class="fa-solid fa-bus"></i></span>
+                <h3 id="pay-modal-title">Pay for Your Seat</h3>
+                <p class="modal-sub">Confirm the trip details, pay via mobile wallet, and your boarding pass activates instantly.</p>
+            </div>
+
+            <div class="order-summary" aria-label="Booking summary">
+                <div class="order-row"><span>Route</span><strong id="pay-route">—</strong></div>
+                <div class="order-row"><span>Departure</span><strong id="pay-time">—</strong></div>
+                <div class="order-row"><span>Seat</span><strong id="pay-seat">—</strong></div>
+                <div class="order-row order-total"><span>Ticket Fare</span><strong id="pay-fare">৳0</strong></div>
+            </div>
+
+            <div class="field">
+                <span class="field-label">Payment Method</span>
+                <div class="pay-methods" id="pay-methods">
+                    <label class="pay-method selected">
+                        <input type="radio" name="pay-method" value="bkash" checked>
+                        <span class="pay-logo pay-bkash"><i class="fa-solid fa-mobile-screen-button"></i></span>
+                        <span class="pay-info"><strong>bKash</strong><small>Send money, then verify</small></span>
+                    </label>
+                    <label class="pay-method">
+                        <input type="radio" name="pay-method" value="nagad">
+                        <span class="pay-logo pay-nagad"><i class="fa-solid fa-mobile-screen-button"></i></span>
+                        <span class="pay-info"><strong>Nagad</strong><small>Send money, then verify</small></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="field">
+                <label for="pay-wallet" class="field-label">Your Mobile Wallet Account Number</label>
+                <input type="tel" id="pay-wallet" class="field-input" inputmode="numeric" autocomplete="tel" placeholder="e.g. 017XXXXXXXX">
+            </div>
+
+            <div class="field">
+                <label for="pay-trx" class="field-label">Transaction ID (TrxID)</label>
+                <input type="text" id="pay-trx" class="field-input" autocomplete="off" spellcheck="false" placeholder="e.g. 9J32X8KL">
+            </div>
+
+            <p class="modal-note"><i class="fa-solid fa-circle-info"></i> Sandbox gateway — send the fare to the transport merchant number, then enter your wallet number and TrxID to activate your boarding pass instantly.</p>
+
+            <div class="modal-alert" id="pay-alert" role="alert" hidden></div>
+
+            <button type="button" class="book-btn" id="pay-confirm-btn">
+                <i class="fa-solid fa-lock" id="pay-confirm-icon"></i>
+                <span id="pay-confirm-label">Pay ৳0 &amp; Confirm Booking</span>
+            </button>
+        </div>
+    </div>
+
     <!-- Toast -->
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -209,6 +267,11 @@
             toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3800);
         }
 
+        function fmtFare(value) {
+            const n = Number(value);
+            return '৳' + (isNaN(n) ? (value || '0') : n.toFixed(0));
+        }
+
         function currentRoute() {
             return ROUTES.find(r => r.id === selectedRouteId);
         }
@@ -265,6 +328,7 @@
                         <span><i class="fa-solid fa-user"></i> ${r.driver}</span>
                         <span><i class="fa-solid fa-phone"></i> ${r.phone}</span>
                         <span><i class="fa-regular fa-clock"></i> ${r.departures.join(' · ')}</span>
+                        <span><i class="fa-solid fa-tags"></i> ${fmtFare(r.fare)}</span>
                     </div>
                 </article>
             `).join('');
@@ -404,55 +468,203 @@
             renderSeats();
         });
 
-        // Book Seat → confirm via /book-transport/ → boarding pass from the API.
-        bookBtn.addEventListener('click', async () => {
+        // ====================================================================
+        // Payment gateway modal (bKash / Nagad)
+        // ====================================================================
+        const payModal = document.getElementById('pay-modal');
+
+        // Booking created by a previous Pay attempt whose checkout step failed.
+        // Kept so a retry pays for the already-reserved seat instead of
+        // re-booking it (which would bounce off the unique seat constraint).
+        let pendingBooking = null;
+
+        function selectedPayMethod() {
+            const el = document.querySelector('input[name="pay-method"]:checked');
+            return el ? el.value : 'bkash';
+        }
+
+        function openPayModal() {
+            const route = currentRoute();
+            const fare = fmtFare(route.fare);
+            document.getElementById('pay-route').textContent = route.name;
+            document.getElementById('pay-time').textContent = selectedTime;
+            document.getElementById('pay-seat').textContent = 'Seat ' + (selectedSeat + 1);
+            document.getElementById('pay-fare').textContent = fare;
+            document.getElementById('pay-confirm-label').textContent = 'Pay ' + fare + ' & Confirm Booking';
+            document.getElementById('pay-alert').hidden = true;
+            document.getElementById('pay-wallet').value = '';
+            document.getElementById('pay-trx').value = '';
+            // A leftover pending booking only applies to this exact seat.
+            if (pendingBooking && (
+                pendingBooking.route_name !== route.name ||
+                Number(pendingBooking.seat_number) !== selectedSeat + 1 ||
+                pendingBooking.departure_time !== selectedTime
+            )) {
+                pendingBooking = null;
+            }
+            payModal.hidden = false;
+            document.getElementById('pay-wallet').focus();
+        }
+
+        function closePayModal() {
+            payModal.hidden = true;
+        }
+
+        document.getElementById('pay-modal-close').addEventListener('click', closePayModal);
+        payModal.addEventListener('click', (e) => {
+            if (e.target === payModal) closePayModal();
+        });
+
+        // Sync the selected-pill highlight with the hidden radio inputs.
+        document.querySelectorAll('#pay-methods .pay-method').forEach((label) => {
+            label.addEventListener('click', () => {
+                document.querySelectorAll('#pay-methods .pay-method').forEach((l) => {
+                    l.classList.toggle('selected', l === label);
+                });
+            });
+        });
+
+        // Book Seat & Pay → open the payment modal (the booking only hits the
+        // backend after the wallet payment details are confirmed inside it).
+        bookBtn.addEventListener('click', () => {
             if (emptyCatalog()) { showToast('No routes are available right now.'); return; }
             if (selectedSeat === null) { showToast('Please select a seat first.'); return; }
             if (seatsLeft(currentRoute()) <= 0) { showToast('This bus is fully booked.'); return; }
+            openPayModal();
+        });
+
+        document.getElementById('pay-confirm-btn').addEventListener('click', async () => {
+            const alert = document.getElementById('pay-alert');
+            alert.hidden = true;
+
+            const wallet = document.getElementById('pay-wallet').value.trim();
+            const trx = document.getElementById('pay-trx').value.trim();
+            if (!/^01\d{9}$/.test(wallet)) {
+                alert.textContent = 'Please enter a valid 11-digit wallet number (e.g. 017XXXXXXXX).';
+                alert.hidden = false;
+                return;
+            }
+            if (!/^[A-Za-z0-9-]{6,}$/.test(trx)) {
+                alert.textContent = 'Please enter the TrxID shown in your payment confirmation.';
+                alert.hidden = false;
+                return;
+            }
 
             const route = currentRoute();
             const seatNo = selectedSeat + 1;
             const seatIndex = selectedSeat;
             const name = document.getElementById('passenger-name').value.trim() || CURRENT_USER_NAME;
+            const method = selectedPayMethod();
+            const fee = String(route.fare || '0');
 
-            bookBtn.disabled = true;
-            const result = await postBooking({
-                route_id: String(route.id),
-                seat_number: String(seatNo),
-                departure_time: selectedTime,
-            });
-            bookBtn.disabled = false;
-            if (!result) return; // redirected to login
+            const payBtn = document.getElementById('pay-confirm-btn');
+            payBtn.disabled = true;
+            document.getElementById('pay-confirm-icon').className = 'fa-solid fa-spinner fa-spin';
 
-            if (!result.ok) {
-                if (result.status === 409) {
-                    // Seat conflict — someone else took it. Mark it booked so
-                    // the grid reflects real availability, then clear the pick.
-                    markSeatBooked(route, seatIndex);
-                    showToast('Seat already taken by another passenger. Please select a different seat.');
-                } else {
-                    showToast((result.body && result.body.message) || 'Booking failed. Please try again.');
+            // Step 1 — reserve the seat with the paid flow: PENDING booking +
+            // PaymentOrder (PINV-…). QR is issued on payment confirmation. On
+            // a retry (previous checkout step failed) the already-reserved
+            // booking is reused instead of re-booking the same seat.
+            let booking = null;
+            if (pendingBooking) {
+                booking = { ok: true, status: 200, body: pendingBooking };
+            } else {
+                try {
+                    booking = await postBooking({
+                        route_id: String(route.id),
+                        seat_number: String(seatNo),
+                        departure_time: selectedTime,
+                        payment_method: method,
+                        amount: fee,
+                    });
+                } finally {
+                    payBtn.disabled = false;
+                    document.getElementById('pay-confirm-icon').className = 'fa-solid fa-lock';
                 }
-                selectedSeat = null;
-                renderSeats();
+                if (!booking) return; // redirected to login
+
+                if (!booking.ok) {
+                    if (booking.status === 409) {
+                        // Seat conflict — someone else took it. Mark it booked so
+                        // the grid reflects real availability, then clear the pick.
+                        pendingBooking = null;
+                        markSeatBooked(route, seatIndex);
+                        selectedSeat = null;
+                        renderSeats();
+                        closePayModal();
+                        showToast('Seat already taken by another passenger. Please select a different seat.');
+                    } else {
+                        alert.textContent = (booking.body && booking.body.message) || 'Could not reserve the seat. Please try again.';
+                        alert.hidden = false;
+                    }
+                    return;
+                }
+            }
+
+            const bookingData = booking.body;
+            pendingBooking = bookingData;
+
+            // Step 2 — record the wallet payment (TrxID) at /checkout/; the
+            // server fulfills the linked PaymentOrder and issues the boarding QR.
+            let checkout = null;
+            try {
+                const resp = await fetch(CHECKOUT_URL, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'X-CSRFToken': getCookie('csrftoken'),
+                    },
+                    body: new URLSearchParams({
+                        type: 'transport',
+                        item: bookingData.route_name,
+                        issuer: 'NITER Transport',
+                        fee: fee,
+                        method: method,
+                        wallet_no: wallet,
+                        trx_id: trx,
+                        booking_id: String(bookingData.booking_id),
+                    }).toString(),
+                });
+                const ct = resp.headers.get('content-type') || '';
+                if (!ct.includes('application/json')) {
+                    window.location.href = LOGIN_URL;
+                    return;
+                }
+                checkout = { ok: resp.ok, status: resp.status, body: await resp.json() };
+            } catch (err) {
+                checkout = null;
+            }
+            if (!checkout) {
+                alert.textContent = 'Payment could not be verified right now — your seat is reserved pending payment confirmation.';
+                alert.hidden = false;
                 return;
             }
 
-            const data = result.body;
+            if (!(checkout.ok && checkout.body.status === 'success')) {
+                alert.textContent = (checkout.body && checkout.body.message) || 'Payment could not be verified. Please try again.';
+                alert.hidden = false;
+                return;
+            }
+
+            const data = checkout.body;
+            closePayModal();
+            pendingBooking = null;
 
             // Real backend boarding pass — QR token + route/time from the API.
             updatePass({
-                token: data.qr_token,
+                token: data.qr_token || bookingData.qr_token,
                 name: name,
-                route: data.route_name,
-                seat: 'Seat ' + data.seat_number,
-                time: data.departure_time,
+                route: data.route_name || bookingData.route_name,
+                seat: 'Seat ' + (data.seat_number || seatNo),
+                time: data.departure_time || bookingData.departure_time,
             });
 
             markSeatBooked(route, seatIndex);
             selectedSeat = null;
             renderSeats();
-            showToast(data.message || ('Seat ' + seatNo + ' booked — boarding pass generated.'));
+            showToast((data.message || ('Seat ' + seatNo + ' booked — boarding pass generated.')) +
+                ' Payment TrxID ' + trx);
         });
 
         // ====================================================================

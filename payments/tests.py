@@ -324,6 +324,119 @@ class PaidFlowViewTests(TestCase):
         })
         self.assertEqual(response.status_code, 400)
 
+    def test_checkout_transport_fulfills_pending_booking(self):
+        # The transport payment modal flow: /book-transport/ (paid flow) then
+        # /checkout/ with the booking_id — the recorded wallet payment
+        # activates the seat and issues the boarding QR immediately.
+        booking_response = self.client.post('/book-transport/', {
+            'route_name': 'Route 1: Main Campus Loop',
+            'departure_time': '08:00 AM',
+            'seat_number': 8,
+            'payment_method': 'bkash',
+            'amount': '20.00',
+        })
+        booking_id = booking_response.json()['booking_id']
+        booking = TransportBooking.objects.get(pk=booking_id)
+        self.assertEqual(booking.payment_status, 'pending')
+        self.assertIsNone(booking.qr_token)
+
+        response = self.client.post(reverse('checkout'), {
+            'type': 'transport',
+            'item': 'Route 1: Main Campus Loop',
+            'issuer': 'NITER Transport',
+            'fee': '20.00',
+            'method': 'bkash',
+            'wallet_no': '01712345678',
+            'trx_id': 'ABC123XYZ',
+            'booking_id': str(booking_id),
+        })
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertEqual(data['linked'], 'transport_booking')
+        self.assertEqual(data['booking_status'], 'paid')
+        self.assertTrue(data['qr_token'].startswith('TR-'))
+        self.assertEqual(data['booking_id'], booking_id)
+
+        booking.refresh_from_db()
+        self.assertEqual(booking.payment_status, 'paid')
+        self.assertIsNotNone(booking.paid_at)
+        self.assertTrue(booking.qr_token.startswith('TR-'))
+        self.assertEqual(booking.payment_order.status, 'paid')
+        self.assertEqual(booking.payment_order.provider_transaction_id, 'ABC123XYZ')
+
+    def test_checkout_transport_without_booking_just_records(self):
+        # A checkout that doesn't reference a booking records the wallet
+        # payment but activates nothing.
+        response = self.client.post(reverse('checkout'), {
+            'type': 'transport',
+            'item': 'Legacy transport order',
+            'fee': '20.00',
+            'method': 'nagad',
+            'wallet_no': '01712345678',
+            'trx_id': 'XYZ789ABC',
+        })
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertIsNone(data['linked'])
+        self.assertNotIn('qr_token', data)
+        self.assertEqual(data['purpose'], 'Transport')
+
+    def test_checkout_transport_ignores_foreign_booking(self):
+        # A booking owned by another user must never be activated by checkout.
+        other = _user('pay_tester_other')
+        other_booking = _booking(other, seat_number=9)
+        other_order = services.create_payment_order(other, other_booking, 'bkash', '20.00')
+
+        response = self.client.post(reverse('checkout'), {
+            'type': 'transport',
+            'item': 'Route 1: Main Campus Loop',
+            'fee': '20.00',
+            'method': 'bkash',
+            'wallet_no': '01712345678',
+            'trx_id': 'DEF456GHI',
+            'booking_id': str(other_booking.pk),
+        })
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertIsNone(data['linked'])
+        self.assertNotIn('qr_token', data)
+
+        other_booking.refresh_from_db()
+        other_order.refresh_from_db()
+        self.assertEqual(other_booking.payment_status, 'pending')
+        self.assertEqual(other_order.status, 'pending')
+
+    def test_checkout_transport_rejects_amount_mismatch(self):
+        # The recorded wallet payment must match the ticket fare — a mismatched
+        # fee must never activate a booking (mirrors the webhook amount guard).
+        booking_response = self.client.post('/book-transport/', {
+            'route_name': 'Route 1: Main Campus Loop',
+            'departure_time': '08:00 AM',
+            'seat_number': 10,
+            'payment_method': 'bkash',
+            'amount': '20.00',
+        })
+        booking_id = booking_response.json()['booking_id']
+
+        response = self.client.post(reverse('checkout'), {
+            'type': 'transport',
+            'item': 'Route 1: Main Campus Loop',
+            'fee': '1.00',
+            'method': 'bkash',
+            'wallet_no': '01712345678',
+            'trx_id': 'ABC123XYZ',
+            'booking_id': str(booking_id),
+        })
+        self.assertEqual(response.status_code, 400)
+
+        booking = TransportBooking.objects.get(pk=booking_id)
+        self.assertEqual(booking.payment_status, 'pending')
+        self.assertIsNone(booking.qr_token)
+        self.assertEqual(booking.payment_order.status, 'pending')
+
     def test_claim_meal_paid_flow_creates_pending_ticket_and_order(self):
         from core.models import MealSubscription
         from django.utils import timezone

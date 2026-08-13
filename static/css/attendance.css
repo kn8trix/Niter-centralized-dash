@@ -125,7 +125,10 @@ body.attendance *::after {
 
 .att-layout {
     display: grid;
-    grid-template-columns: 1.15fr 1fr;
+    /* Mobile-first: single column (``grid-cols-1``); the scanner card, the
+       manual input row and the stats card stack full-width so nothing clips
+       below 390px. Desktop (>= 900px) restores the two-column split. */
+    grid-template-columns: 1fr;
     gap: 1.1rem;
     align-items: start;
 }
@@ -448,15 +451,42 @@ body.attendance *::after {
 /* ---------------------------------------------------------------------------
    6. Responsive
 --------------------------------------------------------------------------- */
-@media (max-width: 900px) {
+@media (min-width: 900px) {
     .att-layout {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1.15fr 1fr;
     }
 }
 
 @media (max-width: 560px) {
     .manual-row {
         flex-direction: column;
+    }
+
+    .card {
+        padding: 1.15rem 1rem;
+    }
+
+    .scanner-box {
+        min-height: 170px;
+    }
+
+    .scanner-actions .btn {
+        flex: 1;
+    }
+
+    .stats-table th,
+    .stats-table td {
+        padding: 0.5rem 0.45rem;
+        font-size: 0.78rem;
+    }
+
+    .history-list li {
+        flex-wrap: wrap;
+        gap: 0.4rem 0.8rem;
+    }
+
+    .history-time {
+        margin-left: 0;
     }
 }
 

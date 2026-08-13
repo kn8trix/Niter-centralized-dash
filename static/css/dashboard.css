@@ -921,9 +921,38 @@ body.dashboard a {
 @media (max-width: 1024px) {
     .main-grid { grid-template-columns: 1fr; }
 }
+
+/* Small phones (< 640px): the calendar grid and the clock card must fit
+   without horizontal clipping or awkward wrapping. The calendar panel gets an
+   overflow-x guard (equivalent of ``w-full overflow-x-auto sm:overflow-visible``)
+   and the 7-column cells are compacted; the clock card stacks the live clock
+   above the next-class block so the 8-digit time + countdown never squeeze. */
 @media (max-width: 640px) {
-    .clock-card { padding: 20px; }
-    .clock-time { font-size: 40px; }
+    .clock-card { padding: 18px 16px; gap: 14px; }
+    .clock-main, .clock-next { width: 100%; }
+    .clock-main { min-width: 0; }
+    .clock-time { font-size: 34px; }
+    .clock-countdown { font-size: 20px; }
     .clock-next { text-align: left; min-width: 0; }
+    .clock-next-line { font-size: 13px; overflow-wrap: anywhere; }
+
     .slot-item { flex-wrap: wrap; }
+
+    .calendar-panel { min-width: 0; overflow-x: auto; }
+    .cal-grid { gap: 2px; }
+    .cal-cell {
+        min-height: 38px;
+        padding: 2px;
+        border-radius: 6px;
+    }
+    .cal-day-num { font-size: 11px; }
+    .cal-dots { gap: 2px; margin-top: 2px; padding-left: 2px; }
+    .cal-weekdays span { font-size: 10px; padding: 2px 0; }
+    .cal-legend { gap: 10px; font-size: 10.5px; }
+}
+
+/* Even narrower phones: shrink the clock further so 8 digits stay on one row. */
+@media (max-width: 400px) {
+    .clock-time { font-size: 30px; }
+    .clock-eyebrow { font-size: 10.5px; }
 }

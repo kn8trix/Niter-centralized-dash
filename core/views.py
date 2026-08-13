@@ -118,8 +118,13 @@ from .models import (
     generate_qr_token,
 )
 
-# Paid-flow order creation (parallel to the instant book/claim flow).
-from payments.services import create_payment_order  # noqa: E402
+# Paid-flow order creation (parallel to the instant book/claim flow) plus the
+# SUCCESS connector that activates a linked booking once a wallet payment is
+# recorded — the transport checkout flow uses both.
+from payments.services import (  # noqa: E402
+    create_payment_order,
+    fulfill_payment_order,
+)
 
 # Huey background task for notes analysis (off the request path). The
 # extractors themselves live in core/notes_analysis and run inside the task.
@@ -639,6 +644,7 @@ def transport_dashboard(request):
             'driver': info['driver_name'] or '—',
             'phone': info['driver_phone'] or '—',
             'departures': info['departures'],
+            'fare': info['fare'],
             'total': info['capacity'],
             'booked': booked,
             'status': status,
@@ -846,6 +852,7 @@ def _process_checkout(request):
     )
 
     linked = None
+    booking = None
     if purpose == 'meal':
         # The paid item is the monthly meal entitlement — activate it for the
         # current calendar month and pre-allocate one Lunch + one Dinner slot
@@ -867,6 +874,33 @@ def _process_checkout(request):
             },
         )
         linked = 'meal_subscription' if subscription.is_active else None
+    elif purpose == 'transport' and request.POST.get('booking_id', '').strip():
+        # The paid item is a transport seat reserved through ``book_transport``
+        # (paid flow → PENDING booking + PaymentOrder). The wallet TrxID the
+        # student just entered is the sandbox-gateway confirmation, so the
+        # order is fulfilled right here — mirroring how the meal subscription
+        # activates instantly — and ``fulfill_payment_order`` issues the QR
+        # boarding token + pushes the "payment confirmed" notification.
+        try:
+            booking = TransportBooking.objects.select_related('payment_order').get(
+                pk=int(request.POST['booking_id']),
+                user=request.user,
+            )
+        except (TransportBooking.DoesNotExist, ValueError, TypeError):
+            booking = None
+        if booking is not None and booking.payment_order is not None:
+            # The recorded wallet payment must match the ticket fare — same
+            # guard the gateway-webhook path enforces (amount mismatch → 400).
+            if booking.payment_order.amount != amount:
+                return JsonResponse(
+                    {'status': 'error', 'message': 'Payment amount does not match the ticket fare.'},
+                    status=400,
+                )
+            fulfill_payment_order(booking.payment_order, provider_transaction_id=wallet_trx)
+            # fulfill_payment_order mutates the DB row through its own item
+            # query — refresh so the response below reports the live state.
+            booking.refresh_from_db()
+            linked = 'transport_booking'
 
     bell_category = {'meal': 'meal', 'event': 'club', 'transport': 'transport', 'tuition': 'academic'}[purpose]
     notification = Notification.objects.create(
@@ -879,7 +913,7 @@ def _process_checkout(request):
     )
     _broadcast_notification(notification)
 
-    return JsonResponse({
+    payload = {
         'status': 'success',
         'transaction_id': payment.transaction_id,
         'amount': str(payment.amount),
@@ -888,7 +922,23 @@ def _process_checkout(request):
         'payment_status': payment.status,
         'linked': linked,
         'message': 'Payment recorded — reference %s.' % payment.transaction_id,
-    })
+    }
+    if booking is not None:
+        # The boarding pass is ready to render immediately after the payment.
+        payload.update({
+            'booking_id': booking.pk,
+            'route_name': booking.route_name,
+            'departure_time': booking.departure_time,
+            'seat_number': booking.seat_number,
+            'qr_token': booking.qr_token,
+            'booking_status': booking.payment_status,
+            'payment_order': (
+                booking.payment_order.merchant_invoice_id
+                if booking.payment_order is not None
+                else None
+            ),
+        })
+    return JsonResponse(payload)
 
 
 def research_ai_page(request):
@@ -1020,6 +1070,10 @@ TRANSPORT_ROUTES = {
 # Seat capacity per bus — used only by the legacy fallback catalog.
 TRANSPORT_SEATS_PER_BUS = 40
 
+# Ticket fare for the legacy (constant-only) route catalog — DB routes carry
+# their own per-route ``fare`` on the TransportRoute row (seeded: 15–30 BDT).
+TRANSPORT_DEFAULT_FARE = Decimal('30.00')
+
 
 def _transport_catalog():
     """Active DB routes merged with driver + schedule data, keyed by route id.
@@ -1045,6 +1099,7 @@ def _transport_catalog():
             'departures': departures,
             'departure_time': departures[0],
             'capacity': route.capacity,
+            'fare': str(route.fare or 0),
             'origin': route.origin,
             'destination': route.destination,
             'driver_name': route.driver.name if route.driver else '',
@@ -1058,6 +1113,7 @@ def _transport_catalog():
             'departures': [info['departure_time']],
             'departure_time': info['departure_time'],
             'capacity': TRANSPORT_SEATS_PER_BUS,
+            'fare': str(TRANSPORT_DEFAULT_FARE),
             'origin': '',
             'destination': '',
             'driver_name': '',

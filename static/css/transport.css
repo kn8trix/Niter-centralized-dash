@@ -526,6 +526,215 @@ body.transport a {
 }
 
 /* ---------------------------------------------------------------------------
+   6b. Payment gateway modal (bKash / Nagad)
+--------------------------------------------------------------------------- */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(23, 23, 25, 0.55);
+    backdrop-filter: blur(3px);
+}
+
+.modal-backdrop[hidden] {
+    display: none;
+}
+
+.modal {
+    position: relative;
+    width: min(440px, 100%);
+    max-height: min(92vh, 720px);
+    overflow-y: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 1.1rem;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.24);
+    padding: 1.6rem 1.6rem 1.5rem;
+}
+
+.modal-close {
+    position: absolute;
+    top: 0.85rem;
+    right: 0.85rem;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    background: var(--bg-subtle);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.modal-close:hover {
+    background: var(--accent-primary);
+    color: var(--text-primary);
+}
+
+.modal-head {
+    text-align: center;
+    margin-bottom: 1.1rem;
+}
+
+.modal-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: var(--accent-primary);
+    color: var(--accent-dark);
+    font-size: 1.25rem;
+    margin-bottom: 0.7rem;
+}
+
+.modal h3 {
+    margin: 0 0 0.3rem;
+    font-size: 1.12rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.modal-sub {
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+/* Order summary strip */
+.order-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.8rem 0.95rem;
+    margin-bottom: 1.1rem;
+    border-radius: 0.8rem;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+}
+
+.order-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.8rem;
+    font-size: 0.84rem;
+    color: var(--text-muted);
+}
+
+.order-row strong {
+    color: var(--text-primary);
+    font-weight: 700;
+    text-align: right;
+}
+
+.order-row.order-total {
+    margin-top: 0.3rem;
+    padding-top: 0.55rem;
+    border-top: 1px dashed var(--border-color);
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.order-row.order-total strong {
+    font-size: 1.05rem;
+    color: var(--success);
+}
+
+.pay-methods {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.55rem;
+}
+
+.pay-method {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.75rem 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
+    background: var(--bg-subtle);
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+    text-align: center;
+}
+
+.pay-method input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.pay-method.selected {
+    border-color: var(--accent-dark);
+    background: var(--accent-primary);
+    transform: translateY(-1px);
+}
+
+.pay-logo {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    color: #ffffff;
+    font-size: 0.95rem;
+}
+
+.pay-bkash { background: #e2136e; }
+.pay-nagad { background: #ec1c24; }
+
+.pay-info strong {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.pay-info small {
+    display: block;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+}
+
+.modal-note {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+    margin: 0 0 1rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 0.7rem;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.modal-note i {
+    margin-top: 0.15rem;
+}
+
+.modal-alert {
+    margin-bottom: 0.85rem;
+    padding: 0.7rem 0.9rem;
+    border-radius: 0.7rem;
+    font-size: 0.8rem;
+    background: var(--warning-soft);
+    border: 1px solid var(--warning-border);
+    color: var(--warning);
+}
+
+/* ---------------------------------------------------------------------------
    7. Toast
 --------------------------------------------------------------------------- */
 .toast {
@@ -594,6 +803,25 @@ body.transport a {
 
     .pass-fields {
         grid-template-columns: 1fr;
+    }
+
+    /* Payment modal — keep the wallet inputs full-width and stack the pay
+       methods so nothing overflows on very small screens. */
+    .modal {
+        padding: 1.25rem 1rem 1.15rem;
+    }
+
+    .pay-methods {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.4rem;
+    }
+
+    .pay-method {
+        padding: 0.6rem 0.35rem;
+    }
+
+    .pay-info small {
+        display: none;
     }
 }
 

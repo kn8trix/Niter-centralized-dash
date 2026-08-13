@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 94 | Mobile responsiveness (calendar / clock / attendance) + Transport payment gateway modal | _see below_ |
 | 93 | Attendance page dark-mode theming (shared CSS tokens) | `85589ca` |
 | 90 | Dynamic user names on all passes + cleaned-up profile dropdown | `71ed77b` |
 | 91 | QR Attendance System + Academic Calendar grid fix | `f832515` |
@@ -5400,3 +5401,83 @@ code; step 2 confirms the code and only then persists the `User` +
   closed; verify page masks the email; no-pending redirect.
 - **Full suite: 792 tests OK.** (Email verified through Django's locmem
   backend / `mail.outbox` in tests; console backend locally.)
+
+---
+
+## 94. Mobile Responsiveness (Calendar / Clock / Attendance) + Transport Payment Gateway Modal
+
+**Date:** 13 August 2026  
+**Branch:** main
+
+Two passes: a mobile-responsiveness pass over the dashboard's Academic
+Calendar + BST clock and the Attendance page, and the long-missing payment
+gateway trigger on Transport ticket purchase ("Book Seat & Pay" now pops a
+bKash / Nagad checkout modal instead of silently booking a free seat).
+
+### 1. Mobile responsiveness
+
+- **`static/css/dashboard.css`** — the Academic Calendar panel gets an
+  `overflow-x: auto` guard on small screens (the ``w-full overflow-x-auto
+  sm:overflow-visible`` equivalent) and the 7-column grid is compacted
+  (smaller cell min-height/padding/day-number/dots/legend) so it fits below
+  640px with no horizontal clipping. The clock card stacks the live time
+  above the next-class block (`.clock-main` / `.clock-next` go full-width)
+  and the 8-digit time + countdown scale down (34px / 20px, 30px below 400px)
+  so nothing wraps awkwardly on <390px phones.
+- **`static/css/attendance.css`** — `.att-layout` is now mobile-first single
+  column (``grid-cols-1``) with the two-column scanner/stats split restored
+  at `min-width: 900px` (``lg:grid-cols-2``). On small screens the cards get
+  tighter padding, the QR camera box a 170px min-height, the action buttons
+  share the row, the stats table uses smaller cell padding/font, and the
+  recent check-ins rows wrap.
+- **Verification:** headless Chrome at 380×740 — `/dashboard/`,
+  `/attendance/` and `/transport/` all report `scrollWidth == clientWidth`
+  (no horizontal overflow), the attendance cards stack, and the transport
+  payment modal fits the viewport with zero console errors.
+
+### 2. Transport payment gateway trigger
+
+The "Buy Ticket" diagnosis was real: `transport.html`'s "Book Seat & Pay"
+POSTed `/book-transport/` with **no** payment method, so every seat was
+instantly `paid` and no checkout ever triggered. Now the button opens a
+payment modal and the flow is:
+
+1. `templates/transport.html` — new `.modal-backdrop` checkout modal
+   (bKash / Nagad method pills, wallet number, TrxID, live order summary
+   with route / departure / seat / **fare**); validation mirrors the meals
+   modal (`01\d{9}` wallet, `[A-Za-z0-9-]{6,}` TrxID).
+2. Confirm → `POST /book-transport/` with `payment_method` + `amount` →
+   PENDING booking + `PaymentOrder` (`PINV-…`) — the existing paid-flow
+   path, unchanged.
+3. → `POST /checkout/` with `type=transport` + `booking_id` + wallet/TrxID.
+   `_process_checkout` (core/views.py) now records the `PaymentTransaction`
+   **and** fulfills the linked `PaymentOrder` via
+   `payments.services.fulfill_payment_order` (amount must match the ticket
+   fare → 400 otherwise), which issues the `TR-…` boarding QR token, marks
+   the booking PAID, and pushes the "Transport payment confirmed"
+   notification — the same connector the bKash/Nagad webhooks use.
+4. The pass renders immediately in the Digital Boarding Pass card (QR SVG +
+   token + route/seat/time) and the seat grid live-updates.
+
+Robustness: a retry after a failed checkout reuses the pending booking
+instead of re-booking the same seat (409 dead-end avoided); foreign users'
+bookings are never activated; `TRANSPORT_DEFAULT_FARE` (৳30) covers the
+legacy constant-only catalog while DB routes use their seeded per-route
+`fare` (now exposed through `_transport_catalog()` → `transport-data` and
+displayed on the route cards).
+
+### 3. Files changed
+
+- `static/css/dashboard.css`, `static/css/attendance.css`
+- `templates/transport.html`, `static/css/transport.css`
+- `core/views.py` (`_transport_catalog` fare, `transport_dashboard`,
+  `_process_checkout` transport fulfillment)
+- `payments/tests.py` (4 new tests: fulfill-on-checkout, record-without-
+  booking, foreign-booking guard, amount-mismatch rejection)
+
+### 4. Tests & verification
+
+- `python manage.py check` clean; **full suite 795 tests OK** (was 792).
+- Browser e2e @ 380×740: student login → seat select → payment modal →
+  bKash TrxID submit → boarding pass with `TR-…` QR token renders, zero
+  console errors; seat-required validation toast intact.
