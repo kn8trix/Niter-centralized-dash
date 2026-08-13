@@ -14,6 +14,7 @@ A lightweight Android app that renders **Niter Centralized Dash** in a full-scre
 | External links | `shouldOverrideUrlLoading` keeps all `http`/`https` (Google auth, payments) inside the WebView and hands `mailto:`/`tel:`/`intent:`/`whatsapp://` to external apps |
 | Hardware BACK | `OnBackPressedCallback` walks `WebView` history first, exits only at the root page |
 | File uploads | `WebChromeClient.onShowFileChooser` → system picker (via `ActivityResultContracts.StartActivityForResult`), used by the Notes Engine and the Reports & Feedback attachments |
+| HTTPS enforced | `network_security_config.xml` forbids cleartext everywhere except loopback hosts for local dev |
 
 ## Project layout
 
@@ -28,7 +29,7 @@ mobile-webview/
     └── src/main/
         ├── AndroidManifest.xml
         ├── java/com/niterhub/dash/MainActivity.kt
-        └── res/                 # layout, theme, strings, adaptive launcher icon
+        └── res/                 # layout, theme, strings, adaptive icon, xml/network_security_config
 ```
 
 ## Requirements
@@ -59,7 +60,7 @@ mobile-webview/
 4. **Release APK (optional)**
    - **Build → Generate Signed Bundle / APK… → APK** and follow the wizard to
      create a keystore, then choose `release`. The signed APK is written to
-     `app/release/`.
+     `app/build/outputs/apk/release/app-release.apk`.
 
 ## Changing the target URL
 
@@ -83,6 +84,11 @@ Rebuild and reinstall — no other changes are needed.
 - **App shows a blank screen** — check the device has an internet connection
   and that `https://niter-centralized-dash.onrender.com` is reachable; try
   `adb logcat | grep chromium` for WebView errors.
+- **Cleartext blocked when testing against a LAN dev server** — the network
+  security config only whitelists loopback hosts; if you point `startUrl` at a
+  machine on your LAN (e.g. `http://192.168.x.x:8000`) from a physical device,
+  add that IP as a `<domain>` in
+  `app/src/main/res/xml/network_security_config.xml`.
 
 ## Security notes
 

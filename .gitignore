@@ -6,6 +6,7 @@ __pycache__/
 db.sqlite3
 .freebuff/
 server.log
+daphne.log
 media/
 # Collected static assets (output of `manage.py collectstatic`)
 staticfiles/

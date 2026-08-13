@@ -4729,7 +4729,11 @@ Kotlin, single `MainActivity`, no extra UI.
 
 Security posture: `MIXED_CONTENT_NEVER_ALLOW` (site is https-only), and
 `allowFileAccessFromFileURLs` / `allowUniversalAccessFromFileURLs` explicitly
-`false` alongside the required `allowFileAccess(true)`.
+`false` alongside the required `allowFileAccess(true)`. Cleartext HTTP is
+banned app-wide by `res/xml/network_security_config.xml` (wired into the
+manifest via `android:networkSecurityConfig`), with exceptions only for
+loopback hosts (`10.0.2.2`, `localhost`, `127.0.0.1`) used when pointing the
+app at a local Django dev server.
 
 ### Project structure
 
@@ -4742,7 +4746,7 @@ mobile-webview/
     └── src/main/
         ├── AndroidManifest.xml # INTERNET, launcher activity, configChanges (no rotate reload)
         ├── java/com/niterhub/dash/MainActivity.kt
-        └── res/                # layout (WebView + thin progress bar), theme, adaptive icon
+        └── res/                # layout (WebView + thin progress bar), theme, adaptive icon, xml/network_security_config
 ```
 
 ### How to open & compile the APK (Android Studio)
@@ -4763,4 +4767,71 @@ see `mobile-webview/README.md`.
 ### Files
 
 - `mobile-webview/` (new — Gradle project, `MainActivity.kt`, manifest, resources, README)
+- `docs/HANDOVER.md` (this section)
+
+---
+
+## 86. Final Integration Status — Module Matrix, OAuth Refresh & Health Check
+
+**Date:** 13 August 2026  
+**Branch:** main
+
+Closing handover: current status of every dashboard module, the Google OAuth
+refresh-token behaviour, and the verification results that ship with the
+Android wrapper.
+
+### Dashboard module status matrix
+
+| Module | Where | Status |
+|---|---|---|
+| **Admin** | `/dashboard/admin/*` (distinct `admin/admin_base.html` layout, not the student shell) | ✅ Users, Reports & Feedback, Database Stats, Academic Calendar Manager, Website Builder/CMS, Club Account Management — all present |
+| **Student** | `/dashboard/*` (distinct student layout) | ✅ Home (academic calendar w/ red-orange-blue-green event dots), Reports w/ severity + attachments, Notes Engine (Google Drive), Meals, Transport, Medical booking, Notices, Tickets, Profile |
+| **Medical** | `/medical/booking`, `/dashboard/student/medical`, host/admin dashboards | ✅ Booking form posts `doctor` / `appointment_date` / `time_slot` (server-validated), pre-submit JS validation + toasts; host portal lists today's appointments |
+| **Club Executive** | `/dashboard/club` (distinct `club/club_base.html` layout) | ✅ Isolated behind `club_access_required` (staff OR active club account); Google Sheets verify/append, member approvals, role assignments, event posts, payment verification |
+
+RBAC: `RoleAccessMiddleware` (core/middleware.py) dispatches each user to their
+role home (`role_home_path` in core/roles.py) on login and blocks cross-role
+pages; admins never render the student layout. Verified by
+`core.tests.RoleRoutingTest`.
+
+### Google OAuth refresh-token auto-handling (summary)
+
+- `get_google_credentials()` (core/google_service.py) first tries the legacy
+  `GoogleUserToken` row; if the access token is expired, structurally broken,
+  or the refresh fails, it falls back to the allauth `SocialToken` — whose
+  `refresh()` silently exchanges the stored `refresh_token` for a new access
+  token **without any user interaction**.
+- `GET /api/notes/auth-status/` (new) renews an expired token on every check,
+  so the Notes page no longer pops the "Google access required / session
+  expired" modal for a merely-expired token.
+- `_drive_redirect_uri()` resolves the OAuth callback per request origin, so
+  one registered redirect URI works for both `localhost` dev and the
+  `.onrender.com` deployment.
+- Missing `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` env vars log a WARNING and
+  surface a clear toast instead of a broken popup.
+- Full detail in §83 above.
+
+### Health check (this handover)
+
+- `venv/bin/python manage.py test core.tests.RoleRoutingTest core.tests.ToastPartialRenderTest`
+  → **18 tests, OK** (RBAC route security + toast partial rendering).
+- Android XML resources (manifest, network security config) validated
+  well-formed; `MainActivity.kt` carries the UA override, `onShowFileChooser`
+  and back-navigation requirements (see §85).
+- Prior full-suite run: **716 tests OK** (commit `b5fdb0e`, Reports upgrade).
+
+### Release APK (quick reference)
+
+Android Studio → **File → Open…** → `mobile-webview/` → **Trust Project** →
+sync → **Build → Generate Signed Bundle / APK… → APK** (create a keystore) →
+`release` → signed APK written to
+`app/build/outputs/apk/release/app-release.apk`. Debug APK:
+**Build → Build APK(s)** → `app/build/outputs/apk/debug/app-debug.apk`.
+
+### Files
+
+- `mobile-webview/app/src/main/res/xml/network_security_config.xml` (new)
+- `mobile-webview/app/src/main/AndroidManifest.xml` (networkSecurityConfig wired)
+- `mobile-webview/README.md` (network config + security notes updated)
+- `.gitignore` (`daphne.log` added)
 - `docs/HANDOVER.md` (this section)

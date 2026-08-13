@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network security policy for the Niter Dash WebView wrapper.
+
+  The production target (https://niter-centralized-dash.onrender.com) is
+  HTTPS-only, so cleartext traffic is forbidden by default (matching the
+  platform default for API 28+). The only exceptions are loopback hosts used
+  when pointing the app at a local Django dev server:
+    - 10.0.2.2   (Android Emulator → host machine)
+    - localhost / 127.0.0.1 (adb reverse / physical device)
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>
