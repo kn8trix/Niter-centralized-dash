@@ -156,15 +156,15 @@
                         <div class="verify-fields">
                             <div>
                                 <span class="verify-k">Name</span>
-                                <span class="verify-v" id="verify-name">{{ user.get_full_name|default:"Rifat Hasan" }}</span>
+                                <span class="verify-v" id="verify-name">{{ user.get_full_name|default:user.username }}</span>
                             </div>
                             <div>
                                 <span class="verify-k">Student ID</span>
-                                <span class="verify-v">CSE-22014</span>
+                                <span class="verify-v">{{ user.student_profile.student_id|default:user.username }}</span>
                             </div>
                             <div>
                                 <span class="verify-k">Email</span>
-                                <span class="verify-v" id="verify-email">{{ user.email|default:"rifat.hasan@niter.edu.bd" }}</span>
+                                <span class="verify-v" id="verify-email">{{ user.email|default:user.username }}</span>
                             </div>
                         </div>
                         <span class="verify-stamp"><i class="fa-solid fa-circle-check"></i> Verified</span>

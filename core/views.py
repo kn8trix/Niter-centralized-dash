@@ -389,6 +389,14 @@ def medical(request):
         context['my_threads'] = MedicalChatThread.objects.filter(
             patient=request.user,
         ).select_related('patient').prefetch_related('messages')
+        # The Active Medical Pass shows the next upcoming appointment (oldest
+        # future date first), so the card is never a static mock.
+        context['latest_appointment'] = (
+            request.user.medical_appointments
+            .filter(appointment_date__gte=timezone.now().date())
+            .order_by('appointment_date', 'id')
+            .first()
+        )
     return render(request, 'medical/booking.html', context)
 
 def notes(request):

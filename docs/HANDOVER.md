@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 90 | Dynamic user names on all passes + cleaned-up profile dropdown | `TBD` |
 | 89 | Meal Ticket System — monthly subscription + QR passes + 9 PM cancel rule | `a73e4a5` |
 | 88 | Google OAuth — 401/Invalid-Credentials hardening + upload session guard | `62ba895` |
 | 87 | Medical Booking — form state binding + AJAX submission fix | `bf1a05e` |
@@ -5073,3 +5074,61 @@ and a time-locked advance-cancellation rule.
   qrcodejs wired, subscription banner) → claim for tomorrow returned
   `#MEAL-0697` (balance 20→19) → cancel refunded the slot (19→20) and
   removed the ticket.
+
+## 90. Dynamic User Names on All Passes + Cleaned-Up Profile Dropdown
+
+**Date:** 13 August 2026  
+**Branch:** main
+
+Removed every hardcoded placeholder identity from the student-facing passes
+and slimmed the shared profile popover to exactly the account actions that
+matter.
+
+### 1. Dynamic user names (no more "Rifat Hasan" mocks)
+
+- **Transport** (`templates/transport.html`) — the Passenger Name field now
+  pre-fills `user.get_full_name()` (falls back to `user.username`), and the
+  boarding-pass fallback uses a server-rendered `CURRENT_USER_NAME` constant
+  instead of the hardcoded string.
+- **Medical** (`templates/medical/booking.html` + `core/views.py`) — the
+  Active Medical Pass is no longer a static mock (`#MED-1042` / Rifat Hasan /
+  Dr. Ahmed Khan / Tomorrow / 10:00 AM). It binds the Patient field to the
+  signed-in user and renders the **next upcoming appointment's** real doctor,
+  date, time (`|fmt_slot`) and status; with no appointment it shows a clean
+  empty state.
+- **Meals** (`/meals/`) — already dynamic (§89); verified.
+- **Checkout** (`templates/checkout.html`) — the Student Verification badge
+  now shows the real name, `student_profile.student_id` (fallback `username`)
+  and `user.email` (fallback `username`) — the `"Rifat Hasan"` /
+  `CSE-22014` / `rifat.hasan@niter.edu.bd` placeholders are gone.
+- **Dashboard header** (`dashboard/home.html`) — already dynamic
+  (`get_full_name` → `username` → `Guest`); verified, no change needed.
+
+Every display falls back `get_full_name()` → `username` (→ email where
+relevant) so an empty profile never renders a fake name.
+
+### 2. Profile dropdown cleanup (`templates/partials/topbar.html`)
+
+- Removed the **Notifications** menu item and its JS bell-link handler
+  (the real-time bell stays in the header row).
+- Removed the **Switch Account** item.
+- Authenticated menu now contains **exactly Settings + Sign Out**; guests see
+  Sign Up + Sign In. Settings is authenticated-only now.
+
+### Files
+
+- `templates/partials/topbar.html`
+- `templates/transport.html`
+- `templates/medical/booking.html` + `core/views.py`
+- `templates/checkout.html`
+- `core/tests.py` (updated `ProfilePopoverAuthTest`, new `DynamicUserNameTest`)
+
+### Verification
+
+- Full suite: **754 tests OK** (popover auth states + 5 new dynamic-name
+  tests: transport/medical/checkout render the real name, no `Rifat Hasan`
+  anywhere, fallback to username, latest-appointment pass).
+- Live E2E as a user named "E2E Student" with a confirmed appointment:
+  transport input `value="E2E Student"`, medical pass shows E2E Student /
+  Dr. Farah / dynamic token, checkout shows real name+email, meals shows the
+  name, and the dropdown has Settings + Sign Out only.

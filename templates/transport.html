@@ -81,7 +81,7 @@
 
                 <div class="field">
                     <label for="passenger-name" class="field-label">Passenger Name</label>
-                    <input type="text" id="passenger-name" class="field-input" placeholder="e.g. Rifat Hasan" value="Rifat Hasan">
+                    <input type="text" id="passenger-name" class="field-input" placeholder="Your full name" value="{{ user.get_full_name|default:user.username }}">
                 </div>
 
                 <div class="field">
@@ -155,6 +155,8 @@
         const BOOK_URL = '{% url "book_transport_ticket" %}';
         const LOGIN_URL = '{% url "login" %}';
         const CHECKOUT_URL = '{% url "checkout" %}';
+        // Server-rendered passenger identity — fallback when the name field is blank.
+        const CURRENT_USER_NAME = '{{ user.get_full_name|default:user.username|escapejs }}';
 
         // Live route catalog from the backend (DB rows — routes, schedules,
         // drivers, and current booked-seat counts). Empty until the server
@@ -411,7 +413,7 @@
             const route = currentRoute();
             const seatNo = selectedSeat + 1;
             const seatIndex = selectedSeat;
-            const name = document.getElementById('passenger-name').value.trim() || 'Rifat Hasan';
+            const name = document.getElementById('passenger-name').value.trim() || CURRENT_USER_NAME;
 
             bookBtn.disabled = true;
             const result = await postBooking({

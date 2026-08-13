@@ -198,11 +198,12 @@ class ProfilePopoverAuthTest(TestCase):
         self.assertIn('>rifat<', html)
         self.assertIn('Sign Out', html)
         self.assertIn(reverse('logout'), html)
-        self.assertIn('Switch Account', html)
         self.assertIn('href="' + reverse('settings') + '"', html)
-        self.assertIn('href="' + reverse('signup') + '"', html)
-        # Notifications entry opens the bell dropdown from the profile menu
-        self.assertIn('id="profile-notif-link"', html)
+        # Cleaned-up menu: exactly Settings + Sign Out — no Notifications,
+        # no Switch Account, no stray Sign Up entry.
+        self.assertNotIn('Switch Account', html)
+        self.assertNotIn('profile-notif-link', html)
+        self.assertNotIn('> Sign Up</a>', html)
 
     def test_popover_shows_guest_and_sign_in_when_anonymous(self):
         html = self.client.get(reverse('medical')).content.decode()
@@ -210,11 +211,57 @@ class ProfilePopoverAuthTest(TestCase):
         self.assertIn('Not signed in', html)
         self.assertIn('Sign In', html)
         self.assertIn('> Sign Up</a>', html)
-        self.assertIn('href="' + reverse('settings') + '"', html)
-        self.assertIn('href="' + reverse('signup') + '"', html)
-        # Guests have no bell, so the Notifications entry is not rendered in
-        # the profile menu (only the JS helper references the id).
-        self.assertNotIn('class="profile-notif-link"', html)
+        # Guests keep Sign Up + Sign In only — Settings/Sign Out are
+        # authenticated-only menu items now.
+        self.assertNotIn('Switch Account', html)
+        self.assertNotIn('profile-notif-link', html)
+        self.assertNotIn('href="' + reverse('settings') + '"', html)
+
+
+class DynamicUserNameTest(TestCase):
+    """No hardcoded placeholder names — passes/verification bind to the real user."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='student7', password='x12345678',
+            first_name='Ayesha', last_name='Rahman', email='ayesha@niter.edu.bd',
+        )
+        self.client.login(username='student7', password='x12345678')
+
+    def test_transport_pass_uses_real_user_name(self):
+        html = self.client.get(reverse('transport_dashboard')).content.decode()
+        self.assertIn('value="Ayesha Rahman"', html)
+        self.assertNotIn('Rifat Hasan', html)
+
+    def test_medical_pass_uses_real_user_name(self):
+        html = self.client.get(reverse('medical')).content.decode()
+        self.assertIn('Ayesha Rahman', html)
+        self.assertNotIn('Rifat Hasan', html)
+
+    def test_checkout_verification_uses_real_user(self):
+        html = self.client.get(reverse('checkout')).content.decode()
+        self.assertIn('Ayesha Rahman', html)
+        self.assertIn('ayesha@niter.edu.bd', html)
+        self.assertNotIn('Rifat Hasan', html)
+        self.assertNotIn('rifat.hasan@niter.edu.bd', html)
+
+    def test_medical_pass_shows_latest_upcoming_appointment(self):
+        from core.models import MedicalAppointment
+        MedicalAppointment.objects.create(
+            user=self.user, doctor_name='Dr. Farah',
+            appointment_date=timezone.now().date() + timedelta(days=1),
+            time_slot='11:00 AM', reason='Follow-up', status='confirmed',
+        )
+        html = self.client.get(reverse('medical')).content.decode()
+        self.assertIn('Dr. Farah', html)
+        self.assertNotIn('#MED-1042', html)
+
+    def test_name_falls_back_to_username(self):
+        user = User.objects.create_user(username='bare_user', password='x12345678')
+        self.client.logout()
+        self.client.login(username='bare_user', password='x12345678')
+        html = self.client.get(reverse('transport_dashboard')).content.decode()
+        self.assertIn('value="bare_user"', html)
 
 
 class CheckoutPageTest(TestCase):

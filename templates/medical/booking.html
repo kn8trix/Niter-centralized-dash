@@ -140,27 +140,33 @@
                 <div class="med-pass">
                     <div class="med-pass-strip">
                         <strong><i class="fa-solid fa-stethoscope"></i> Niter Medical Pass</strong>
-                        <span class="pass-token">#MED-1042</span>
+                        <span class="pass-token">{% if latest_appointment %}#MED-{{ latest_appointment.id }}{% else %}—{% endif %}</span>
                     </div>
                     <div class="med-pass-body">
                         <div class="pass-detail">
                             <span class="pass-k">Patient</span>
-                            <span class="pass-v">Rifat Hasan</span>
+                            <span class="pass-v">{{ user.get_full_name|default:user.username }}</span>
                         </div>
                         <div class="pass-detail">
                             <span class="pass-k">Doctor</span>
-                            <span class="pass-v">Dr. Ahmed Khan</span>
+                            <span class="pass-v">{% if latest_appointment %}{{ latest_appointment.doctor_name }}{% else %}—{% endif %}</span>
                         </div>
                         <div class="pass-detail">
                             <span class="pass-k">Date</span>
-                            <span class="pass-v">Tomorrow</span>
+                            <span class="pass-v">{% if latest_appointment %}{{ latest_appointment.appointment_date|date:"D, M j" }}{% else %}—{% endif %}</span>
                         </div>
                         <div class="pass-detail">
                             <span class="pass-k">Time</span>
-                            <span class="pass-v">10:00 AM</span>
+                            <span class="pass-v">{% if latest_appointment %}{{ latest_appointment.time_slot|fmt_slot }}{% else %}—{% endif %}</span>
                         </div>
                     </div>
-                    <span class="status-badge status-confirmed"><i class="fa-solid fa-circle-check"></i> Confirmed</span>
+                    {% if latest_appointment %}
+                    <span class="status-badge {% if latest_appointment.status == 'confirmed' or latest_appointment.status == 'completed' %}status-confirmed{% else %}status-pending{% endif %}">
+                        <i class="fa-{% if latest_appointment.status == 'confirmed' or latest_appointment.status == 'completed' %}solid fa-circle-check{% else %}regular fa-clock{% endif %}"></i> {{ latest_appointment.get_status_display }}
+                    </span>
+                    {% else %}
+                    <span class="status-badge status-pending"><i class="fa-regular fa-clock"></i> No active pass</span>
+                    {% endif %}
                 </div>
             </aside>
 
