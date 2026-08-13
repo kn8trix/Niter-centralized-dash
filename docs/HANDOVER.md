@@ -4,7 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 88 | Google OAuth — 401/Invalid-Credentials hardening + upload session guard | `TBD` |
+| 88 | Google OAuth — 401/Invalid-Credentials hardening + upload session guard | `62ba895` |
 | 87 | Medical Booking — form state binding + AJAX submission fix | `bf1a05e` |
 | 86 | Final Integration Status — Module Matrix, OAuth Refresh & Health Check | `fc74649` |
 | 85 | Android WebView Wrapper (`/mobile-webview`) | `83b1d80`, `fc74649` |
