@@ -13,6 +13,7 @@ touching the repository.
 
 import logging
 import os
+import sys
 from pathlib import Path
 
 import environ
@@ -315,7 +316,21 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20 MB
 # Redis-less deployments keep working. The startup probe is cheap (1.5s
 # timeouts) and a Redis outage after startup degrades to "no live push" rather
 # than an error — see ``core.consumers.notify_user``.
+#
+# Under the test runner the layer is ALWAYS in-memory and the probe is skipped
+# entirely — a reachable-but-flaky local/CI Redis must never leak into the
+# WebSocket/consumer tests (they would fail mid-suite with ``ConnectionError``
+# when Redis drops, e.g. "redis is down").
+def _running_tests():
+    """True while the test suite is executing (``manage.py test`` or the
+    ``TESTING`` environment variable). Drives the in-memory overrides for the
+    channel layer and the Huey queue so tests never depend on a live Redis."""
+    return 'test' in sys.argv or env.bool('TESTING', default=False)
+
+
 def _default_channel_layer():
+    if _running_tests():
+        return {'BACKEND': 'channels.layers.InMemoryChannelLayer'}
     redis_url = env('REDIS_URL', default='')
     if not redis_url:
         return {'BACKEND': 'channels.layers.InMemoryChannelLayer'}
@@ -345,14 +360,15 @@ CHANNEL_LAYERS = {'default': _default_channel_layer()}
 # --- Background tasks (Huey) ------------------------------------------------------
 # Redis-backed task queue sharing the same REDIS_URL as the channel layer.
 # ``immediate`` runs tasks synchronously in-process — automatic while DEBUG is
-# on or no REDIS_URL is set (local dev + tests, no worker process needed). In
-# production (DEBUG off + REDIS_URL set) tasks are dispatched to the Redis
-# queue and executed by the Render worker service (``manage.py run_huey``).
+# on, no REDIS_URL is set, or the test suite is running (no worker process
+# needed). In production (DEBUG off + REDIS_URL set) tasks are dispatched to
+# the Redis queue and executed by the Render worker service
+# (``manage.py run_huey``).
 _redis_url = env('REDIS_URL', default='')
 HUEY = {
     'name': 'niter-centralized-dash',
     'url': _redis_url or 'redis://127.0.0.1:6379/1',
-    'immediate': DEBUG or not _redis_url,
+    'immediate': _running_tests() or DEBUG or not _redis_url,
     'consumer': {
         'workers': 2,
         'worker_type': 'thread',

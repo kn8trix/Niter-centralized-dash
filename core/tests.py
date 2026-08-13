@@ -5802,6 +5802,23 @@ class NotificationPushResilienceTest(TestCase):
         self.assertEqual(sent['event'], {'type': 'notification', 'payload': {'id': 7}})
 
 
+class TestChannelLayerConfig(SimpleTestCase):
+    """The test runner must always use the in-memory channel layer.
+
+    Regression guard for the ``ConnectionError: redis is down`` failures:
+    ``config/settings.py`` forces ``InMemoryChannelLayer`` whenever the test
+    suite is running (``'test' in sys.argv`` or the ``TESTING`` env var).
+    Without that override a reachable-but-flaky ``REDIS_URL`` makes the
+    WebSocket/consumer tests bind to a real Redis and fail mid-suite instead
+    of staying deterministic.
+    """
+
+    def test_channel_layer_is_in_memory_during_tests(self):
+        from django.conf import settings
+        backend = settings.CHANNEL_LAYERS['default']['BACKEND']
+        self.assertEqual(backend, 'channels.layers.InMemoryChannelLayer')
+
+
 # ============================================================================
 # DB-backed transport catalog (routes/schedules/drivers) — section 39
 # ============================================================================

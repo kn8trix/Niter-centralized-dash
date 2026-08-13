@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 99 | Test-suite Redis isolation — in-memory channel layer under the test runner | (working tree) |
 | 98 | Emergency Alert modal — auto-open / unclosable state fix (admin dashboard) | `4a3e9ea` |
 | 97 | Emergency Announcement System — banner + siren + mobile push | `ba82093` |
 | 96 | Teacher Management + QR email dispatch + attendance report emails | `52735a4` |
@@ -446,7 +447,7 @@ Niter-centralized-dash/
 - **TEMPLATES DIRS:** `[BASE_DIR / 'templates']` — context processors include `request`, `auth`, `messages`, and `core.context_processors.endpoints`
 - **DATABASES:** SQLite by default (`sqlite:///db.sqlite3`); set `DATABASE_URL` (e.g. Postgres) for production
 - **AUTH SETTINGS:** `LOGIN_URL='/login/'`, `LOGIN_REDIRECT_URL='/dashboard/'`, `LOGOUT_REDIRECT_URL='/'`
-- **REAL-TIME:** `ASGI_APPLICATION = 'config.asgi.application'`; `CHANNEL_LAYERS` uses **`channels_redis`** when a reachable `REDIS_URL` is configured, otherwise falls back to `InMemoryChannelLayer` (startup ping probe; `notify_user` never raises on a runtime outage)
+- **REAL-TIME:** `ASGI_APPLICATION = 'config.asgi.application'`; `CHANNEL_LAYERS` uses **`channels_redis`** when a reachable `REDIS_URL` is configured, otherwise falls back to `InMemoryChannelLayer` (startup ping probe; `notify_user` never raises on a runtime outage). Under the **test runner the layer is always in-memory** (`_running_tests()` — `'test' in sys.argv` or the `TESTING` env var), so a flaky local/CI Redis can never fail the WebSocket/consumer tests (§99)
 - **GOOGLE OAUTH:** `SITE_ID = 1`; `SOCIALACCOUNT_PROVIDERS['google']` scopes profile/email + Drive (app-data) + Sheets with offline/consent auth params (refresh tokens persisted in `GoogleUserToken`)
 - **STATIC:** `STATICFILES_DIRS = [BASE_DIR / 'static']`, `STATIC_ROOT = staticfiles/`, WhiteNoise `CompressedStaticFilesStorage`; run `collectstatic` for production
 - **SECURITY (DEBUG=False only):** `SECURE_SSL_REDIRECT`, `SECURE_PROXY_SSL_HEADER`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, HSTS (+subdomains/preload), `SECURE_REFERRER_POLICY` — `manage.py check --deploy` is clean
@@ -465,7 +466,7 @@ ALLOWED_HOSTS=niter.edu.bd,www.niter.edu.bd
 
 # Optional
 DATABASE_URL=postgres://user:pass@localhost:5432/niter_db   # unset → SQLite
-REDIS_URL=redis://127.0.0.1:6379/0     # unset/unreachable → in-memory channel layer
+REDIS_URL=redis://127.0.0.1:6379/0     # unset/unreachable → in-memory channel layer (tests always in-memory — §99)
 CSRF_TRUSTED_ORIGINS=https://niter.edu.bd
 SECURE_SSL_REDIRECT=True               # production-only flags (DEBUG=False)
 SESSION_COOKIE_SECURE=True
@@ -5757,3 +5758,46 @@ class of bug as the medical booking `.field-error` fix (§87,
   "Trigger Emergency Alert" opens it; Cancel / ✕ / backdrop / Escape close
   it seamlessly; only **Confirm & Broadcast** fires the POST + success
   toast.
+
+---
+
+## 99. Test-Suite Redis Isolation — In-Memory Channel Layer Under the Test Runner
+
+### Problem
+
+Two tests failed intermittently with `ConnectionError: redis is down`
+(850/852 passed). `config/settings.py` picked the `channels_redis` backend
+whenever a `REDIS_URL` was configured **and** the startup ping probe
+succeeded — so with a local Redis up at boot that later dropped (or became
+flaky), the WebSocket/consumer tests (`NotificationConsumerTest`,
+`EmergencyConsumerTest`, `MedicalChatConsumerTest`, …) bound to a real Redis
+and died mid-suite instead of staying deterministic. The same class of
+failure could hit CI if a Redis ever reached the runner environment.
+
+### Fix (mock Redis in the test environment)
+
+- `config/settings.py`:
+  - New `_running_tests()` helper — true while the test suite executes
+    (`'test' in sys.argv` for `manage.py test`, or the explicit `TESTING`
+    environment variable).
+  - `CHANNEL_LAYERS` is forced to
+    `channels.layers.InMemoryChannelLayer` whenever `_running_tests()` — the
+    Redis probe is skipped entirely under the test runner, so a
+    reachable-but-flaky Redis can never leak into the consumer tests.
+  - `HUEY.immediate` also honors `_running_tests()`, keeping the background
+    task queue synchronous in-process during tests even if the suite is run
+    with `DEBUG=False` and a `REDIS_URL` set.
+- `.github/workflows/ci.yml`: the check and test jobs now set
+  `TESTING: "true"` (double-locking the in-memory guarantee) and the
+  workflow documents that no Redis service is needed.
+- `core/tests.py`: new regression guard
+  `TestChannelLayerConfig.test_channel_layer_is_in_memory_during_tests` —
+  asserts the configured channel layer is in-memory while the suite runs.
+
+### Tests & verification
+
+- `python manage.py check` clean.
+- Full suite passes: **853 tests OK** (was 852 — +1 regression guard).
+- Verified the guard end-to-end: with `REDIS_URL` set and a dead Redis, the
+  settings still resolve to `InMemoryChannelLayer` under the test runner,
+  and the WebSocket/consumer classes pass without touching Redis.

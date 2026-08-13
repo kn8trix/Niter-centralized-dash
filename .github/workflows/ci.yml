@@ -2,8 +2,10 @@ name: CI
 
 # Runs the Django system check + full test suite on every pull request to
 # `main` and on every push to `main` (so the deploy job below never ships a
-# broken commit). Tests run against SQLite with the in-memory channel layer,
-# matching local development.
+# broken commit). Tests run against SQLite. No Redis service is required: the
+# test runner always uses the in-memory channel layer (config/settings.py
+# checks `'test' in sys.argv` / the TESTING flag), so a flaky or absent Redis
+# can never fail the WebSocket/consumer tests.
 on:
   pull_request:
     branches: [main]
@@ -41,9 +43,14 @@ jobs:
         env:
           DEBUG: "true"
           SECRET_KEY: ci-check-key
+          TESTING: "true"
 
       - name: Run test suite
         run: python manage.py test
         env:
           DEBUG: "true"
           SECRET_KEY: ci-test-key
+          # Mirrors config/settings.py's `_running_tests()` guard — keeps the
+          # suite on the in-memory channel layer even if a REDIS_URL sneaks
+          # into the runner environment.
+          TESTING: "true"
