@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 101 | dash-data dashboard JSON embedding — verified present, calendar grid guards green |  |
 | 100 | CI hardening — pytest-proof channel layer + dash-data/Huey regression guards | `0a90ad5` |
 | 99 | Test-suite Redis isolation — in-memory channel layer under the test runner | `0c38e45` |
 | 98 | Emergency Alert modal — auto-open / unclosable state fix (admin dashboard) | `4a3e9ea` |
@@ -5845,3 +5846,29 @@ and pins them with regression guards.
 - Browser e2e unchanged: dashboard calendar + clock render from the embedded
   JSON; emergency/notification flows still push over the in-memory layer
   during tests.
+
+---
+
+## 101. dash-data Dashboard JSON Embedding — Verified on main
+
+**Date:** 14 August 2026  
+**Branch:** main
+
+Verification pass for the two `DashboardCalendarGridTest` failures reported
+against `core/tests.py` (`test_clock_label_renders_from_dict`,
+`test_embedded_calendar_json_parses_and_has_grid_metadata`):
+`_dash_script()` asserted the rendered dashboard HTML was missing the
+`id="dash-data"` script tag.
+
+### Finding
+
+- The `dash-data` script tag is **present** in `templates/dashboard/home.html`,
+  rendered from the view's `dash_data` dict via Django's
+  `{% json_script 'dash-data' %}` filter (the §91 fix) — no `{{ |safe }}` or
+  pre-serialized-string regression.
+- Both regression guards pass locally and the full suite is green under the
+  exact CI invocation (`TESTING=true python manage.py test`): **854 tests OK**.
+- **No code change was required** — the pasted CI failure log predates the
+  §91 (`json_script` embedding) / §100 (guard strengthening) fixes already
+  on `main`; this entry records the re-verification so a future CI failure
+  on `DashboardCalendarGridTest` is not mistaken for a regression.
