@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 100 | CI hardening — pytest-proof channel layer + dash-data/Huey regression guards | (working tree) |
 | 99 | Test-suite Redis isolation — in-memory channel layer under the test runner | `0c38e45` |
 | 98 | Emergency Alert modal — auto-open / unclosable state fix (admin dashboard) | `4a3e9ea` |
 | 97 | Emergency Announcement System — banner + siren + mobile push | `ba82093` |
@@ -5801,3 +5802,46 @@ failure could hit CI if a Redis ever reached the runner environment.
 - Verified the guard end-to-end: with `REDIS_URL` set and a dead Redis, the
   settings still resolve to `InMemoryChannelLayer` under the test runner,
   and the WebSocket/consumer classes pass without touching Redis.
+
+---
+
+## 100. CI Hardening — Pytest-Proof Channel Layer + dash-data / Huey Regression Guards
+
+Follow-up hardening pass for the two GitHub-Actions failure classes reported
+against `core/tests.py` (`DashboardCalendarGridTest` and channel-layer Redis
+errors). Both were already fixed on `main` (§91 shipped the `dash-data`
+`|json_script` embedding, §99 forced the in-memory channel layer under the
+test runner); this pass makes the guarantees airtight for **any** test runner
+and pins them with regression guards.
+
+### 1. `_running_tests()` now detects pytest too (`config/settings.py`)
+
+- The helper previously returned true for `manage.py test` (`'test' in
+  sys.argv`) or the explicit `TESTING` env var. It now also checks
+  `PYTEST_CURRENT_TEST` (set by pytest for the duration of a run), so the
+  in-memory channel layer + Huey `immediate` overrides hold even if the suite
+  is ever invoked through pytest or another runner that doesn't put `test`
+  in `sys.argv` — a reachable-but-flaky Redis can never leak into consumer
+  tests again.
+
+### 2. Stronger regression guards (`core/tests.py`)
+
+- `DashboardCalendarGridTest.test_embedded_calendar_json_parses_and_has_grid_metadata`
+  now also asserts the `dash-data` script tag renders with
+  `type="application/json"` and that its body contains no `</script>` or
+  `&quot;` — pinning the `|json_script` rendering so a regression to
+  `{{ dash_data }}` or `|safe` is caught immediately (`JSON.parse` would
+  fail and the calendar grid would go blank).
+- `TestChannelLayerConfig` gains
+  `test_huey_queue_is_immediate_during_tests` — asserts `HUEY['immediate']`
+  is `True` under the test runner, so background tasks (note analysis,
+  emergency alert fan-out) never dispatch to a Redis queue that may be
+  absent or flaky.
+
+### Tests & verification
+
+- `python manage.py check` clean.
+- Full suite passes: **854 tests OK** (was 853 — +1 regression guard).
+- Browser e2e unchanged: dashboard calendar + clock render from the embedded
+  JSON; emergency/notification flows still push over the in-memory layer
+  during tests.

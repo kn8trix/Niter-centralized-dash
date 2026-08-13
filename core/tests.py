@@ -5818,6 +5818,13 @@ class TestChannelLayerConfig(SimpleTestCase):
         backend = settings.CHANNEL_LAYERS['default']['BACKEND']
         self.assertEqual(backend, 'channels.layers.InMemoryChannelLayer')
 
+    def test_huey_queue_is_immediate_during_tests(self):
+        """The Huey task queue must run synchronously in-process under the test
+        runner (``immediate=True``), so background tasks (note analysis, alert
+        fan-out) never dispatch to a Redis queue that may be absent or flaky."""
+        from django.conf import settings
+        self.assertIs(settings.HUEY['immediate'], True)
+
 
 # ============================================================================
 # DB-backed transport catalog (routes/schedules/drivers) — section 39
@@ -8602,12 +8609,18 @@ class DashboardCalendarGridTest(TestCase):
         html = self.client.get(reverse('student_dashboard'), HTTP_HOST='localhost').content.decode()
         match = re.search(r'<script id="dash-data"[^>]*>(.*?)</script>', html, re.S)
         self.assertIsNotNone(match, 'dash-data script tag missing')
-        return match.group(1), html
+        return match.group(1), match.group(0), html
 
     def test_embedded_calendar_json_parses_and_has_grid_metadata(self):
         import json as _json
-        raw, html = self._dash_script()
+        raw, tag, html = self._dash_script()
+        # Rendered via |json_script: Django's safe JSON embedding — the script
+        # tag carries type="application/json" and the body is never HTML-
+        # escaped (no &quot;), so JSON.parse() succeeds. A regression to
+        # {{ dash_data }} or |safe would break one of these two assertions.
+        self.assertIn('type="application/json"', tag)
         self.assertNotIn('&quot;', raw)
+        self.assertNotIn('</script>', raw)
         data = _json.loads(raw)  # raises if corrupt
         cal = data['calendar']
         self.assertIn('days_in_month', cal)
@@ -8623,7 +8636,7 @@ class DashboardCalendarGridTest(TestCase):
         self.assertIn('/api/calendar/events/', html)
 
     def test_clock_label_renders_from_dict(self):
-        _, html = self._dash_script()
+        _, _, html = self._dash_script()
         self.assertIn('id="clock-date"', html)
 
 

@@ -322,10 +322,16 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20 MB
 # WebSocket/consumer tests (they would fail mid-suite with ``ConnectionError``
 # when Redis drops, e.g. "redis is down").
 def _running_tests():
-    """True while the test suite is executing (``manage.py test`` or the
-    ``TESTING`` environment variable). Drives the in-memory overrides for the
-    channel layer and the Huey queue so tests never depend on a live Redis."""
-    return 'test' in sys.argv or env.bool('TESTING', default=False)
+    """True while the test suite is executing — ``manage.py test`` (``'test'``
+    in argv), the explicit ``TESTING`` environment variable, or a pytest run
+    (pytest sets ``PYTEST_CURRENT_TEST`` for the duration of a run). Drives
+    the in-memory overrides for the channel layer and the Huey queue so tests
+    never depend on a live Redis, whichever runner invoked them."""
+    return (
+        'test' in sys.argv
+        or env.bool('TESTING', default=False)
+        or 'PYTEST_CURRENT_TEST' in os.environ
+    )
 
 
 def _default_channel_layer():
