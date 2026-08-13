@@ -4,7 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 89 | Meal Ticket System — monthly subscription + QR passes + 9 PM cancel rule | `TBD` |
+| 89 | Meal Ticket System — monthly subscription + QR passes + 9 PM cancel rule | `a73e4a5` |
 | 88 | Google OAuth — 401/Invalid-Credentials hardening + upload session guard | `62ba895` |
 | 87 | Medical Booking — form state binding + AJAX submission fix | `bf1a05e` |
 | 86 | Final Integration Status — Module Matrix, OAuth Refresh & Health Check | `fc74649` |
