@@ -4,7 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 99 | Test-suite Redis isolation — in-memory channel layer under the test runner | (working tree) |
+| 99 | Test-suite Redis isolation — in-memory channel layer under the test runner | `0c38e45` |
 | 98 | Emergency Alert modal — auto-open / unclosable state fix (admin dashboard) | `4a3e9ea` |
 | 97 | Emergency Announcement System — banner + siren + mobile push | `ba82093` |
 | 96 | Teacher Management + QR email dispatch + attendance report emails | `52735a4` |
