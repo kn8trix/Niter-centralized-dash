@@ -1,4 +1,4 @@
-{% load static %}
+{% load static builder_tags %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -102,33 +102,34 @@
                 <p class="section-subtitle">Your scheduled visits and their status.</p>
 
                 <div class="appt-list" id="appt-list">
+                    {% for appointment in my_appointments %}
                     <div class="appt-item">
                         <div class="appt-head">
                             <div>
-                                <strong>Dr. Ahmed Khan</strong>
-                                <span class="appt-spec">General Physician</span>
+                                <strong>{{ appointment.doctor_name }}</strong>
+                                {% if appointment.reason %}
+                                <span class="appt-spec">{{ appointment.reason|truncatechars:44 }}</span>
+                                {% endif %}
                             </div>
-                            <span class="status-badge status-confirmed"><i class="fa-solid fa-circle-check"></i> Confirmed</span>
+                            <span class="status-badge {% if appointment.status == 'confirmed' or appointment.status == 'completed' %}status-confirmed{% else %}status-pending{% endif %}">
+                                <i class="fa-{% if appointment.status == 'confirmed' or appointment.status == 'completed' %}solid fa-circle-check{% else %}regular fa-clock{% endif %}"></i> {{ appointment.get_status_display }}
+                            </span>
                         </div>
                         <div class="appt-meta">
-                            <span><i class="fa-regular fa-calendar"></i> Tomorrow</span>
-                            <span><i class="fa-regular fa-clock"></i> 10:00 AM</span>
+                            <span><i class="fa-regular fa-calendar"></i> {{ appointment.appointment_date|date:"D, M j" }}</span>
+                            <span><i class="fa-regular fa-clock"></i> {{ appointment.time_slot|fmt_slot }}</span>
                         </div>
                     </div>
-
+                    {% empty %}
                     <div class="appt-item">
                         <div class="appt-head">
                             <div>
-                                <strong>Dr. Sarah Smith</strong>
-                                <span class="appt-spec">Pediatrician</span>
+                                <strong>No appointments yet</strong>
+                                <span class="appt-spec">Your booked visits will appear here instantly.</span>
                             </div>
-                            <span class="status-badge status-pending"><i class="fa-regular fa-clock"></i> Pending</span>
-                        </div>
-                        <div class="appt-meta">
-                            <span><i class="fa-regular fa-calendar"></i> Friday, Dec 20</span>
-                            <span><i class="fa-regular fa-clock"></i> 02:30 PM</span>
                         </div>
                     </div>
+                    {% endfor %}
                 </div>
 
                 <div class="pass-heading">
@@ -333,16 +334,38 @@
 
         // Clear a field error as soon as the visitor fixes that field.
         if (form) {
-            ['doctor_name', 'appointment_date', 'time_slot'].forEach((name) => {
+            // A radio group is exposed by form.elements as a RadioNodeList,
+            // which has no addEventListener — binding on it throws a TypeError
+            // that used to kill the whole booking script (including the
+            // submit handler below, so the form fell back to a native POST
+            // reload). Resolve every named control to a plain array of
+            // inputs and bind each one individually.
+            const formControls = (name) => {
+                if (name === 'time_slot') {
+                    return Array.from(form.querySelectorAll('input[name="time_slot"]'));
+                }
                 const el = form.elements[name];
-                if (!el) return;
-                const onFix = () => {
-                    if (name === 'doctor_name') setFieldError(errDoctor, false);
-                    if (name === 'appointment_date') setFieldError(errDate, false);
-                    if (name === 'time_slot') setFieldError(errSlot, false);
-                };
-                el.addEventListener('change', onFix);
-                el.addEventListener('input', onFix);
+                return el ? [el] : [];
+            };
+
+            const allRequiredValid = () =>
+                Boolean(form.elements.doctor_name && form.elements.doctor_name.value) &&
+                Boolean(form.elements.appointment_date && form.elements.appointment_date.value) &&
+                Boolean(form.elements.time_slot && form.elements.time_slot.value);
+
+            ['doctor_name', 'appointment_date', 'time_slot'].forEach((name) => {
+                formControls(name).forEach((el) => {
+                    const onFix = () => {
+                        if (name === 'doctor_name') setFieldError(errDoctor, false);
+                        if (name === 'appointment_date') setFieldError(errDate, false);
+                        if (name === 'time_slot') setFieldError(errSlot, false);
+                        // The generic alert ("choose a doctor, date and slot")
+                        // disappears once every required field is filled in.
+                        if (allRequiredValid()) hideAlert();
+                    };
+                    el.addEventListener('change', onFix);
+                    el.addEventListener('input', onFix);
+                });
             });
         }
 
@@ -382,15 +405,28 @@
                     }
                     const body = await resp.json();
 
-                    if (resp.ok) {
-                        appendAppointment(body.data || body);
+                    if (resp.ok && body && body.success === true) {
+                        const appt = body.data || body;
+                        appendAppointment(appt);
                         form.reset();
                         if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
-                        showAlert('Appointment booked — pending confirmation.', 'success');
-                        if (window.showToast) window.showToast('Appointment booked — pending confirmation.', 'success');
+                        hideAlert();
+                        showAlert('Appointment booked successfully!', 'success');
+                        if (window.showToast) window.showToast('Appointment booked successfully!', 'success');
+                        // Make the new appointment immediately available for
+                        // starting a consultation (server-rendered options only
+                        // refresh on a page load).
+                        const consultSelect = document.getElementById('consult-appointment');
+                        if (consultSelect) {
+                            const opt = document.createElement('option');
+                            opt.value = appt.appointment_id || '';
+                            opt.textContent = appt.doctor_name + ' · ' + appt.appointment_date + ' · ' + appt.time_slot;
+                            consultSelect.appendChild(opt);
+                        }
                     } else if (resp.status === 409) {
-                        showAlert('That time slot is already booked for this doctor. Please pick another slot.', 'error');
-                        if (window.showToast) window.showToast('That slot is already booked — please pick another.', 'error');
+                        const msg = (body && body.message) || 'That time slot is already booked for this doctor. Please pick another slot.';
+                        showAlert(msg, 'error');
+                        if (window.showToast) window.showToast(msg, 'error');
                     } else {
                         const msg = (body && body.message) || 'Could not book the appointment. Please try again.';
                         showAlert(msg, 'error');

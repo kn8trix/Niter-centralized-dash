@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 87 | Medical Booking — form state binding + AJAX submission fix | `TBD` |
 | 86 | Final Integration Status — Module Matrix, OAuth Refresh & Health Check | `fc74649` |
 | 85 | Android WebView Wrapper (`/mobile-webview`) | `83b1d80`, `fc74649` |
 | 84 | System Audit + Reports Module Upgrade (severity / attachments / envelope) | `b5fdb0e` |
@@ -99,9 +100,13 @@ Appointment scheduling interface with:
     - Reason for Visit textarea.
     - "Confirm Appointment" submit button.
 - **Upcoming Appointments Card:**
-    - Sticky sidebar showing scheduled appointments.
-    - Status badges (Confirmed/Pending) with color coding.
-    - Appointment details (Doctor, Date, Time).
+    - Sticky sidebar showing the signed-in student's **live** appointment rows
+      (no mock markup) with status badges (Confirmed/Pending), date and time.
+    - Booking is **AJAX**: the form submits via `fetch()` to
+      `/book-appointment/` (`data.success === true` → success toast, the new
+      appointment is prepended to the list, the form resets — no page
+      reload). Field errors clear as soon as the visitor picks a doctor / date
+      / slot. Full details in §87.
 
 ### 4.4 Academic Notes (`templates/academic/notes.html`)
 Academic materials and course management:
@@ -4648,7 +4653,7 @@ so nobody re-builds them:
 | RBAC role dispatch + login redirect | ✅ exists | `core/roles.py`, `core/middleware.py`, §77 |
 | Distinct Admin / Student / Club layouts | ✅ exists | `admin/admin_base.html`, `base.html`, `club/club_base.html`; `/dashboard/club` is club-only (`club_access_required`) |
 | Admin area: Users, Reports, Database Stats, Calendar Manager, Builder/CMS, Club Accounts | ✅ exists | `/dashboard/admin/*` (§77) |
-| Medical booking (doctor/date/time-slot state, validation, toasts) | ✅ wired | `templates/medical/booking.html` — reported bug was from stale deployed code |
+| Medical booking (doctor/date/time-slot state, validation, toasts) | ✅ wired | `templates/medical/booking.html` — §87 fixed the real bugs: `RadioNodeList` TypeError killed the booking script (native POST fallback) + `.field-error { display:flex }` overriding `hidden` |
 | Google Drive/Sheets auto-refresh on Notes | ✅ fixed | §83 (previous commit) |
 
 ### Reports module upgrade (the real gap — built now)
@@ -4803,7 +4808,7 @@ Android wrapper.
 |---|---|---|
 | **Admin** | `/dashboard/admin/*` (distinct `admin/admin_base.html` layout, not the student shell) | ✅ Users, Reports & Feedback, Database Stats, Academic Calendar Manager, Website Builder/CMS, Club Account Management — all present |
 | **Student** | `/dashboard/*` (distinct student layout) | ✅ Home (academic calendar w/ red-orange-blue-green event dots), Reports w/ severity + attachments, Notes Engine (Google Drive), Meals, Transport, Medical booking, Notices, Tickets, Profile |
-| **Medical** | `/medical/booking`, `/dashboard/student/medical`, host/admin dashboards | ✅ Booking form posts `doctor` / `appointment_date` / `time_slot` (server-validated), pre-submit JS validation + toasts; host portal lists today's appointments |
+| **Medical** | `/medical/booking`, `/dashboard/student/medical`, host/admin dashboards | ✅ AJAX submit (`fetch` → `/book-appointment/`, no reload) gated on `data.success === true`; field errors clear on selection; live upcoming-appointments list (§87); host portal lists today's appointments |
 | **Club Executive** | `/dashboard/club` (distinct `club/club_base.html` layout) | ✅ Isolated behind `club_access_required` (staff OR active club account); Google Sheets verify/append, member approvals, role assignments, event posts, payment verification |
 
 RBAC: `RoleAccessMiddleware` (core/middleware.py) dispatches each user to their
@@ -4851,4 +4856,74 @@ sync → **Build → Generate Signed Bundle / APK… → APK** (create a keystor
 - `mobile-webview/app/src/main/AndroidManifest.xml` (networkSecurityConfig wired)
 - `mobile-webview/README.md` (network config + security notes updated)
 - `.gitignore` (`daphne.log` added)
+- `docs/HANDOVER.md` (this section)
+
+## 87. Medical Booking — Form State Binding + AJAX Submission Fix
+
+**Date:** 13 August 2026  
+**Branch:** main
+
+Hardened the `/medical/` appointment booking form
+(`templates/medical/booking.html`) against two real bugs that matched the
+"validation warnings don't clear / form redirects instead of AJAX" symptoms:
+
+### Root causes fixed
+
+1. **`.field-error` never hid** (`static/css/medical.css`) — the class set
+   `display: flex`, which overrode the UA's `[hidden] { display: none }`, so
+   "Please choose a doctor." / "Please pick a date." / "Please pick a time
+   slot." were permanently visible and the JS `hidden` toggling was a no-op.
+   Added `.field-error[hidden] { display: none; }`.
+
+2. **Booking script died at page load** (`templates/medical/booking.html`) —
+   `form.elements['time_slot']` returns a `RadioNodeList`, which has no
+   `addEventListener`. The `TypeError` aborted the whole inline script, so the
+   `submit` handler (with `e.preventDefault()` + `fetch`) was never attached
+   and the form fell back to a native HTML POST (full page reload). The fix
+   resolves every named control to a plain array (`querySelectorAll` for the
+   radio group) and binds `change`/`input` on each input — field errors clear
+   the moment the visitor picks a doctor / date / slot, and the generic alert
+   disappears once all required fields are valid.
+
+### AJAX submission (no page reload)
+
+- The submit handler now `preventDefault()`s and posts the form payload to
+  `/book-appointment/` with `fetch()` (CSRF header from the `csrftoken`
+  cookie, `credentials: 'same-origin'`).
+- Success is gated on `data.success === true` (the backend returns
+  `{status: 'success', success: true, data: {...}}`): shows the
+  "Appointment booked successfully!" toast + inline alert, prepends the new
+  appointment (Pending badge) to the Upcoming Appointments list, resets the
+  form + selection state, and adds the new appointment to the My
+  Consultations starter dropdown — all without leaving `/medical/`.
+- 409 slot-conflict and other error payloads surface the backend message via
+  alert + toast.
+
+### Real upcoming appointments list
+
+- The side panel previously showed hardcoded mock rows; it now renders the
+  signed-in student's live `MedicalAppointment` rows (doctor, reason, status
+  badge, `|date:"D, M j"` + the new `|fmt_slot` filter for 12-hour display)
+  with an empty state.
+- `fmt_slot` lives in `core/templatetags/builder_tags.py`: 24h `HH:MM` →
+  `HH:MM AM/PM`, already-formatted values pass through unchanged.
+
+### Verification
+
+- `venv/bin/python manage.py check` — no issues.
+- Full suite: **724 tests OK**. New `MedicalBookingFormTest` coverage:
+  `book_appointment` endpoint (success / login-required / missing fields / 409
+  double-booking), the medical page rendering live appointments + empty state,
+  a `.field-error[hidden]` CSS regression guard, and the radio-group bind fix.
+- Live E2E against `runserver`: login → `/medical/` (all three field errors
+  ship `hidden`, radio bind fix present) → `POST /book-appointment/` returns
+  `success: true` → reload shows the appointment in the side panel and the
+  empty state gone.
+
+### Files
+
+- `templates/medical/booking.html`
+- `static/css/medical.css`
+- `core/templatetags/builder_tags.py` (`fmt_slot` filter)
+- `core/tests.py` (`MedicalBookingFormTest`)
 - `docs/HANDOVER.md` (this section)

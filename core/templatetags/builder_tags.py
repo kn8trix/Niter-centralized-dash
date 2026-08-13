@@ -126,6 +126,29 @@ _SAFE_URL_SCHEMES = frozenset({'http', 'https', 'mailto', 'tel', 'ftp'})
 
 
 @register.filter
+def fmt_slot(value):
+    """Render a 24-hour 'HH:MM' time slot as 'HH:MM AM/PM' (e.g. '14:00' ->
+    '02:00 PM').
+
+    Used by the medical booking page to display ``MedicalAppointment`` slots
+    the same way the booking form's slot chips and the client-side prepend
+    do. Already-formatted values pass through unchanged and unparseable input
+    falls back to the raw value.
+    """
+    value = (value or '').strip()
+    m = re.match(r'^(\d{1,2}):(\d{2})$', value)
+    if not m:
+        return value
+    hour = int(m.group(1))
+    minute = int(m.group(2))
+    if hour > 23 or minute > 59:
+        # Not a real clock time (e.g. '24:00') — leave the raw value alone.
+        return value
+    suffix = 'PM' if hour >= 12 else 'AM'
+    return '%02d:%02d %s' % (hour % 12 or 12, minute, suffix)
+
+
+@register.filter
 def safe_url(value):
     """Return a link-safe URL: allowed schemes and relative/# paths pass
     through; anything else (e.g. ``javascript:``) is replaced with ``#``."""

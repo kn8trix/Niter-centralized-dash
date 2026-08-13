@@ -547,6 +547,13 @@ body.medical a {
     align-items: center;
     gap: 6px;
 }
+/* ``display: flex`` above would override the UA ``[hidden] { display: none }``
+   rule, so the "Please choose a doctor" / "Please pick a date" / "Please
+   pick a time slot" warnings were permanently visible and the JS ``hidden``
+   toggling had no effect. Re-assert the hidden state at equal specificity. */
+.field-error[hidden] {
+    display: none;
+}
 .field-error::before {
     content: '\f06a';
     font-family: 'Font Awesome 6 Free';

@@ -702,6 +702,100 @@ class MedicalBookingFormTest(TestCase):
         self.assertContains(response, 'name="doctor_name"')
         self.assertContains(response, 'err-doctor')
 
+    # ------------------------------------------------------------------
+    # book_appointment — POST /book-appointment/ (AJAX booking backend)
+    # ------------------------------------------------------------------
+    def test_book_appointment_creates_row_and_returns_success(self):
+        doctor = Doctor.objects.create(name='Dr. Test Doc', specialty='General Physician')
+        response = self.client.post(reverse('book_appointment'), {
+            'doctor_name': doctor.name,
+            'appointment_date': '2026-09-01',
+            'time_slot': '10:00',
+            'reason': 'Fever',
+        })
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body['success'])
+        self.assertEqual(body['data']['doctor_name'], doctor.name)
+        self.assertEqual(body['data']['appointment_date'], '2026-09-01')
+        self.assertEqual(body['data']['time_slot'], '10:00')
+        self.assertTrue(MedicalAppointment.objects.filter(
+            user=self.user, doctor_name=doctor.name,
+            appointment_date=date(2026, 9, 1), time_slot='10:00',
+        ).exists())
+        # The student is notified in real time
+        self.assertTrue(Notification.objects.filter(
+            user=self.user, category='medical',
+        ).exists())
+
+    def test_book_appointment_requires_login(self):
+        self.client.logout()
+        response = self.client.post(reverse('book_appointment'), {
+            'doctor_name': 'Dr. Test Doc',
+            'appointment_date': '2026-09-01',
+            'time_slot': '10:00',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_book_appointment_rejects_missing_fields(self):
+        response = self.client.post(reverse('book_appointment'), {
+            'doctor_name': 'Dr. Test Doc',
+            'appointment_date': '2026-09-01',
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()['success'])
+
+    def test_book_appointment_conflict_returns_409(self):
+        doctor = Doctor.objects.create(name='Dr. Test Doc')
+        payload = {
+            'doctor_name': doctor.name,
+            'appointment_date': '2026-09-01',
+            'time_slot': '10:00',
+        }
+        self.assertEqual(self.client.post(reverse('book_appointment'), payload).status_code, 200)
+        # Double-booking the same doctor slot is rejected atomically (409)
+        response = self.client.post(reverse('book_appointment'), payload)
+        self.assertEqual(response.status_code, 409)
+
+    # ------------------------------------------------------------------
+    # Upcoming Appointments side panel — real rows, not mock markup
+    # ------------------------------------------------------------------
+    def test_medical_page_renders_real_upcoming_appointments(self):
+        Doctor.objects.create(name='Dr. Test Doc', specialty='General Physician')
+        MedicalAppointment.objects.create(
+            user=self.user, doctor_name='Dr. Test Doc',
+            appointment_date=date(2026, 9, 1), time_slot='10:00', reason='Fever',
+        )
+        response = self.client.get(reverse('medical'))
+        self.assertContains(response, 'Fever')  # reason only renders in the side list
+        self.assertContains(response, 'Tue, Sep 1')  # date via |date:"D, M j"
+        self.assertContains(response, '10:00 AM')  # time via |fmt_slot
+        self.assertNotContains(response, 'No appointments yet')
+
+    def test_medical_page_shows_empty_state_without_appointments(self):
+        response = self.client.get(reverse('medical'))
+        self.assertContains(response, 'No appointments yet')
+
+    # ------------------------------------------------------------------
+    # Regression guards for the booking form state-binding bugs
+    # ------------------------------------------------------------------
+    def test_validation_error_css_respects_hidden_attribute(self):
+        # .field-error used display:flex, which overrode the UA's
+        # [hidden] { display:none } — the "Please choose a doctor" etc.
+        # warnings were permanently visible and JS hidden toggling was a no-op.
+        from django.conf import settings
+        css = (settings.BASE_DIR / 'static' / 'css' / 'medical.css').read_text()
+        self.assertIn('.field-error[hidden]', css)
+
+    def test_time_slot_error_listeners_bind_each_radio(self):
+        # form.elements['time_slot'] is a RadioNodeList with no
+        # addEventListener — the TypeError used to kill the whole booking
+        # script (native form POST). The fix binds each radio input instead.
+        html = self.client.get(reverse('medical')).content.decode()
+        self.assertIn('input[name="time_slot"]', html)
+        self.assertIn('Array.from(form.querySelectorAll', html)
+
 
 class ClubAccountApiTest(TestCase):
     """Club Account Management APIs — create, assign, reset, toggle, perms."""
