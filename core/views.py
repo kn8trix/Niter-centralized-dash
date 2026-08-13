@@ -1,9 +1,12 @@
 import calendar
 import colorsys
+import hashlib
+import hmac
 import json
 import os
 import re
 import secrets
+import time as _time_module
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
@@ -1873,22 +1876,102 @@ class RoleAwareLoginView(auth_views.LoginView):
         return role_home_path(get_user_role(self.request.user))
 
 
+# --- Two-step signup email verification --------------------------------------
+# Step 1 (signup_view) validates the form but does NOT create the account;
+# it emails a 6-digit code and stashes the pending payload (plus a salted hash
+# of the code, an expiry, and an attempt counter) in the session. Step 2
+# (verify_email_view) checks the code and only then creates the User +
+# StudentProfile and signs the student in.
+
+VERIFY_CODE_TTL_SECONDS = 10 * 60          # 10-minute expiry
+VERIFY_CODE_MAX_ATTEMPTS = 5
+VERIFY_CODE_LENGTH = 6
+
+
+def _generate_verify_code():
+    """Return a fresh ``VERIFY_CODE_LENGTH``-digit numeric code."""
+    return '%0*d' % (VERIFY_CODE_LENGTH, secrets.randbelow(10 ** VERIFY_CODE_LENGTH))
+
+
+def _verify_code_hash(code, email):
+    """Salted hash of the code so the raw value never touches the session."""
+    payload = '%s|%s|%s' % (code, email, settings.SECRET_KEY)
+    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+
+def _send_verify_code_email(email, code):
+    """Email the 6-digit verification code to a pending signup address."""
+    from django.core.mail import send_mail
+    send_mail(
+        subject='Niter Hub — verify your email',
+        message=(
+            'Your Niter Hub signup verification code is %s.\n\n'
+            'Enter it on the verification screen to finish creating your '
+            'account. The code expires in 10 minutes.\n\n'
+            "If you didn't start a signup, you can ignore this email."
+        ) % code,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[email],
+        fail_silently=False,
+    )
+
+
+def _pending_signup(request):
+    """The session-stashed pending signup payload (or None)."""
+    pending = request.session.get('pending_signup')
+    if not pending or not isinstance(pending, dict):
+        return None
+    return pending
+
+
 def signup_view(request):
-    """Self-registration — ``SignUpForm`` validates the fields (duplicate
-    Student ID / email, password confirmation), creates the User + StudentProfile
-    with a securely hashed password, and signs the student in. Departments come
-    from the StudentProfile choices so the dropdown and stored value can never
-    drift apart.
+    """Self-registration — step 1 of the two-step verification flow.
+
+    ``SignUpForm`` validates the fields (duplicate Student ID / email, password
+    confirmation). On success the account is NOT created yet: a 6-digit code is
+    emailed to the address and the validated payload is stashed in the session;
+    the student is redirected to ``verify_email`` to enter the code. Only a
+    successful verification (``verify_email_view``) persists the User +
+    StudentProfile.
     """
     if request.user.is_authenticated:
         return redirect(role_home_path(get_user_role(request.user)))
 
+    # A pending-but-unverified signup exists: jump straight to step 2 instead
+    # of asking the student to re-enter the whole form.
+    if _pending_signup(request):
+        return redirect('verify_email')
+
     if request.method == 'POST':
         form = SignUpForm(request.POST)
         if form.is_valid():
-            user = form.save()
-            auth_login(request, user)
-            return redirect(role_home_path(get_user_role(user)))
+            code = _generate_verify_code()
+            data = dict(form.cleaned_data)
+            request.session['pending_signup'] = {
+                'data': data,
+                'code_hash': _verify_code_hash(code, data['email']),
+                'expires_at': _time_module.time() + VERIFY_CODE_TTL_SECONDS,
+                'attempts': 0,
+            }
+            request.session.modified = True
+            try:
+                _send_verify_code_email(data['email'], code)
+            except Exception:  # noqa: BLE001 — SMTP/auth/network failures
+                # Never leave a dangling pending signup the student can't
+                # complete because mail is down.
+                request.session.pop('pending_signup', None)
+                request.session.modified = True
+                logger.exception('Verification email failed for %s', data['email'])
+                errors = [
+                    'We could not send the verification email right now. '
+                    'Please try again in a moment.',
+                ]
+                return render(request, 'signup.html', {
+                    'errors': errors,
+                    'departments': StudentProfile.DEPARTMENT_CHOICES,
+                    'form_data': request.POST,
+                })
+            return redirect('verify_email')
     else:
         form = SignUpForm()
 
@@ -1902,6 +1985,142 @@ def signup_view(request):
         'departments': StudentProfile.DEPARTMENT_CHOICES,
         'form_data': request.POST if request.method == 'POST' else None,
     })
+
+
+def verify_email_view(request):
+    """Two-step signup — step 2: confirm the emailed code and create the account.
+
+    GET renders the code-entry screen (masking the pending address). POST
+    compares the submitted code against the session's salted hash; on success
+    the pending payload from step 1 is re-validated for duplicate Student
+    ID / email (a second tab could have raced ahead), then the User +
+    StudentProfile are created, the student is signed in, and the pending
+    payload is cleared. Wrong codes increment the attempt counter (max 5,
+    then the pending signup is discarded and the student restarts). Expired
+    pending signups are cleared and sent back to the signup form.
+    """
+    if request.user.is_authenticated:
+        return redirect(role_home_path(get_user_role(request.user)))
+
+    pending = _pending_signup(request)
+    if pending is None:
+        return redirect('signup')
+
+    email = pending['data'].get('email', '')
+    errors = []
+
+    if request.method == 'POST':
+        action = request.POST.get('action', '').strip()
+
+        # Start over: discard the pending signup so a mistyped email (or a
+        # different address) can be fixed without waiting for expiry.
+        if action == 'restart':
+            request.session.pop('pending_signup', None)
+            request.session.modified = True
+            return redirect('signup')
+
+        # Resend: issue a fresh code to the same address and re-email it.
+        # The attempt counter is deliberately NOT reset — otherwise an attacker
+        # with the session cookie could interleave resends with wrong guesses
+        # and bypass the 5-attempt brute-force lockout. The new hash/expiry is
+        # only committed after the send succeeds, so a delivery failure never
+        # invalidates the previously delivered code.
+        if action == 'resend':
+            code = _generate_verify_code()
+            try:
+                _send_verify_code_email(email, code)
+            except Exception:  # noqa: BLE001
+                logger.exception('Verification email resend failed for %s', email)
+                errors = ['We could not resend the code. Please try again in a moment.']
+            else:
+                pending['code_hash'] = _verify_code_hash(code, email)
+                pending['expires_at'] = _time_module.time() + VERIFY_CODE_TTL_SECONDS
+                request.session['pending_signup'] = pending
+                request.session.modified = True
+                errors = []
+                messages.success(request, 'A new verification code was sent to your email.')
+            return render(request, 'verify_email.html', {
+                'errors': errors,
+                'email': _mask_email(email),
+                'expires_minutes': VERIFY_CODE_TTL_SECONDS // 60,
+            })
+
+        submitted = (request.POST.get('code') or '').strip()
+        if not submitted:
+            errors = ['Please enter the 6-digit code from your email.']
+        elif pending.get('expires_at', 0) < _time_module.time():
+            request.session.pop('pending_signup', None)
+            request.session.modified = True
+            return render(request, 'verify_email.html', {
+                'errors': ['This code has expired. Please sign up again to receive a new one.'],
+                'email': _mask_email(email),
+                'expired': True,
+            })
+        else:
+            attempts = int(pending.get('attempts', 0))
+            if attempts >= VERIFY_CODE_MAX_ATTEMPTS:
+                request.session.pop('pending_signup', None)
+                request.session.modified = True
+                return render(request, 'verify_email.html', {
+                    'errors': ['Too many incorrect attempts. Please sign up again to receive a new code.'],
+                    'email': _mask_email(email),
+                    'expired': True,
+                })
+            submitted_hash = _verify_code_hash(submitted, email)
+            if not hmac.compare_digest(submitted_hash, pending.get('code_hash') or ''):
+                attempts += 1
+                if attempts >= VERIFY_CODE_MAX_ATTEMPTS:
+                    # Locked out — discard the pending signup so the student
+                    # restarts from step 1 with a fresh code.
+                    request.session.pop('pending_signup', None)
+                    request.session.modified = True
+                    return render(request, 'verify_email.html', {
+                        'errors': ['Too many incorrect attempts. Please sign up again to receive a new code.'],
+                        'email': _mask_email(email),
+                        'expired': True,
+                    })
+                pending['attempts'] = attempts
+                request.session['pending_signup'] = pending
+                request.session.modified = True
+                remaining = VERIFY_CODE_MAX_ATTEMPTS - attempts
+                errors = [
+                    'That code is not correct.' +
+                    (' You have %d attempt%s left.' % (remaining, '' if remaining == 1 else 's'))
+                ]
+            else:
+                # Correct code — create the account now. Re-validate against
+                # the DB (duplicate Student ID / email) in case a race happened
+                # between step 1 and step 2.
+                form = SignUpForm(pending['data'])
+                if form.is_valid():
+                    user = form.save()
+                    request.session.pop('pending_signup', None)
+                    request.session.modified = True
+                    auth_login(request, user)
+                    return redirect(role_home_path(get_user_role(user)))
+                request.session.pop('pending_signup', None)
+                request.session.modified = True
+                errors = [
+                    'This Student ID or email was registered while you were '
+                    'verifying. Please sign in or start again.',
+                ]
+
+    return render(request, 'verify_email.html', {
+        'errors': errors,
+        'email': _mask_email(email),
+        'expires_minutes': VERIFY_CODE_TTL_SECONDS // 60,
+    })
+
+
+def _mask_email(email):
+    """Mask an address for the verify screen, e.g. ``r***@gmail.com``."""
+    if not email or '@' not in email:
+        return email
+    local, _, domain = email.partition('@')
+    if not local:
+        return email
+    shown = local[0] if len(local) <= 2 else local[0] + '*' * (len(local) - 2) + local[-1]
+    return '%s@%s' % (shown, domain)
 
 
 @login_required

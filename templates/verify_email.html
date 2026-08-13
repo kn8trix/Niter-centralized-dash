@@ -1,0 +1,131 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your Email — Niter Hub</title>
+    <meta name="description" content="Enter the 6-digit verification code we emailed you to finish creating your Niter Hub account.">
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Global display preferences (theme / timezone / density) -- no-flash driver -->
+    {% include 'partials/display_prefs.html' %}
+    <!-- Shared auth screen styles (login/signup) -->
+    <link rel="stylesheet" href="{% static 'css/auth.css' %}">
+    <!-- Signup-specific styles -->
+    <link rel="stylesheet" href="{% static 'css/signup.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="auth signup" data-app="campusdash-public">
+
+    <!-- Back to homepage -->
+    <a href="{% url 'home' %}" class="auth-back-link" aria-label="Back to homepage">
+        <i class="fa-solid fa-arrow-left"></i> Back to Home
+    </a>
+
+    <main class="auth-shell">
+        <div class="auth-card">
+
+            <!-- Brand -->
+            <div class="auth-brand">
+                <span class="auth-brand-icon"><i class="fa-solid fa-graduation-cap"></i></span>
+            </div>
+
+            <!-- Heading -->
+            <h1 class="auth-title">Verify Your Email</h1>
+            <p class="auth-subtitle">Step 2 of 2 — enter the 6-digit code sent to <strong>{{ email }}</strong></p>
+
+            <!-- Error container -->
+            {% if errors %}
+            <div class="auth-alert" role="alert">
+                <i class="fa-solid fa-circle-exclamation"></i>
+                <div>
+                    {% for error in errors %}
+                    <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if expired %}
+            <div class="auth-divider"><span>or</span></div>
+            <a href="{% url 'signup' %}" class="auth-demo-link">
+                Start signup again <i class="fa-solid fa-arrow-right"></i>
+            </a>
+            {% else %}
+
+            <!-- Verification form -->
+            <form method="post" action="{% url 'verify_email' %}" class="auth-form signup-form" novalidate autocomplete="off">
+                {% csrf_token %}
+
+                <div class="field">
+                    <label for="id_code" class="field-label">Verification Code</label>
+                    <div class="field-input verify-code-input">
+                        <i class="fa-solid fa-shield-halved"></i>
+                        <input type="text" id="id_code" name="code" inputmode="numeric" pattern="[0-9]{6}"
+                               placeholder="••••••" maxlength="6" required autofocus
+                               aria-describedby="code-help">
+                    </div>
+                    <p class="field-help" id="code-help">
+                        We emailed a code to <strong>{{ email }}</strong>. It expires in {{ expires_minutes }} minutes.
+                        Didn't get it? Check your spam folder, or resend below.
+                    </p>
+                </div>
+
+                <button type="submit" class="auth-submit">
+                    Verify &amp; Create Account <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </form>
+
+            <!-- Resend / start over -->
+            <div class="auth-resend-form auth-resend-row">
+                <form method="post" action="{% url 'verify_email' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="resend">
+                    <button type="submit" class="auth-demo-link auth-resend-btn">
+                        <i class="fa-solid fa-rotate-right"></i> Resend code
+                    </button>
+                </form>
+                <form method="post" action="{% url 'verify_email' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="restart">
+                    <button type="submit" class="auth-demo-link auth-resend-btn">
+                        <i class="fa-solid fa-user-pen"></i> Use a different email
+                    </button>
+                </form>
+            </div>
+
+            <!-- Existing account fallback -->
+            <div class="auth-divider"><span>or</span></div>
+            <a href="{% url 'login' %}" class="auth-demo-link">
+                Already have an account? Sign in <i class="fa-solid fa-arrow-right"></i>
+            </a>
+            {% endif %}
+
+        </div>
+    </main>
+
+    <script>
+        // Auto-advance / focus the single code field (keep it a plain 6-char
+        // input; simple + accessible). Select-all on focus so retyping is easy.
+        document.addEventListener('DOMContentLoaded', function () {
+            var input = document.getElementById('id_code');
+            if (input) {
+                input.addEventListener('input', function () {
+                    this.value = this.value.replace(/\D/g, '').slice(0, 6);
+                });
+                input.addEventListener('focus', function () { this.select(); });
+            }
+        });
+    </script>
+</body>
+</html>

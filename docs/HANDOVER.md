@@ -6,6 +6,7 @@
 |---|---|---|
 | 90 | Dynamic user names on all passes + cleaned-up profile dropdown | `71ed77b` |
 | 91 | QR Attendance System + Academic Calendar grid fix | `f832515` |
+| 92 | Two-step signup verification (Django Gmail SMTP) | `TBD` |
 | 89 | Meal Ticket System — monthly subscription + QR passes + 9 PM cancel rule | `a73e4a5` |
 | 88 | Google OAuth — 401/Invalid-Credentials hardening + upload session guard | `62ba895` |
 | 87 | Medical Booking — form state binding + AJAX submission fix | `bf1a05e` |
@@ -5242,3 +5243,83 @@ the date cells.
   header is client-spoofable and only trustworthy behind a reverse proxy;
   harden it (e.g. trust `REMOTE_ADDR` unless a proxy is configured) before
   enforcing `ENFORCE_CAMPUS_WIFI` in production.
+## 92. Two-Step Student Signup Verification (Django Gmail SMTP)
+
+**Date:** 13 August 2026  
+**Branch:** main
+
+Self-registration now verifies the student's email address before any
+account is created: step 1 collects the signup form and emails a 6-digit
+code; step 2 confirms the code and only then persists the `User` +
+`StudentProfile` and signs the student in.
+
+### 1. SMTP / email configuration (`config/settings.py`)
+
+- Gmail SMTP via TLS, env-driven (see `.env.example`):
+  `EMAIL_BACKEND` (default `smtp.EmailBackend`), `EMAIL_HOST` (`smtp.gmail.com`),
+  `EMAIL_PORT` (`587`), `EMAIL_USE_TLS` (`True`), `EMAIL_HOST_USER` /
+  `EMAIL_HOST_PASSWORD` from the environment, `DEFAULT_FROM_EMAIL`
+  (falls back to `EMAIL_HOST_USER` or `noreply@niterdash.com`).
+- **Local convenience fallback:** when `DEBUG=True` and no `EMAIL_HOST_USER`
+  is configured (fresh checkout), the backend switches to the console email
+  backend — the code prints to the terminal so the whole flow stays testable
+  without a Gmail app password. Production always uses the SMTP backend.
+- `.env.example` documents the two required vars plus an App-Password link.
+
+### 2. Two-step flow
+
+- **Step 1 — `/signup/` (`signup_view`):** `SignUpForm` validates the fields
+  (duplicate Student ID / email, password confirmation) exactly as before,
+  but **no account is created**. A 6-digit code is generated
+  (`secrets.randbelow`) and emailed via `send_mail`; the pending payload —
+  validated form data, a **salted SHA-256 hash of the code** (raw code never
+  touches the session), a 10-minute `expires_at`, and an attempt counter —
+  is stashed in the session, then the student is redirected to step 2.
+  An existing pending signup short-circuits back to step 2 (no re-entry).
+  If the email cannot be sent (SMTP/auth/network), the pending payload is
+  discarded and a friendly error is shown.
+- **Step 2 — `/signup/verify/` (`verify_email_view`):** renders the code-entry
+  screen with the pending address masked (`t**********t@…`). POST compares the
+  submitted code against the session hash via constant-time comparison:
+  - correct → the pending data is re-validated (duplicate ID/email race guard),
+    the `User` + `StudentProfile` are created, the student is signed in, and
+    the pending payload is cleared;
+  - wrong → attempt counter increments; after **5** wrong attempts the pending
+    signup is discarded (restart from step 1);
+  - expired → pending cleared, "sign up again" message;
+  - **Resend** (`action=resend`) issues a fresh code to the same address and
+    emails it again. Security hardening: the new code hash is only committed
+    after the send succeeds (a delivery failure never invalidates the previous
+    code), and the attempt counter is deliberately **not** reset — an attacker
+    with the session cookie can't interleave resends with wrong guesses to
+    defeat the 5-attempt brute-force lockout;
+  - **Use a different email** (`action=restart`) discards the pending payload
+    and returns to the signup form, so a mistyped address is fixable without
+    waiting for expiry.
+- Code comparison uses `hmac.compare_digest` (constant-time); the raw code is
+  salted with `SECRET_KEY` and hashed, so it never touches the session or logs.
+- No pending payload → redirect back to `/signup/`.
+
+### 3. UI
+
+- `templates/verify_email.html` — masked-email code entry (monospace, 6-char
+  numeric input with client-side digit stripping), inline errors, a resend
+  button, and login fallback; reuses the shared auth card styling.
+- `templates/signup.html` — subtitle now reads "Step 1 of 2" and the submit
+  button says "Send Verification Code".
+- `static/css/signup.css` — `.field-help`, `.verify-code-input`, and resend
+  button styles.
+
+### 4. Tests & verification
+
+- `TwoStepSignupTest` (12 tests) + updated `AccountAndAdminPagesTest` /
+  `SignUpFormTest`: step 1 emails exactly one code to the pending address and
+  creates **no** rows; the raw code is never stored (only its hash); verify
+  creates the user + profile and signs in; wrong code rejected (attempt
+  counter); 5-wrong-attempt lockout discards the payload; expired code
+  rejects; resend mails a fresh code that works **without resetting the
+  attempt counter**; resend after lockout redirects to signup; restart
+  discards the pending payload; duplicate created between the steps fails
+  closed; verify page masks the email; no-pending redirect.
+- **Full suite: 792 tests OK.** (Email verified through Django's locmem
+  backend / `mail.outbox` in tests; console backend locally.)

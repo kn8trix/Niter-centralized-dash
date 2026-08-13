@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from contextlib import contextmanager
 from datetime import date, datetime, time, timedelta
 from unittest import mock
@@ -9,6 +10,7 @@ import tempfile
 
 from allauth.socialaccount.models import SocialAccount, SocialApp, SocialToken
 from django.contrib.auth.models import Permission, User
+from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError
 from django.template import Context, Template
@@ -26,6 +28,8 @@ from services.openrouter import call_openrouter
 from services.parser import extract_document_text
 
 from core.forms import SignUpForm
+from core.views import VERIFY_CODE_MAX_ATTEMPTS
+
 from core.models import (
     AcademicEvent,
     AttendanceRecord,
@@ -1190,7 +1194,9 @@ class AccountAndAdminPagesTest(TestCase):
         for code in ['CSE', 'TEX', 'IPE', 'FDAE', 'EEE']:
             self.assertContains(response, 'value="' + code + '"', msg_prefix=code)
 
-    def test_signup_creates_user_and_profile(self):
+    def test_signup_starts_two_step_verification(self):
+        # Step 1: a valid form submission does NOT create the account yet — it
+        # emails a verification code and redirects to the verify screen.
         response = self.client.post(reverse('signup'), {
             'student_id': 'S2001',
             'full_name': 'Rifat Hasan',
@@ -1199,15 +1205,10 @@ class AccountAndAdminPagesTest(TestCase):
             'password': 'secretpass1',
             'confirm_password': 'secretpass1',
         })
-        # Sign-in lands on /dashboard/ which the role dispatcher routes to the
-        # new student's area.
-        self.assertRedirects(response, reverse('student_dashboard'))
-        self.assertTrue(User.objects.filter(username='S2001').exists())
-        profile = StudentProfile.objects.get(student_id='S2001')
-        self.assertEqual(profile.user.username, 'S2001')
-        self.assertEqual(profile.department, 'CSE')
-        # The new student is signed in automatically
-        self.assertEqual(int(self.client.session['_auth_user_id']), profile.user.id)
+        self.assertRedirects(response, reverse('verify_email'))
+        self.assertFalse(User.objects.filter(username='S2001').exists())
+        # The pending payload (code hash + form data) is stashed in the session
+        self.assertIn('pending_signup', self.client.session)
 
     def test_signup_rejects_duplicate_student_id(self):
         response = self.client.post(reverse('signup'), {
@@ -1296,6 +1297,175 @@ class SignUpFormTest(TestCase):
         form = SignUpForm(self._data(department='BOGUS'))
         self.assertFalse(form.is_valid())
         self.assertIn('department', form.errors)
+
+
+class TwoStepSignupTest(TestCase):
+    """Two-step signup verification — email code step + account creation.
+
+    Step 1 (``signup_view``) validates the form and emails a 6-digit code
+    without creating any account rows; step 2 (``verify_email_view``) checks
+    the code and only then persists the User + StudentProfile and signs the
+    student in. Covers the happy path, wrong/expired codes, the 5-attempt
+    lockout, resend, the no-pending redirect, and the race-guard when a
+    duplicate is created between the two steps.
+    """
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def _step1(self, **overrides):
+        data = {
+            'student_id': 'S5001',
+            'full_name': 'Test Student',
+            'department': 'CSE',
+            'email': 'test.student@niter.edu.bd',
+            'password': 'secretpass1',
+            'confirm_password': 'secretpass1',
+        }
+        data.update(overrides)
+        return self.client.post(reverse('signup'), data)
+
+    def _code_from_outbox(self, index=-1):
+        body = mail.outbox[index].body
+        match = re.search(r'verification code is (\d{6})', body)
+        self.assertIsNotNone(match, 'code not found in email body')
+        return match.group(1)
+
+    def test_step1_sends_code_and_creates_nothing(self):
+        response = self._step1()
+        self.assertRedirects(response, reverse('verify_email'))
+        # No account yet — verification gates creation.
+        self.assertFalse(User.objects.filter(username='S5001').exists())
+        # One email, addressed to the pending student, carrying a 6-digit code.
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['test.student@niter.edu.bd'])
+        self.assertRegex(self._code_from_outbox(), r'^\d{6}$')
+        # The raw code must NOT be stored — only its salted hash.
+        pending = self.client.session['pending_signup']
+        self.assertNotIn('code', pending)
+        self.assertIn('code_hash', pending)
+
+    def test_verify_creates_user_and_signs_in(self):
+        self._step1()
+        code = self._code_from_outbox()
+        response = self.client.post(reverse('verify_email'), {'code': code})
+        # Lands on /dashboard/ which the role dispatcher routes to the new
+        # student's area.
+        self.assertRedirects(response, reverse('student_dashboard'))
+        user = User.objects.get(username='S5001')
+        self.assertEqual(user.first_name, 'Test')
+        self.assertEqual(user.last_name, 'Student')
+        self.assertEqual(user.email, 'test.student@niter.edu.bd')
+        profile = StudentProfile.objects.get(student_id='S5001')
+        self.assertEqual(profile.user, user)
+        self.assertEqual(profile.department, 'CSE')
+        # Signed in automatically + pending payload cleared.
+        self.assertEqual(int(self.client.session['_auth_user_id']), user.pk)
+        self.assertNotIn('pending_signup', self.client.session)
+        self.assertTrue(user.check_password('secretpass1'))
+
+    def test_wrong_code_rejected_without_creating_user(self):
+        self._step1()
+        response = self.client.post(reverse('verify_email'), {'code': '000000'})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'not correct')
+        self.assertFalse(User.objects.filter(username='S5001').exists())
+        # Attempt counter incremented in the session.
+        self.assertEqual(self.client.session['pending_signup']['attempts'], 1)
+
+    def test_verify_without_pending_redirects_to_signup(self):
+        response = self.client.get(reverse('verify_email'))
+        self.assertRedirects(response, reverse('signup'))
+
+    def test_expired_code_rejects_and_clears_pending(self):
+        self._step1()
+        session = self.client.session
+        session['pending_signup']['expires_at'] = datetime.now().timestamp() - 1
+        session.save()
+        code = self._code_from_outbox()
+        response = self.client.post(reverse('verify_email'), {'code': code})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'expired')
+        self.assertFalse(User.objects.filter(username='S5001').exists())
+        self.assertNotIn('pending_signup', self.client.session)
+
+    def test_five_wrong_attempts_lock_out_pending_signup(self):
+        self._step1()
+        for _ in range(VERIFY_CODE_MAX_ATTEMPTS):
+            response = self.client.post(reverse('verify_email'), {'code': '000000'})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Too many incorrect attempts')
+        # Pending payload discarded after the lockout.
+        self.assertNotIn('pending_signup', self.client.session)
+        self.assertFalse(User.objects.filter(username='S5001').exists())
+
+    def test_resend_issues_fresh_code(self):
+        self._step1()
+        self._code_from_outbox(0)
+        response = self.client.post(reverse('verify_email'), {'action': 'resend'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(mail.outbox), 2)
+        fresh = self._code_from_outbox(1)
+        self.assertRegex(fresh, r'^\d{6}$')
+        # The new code completes the signup; the old one is dead.
+        self.client.post(reverse('verify_email'), {'code': fresh})
+        self.assertTrue(User.objects.filter(username='S5001').exists())
+
+    def test_resend_does_not_reset_the_attempt_counter(self):
+        # An attacker holding the session cookie must not be able to interleave
+        # resends with wrong guesses to defeat the 5-attempt brute-force lockout.
+        self._step1()
+        for _ in range(3):
+            self.client.post(reverse('verify_email'), {'code': '000000'})
+        self.assertEqual(self.client.session['pending_signup']['attempts'], 3)
+        self.client.post(reverse('verify_email'), {'action': 'resend'})
+        self.assertEqual(self.client.session['pending_signup']['attempts'], 3)
+        # Two more wrong guesses now hit the lockout.
+        for _ in range(2):
+            response = self.client.post(reverse('verify_email'), {'code': '000000'})
+        self.assertContains(response, 'Too many incorrect attempts')
+        self.assertNotIn('pending_signup', self.client.session)
+
+    def test_resend_after_lockout_redirects_to_signup(self):
+        self._step1()
+        for _ in range(VERIFY_CODE_MAX_ATTEMPTS):
+            self.client.post(reverse('verify_email'), {'code': '000000'})
+        self.assertNotIn('pending_signup', self.client.session)
+        response = self.client.post(reverse('verify_email'), {'action': 'resend'})
+        self.assertRedirects(response, reverse('signup'))
+
+    def test_restart_discards_pending_and_returns_to_signup(self):
+        self._step1()
+        response = self.client.post(reverse('verify_email'), {'action': 'restart'})
+        self.assertRedirects(response, reverse('signup'))
+        self.assertNotIn('pending_signup', self.client.session)
+        # A fresh signup with a corrected email starts clean.
+        response = self.client.post(reverse('signup'), {
+            'student_id': 'S5001',
+            'full_name': 'Test Student',
+            'department': 'CSE',
+            'email': 'fixed.email@niter.edu.bd',
+            'password': 'secretpass1',
+            'confirm_password': 'secretpass1',
+        })
+        self.assertRedirects(response, reverse('verify_email'))
+        self.assertEqual(mail.outbox[-1].to, ['fixed.email@niter.edu.bd'])
+
+    def test_duplicate_created_between_steps_fails_closed(self):
+        self._step1()
+        code = self._code_from_outbox()
+        # Another tab/student races ahead and registers the same ID+email.
+        User.objects.create_user(username='S5001', email='test.student@niter.edu.bd', password='x12345678')
+        response = self.client.post(reverse('verify_email'), {'code': code})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'registered while you were verifying')
+        self.assertNotIn('pending_signup', self.client.session)
+
+    def test_verify_page_masks_the_pending_email(self):
+        self._step1()
+        response = self.client.get(reverse('verify_email'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Verify Your Email')
+        self.assertNotContains(response, 'test.student@niter.edu.bd')
+        self.assertContains(response, 't**********t@niter.edu.bd')
 
 
 class StaffAdminBackendTest(TestCase):

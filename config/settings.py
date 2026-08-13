@@ -437,6 +437,24 @@ CAMPUS_NETWORK_CIDRS = [
     c.strip() for c in env('CAMPUS_NETWORK_CIDRS', default='').split(',') if c.strip()
 ]
 
+# --- Email (Django SMTP — Gmail) -------------------------------------------------
+# Used by the two-step student signup verification (6-digit email code) and any
+# future transactional mail. TLS on port 587; credentials come from the
+# environment (see .env.example). When no credentials are configured and DEBUG
+# is on (fresh local checkout), the console backend prints the mail to the
+# terminal so the signup flow stays testable without a Gmail app password.
+EMAIL_BACKEND = env('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = env('EMAIL_HOST', default='smtp.gmail.com')
+EMAIL_PORT = env.int('EMAIL_PORT', default=587)
+EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
+EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default=EMAIL_HOST_USER or 'noreply@niterdash.com')
+if DEBUG and not EMAIL_HOST_USER:
+    # Local convenience only: no SMTP credentials -> print mail to the console
+    # instead of failing the signup send. Production keeps the SMTP backend.
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
 # --- Research AI (OpenRouter) ---------------------------------------------------
 # Backend LLM provider for the Academic Research & Thesis Assistant
 # (/research-ai/). ``OPENROUTER_API_KEY`` empty/missing → the query endpoint
