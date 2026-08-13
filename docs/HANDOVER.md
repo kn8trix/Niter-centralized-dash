@@ -4,7 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 97 | Emergency Announcement System — banner + siren + mobile push | `PENDING` |
+| 97 | Emergency Announcement System — banner + siren + mobile push | `ba82093` |
 | 96 | Teacher Management + QR email dispatch + attendance report emails | `52735a4` |
 | 95 | Medical API payload alignment — booking keys + consultation lookup | `d2bf152` |
 | 94 | Mobile responsiveness (calendar / clock / attendance) + Transport payment gateway modal | `e8f3332` |
