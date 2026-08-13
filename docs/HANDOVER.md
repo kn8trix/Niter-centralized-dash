@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 98 | Emergency Alert modal — auto-open / unclosable state fix (admin dashboard) | `4a3e9ea` |
 | 97 | Emergency Announcement System — banner + siren + mobile push | `ba82093` |
 | 96 | Teacher Management + QR email dispatch + attendance report emails | `52735a4` |
 | 95 | Medical API payload alignment — booking keys + consultation lookup | `d2bf152` |
@@ -5708,3 +5709,51 @@ opt-in Firebase push fan-out for the mobile app.
   /meals/ tab shows the pulsating banner + full-screen overlay (acknowledge
   keeps the banner) → resolve from the admin console → banner clears across
   tabs; zero console errors.
+
+---
+
+## 98. Emergency Alert Modal — Auto-Open / Unclosable State Fix
+
+### Overview
+
+The "Trigger Emergency Alert" confirmation modal on the Admin Overview
+(`/dashboard/admin/`) popped up immediately on page load and could not be
+dismissed — the ✕ close icon, Cancel button, backdrop click, and Escape key
+all appeared to do nothing. Toast "Emergency alert broadcast to the campus."
+notifications could also surface without the admin pressing **Confirm &
+Broadcast**, because the always-visible modal made accidental submits
+possible (typing + Enter inside the open form fires the POST).
+
+### Root cause
+
+`static/css/admin_dashboard.css` declared
+`.emergency-modal { … display: flex; … }`. The modal markup ships with the
+HTML `hidden` attribute and the page JS toggles it (`closeModal()` sets
+`modal.hidden = true`), but an author rule that sets `display` always wins
+over the browser's UA `[hidden] { display: none }` rule — so the modal was
+permanently visible and setting `hidden = true` had no visual effect. Same
+class of bug as the medical booking `.field-error` fix (§87,
+`.field-error[hidden]` in `medical.css`).
+
+### Fix
+
+- `static/css/admin_dashboard.css`: added
+  `.emergency-modal[hidden] { display: none; }` so the `hidden` attribute
+  (initial state and every `closeModal()`) actually hides the modal, while
+  `openModal()` (`hidden = false`) still reveals it via `display: flex`.
+- No JS changes were needed — the ✕ / Cancel / backdrop / Escape dismiss
+  handlers and the submit-only trigger already existed; they were just
+  fighting a CSS rule that ignored the `hidden` attribute.
+- `core/tests.py`: new regression guard
+  `EmergencyBroadcastApiTest.test_emergency_modal_starts_hidden_and_css_respects_hidden`
+  — asserts the rendered overview ships `id="emergency-modal" hidden` and
+  that `admin_dashboard.css` contains `.emergency-modal[hidden]`.
+
+### Tests & verification
+
+- `python manage.py check` clean.
+- Full suite passes: **852 tests OK** (was 851).
+- Browser e2e: `/dashboard/admin/` loads clean with no modal; clicking
+  "Trigger Emergency Alert" opens it; Cancel / ✕ / backdrop / Escape close
+  it seamlessly; only **Confirm & Broadcast** fires the POST + success
+  toast.
