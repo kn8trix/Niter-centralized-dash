@@ -25,6 +25,7 @@ import io
 
 from google.auth.exceptions import RefreshError
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 
 from core.google_service import (
@@ -33,6 +34,7 @@ from core.google_service import (
     GoogleReauthRequired,
     GoogleServiceError,
     get_google_credentials,
+    map_http_error,
 )
 
 NOTES_FOLDER_NAME = 'NITER Centralized Dash Notes'
@@ -69,6 +71,11 @@ def get_or_create_notes_folder(user, folder_name=NOTES_FOLDER_NAME):
         raise GoogleReauthRequired(
             'Your Google session has expired — reconnect Google to continue.'
         ) from exc
+    except HttpError as exc:
+        # 401 "Invalid Credentials" — revoked grant or an expired access token
+        # that could not be refreshed. Surface as re-auth (view answers 401
+        # auth_required) instead of a 500.
+        raise map_http_error(exc, 'Could not prepare the notes folder') from exc
     except Exception as exc:
         raise GoogleServiceError('Could not prepare the notes folder: %s' % exc) from exc
 
@@ -109,7 +116,12 @@ def upload_file_to_drive(user, uploaded_file, folder_name=NOTES_FOLDER_NAME):
         ) from exc
     except GoogleServiceError:
         raise
-    except Exception as exc:  # HttpError, socket errors, ... -> single catchable type
+    except HttpError as exc:
+        # 401 "Invalid Credentials" — revoked grant or an expired access token
+        # the transport's one-shot auto-refresh could not renew. Map to re-auth
+        # so the Notes UI shows the reconnect modal.
+        raise map_http_error(exc, 'Google Drive upload failed') from exc
+    except Exception as exc:  # socket errors, ... -> single catchable type
         raise GoogleServiceError('Google Drive upload failed: %s' % exc) from exc
 
     return {

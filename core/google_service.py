@@ -20,6 +20,7 @@ from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 
 from .crypto import decrypt_secret, encrypt_secret
@@ -51,6 +52,23 @@ class GoogleReauthRequired(GoogleServiceError):
     translate this into a 401 ``auth_required`` response that points the client
     back at the Google OAuth re-consent flow.
     """
+
+
+def map_http_error(exc, message_prefix):
+    """Return the :class:`GoogleServiceError` to raise for an ``HttpError``.
+
+    A 401 "Invalid Credentials" response (revoked grant, or an access token
+    that expired mid-call whose one-shot auto-refresh also failed) maps to
+    :class:`GoogleReauthRequired` so the caller answers ``401 auth_required``
+    (the client shows the reconnect modal) instead of a generic 500. Every
+    other status stays a :class:`GoogleServiceError` prefixed with
+    ``message_prefix``.
+    """
+    if exc.resp.status == 401:
+        return GoogleReauthRequired(
+            'Your Google session has expired or was revoked — reconnect Google to continue.'
+        )
+    return GoogleServiceError('%s: %s' % (message_prefix, exc))
 
 
 # ---------------------------------------------------------------------------
@@ -339,7 +357,13 @@ def upload_note_to_user_drive(user, uploaded_file, folder_name=DEFAULT_FOLDER_NA
         ) from exc
     except GoogleServiceError:
         raise
-    except Exception as exc:  # HttpError, socket errors, ... -> single catchable type
+    except HttpError as exc:
+        # 401 "Invalid Credentials" — revoked grant, or an access token that
+        # expired between the expiry check and the call whose auto-refresh
+        # also failed. Map it to re-auth so the frontend shows the reconnect
+        # modal instead of a generic 500.
+        raise map_http_error(exc, 'Google Drive upload failed') from exc
+    except Exception as exc:  # socket errors, ... -> single catchable type
         raise GoogleServiceError('Google Drive upload failed: %s' % exc) from exc
 
     return {

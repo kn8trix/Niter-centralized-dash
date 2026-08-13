@@ -400,6 +400,13 @@
                     headers: { 'X-CSRFToken': getCookie('csrftoken') },
                     body: formData,
                 });
+                if (response.redirected) {
+                    // The Django session expired and @login_required bounced the
+                    // POST to the login page — fetch followed the redirect, so
+                    // send the visitor there instead of parsing HTML as JSON.
+                    window.location.href = response.url;
+                    return;
+                }
                 const data = await response.json().catch(() => ({}));
                 if (data.status === 'auth_required') {
                     if (googleReason === 'not_configured') {

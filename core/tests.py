@@ -65,6 +65,19 @@ from core.models import (
 )
 
 
+def _http_error(status, reason='Error'):
+    """Build a real ``googleapiclient.errors.HttpError`` with a fake transport
+    response for service-layer tests (shared by the Drive/Sheets test classes)."""
+    from googleapiclient.errors import HttpError
+    resp = mock.Mock()
+    resp.status = status
+    resp.reason = reason
+    return HttpError(
+        resp, b'{"error": {"code": %d}}' % status,
+        uri='https://www.googleapis.com/upload/drive/v3/files',
+    )
+
+
 class StudentPagesSmokeTest(TestCase):
     """Every student page renders without error after the refactor.
 
@@ -2202,6 +2215,22 @@ class GoogleServiceTest(TestCase):
             with self.assertRaises(GoogleReauthRequired):
                 upload_note_to_user_drive(self.user, upload)
 
+    def test_upload_note_http_401_wrapped_as_reauth(self):
+        """A mid-call 401 'Invalid Credentials' must surface as a re-auth error
+        (the frontend shows the reconnect modal) instead of a generic 500."""
+        from core.google_service import GoogleReauthRequired, upload_note_to_user_drive
+        upload = SimpleUploadedFile('note.txt', b'hello')
+        with mock.patch('core.google_service.build', side_effect=_http_error(401, 'Unauthorized')):
+            with self.assertRaises(GoogleReauthRequired):
+                upload_note_to_user_drive(self.user, upload)
+
+    def test_upload_note_non_401_http_error_stays_service_error(self):
+        from core.google_service import GoogleServiceError, upload_note_to_user_drive
+        upload = SimpleUploadedFile('note.txt', b'hello')
+        with mock.patch('core.google_service.build', side_effect=_http_error(500, 'Server Error')):
+            with self.assertRaises(GoogleServiceError):
+                upload_note_to_user_drive(self.user, upload)
+
     def test_sheets_refresh_failure_wrapped_as_reauth(self):
         from core.google_service import GoogleReauthRequired, get_club_sheet_data
         with mock.patch('core.club_sheets.read_rows', side_effect=GoogleReauthRequired('revoked')):
@@ -3408,6 +3437,16 @@ class NotesEnginePageTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'No course folders yet.')
         self.assertContains(response, 'No course materials uploaded yet.')
+
+    def test_upload_handler_binds_auth_status_and_redirect_guard(self):
+        """Regression guard for the upload UX: the page probes Drive health via
+        the auth-status endpoint (silent refresh) and the upload handler
+        redirects to login when @login_required bounces the POST (expired
+        Django session) instead of parsing the login HTML as JSON."""
+        html = self.client.get(reverse('notes')).content.decode()
+        self.assertIn(reverse('api_notes_auth_status'), html)
+        self.assertIn('response.redirected', html)
+        self.assertIn(reverse('api_upload_note'), html)
 
 
 class ProfileActivityHistoryTest(TestCase):
@@ -6362,6 +6401,9 @@ class GoogleDriveOAuthTest(TestCase):
         auth_params = django_settings.SOCIALACCOUNT_PROVIDERS['google']['AUTH_PARAMS']
         # Offline access_type is what issues a refresh token for background ops.
         self.assertEqual(auth_params.get('access_type'), 'offline')
+        # prompt=consent forces the consent screen on every authorization so
+        # Google always hands back a fresh refresh token (re-connect too).
+        self.assertEqual(auth_params.get('prompt'), 'consent')
 
     # ------------------------------------------------------------------
     # get_user_google_credentials
@@ -7012,6 +7054,12 @@ class DriveOAuthFlowTest(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn('https://accounts.google.com/o/oauth2/auth', response.url)
         self.assertEqual(self.client.session['drive_oauth_state'], 'csrf-state-1')
+        # Offline + forced-consent authorization is what guarantees Google
+        # returns a refresh token for background Drive/Sheets operations.
+        _, auth_kwargs = mock_flow.authorization_url.call_args
+        self.assertEqual(auth_kwargs.get('access_type'), 'offline')
+        self.assertEqual(auth_kwargs.get('prompt'), 'consent')
+        self.assertEqual(auth_kwargs.get('include_granted_scopes'), 'true')
 
     def test_connect_without_env_creds_redirects_back(self):
         from django.conf import settings as django_settings
@@ -7347,6 +7395,37 @@ class DriveServiceModuleTest(TestCase):
         from core.google_service import GoogleAccountNotConnected
         with mock.patch('academic_notes.drive_service.get_google_credentials', side_effect=GoogleAccountNotConnected('nope')):
             self.assertIsNone(get_drive_storage_info(self.user))
+
+    def test_upload_http_401_wrapped_as_reauth(self):
+        """The Notes upload path maps a mid-call 401 to the re-auth error so
+        the view answers 401 auth_required (reconnect modal) — not a 500."""
+        from academic_notes.drive_service import upload_file_to_drive
+        from core.google_service import GoogleReauthRequired
+        upload = SimpleUploadedFile('cs101.pdf', b'%PDF-1.4', content_type='application/pdf')
+        with mock.patch('academic_notes.drive_service.build', side_effect=_http_error(401, 'Unauthorized')), \
+                mock.patch('academic_notes.drive_service.get_google_credentials') as mock_creds:
+            mock_creds.return_value = mock.Mock()
+            with self.assertRaises(GoogleReauthRequired):
+                upload_file_to_drive(self.user, upload)
+
+    def test_folder_bootstrap_http_401_wrapped_as_reauth(self):
+        from academic_notes.drive_service import get_or_create_notes_folder
+        from core.google_service import GoogleReauthRequired
+        with mock.patch('academic_notes.drive_service.build', side_effect=_http_error(401, 'Unauthorized')), \
+                mock.patch('academic_notes.drive_service.get_google_credentials') as mock_creds:
+            mock_creds.return_value = mock.Mock()
+            with self.assertRaises(GoogleReauthRequired):
+                get_or_create_notes_folder(self.user)
+
+    def test_upload_http_500_stays_service_error(self):
+        from academic_notes.drive_service import upload_file_to_drive
+        from core.google_service import GoogleServiceError
+        upload = SimpleUploadedFile('cs101.pdf', b'%PDF-1.4', content_type='application/pdf')
+        with mock.patch('academic_notes.drive_service.build', side_effect=_http_error(500, 'Server Error')), \
+                mock.patch('academic_notes.drive_service.get_google_credentials') as mock_creds:
+            mock_creds.return_value = mock.Mock()
+            with self.assertRaises(GoogleServiceError):
+                upload_file_to_drive(self.user, upload)
 
 
 class ClubSheetsConfigPrefillTest(TestCase):

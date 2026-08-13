@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 88 | Google OAuth — 401/Invalid-Credentials hardening + upload session guard | `TBD` |
 | 87 | Medical Booking — form state binding + AJAX submission fix | `bf1a05e` |
 | 86 | Final Integration Status — Module Matrix, OAuth Refresh & Health Check | `fc74649` |
 | 85 | Android WebView Wrapper (`/mobile-webview`) | `83b1d80`, `fc74649` |
@@ -4654,7 +4655,7 @@ so nobody re-builds them:
 | Distinct Admin / Student / Club layouts | ✅ exists | `admin/admin_base.html`, `base.html`, `club/club_base.html`; `/dashboard/club` is club-only (`club_access_required`) |
 | Admin area: Users, Reports, Database Stats, Calendar Manager, Builder/CMS, Club Accounts | ✅ exists | `/dashboard/admin/*` (§77) |
 | Medical booking (doctor/date/time-slot state, validation, toasts) | ✅ wired | `templates/medical/booking.html` — §87 fixed the real bugs: `RadioNodeList` TypeError killed the booking script (native POST fallback) + `.field-error { display:flex }` overriding `hidden` |
-| Google Drive/Sheets auto-refresh on Notes | ✅ fixed | §83 (previous commit) |
+| Google Drive/Sheets auto-refresh on Notes | ✅ fixed | §83 + §88 — silent refresh on every check; mid-call 401 "Invalid Credentials" now maps to the re-auth modal instead of a 500 |
 
 ### Reports module upgrade (the real gap — built now)
 
@@ -4926,4 +4927,75 @@ Hardened the `/medical/` appointment booking form
 - `static/css/medical.css`
 - `core/templatetags/builder_tags.py` (`fmt_slot` filter)
 - `core/tests.py` (`MedicalBookingFormTest`)
+- `docs/HANDOVER.md` (this section)
+
+## 88. Google OAuth — 401/Invalid-Credentials Hardening + Upload Session Guard
+
+**Date:** 13 August 2026  
+**Branch:** main
+
+Audit + hardening of the Notes Engine Google Drive pipeline. The core
+requirements — server-side refresh-token exchange, offline/consent OAuth
+params, and frontend modal suppression — were shipped in §83/§86; this pass
+verifies each against the code and closes the remaining gaps found in review.
+
+### Requirements verified (already implemented)
+
+1. **Server-side auto-refresh** (`core/google_service.py`) —
+   `get_google_credentials` checks `GoogleUserToken.is_expired` and, when
+   expired, exchanges the stored `refresh_token` at
+   `https://oauth2.googleapis.com/token` (via google-auth `Credentials.refresh`)
+   and persists the new `access_token` + `expiry` **back to the database**
+   (encrypted at rest). The allauth `SocialToken` path (`get_user_google_credentials`)
+   does the same and mirrors the result into `GoogleUserToken`. The upload
+   view and `GET /api/notes/auth-status/` both route through it, so an
+   expiring session is renewed silently on every check/upload.
+2. **Offline access on connect** — the allauth provider config
+   (`config/settings.py`) sets `AUTH_PARAMS = {access_type: offline,
+   prompt: consent}`, and the dedicated `/drive/connect/` flow calls
+   `authorization_url(access_type='offline', prompt='consent',
+   include_granted_scopes='true')` — both guarantee Google returns a refresh
+   token on (re-)connection. New test assertions lock both in.
+3. **Modal suppression** (`templates/notes/notes_engine.html`) — the native
+   file picker opens immediately on "Upload Notes"; the re-auth modal only
+   appears when the upload API answers `auth_required` (genuine not-connected
+   or failed-refresh), never after a successful auto-refreshed upload.
+
+### Gaps closed in this pass
+
+- **Mid-call 401 "Invalid Credentials" → re-auth, not 500** — a Drive API
+  `HttpError` 401 (revoked grant, or an access token that expired between the
+  expiry check and the call whose one-shot auto-refresh also failed) was
+  swallowed by the generic handler into `GoogleServiceError` → HTTP 500 →
+  generic toast. `upload_note_to_user_drive` (`core/google_service.py`) and
+  `upload_file_to_drive` / `get_or_create_notes_folder`
+  (`academic_notes/drive_service.py`) now map 401 `HttpError` to
+  `GoogleReauthRequired`, so the view answers `401 auth_required` and the
+  Notes UI shows the reconnect modal.
+- **Expired Django session during upload** — `@login_required` bounces a
+  stale-session POST to the login page, and `fetch` followed the redirect,
+  so the upload handler parsed login HTML as JSON and showed "Upload failed
+  (HTTP 200)". The handler now checks `response.redirected` and sends the
+  user to the login URL.
+
+### Verification
+
+- `venv/bin/python manage.py check` — no issues.
+- Full suite: **730 tests OK** (up from 724). New coverage:
+  `drive_connect` authorization kwargs (`access_type=offline` +
+  `prompt=consent`), allauth `AUTH_PARAMS.prompt`, `HttpError` 401 →
+  `GoogleReauthRequired` mapping in both Drive service modules (and
+  non-401 `HttpError` still maps to `GoogleServiceError`), and the Notes
+  Engine template redirect guard.
+- Live E2E against `runserver`: login → `GET /api/notes/auth-status/` returns
+  the structured envelope (`connected` / `reason` / `google_configured` /
+  `redirect_url`), and `/notes/` ships the auth-status probe, the upload
+  handler redirect guard, and the re-auth modal markup.
+
+### Files
+
+- `core/google_service.py`
+- `academic_notes/drive_service.py`
+- `templates/notes/notes_engine.html`
+- `core/tests.py`
 - `docs/HANDOVER.md` (this section)
