@@ -4,7 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 95 | Medical API payload alignment — booking keys + consultation lookup | *(see bottom)* |
+| 95 | Medical API payload alignment — booking keys + consultation lookup | `d2bf152` |
 | 94 | Mobile responsiveness (calendar / clock / attendance) + Transport payment gateway modal | `e8f3332` |
 | 93 | Attendance page dark-mode theming (shared CSS tokens) | `85589ca` |
 | 90 | Dynamic user names on all passes + cleaned-up profile dropdown | `71ed77b` |
