@@ -4,7 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 87 | Medical Booking — form state binding + AJAX submission fix | `TBD` |
+| 87 | Medical Booking — form state binding + AJAX submission fix | `bf1a05e` |
 | 86 | Final Integration Status — Module Matrix, OAuth Refresh & Health Check | `fc74649` |
 | 85 | Android WebView Wrapper (`/mobile-webview`) | `83b1d80`, `fc74649` |
 | 84 | System Audit + Reports Module Upgrade (severity / attachments / envelope) | `b5fdb0e` |
