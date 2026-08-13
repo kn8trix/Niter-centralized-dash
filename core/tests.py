@@ -1,4 +1,5 @@
 import json
+import re
 from contextlib import contextmanager
 from datetime import date, datetime, time, timedelta
 from unittest import mock
@@ -27,6 +28,8 @@ from services.parser import extract_document_text
 from core.forms import SignUpForm
 from core.models import (
     AcademicEvent,
+    AttendanceRecord,
+    AttendanceSession,
     BusSchedule,
     ClassRoutine,
     Club,
@@ -8058,6 +8061,297 @@ class CalendarApiTest(TestCase):
         self.client.logout()
         response = self.client.get(reverse('api_calendar_events'))
         self.assertEqual(response.status_code, 302)
+
+
+class DashboardCalendarGridTest(TestCase):
+    """The dashboard's embedded calendar state must be valid JSON.
+
+    Regression guard: ``{{ dash_data }}`` once auto-escaped the JSON inside
+    the ``<script>`` tag (``&quot;``), so ``JSON.parse`` failed and the month
+    grid stayed empty while the static weekday header rendered.
+    """
+
+    def _dash_script(self):
+        html = self.client.get(reverse('student_dashboard'), HTTP_HOST='localhost').content.decode()
+        match = re.search(r'<script id="dash-data"[^>]*>(.*?)</script>', html, re.S)
+        self.assertIsNotNone(match, 'dash-data script tag missing')
+        return match.group(1), html
+
+    def test_embedded_calendar_json_parses_and_has_grid_metadata(self):
+        import json as _json
+        raw, html = self._dash_script()
+        self.assertNotIn('&quot;', raw)
+        data = _json.loads(raw)  # raises if corrupt
+        cal = data['calendar']
+        self.assertIn('days_in_month', cal)
+        self.assertIn('first_weekday', cal)
+        self.assertIn('events_by_day', cal)
+        self.assertGreaterEqual(cal['days_in_month'], 28)
+        # The static pieces the grid depends on are all present.
+        self.assertIn('id="cal-grid"', html)
+        self.assertIn('id="cal-prev"', html)
+        self.assertIn('id="cal-next"', html)
+        self.assertIn('id="cal-label"', html)
+        # The {% url 'api_calendar_events' %} tag resolves at render time
+        self.assertIn('/api/calendar/events/', html)
+
+    def test_clock_label_renders_from_dict(self):
+        _, html = self._dash_script()
+        self.assertIn('id="clock-date"', html)
+
+
+class AttendanceModelTest(TestCase):
+    """AttendanceSession + AttendanceRecord — fields, token, uniqueness."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='att_model', password='x12345678')
+        self.session = AttendanceSession.objects.create(
+            course_code='CSE-1101',
+            session_token='ATD-MODEL1',
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+
+    def test_session_live_and_expired(self):
+        self.assertTrue(self.session.is_live)
+        self.session.expires_at = timezone.now() - timedelta(minutes=1)
+        self.assertFalse(self.session.is_live)
+        self.assertTrue(self.session.is_expired)
+
+    def test_record_prevents_duplicate_per_student_session(self):
+        AttendanceRecord.objects.create(student=self.user, session=self.session, status='present')
+        with self.assertRaises(IntegrityError):
+            AttendanceRecord.objects.create(student=self.user, session=self.session, status='present')
+
+    def test_generate_attendance_token_returns_unique_codes(self):
+        from core.models import generate_attendance_token
+        tokens = {generate_attendance_token() for _ in range(5)}
+        self.assertEqual(len(tokens), 5)
+        for token in tokens:
+            self.assertRegex(token, r'^ATD-[0-9A-F]{6}$')
+
+
+class AttendanceScanApiTest(TestCase):
+    """POST /api/attendance/scan/ — recording, duplicates, expiry, campus gate."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='att_scan', password='x12345678')
+        self.client.force_login(self.user)
+        self.session = AttendanceSession.objects.create(
+            course_code='CSE-1101',
+            session_token='ATD-SCAN1',
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+
+    def _scan(self, token='ATD-SCAN1'):
+        return self.client.post(reverse('api_attendance_scan'), {'session_token': token})
+
+    def test_scan_requires_login(self):
+        self.client.logout()
+        response = self._scan()
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_scan_records_present(self):
+        response = self._scan()
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertEqual(data['course_code'], 'CSE-1101')
+        self.assertIn('Attendance marked Present', data['message'])
+        record = AttendanceRecord.objects.get(student=self.user, session=self.session)
+        self.assertEqual(record.status, 'present')
+        self.assertTrue(AttendanceRecord.objects.filter(ip_address='127.0.0.1').exists())
+
+    def test_scan_accepts_qr_payload_prefix(self):
+        response = self._scan('ATT|ATD-SCAN1')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(AttendanceRecord.objects.filter(student=self.user).count(), 1)
+
+    def test_duplicate_scan_returns_409(self):
+        self.assertEqual(self._scan().status_code, 200)
+        response = self._scan()
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('already marked Present', response.json()['message'])
+        self.assertEqual(AttendanceRecord.objects.filter(student=self.user).count(), 1)
+
+    def test_unknown_token_returns_404(self):
+        response = self._scan('ATD-NOPE')
+        self.assertEqual(response.status_code, 404)
+
+    def test_expired_session_returns_400(self):
+        self.session.expires_at = timezone.now() - timedelta(minutes=1)
+        self.session.save()
+        response = self._scan()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('expired', response.json()['message'])
+
+    def test_closed_session_returns_400(self):
+        self.session.is_active = False
+        self.session.save()
+        response = self._scan()
+        self.assertEqual(response.status_code, 400)
+
+    def test_scan_creates_notification(self):
+        from core.models import Notification
+        self._scan()
+        notification = Notification.objects.get(user=self.user, category='academic')
+        self.assertIn('CSE-1101', notification.message)
+
+    def test_campus_wifi_gate_blocks_off_network(self):
+        with override_settings(ENFORCE_CAMPUS_WIFI=True, CAMPUS_NETWORK_CIDRS=['192.168.0.0/16']):
+            response = self._scan()
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(AttendanceRecord.objects.filter(student=self.user).exists())
+
+    def test_campus_wifi_gate_allows_on_network(self):
+        with override_settings(ENFORCE_CAMPUS_WIFI=True, CAMPUS_NETWORK_CIDRS=['127.0.0.0/8']):
+            response = self._scan()
+        self.assertEqual(response.status_code, 200)
+
+    def test_gate_open_by_default(self):
+        self.assertEqual(self._scan().status_code, 200)
+
+
+class AttendanceStatsApiTest(TestCase):
+    """GET /api/attendance/my-stats/ — per-course totals + percentages."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='att_stats', password='x12345678')
+        self.client.force_login(self.user)
+        self.s1 = AttendanceSession.objects.create(
+            course_code='CSE-1101', session_token='ATD-STA1',
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+        self.s2 = AttendanceSession.objects.create(
+            course_code='CSE-1101', session_token='ATD-STA2',
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+        AttendanceSession.objects.create(
+            course_code='TEX-201', session_token='ATD-STA3',
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+        AttendanceRecord.objects.create(student=self.user, session=self.s1, status='present')
+
+    def test_stats_aggregate_per_course(self):
+        response = self.client.get(reverse('api_attendance_my_stats'))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()['data']
+        courses = {c['course_code']: c for c in data['courses']}
+        self.assertEqual(courses['CSE-1101']['total'], 2)
+        self.assertEqual(courses['CSE-1101']['attended'], 1)
+        self.assertEqual(courses['CSE-1101']['percentage'], 50)
+        self.assertEqual(courses['TEX-201']['total'], 1)
+        self.assertEqual(courses['TEX-201']['attended'], 0)
+        self.assertEqual(courses['TEX-201']['percentage'], 0)
+        self.assertEqual(data['overall']['total'], 3)
+        self.assertEqual(data['overall']['attended'], 1)
+
+    def test_stats_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse('api_attendance_my_stats'))
+        self.assertEqual(response.status_code, 302)
+
+
+class AdminAttendanceApiTest(TestCase):
+    """Admin attendance APIs — session create/live/close + filtered records."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(username='att_admin', password='x12345678', is_staff=True)
+        self.student = User.objects.create_user(username='att_stu', password='x12345678')
+        Course.objects.create(code='CSE-1101', title='Programming Fundamentals', department='CSE')
+        self.client.force_login(self.staff)
+
+    def _create(self):
+        return self.client.post(
+            reverse('api_admin_attendance_session_create'),
+            {'course_code': 'CSE-1101', 'duration_minutes': '30'},
+        )
+
+    def test_student_blocked_from_admin_apis(self):
+        # admin_required fails closed with 403 for authenticated non-staff
+        self.client.force_login(self.student)
+        response = self._create()
+        self.assertEqual(response.status_code, 403)
+
+    def test_create_session_returns_token_and_qr_payload(self):
+        response = self._create()
+        self.assertEqual(response.status_code, 200)
+        data = response.json()['data']
+        self.assertRegex(data['session_token'], r'^ATD-[0-9A-F]{6}$')
+        self.assertEqual(data['qr_payload'], 'ATT|' + data['session_token'])
+        self.assertEqual(data['course_code'], 'CSE-1101')
+        self.assertEqual(data['expires_in_minutes'], 30)
+
+    def test_create_rejects_unknown_course(self):
+        response = self.client.post(
+            reverse('api_admin_attendance_session_create'),
+            {'course_code': 'NOPE-999'},
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_live_endpoint_reports_count_and_scans(self):
+        token = self._create().json()['data']['session_token']
+        session = AttendanceSession.objects.get(session_token=token)
+        AttendanceRecord.objects.create(student=self.student, session=session, status='present')
+        response = self.client.get(
+            reverse('api_admin_attendance_session_live', args=[token])
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()['data']
+        self.assertEqual(data['count'], 1)
+        self.assertTrue(data['is_live'])
+        self.assertEqual(data['recent'][0]['student_name'], 'att_stu')
+
+    def test_close_session_deactivates(self):
+        token = self._create().json()['data']['session_token']
+        response = self.client.post(
+            reverse('api_admin_attendance_session_close', args=[token])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(AttendanceSession.objects.get(session_token=token).is_active)
+
+    def test_records_filter_by_course_date_and_student(self):
+        token = self._create().json()['data']['session_token']
+        session = AttendanceSession.objects.get(session_token=token)
+        AttendanceRecord.objects.create(student=self.student, session=session, status='present')
+
+        all_resp = self.client.get(reverse('api_admin_attendance_records')).json()['data']['records']
+        self.assertEqual(len(all_resp), 1)
+        self.assertEqual(all_resp[0]['course_code'], 'CSE-1101')
+
+        by_student = self.client.get(
+            reverse('api_admin_attendance_records'), {'student': 'att_stu'}
+        ).json()['data']['records']
+        self.assertEqual(len(by_student), 1)
+
+        none_resp = self.client.get(
+            reverse('api_admin_attendance_records'), {'student': 'nobody'}
+        ).json()['data']['records']
+        self.assertEqual(len(none_resp), 0)
+
+        bad_date = self.client.get(reverse('api_admin_attendance_records'), {'date': 'nope'})
+        self.assertEqual(bad_date.status_code, 400)
+
+
+class AttendancePageTest(TestCase):
+    """Student + admin attendance pages render their core sections."""
+
+    def test_student_page_renders_scanner_and_stats(self):
+        response = self.client.get(reverse('attendance'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        for needle in ['qr-reader', 'html5-qrcode', 'Mark Present', 'token-input', 'My Attendance', '/api/attendance/scan/', '/api/attendance/my-stats/']:
+            self.assertIn(needle, html)
+        self.assertIn('Attendance', html)
+
+    def test_admin_page_renders_for_staff(self):
+        staff = User.objects.create_user(username='att_admin2', password='x12345678', is_staff=True)
+        self.client.force_login(staff)
+        response = self.client.get(reverse('admin_attendance'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        for needle in ['Generate Class QR Code', 'live-count', 'admin-qr', 'api_admin_attendance_session_create', 'Attendance Records']:
+            self.assertIn(needle, html)
 
 
 class RoutineSettingsTabTest(TestCase):

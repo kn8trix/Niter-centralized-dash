@@ -20,6 +20,7 @@ urlpatterns = [
     path('dashboard/admin/content/', views.admin_content_view, name='admin_content'),
     path('dashboard/admin/settings/', views.admin_settings_view, name='admin_settings'),
     path('dashboard/admin/calendar/', views.admin_calendar_view, name='admin_calendar'),
+    path('dashboard/admin/attendance/', views.admin_attendance_view, name='admin_attendance'),
     path('tickets/', views.tickets, name='tickets'),
     path('medical/', views.medical, name='medical'),
     path('notes/', views.notes, name='notes'),
@@ -34,6 +35,14 @@ urlpatterns = [
     # Student dashboard — AI routine extraction + academic calendar month API.
     path('api/routine/extract/', views.routine_extract, name='api_routine_extract'),
     path('api/calendar/events/', views.api_calendar_events, name='api_calendar_events'),
+    # QR Attendance — student scan + stats, admin session management
+    path('attendance/', views.attendance_dashboard, name='attendance'),
+    path('api/attendance/scan/', views.api_attendance_scan, name='api_attendance_scan'),
+    path('api/attendance/my-stats/', views.api_attendance_my_stats, name='api_attendance_my_stats'),
+    path('api/admin/attendance/sessions/', views.api_attendance_session_create, name='api_admin_attendance_session_create'),
+    path('api/admin/attendance/sessions/<str:session_token>/live/', views.api_attendance_session_live, name='api_admin_attendance_session_live'),
+    path('api/admin/attendance/sessions/<str:session_token>/close/', views.api_attendance_session_close, name='api_admin_attendance_session_close'),
+    path('api/admin/attendance/records/', views.api_attendance_records, name='api_admin_attendance_records'),
     path('profile/', views.profile_view, name='profile'),
 
     # Staff / admin dashboards

@@ -78,6 +78,7 @@ active: dashboard | notes | departments | research | notices | transport | meals
                         <a href="{% url 'transport_dashboard' %}" class="{% if active == 'transport' %}active{% endif %}"><i class="fa-solid fa-bus"></i> Transport</a>
                         <a href="{% url 'meal_dashboard' %}" class="{% if active == 'meals' %}active{% endif %}"><i class="fa-solid fa-utensils"></i> Meals</a>
                         <a href="{% url 'medical' %}" class="{% if active == 'medical' %}active{% endif %}"><i class="fa-solid fa-stethoscope"></i> Medical</a>
+                        <a href="{% url 'attendance' %}" class="{% if active == 'attendance' %}active{% endif %}"><i class="fa-solid fa-clipboard-check"></i> Attendance</a>
                         <a href="{% url 'clubs_dashboard' %}" class="{% if active == 'clubs' %}active{% endif %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
                         <a href="{% url 'tickets' %}"><i class="fa-solid fa-ticket"></i> Tickets</a>
                         {% if NAV_CUSTOM_PAGES %}
@@ -121,6 +122,7 @@ active: dashboard | notes | departments | research | notices | transport | meals
         <a href="{% url 'transport_dashboard' %}" class="{% if active == 'transport' %}active{% endif %}"><i class="fa-solid fa-bus"></i> Transport</a>
         <a href="{% url 'meal_dashboard' %}" class="{% if active == 'meals' %}active{% endif %}"><i class="fa-solid fa-utensils"></i> Meals</a>
         <a href="{% url 'medical' %}" class="{% if active == 'medical' %}active{% endif %}"><i class="fa-solid fa-stethoscope"></i> Medical</a>
+        <a href="{% url 'attendance' %}" class="{% if active == 'attendance' %}active{% endif %}"><i class="fa-solid fa-clipboard-check"></i> Attendance</a>
         <a href="{% url 'clubs_dashboard' %}" class="{% if active == 'clubs' %}active{% endif %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
         {% if NAV_CUSTOM_PAGES %}
         <div class="nav-dropdown" data-component="nav-dropdown">

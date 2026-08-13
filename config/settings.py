@@ -428,6 +428,15 @@ if not DEBUG:
 # credentials (see .env.example; not yet wired).
 PAYMENTS_VERIFY_SIGNATURES = env.bool('PAYMENTS_VERIFY_SIGNATURES', default=True)
 
+# --- QR Attendance — campus Wi-Fi gate ---------------------------------------
+# Attendance scans can be restricted to the campus network. Flip
+# ENFORCE_CAMPUS_WIFI on and list the campus subnets once the Wi-Fi ranges
+# are known; the gate (core.middleware.is_campus_wifi) stays open otherwise.
+ENFORCE_CAMPUS_WIFI = env.bool('ENFORCE_CAMPUS_WIFI', default=False)
+CAMPUS_NETWORK_CIDRS = [
+    c.strip() for c in env('CAMPUS_NETWORK_CIDRS', default='').split(',') if c.strip()
+]
+
 # --- Research AI (OpenRouter) ---------------------------------------------------
 # Backend LLM provider for the Academic Research & Thesis Assistant
 # (/research-ai/). ``OPENROUTER_API_KEY`` empty/missing → the query endpoint

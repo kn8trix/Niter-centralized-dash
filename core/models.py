@@ -1308,6 +1308,108 @@ class PaymentTransaction(models.Model):
         return '%s · %s' % (self.transaction_id, self.get_purpose_display())
 
 
+# --- Attendance helpers ------------------------------------------------------
+# One source of truth for the class-session token format.
+
+def generate_attendance_token():
+    """Return an unused attendance session token, e.g. ``ATD-9F4A2C``."""
+    for _ in range(50):
+        token = 'ATD-' + _secrets.token_hex(3).upper()
+        if not AttendanceSession.objects.filter(session_token=token).exists():
+            return token
+    raise RuntimeError('Could not allocate a unique attendance token')
+
+
+class AttendanceSession(models.Model):
+    """A single live class session students scan into for attendance.
+
+    ``session_token`` is the short code encoded in the classroom QR; records
+    are captured against it until ``expires_at`` (or an admin closes it
+    early). One course can run many sessions, so attendance percentages are
+    computed per ``course_code`` across sessions.
+    """
+
+    course_code = models.CharField(max_length=20, db_index=True)
+    session_token = models.CharField(
+        max_length=20,
+        unique=True,
+        help_text='Short code embedded in the classroom QR, e.g. ATD-9F4A2C',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    expires_at = models.DateTimeField(db_index=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['course_code', '-created_at']),
+        ]
+
+    @property
+    def is_expired(self):
+        """True once the session's expiry has passed (regardless of the flag)."""
+        if self.expires_at is None:
+            return False
+        return timezone.now() >= self.expires_at
+
+    @property
+    def is_live(self):
+        """A session students can still scan into: active AND unexpired."""
+        return self.is_active and not self.is_expired
+
+    def __str__(self):
+        return '%s · %s' % (self.course_code, self.session_token)
+
+
+class AttendanceRecord(models.Model):
+    """One student's 'Present' entry for a class session.
+
+    ``unique_together`` (student, session) makes the DB the duplicate guard: a
+    second scan for the same session cannot create a second row.
+    """
+
+    STATUS_CHOICES = [
+        ('present', 'Present'),
+    ]
+
+    student = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='attendance_records',
+        db_index=True,
+    )
+    session = models.ForeignKey(
+        AttendanceSession,
+        on_delete=models.CASCADE,
+        related_name='records',
+        db_index=True,
+    )
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default='present',
+        help_text='Attendance status (Present today — future statuses can extend this)',
+    )
+    ip_address = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        help_text='Client IP captured at scan time (campus Wi-Fi gate uses it)',
+    )
+
+    class Meta:
+        ordering = ['-timestamp']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['student', 'session'],
+                name='uniq_attendance_student_session',
+            ),
+        ]
+
+    def __str__(self):
+        return '%s → %s' % (self.student.username, self.session.session_token)
+
+
 class UserNotificationPreference(models.Model):
     """Per-user alert + appearance preferences persisted in the database.
 

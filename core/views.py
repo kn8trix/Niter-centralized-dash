@@ -40,6 +40,7 @@ from .decorators import (
     superuser_required,
 )
 from .roles import get_user_role, role_home_path
+from .middleware import _client_ip, is_campus_wifi
 from .forms import SignUpForm
 from .block_sanitizer import sanitize_css, sanitize_html
 from .templatetags.builder_tags import render_block_html
@@ -74,6 +75,8 @@ from services.openrouter import (
 
 from .models import (
     AcademicEvent,
+    AttendanceRecord,
+    AttendanceSession,
     ClassRoutine,
     Club,
     ClubAccount,
@@ -107,6 +110,7 @@ from .models import (
     TransportRoute,
     UserNote,
     UserNotificationPreference,
+    generate_attendance_token,
     generate_meal_token,
     generate_qr_token,
 )
@@ -360,7 +364,9 @@ def student_dashboard(request):
     }
 
     return render(request, 'dashboard/home.html', {
-        'dash_data': json.dumps(dash_data),
+        # Dict for both template access ({{ dash_data.today.label }}) and the
+        # |json_script filter, which serialises it for the embedded script.
+        'dash_data': dash_data,
         'today_slots': today_slots,
         'has_routine': bool(routine_schedule),
         'routine_source': routine_source,
@@ -1323,6 +1329,281 @@ def cancel_meal(request):
         'meal_date': str(meal_date),
         'slots_remaining': subscription.slots_remaining if subscription is not None else 0,
         'message': 'Meal cancelled — slot released and credited back to your balance.',
+    })
+
+
+# ============================================================================
+# QR Attendance System — student scan + stats, admin session management
+# ============================================================================
+
+def attendance_dashboard(request):
+    """Student Attendance page — camera/manual QR scan + per-course stats.
+
+    Rendering is public (like the other service pages); the scan and stats
+    endpoints are login-gated and the page redirects to login when a stale
+    session is detected.
+    """
+    return render(request, 'attendance.html', {
+        'courses': Course.objects.order_by('code'),
+    })
+
+
+@login_required
+def api_attendance_scan(request):
+    """POST /api/attendance/scan/ — mark the signed-in student Present.
+
+    Accepts the bare session token or the ``ATT|<token>`` QR payload, checks
+    the campus Wi-Fi gate (``is_campus_wifi``), validates the session is live,
+    and records one Present entry per student per session (the DB unique
+    constraint rejects duplicates with 409).
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    if not is_campus_wifi(request):
+        return JsonResponse(
+            {'status': 'error', 'message': 'Attendance can only be marked while connected to campus Wi-Fi.'},
+            status=403,
+        )
+
+    token = (request.POST.get('session_token') or '').strip()
+    if token.startswith('ATT|'):
+        token = token.split('|', 1)[1].strip()
+    if not token:
+        return JsonResponse({'status': 'error', 'message': 'A session code is required.'}, status=400)
+
+    session = AttendanceSession.objects.filter(session_token__iexact=token).first()
+    if session is None:
+        return JsonResponse({'status': 'error', 'message': 'Invalid class session code.'}, status=404)
+
+    if not session.is_live:
+        return JsonResponse(
+            {'status': 'error', 'message': 'This class session has expired or was closed.'},
+            status=400,
+        )
+
+    try:
+        with transaction.atomic():
+            _, created = AttendanceRecord.objects.get_or_create(
+                student=request.user,
+                session=session,
+                defaults={'status': 'present', 'ip_address': _client_ip(request)},
+            )
+    except IntegrityError:
+        created = False
+
+    if not created:
+        return JsonResponse(
+            {'status': 'error', 'message': 'You are already marked Present for this class session.'},
+            status=409,
+        )
+
+    notification = Notification.objects.create(
+        user=request.user,
+        title='Attendance marked',
+        message='Attendance marked Present for %s.' % session.course_code,
+        category='academic',
+    )
+    _broadcast_notification(notification)
+
+    return JsonResponse({
+        'status': 'success',
+        'course_code': session.course_code,
+        'session_token': session.session_token,
+        'message': 'Attendance marked Present for %s.' % session.course_code,
+    })
+
+
+@login_required
+def api_attendance_my_stats(request):
+    """GET /api/attendance/my-stats/ — per-course attendance history + %. """
+    if request.method != 'GET':
+        return JsonResponse({'status': 'error', 'message': 'GET required'}, status=405)
+
+    totals = dict(
+        AttendanceSession.objects.values_list('course_code')
+        .annotate(total=Count('id'))
+    )
+    attended = dict(
+        AttendanceRecord.objects.filter(student=request.user)
+        .values_list('session__course_code')
+        .annotate(n=Count('id'))
+    )
+    courses = []
+    for code in sorted(set(totals) | set(attended)):
+        total = totals.get(code, 0)
+        got = attended.get(code, 0)
+        percentage = round(got * 100 / total) if total else 0
+        courses.append({
+            'course_code': code,
+            'total': total,
+            'attended': got,
+            'percentage': min(percentage, 100),
+        })
+
+    history = [
+        {
+            'course_code': rec.session.course_code,
+            'status': rec.get_status_display(),
+            'timestamp': rec.timestamp.isoformat(),
+            'session_token': rec.session.session_token,
+        }
+        for rec in AttendanceRecord.objects.filter(student=request.user)
+        .select_related('session')[:10]
+    ]
+
+    return JsonResponse({
+        'status': 'success',
+        'data': {
+            'courses': courses,
+            'history': history,
+            'overall': {
+                'total': sum(c['total'] for c in courses),
+                'attended': sum(c['attended'] for c in courses),
+            },
+        },
+    })
+
+
+@admin_required
+def admin_attendance_view(request):
+    """Admin Attendance & QR Sessions — generate class QRs + inspect records."""
+    return render(request, 'admin/attendance.html', {
+        'admin_section': 'attendance',
+        'courses': Course.objects.order_by('code'),
+    })
+
+
+@admin_required
+def api_attendance_session_create(request):
+    """POST /api/admin/attendance/sessions/ — open a new class session."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    course_code = (request.POST.get('course_code') or '').strip().upper()
+    if not course_code or not Course.objects.filter(code__iexact=course_code).exists():
+        return JsonResponse(
+            {'status': 'error', 'message': 'Please choose a course from the list.'},
+            status=400,
+        )
+    try:
+        minutes = int(request.POST.get('duration_minutes') or 60)
+    except (TypeError, ValueError):
+        minutes = 60
+    minutes = max(5, min(minutes, 240))
+    session = AttendanceSession.objects.create(
+        course_code=course_code,
+        session_token=generate_attendance_token(),
+        expires_at=timezone.now() + timedelta(minutes=minutes),
+        is_active=True,
+    )
+    return JsonResponse({
+        'status': 'success',
+        'data': {
+            'id': session.pk,
+            'course_code': session.course_code,
+            'session_token': session.session_token,
+            'expires_at': session.expires_at.isoformat(),
+            'expires_in_minutes': minutes,
+            'qr_payload': 'ATT|' + session.session_token,
+        },
+    })
+
+
+@admin_required
+def api_attendance_session_live(request, session_token):
+    """GET /api/admin/attendance/sessions/<token>/live/ — live scan counter."""
+    session = AttendanceSession.objects.filter(session_token__iexact=session_token).first()
+    if session is None:
+        return JsonResponse({'status': 'error', 'message': 'Session not found.'}, status=404)
+    recent = session.records.select_related('student__student_profile')[:10]
+    return JsonResponse({
+        'status': 'success',
+        'data': {
+            'count': session.records.count(),
+            'is_active': session.is_active,
+            'is_live': session.is_live,
+            'expires_at': session.expires_at.isoformat(),
+            'recent': [
+                {
+                    'student_name': r.student.get_full_name() or r.student.username,
+                    'student_id': (
+                        getattr(getattr(r.student, 'student_profile', None), 'student_id', None)
+                        or r.student.username
+                    ),
+                    'timestamp': r.timestamp.isoformat(),
+                }
+                for r in recent
+            ],
+        },
+    })
+
+
+@admin_required
+def api_attendance_session_close(request, session_token):
+    """POST /api/admin/attendance/sessions/<token>/close/ — end a session."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    session = AttendanceSession.objects.filter(session_token__iexact=session_token).first()
+    if session is None:
+        return JsonResponse({'status': 'error', 'message': 'Session not found.'}, status=404)
+    session.is_active = False
+    session.save(update_fields=['is_active'])
+    return JsonResponse({
+        'status': 'success',
+        'message': 'Session closed.',
+        'data': {'count': session.records.count()},
+    })
+
+
+@admin_required
+def api_attendance_records(request):
+    """GET /api/admin/attendance/records/ — full records with filters.
+
+    Filters: ``course`` (code), ``date`` (YYYY-MM-DD), ``student`` (username
+    or student-id substring).
+    """
+    if request.method != 'GET':
+        return JsonResponse({'status': 'error', 'message': 'GET required'}, status=405)
+    queryset = AttendanceRecord.objects.select_related('student__student_profile', 'session')
+    course = (request.GET.get('course') or '').strip()
+    day = (request.GET.get('date') or '').strip()
+    student_q = (request.GET.get('student') or '').strip()
+
+    if course:
+        queryset = queryset.filter(session__course_code__iexact=course)
+    if day:
+        try:
+            day_date = date.fromisoformat(day)
+        except ValueError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid date.'}, status=400)
+        queryset = queryset.filter(timestamp__date=day_date)
+    if student_q:
+        queryset = queryset.filter(
+            Q(student__username__icontains=student_q)
+            | Q(student__student_profile__student_id__icontains=student_q)
+        )
+
+    records = queryset.order_by('-timestamp')[:200]
+    return JsonResponse({
+        'status': 'success',
+        'data': {
+            'records': [
+                {
+                    'id': r.pk,
+                    'student_name': r.student.get_full_name() or r.student.username,
+                    'username': r.student.username,
+                    'student_id': (
+                        getattr(getattr(r.student, 'student_profile', None), 'student_id', None)
+                        or r.student.username
+                    ),
+                    'course_code': r.session.course_code,
+                    'session_token': r.session.session_token,
+                    'status': r.get_status_display(),
+                    'timestamp': r.timestamp.isoformat(),
+                    'ip_address': r.ip_address,
+                }
+                for r in records
+            ],
+        },
     })
 
 

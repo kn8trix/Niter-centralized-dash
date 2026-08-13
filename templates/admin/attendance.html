@@ -1,0 +1,296 @@
+{% extends "admin/admin_base.html" %}
+{% load static %}
+
+{% block title %}Attendance &amp; QR Sessions — Admin{% endblock %}
+{% block header %}Attendance &amp; QR Sessions{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+    <!-- ============================================================
+         Generate Class QR
+    ============================================================ -->
+    <div class="bg-card rounded-xl border border-border shadow-sm p-6">
+        <h2 class="text-lg font-semibold tracking-tight mb-1"><i class="fa-solid fa-qrcode text-main/70 mr-2"></i>Generate Class QR Code</h2>
+        <p class="text-sm text-main/60 mb-5">Open a live session for a course — students scan the projected QR to mark themselves Present. The live counter refreshes automatically.</p>
+
+        <form id="session-form" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            {% csrf_token %}
+            <div>
+                <label for="sess-course" class="block text-sm font-medium mb-1">Course / Subject</label>
+                <select id="sess-course" name="course_code" class="w-full rounded-lg border border-border bg-base px-3 py-2 text-sm focus:ring-2 focus:ring-accent focus:outline-none" required>
+                    <option value="">Select a course…</option>
+                    {% for course in courses %}
+                    <option value="{{ course.code }}">{{ course.code }} — {{ course.title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="sess-duration" class="block text-sm font-medium mb-1">Duration (minutes)</label>
+                <input type="number" id="sess-duration" name="duration_minutes" min="5" max="240" value="60"
+                       class="w-full rounded-lg border border-border bg-base px-3 py-2 text-sm focus:ring-2 focus:ring-accent focus:outline-none">
+            </div>
+            <div>
+                <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-main text-card px-5 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity">
+                    <i class="fa-solid fa-bolt"></i> Generate QR Code
+                </button>
+            </div>
+        </form>
+
+        <div class="session-error" id="session-error" hidden></div>
+
+        <!-- Live session panel (shown after generation) -->
+        <div id="live-panel" class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6" hidden>
+            <div class="flex flex-col items-center rounded-xl border border-dashed border-accent bg-base p-6">
+                <span class="text-xs uppercase tracking-wider text-main/50 mb-2">Scan to mark Present</span>
+                <div id="admin-qr" class="bg-card rounded-lg p-3 border border-border"></div>
+                <div class="mt-3 text-sm font-semibold text-main" id="live-token">—</div>
+                <div class="text-xs text-main/50 mt-1" id="live-expiry">—</div>
+            </div>
+            <div class="rounded-xl border border-border bg-base p-5">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <span class="text-xs uppercase tracking-wider text-main/50">Live scans</span>
+                        <div class="text-4xl font-extrabold tracking-tight text-main" id="live-count">0</div>
+                    </div>
+                    <span class="live-dot" id="live-dot" title="Session status"></span>
+                </div>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm text-main/60">Recent scans</span>
+                    <button type="button" id="live-close-btn" class="rounded-lg bg-red-600 text-white px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity">
+                        <i class="fa-solid fa-ban"></i> Close Session
+                    </button>
+                </div>
+                <ul class="live-list" id="live-list">
+                    <li class="text-sm text-main/40">No scans yet.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         Attendance records
+    ============================================================ -->
+    <div class="bg-card rounded-xl border border-border shadow-sm p-6">
+        <h2 class="text-lg font-semibold tracking-tight mb-1"><i class="fa-solid fa-table-list text-main/70 mr-2"></i>Attendance Records</h2>
+        <p class="text-sm text-main/60 mb-5">Every stored scan, filterable by course, date and student.</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+            <select id="rec-course" class="rounded-lg border border-border bg-base px-3 py-2 text-sm focus:ring-2 focus:ring-accent focus:outline-none">
+                <option value="">All courses</option>
+                {% for course in courses %}
+                <option value="{{ course.code }}">{{ course.code }}</option>
+                {% endfor %}
+            </select>
+            <input type="date" id="rec-date" class="rounded-lg border border-border bg-base px-3 py-2 text-sm focus:ring-2 focus:ring-accent focus:outline-none">
+            <input type="text" id="rec-student" placeholder="Student name / ID…" class="rounded-lg border border-border bg-base px-3 py-2 text-sm focus:ring-2 focus:ring-accent focus:outline-none">
+            <div class="flex gap-2">
+                <button type="button" id="rec-apply" class="rounded-lg bg-main text-card px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity">Filter</button>
+                <button type="button" id="rec-reset" class="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-base transition-colors">Reset</button>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-border">
+                        <th class="pb-3 font-semibold text-main text-sm">Student</th>
+                        <th class="pb-3 font-semibold text-main text-sm">Student ID</th>
+                        <th class="pb-3 font-semibold text-main text-sm">Course</th>
+                        <th class="pb-3 font-semibold text-main text-sm">Session</th>
+                        <th class="pb-3 font-semibold text-main text-sm">Status</th>
+                        <th class="pb-3 font-semibold text-main text-sm">Time</th>
+                        <th class="pb-3 font-semibold text-main text-sm">IP</th>
+                    </tr>
+                </thead>
+                <tbody id="rec-body" class="divide-y divide-border">
+                    <tr><td colspan="7" class="py-6 text-center text-sm text-main/40">No records — open a session and students will appear here.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+    // ====================================================================
+    // Wiring
+    // ====================================================================
+    const CREATE_URL = '{% url "api_admin_attendance_session_create" %}';
+    const RECORDS_URL = '{% url "api_admin_attendance_records" %}';
+    const LIVE_URL_TMPL = '{% url "api_admin_attendance_session_live" "TOKEN" %}';
+    const CLOSE_URL_TMPL = '{% url "api_admin_attendance_session_close" "TOKEN" %}';
+
+    function getCookie(name) {
+        if (!document.cookie || document.cookie === '') return null;
+        for (const part of document.cookie.split(';')) {
+            const pair = part.trim();
+            if (pair.startsWith(name + '=')) return decodeURIComponent(pair.slice(name.length + 1));
+        }
+        return null;
+    }
+
+    function fmtTime(iso) {
+        const d = new Date(iso);
+        if (isNaN(d)) return iso;
+        return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function escapeHtml(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // ====================================================================
+    // Session generation + live counter
+    // ====================================================================
+    let currentToken = null;
+    let liveTimer = null;
+    const liveDot = document.getElementById('live-dot');
+
+    function renderQR(payload) {
+        const box = document.getElementById('admin-qr');
+        box.innerHTML = '';
+        if (typeof QRCode !== 'undefined') {
+            new QRCode(box, { text: payload, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M });
+        } else {
+            box.textContent = payload;
+        }
+    }
+
+    function setLiveDot(ok) {
+        liveDot.style.background = ok ? '#16a34a' : '#dc2626';
+        liveDot.style.boxShadow = ok ? '0 0 0 4px rgba(22,163,74,.18)' : '0 0 0 4px rgba(220,38,38,.15)';
+    }
+
+    async function pollLive() {
+        if (!currentToken) return;
+        try {
+            const resp = await fetch(LIVE_URL_TMPL.replace('TOKEN', encodeURIComponent(currentToken)), { credentials: 'same-origin' });
+            if (!resp.ok) return;
+            const body = await resp.json();
+            const data = body.data || {};
+            document.getElementById('live-count').textContent = data.count || 0;
+            setLiveDot(Boolean(data.is_live));
+            document.getElementById('live-expiry').textContent = 'Expires ' + fmtTime(data.expires_at);
+            const list = document.getElementById('live-list');
+            const recent = data.recent || [];
+            if (!recent.length) {
+                list.innerHTML = '<li class="text-sm text-main/40">No scans yet.</li>';
+            } else {
+                list.innerHTML = recent.map((r) =>
+                    '<li class="flex items-center justify-between py-1.5 border-b border-border/60 last:border-0">' +
+                    '<span class="text-sm font-medium text-main">' + escapeHtml(r.student_name) + '</span>' +
+                    '<span class="text-xs text-main/50">' + escapeHtml(r.student_id) + ' · ' + fmtTime(r.timestamp) + '</span>' +
+                    '</li>'
+                ).join('');
+            }
+        } catch (err) { /* transient */ }
+    }
+
+    document.getElementById('session-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const error = document.getElementById('session-error');
+        error.hidden = true;
+        const course = document.getElementById('sess-course').value;
+        const duration = document.getElementById('sess-duration').value;
+        if (!course) {
+            error.textContent = 'Please choose a course.';
+            error.hidden = false;
+            return;
+        }
+        const resp = await fetch(CREATE_URL, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-CSRFToken': getCookie('csrftoken'),
+            },
+            body: new URLSearchParams({ course_code: course, duration_minutes: duration || '60' }).toString(),
+        });
+        const body = await resp.json().catch(() => ({}));
+        if (!resp.ok || body.status !== 'success') {
+            error.textContent = (body.message) || 'Could not create the session.';
+            error.hidden = false;
+            return;
+        }
+        const data = body.data;
+        currentToken = data.session_token;
+        renderQR(data.qr_payload);
+        document.getElementById('live-token').textContent = data.session_token;
+        document.getElementById('live-count').textContent = '0';
+        document.getElementById('live-panel').hidden = false;
+        setLiveDot(true);
+        document.getElementById('live-expiry').textContent = 'Expires in ' + data.expires_in_minutes + ' min';
+        document.getElementById('live-list').innerHTML = '<li class="text-sm text-main/40">No scans yet.</li>';
+        clearInterval(liveTimer);
+        liveTimer = setInterval(pollLive, 3000);
+        pollLive();
+        loadRecords();
+    });
+
+    document.getElementById('live-close-btn').addEventListener('click', async () => {
+        if (!currentToken) return;
+        if (!confirm('Close this session? Students will no longer be able to scan in.')) return;
+        const resp = await fetch(CLOSE_URL_TMPL.replace('TOKEN', encodeURIComponent(currentToken)), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') },
+        });
+        const body = await resp.json().catch(() => ({}));
+        if (resp.ok) {
+            setLiveDot(false);
+            clearInterval(liveTimer);
+            if (body.data && body.data.count !== undefined) document.getElementById('live-count').textContent = body.data.count;
+            currentToken = null;
+        }
+    });
+
+    // ====================================================================
+    // Records table
+    // ====================================================================
+    async function loadRecords() {
+        const params = new URLSearchParams();
+        const course = document.getElementById('rec-course').value;
+        const day = document.getElementById('rec-date').value;
+        const student = document.getElementById('rec-student').value.trim();
+        if (course) params.set('course', course);
+        if (day) params.set('date', day);
+        if (student) params.set('student', student);
+
+        const resp = await fetch(RECORDS_URL + '?' + params.toString(), { credentials: 'same-origin' });
+        const body = await resp.json().catch(() => ({}));
+        const records = (body.data && body.data.records) || [];
+        const tbody = document.getElementById('rec-body');
+
+        if (!records.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="py-6 text-center text-sm text-main/40">No records match these filters.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = records.map((r) =>
+            '<tr class="hover:bg-base/60 transition-colors">' +
+            '<td class="py-3 font-medium text-main">' + escapeHtml(r.student_name) + '</td>' +
+            '<td class="py-3 text-sm text-main/70">' + escapeHtml(r.student_id) + '</td>' +
+            '<td class="py-3 text-sm"><span class="font-mono font-semibold">' + escapeHtml(r.course_code) + '</span></td>' +
+            '<td class="py-3 text-sm text-main/70 font-mono">' + escapeHtml(r.session_token) + '</td>' +
+            '<td class="py-3"><span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2.5 py-0.5 text-xs font-medium"><i class="fa-solid fa-circle-check"></i> ' + escapeHtml(r.status) + '</span></td>' +
+            '<td class="py-3 text-sm text-main/70">' + fmtTime(r.timestamp) + '</td>' +
+            '<td class="py-3 text-xs font-mono text-main/50">' + escapeHtml(r.ip_address || '—') + '</td>' +
+            '</tr>'
+        ).join('');
+    }
+
+    document.getElementById('rec-apply').addEventListener('click', loadRecords);
+    document.getElementById('rec-reset').addEventListener('click', () => {
+        document.getElementById('rec-course').value = '';
+        document.getElementById('rec-date').value = '';
+        document.getElementById('rec-student').value = '';
+        loadRecords();
+    });
+
+    // Initial load
+    loadRecords();
+</script>
+{% endblock %}

@@ -868,3 +868,37 @@ table.matrix td:not(:first-child) {
     word-break: break-word;
     white-space: pre-wrap;
 }
+
+/* --- Attendance & QR Sessions --- */
+.session-error {
+    margin-top: 1rem;
+    padding: 0.7rem 0.9rem;
+    border-radius: 0.6rem;
+    font-size: 0.82rem;
+    background: rgb(var(--color-red-100, 254, 226, 226) / 1);
+    border: 1px solid rgb(var(--color-red-200, 254, 202, 202) / 1);
+    color: #b91c1c;
+}
+
+.live-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #16a34a;
+    box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.18);
+    display: inline-block;
+    animation: live-pulse 2s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+}
+
+.live-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 240px;
+    overflow-y: auto;
+}

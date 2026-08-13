@@ -44,7 +44,7 @@
         <!-- ============================================================
              Server payload for the live widgets (routine + calendar)
         ============================================================ -->
-        <script id="dash-data" type="application/json">{{ dash_data }}</script>
+        {{ dash_data|json_script:"dash-data" }}
 
         <!-- ============================================================
              Header widget — live Bangladesh clock + next class countdown

@@ -92,6 +92,8 @@ def endpoints(request):
             'admin_content': reverse('admin_content'),
             'admin_settings': reverse('admin_settings'),
             'admin_calendar': reverse('admin_calendar'),
+            'admin_attendance': reverse('admin_attendance'),
+            'attendance': reverse('attendance'),
             'academic_notes': reverse('academic_notes'),
             'notices': reverse('notices'),
             'tickets': reverse('tickets'),
@@ -117,6 +119,11 @@ def endpoints(request):
             'api_admin_update_role': reverse('api_admin_update_role'),
             'api_club_accounts': reverse('api_club_accounts'),
             'api_admin_academic_calendar': reverse('api_admin_academic_calendar'),
+            'api_attendance_scan': reverse('api_attendance_scan'),
+            'api_attendance_my_stats': reverse('api_attendance_my_stats'),
+            'api_admin_attendance_session_create': reverse('api_admin_attendance_session_create'),
+            'api_admin_attendance_records': reverse('api_admin_attendance_records'),
+            # Live/close take a <session_token> path arg — resolved with {% url %} in the admin template.
 
             # Authentication
             'login': reverse('login'),
