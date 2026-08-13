@@ -35,7 +35,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 
 from google.auth.exceptions import RefreshError
 
-from .consumers import notify_user, send_chat_push
+from .consumers import broadcast_emergency, notify_user, send_chat_push
 from .decorators import (
     admin_required,
     change_editablepage_required,
@@ -93,6 +93,7 @@ from .models import (
     Doctor,
     DoctorSchedule,
     EditablePage,
+    EmergencyAlert,
     GoogleUserToken,
     MedicalAppointment,
     MedicalChatMessage,
@@ -136,6 +137,9 @@ from services.attendance_email import (  # noqa: E402
     email_qr_to_teacher,
     email_report_to_teacher,
 )
+
+# Emergency alert mobile push (lazy firebase-admin — no-op when unconfigured).
+from services.emergency_push import send_emergency_push  # noqa: E402
 
 
 def public_home(request):
@@ -2872,6 +2876,150 @@ def mark_notification_read(request, notification_id):
         notification.is_read = True
         notification.save(update_fields=['is_read'])
     return JsonResponse({'status': 'success'})
+
+
+# ============================================================================
+# Emergency broadcast system — admin trigger/resolve + public active poll
+# ============================================================================
+
+
+def _serialize_emergency(alert):
+    """Compact EmergencyAlert payload shared by the API + WebSocket broadcast.
+
+    The shape is the single source of truth for the banner/overlay widgets:
+    every field a client needs to render (title, instructions, severity,
+    alarm flag) without a second round-trip.
+    """
+    return {
+        'id': alert.pk,
+        'title': alert.title,
+        'message': alert.message,
+        'severity': alert.severity_level or 'WARNING',
+        'severity_label': alert.get_severity_level_display(),
+        'play_alarm_sound': alert.play_alarm_sound,
+        'is_active': alert.is_active,
+        'created_by': (
+            alert.created_by.get_full_name() or alert.created_by.username
+            if alert.created_by is not None
+            else ''
+        ),
+        'created_at': alert.created_at.isoformat() if alert.created_at else None,
+    }
+
+
+@login_required
+def api_emergency_active(request):
+    """GET /api/emergency/active/ — the live emergency payload (or null).
+
+    The student-side endpoint every dashboard polls (and the WebSocket
+    fallback): returns the single active ``EmergencyAlert`` serialized via
+    ``_serialize_emergency``, or ``alert: null`` when the campus is quiet.
+    Login-gated so only dashboard users see campus emergency state.
+    """
+    if request.method != 'GET':
+        return JsonResponse({'status': 'error', 'message': 'GET required'}, status=405)
+    alert = EmergencyAlert.objects.filter(is_active=True).order_by('-created_at').first()
+    return JsonResponse({
+        'status': 'success',
+        'alert': _serialize_emergency(alert) if alert is not None else None,
+    })
+
+
+@admin_required
+def api_emergency_trigger(request):
+    """POST /api/admin/emergency/trigger/ — activate a campus emergency.
+
+    Validates the alert fields, retires any previously active alert (only one
+    live state at a time), persists the new alert, then fans out every
+    delivery channel: the global WebSocket broadcast (instant banner + siren),
+    per-user bell notifications (off the request path), and the optional
+    mobile push. Returns the live alert payload plus push diagnostics.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+
+    title = (request.POST.get('title') or '').strip()
+    message = (request.POST.get('message') or '').strip()
+    severity = (request.POST.get('severity_level') or 'WARNING').strip().upper()
+    play_alarm = request.POST.get('play_alarm_sound') in ('true', '1', 'on')
+
+    valid_severities = {code for code, _label in EmergencyAlert.SEVERITY_CHOICES}
+    if severity not in valid_severities:
+        return JsonResponse(
+            {'status': 'error', 'message': 'severity_level must be CRITICAL, WARNING or INFO.'},
+            status=400,
+        )
+    if not title or not message:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Alert title and message are required.'},
+            status=400,
+        )
+    if len(title) > 200:
+        # CharField bound — reject instead of letting Django raise a 500.
+        return JsonResponse(
+            {'status': 'error', 'message': 'Alert title is too long (max 200 characters).'},
+            status=400,
+        )
+
+    with transaction.atomic():
+        # Only one alert is live at a time — retire any previous one so the
+        # dashboard never shows a stale or competing emergency state.
+        EmergencyAlert.objects.filter(is_active=True).update(is_active=False)
+        alert = EmergencyAlert.objects.create(
+            title=title,
+            message=message,
+            severity_level=severity,
+            play_alarm_sound=play_alarm,
+            is_active=True,
+            created_by=request.user,
+        )
+
+    payload = _serialize_emergency(alert)
+    # 1) Instant push to every open dashboard tab (banner + overlay + siren).
+    broadcast_emergency({'type': 'trigger', 'alert': payload})
+    # 2) Bell notifications for every active user — a Huey task, so in
+    #    production (non-immediate mode) the fan-out runs off this request.
+    from .tasks import broadcast_emergency_alert
+    broadcast_emergency_alert(alert.pk)
+    # 3) Mobile push — no-op when Firebase is unconfigured, never fatal.
+    push_sent, push_note = send_emergency_push(alert)
+
+    return JsonResponse({
+        'status': 'success',
+        'alert': payload,
+        'push_sent': push_sent,
+        'push_note': push_note,
+        'message': 'Emergency alert broadcast to the campus.',
+    })
+
+
+@admin_required
+def api_emergency_resolve(request):
+    """POST /api/admin/emergency/resolve/ — clear the active emergency state.
+
+    Deactivates the live alert (stamping ``resolved_at`` / ``resolved_by``)
+    and broadcasts a ``resolve`` event so every open tab hides the banner,
+    closes the overlay and stops the siren loop immediately.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+
+    alert = EmergencyAlert.objects.filter(is_active=True).order_by('-created_at').first()
+    if alert is None:
+        return JsonResponse({'status': 'success', 'alert': None, 'message': 'No active emergency.'})
+
+    alert.is_active = False
+    alert.resolved_at = timezone.now()
+    alert.resolved_by = request.user
+    alert.save(update_fields=['is_active', 'resolved_at', 'resolved_by'])
+
+    payload = _serialize_emergency(alert)
+    broadcast_emergency({'type': 'resolve', 'alert': payload})
+    return JsonResponse({
+        'status': 'success',
+        'alert': payload,
+        'message': 'Emergency resolved — all active alerts cleared.',
+    })
 
 
 # ============================================================================
@@ -5919,12 +6067,14 @@ def admin_dashboard(request):
     recent_reports = Report.objects.select_related('user').order_by('-created_at')[:5]
     recent_notices = Notice.objects.select_related('author').order_by('-created_at')[:5]
     latest_pages = EditablePage.objects.order_by('-updated_at')[:5]
+    active_alert = EmergencyAlert.objects.filter(is_active=True).order_by('-created_at').first()
     return render(request, 'admin/overview.html', {
         'admin_section': 'overview',
         'stats': stats,
         'recent_reports': recent_reports,
         'recent_notices': recent_notices,
         'latest_pages': latest_pages,
+        'active_alert': active_alert,
     })
 
 

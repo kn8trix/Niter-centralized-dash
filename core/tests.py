@@ -49,6 +49,7 @@ from core.models import (
     DoctorSchedule,
     Driver,
     EditablePage,
+    EmergencyAlert,
     FacultyMember,
     GoogleUserToken,
     MedicalAppointment,
@@ -127,6 +128,7 @@ class StudentPagesSmokeTest(TestCase):
             'student_dashboard', 'club_dashboard', 'admin_dashboard', 'admin_users', 'admin_club_accounts',
             'admin_database', 'admin_content', 'admin_settings', 'admin_calendar', 'admin_teachers',
             'api_club_accounts', 'api_admin_academic_calendar', 'api_admin_teachers',
+            'api_emergency_active', 'api_admin_emergency_trigger', 'api_admin_emergency_resolve',
         ]:
             with self.subTest(endpoint=name):
                 self.assertIn(name, mapping)
@@ -2941,6 +2943,298 @@ class NotificationConsumerTest(TestCase):
             'user_%s' % self.user.pk,
             {'type': 'notification', 'payload': {'title': 'helper'}},
         )
+
+
+class EmergencyConsumerTest(TestCase):
+    """Emergency WebSocket consumer — global group membership + relay.
+
+    Mirrors ``NotificationConsumerTest``: every authenticated user joins the
+    shared ``emergency_alerts`` group, so a single broadcast reaches all open
+    tabs (anonymous connections are rejected).
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='emerg_socket', password='x12345678')
+
+    async def _open_socket(self, user):
+        from channels.testing import WebsocketCommunicator
+        from core.consumers import EmergencyConsumer
+        communicator = WebsocketCommunicator(
+            EmergencyConsumer.as_asgi(), '/ws/emergency/'
+        )
+        communicator.scope['user'] = user
+        connected, _ = await communicator.connect()
+        return communicator, connected
+
+    async def test_authenticated_user_connects(self):
+        communicator, connected = await self._open_socket(self.user)
+        self.assertTrue(connected)
+        await communicator.disconnect()
+
+    async def test_anonymous_connection_is_rejected(self):
+        communicator, connected = await self._open_socket(None)
+        self.assertFalse(connected)
+
+    async def test_broadcast_reaches_global_group(self):
+        from channels.layers import get_channel_layer
+        communicator, connected = await self._open_socket(self.user)
+        self.assertTrue(connected)
+        payload = {'type': 'trigger', 'alert': {'title': 'Evacuate'}}
+        await get_channel_layer().group_send(
+            'emergency_alerts', {'type': 'emergency', 'payload': payload},
+        )
+        self.assertEqual(await communicator.receive_json_from(), payload)
+        await communicator.disconnect()
+
+    def test_broadcast_emergency_helper_forwards(self):
+        """Sync helper fans out to the global emergency group."""
+        from core.consumers import broadcast_emergency
+        with mock.patch('core.consumers.get_channel_layer') as mock_get_layer:
+            mock_get_layer.return_value.group_send = mock.AsyncMock()
+            broadcast_emergency({'type': 'resolve'})
+        mock_get_layer.return_value.group_send.assert_awaited_once_with(
+            'emergency_alerts',
+            {'type': 'emergency', 'payload': {'type': 'resolve'}},
+        )
+
+    def test_broadcast_emergency_helper_never_raises(self):
+        """Channel-layer outages degrade to poll-only, never a 500."""
+        from core.consumers import broadcast_emergency
+        with mock.patch('core.consumers.get_channel_layer', return_value=None):
+            broadcast_emergency({'type': 'trigger', 'alert': {}})  # must not raise
+
+
+class EmergencyAlertModelTest(TestCase):
+    """EmergencyAlert model — fields, severity choices, live-state helpers."""
+
+    def setUp(self):
+        self.admin = User.objects.create_user(username='emerg_admin', password='x12345678', is_staff=True)
+
+    def test_model_fields_and_defaults(self):
+        alert = EmergencyAlert.objects.create(
+            title='Severe Weather Warning',
+            message='Stay indoors until the storm passes.',
+            severity_level='CRITICAL',
+            play_alarm_sound=True,
+            is_active=True,
+            created_by=self.admin,
+        )
+        self.assertEqual(alert.title, 'Severe Weather Warning')
+        self.assertEqual(alert.message, 'Stay indoors until the storm passes.')
+        self.assertEqual(alert.severity_level, 'CRITICAL')
+        self.assertTrue(alert.play_alarm_sound)
+        self.assertTrue(alert.is_active)
+        self.assertEqual(alert.created_by, self.admin)
+        self.assertIsNotNone(alert.created_at)
+        self.assertIsNone(alert.resolved_at)
+        self.assertIsNone(alert.resolved_by)
+        self.assertEqual(alert.severity_lower, 'critical')
+
+    def test_severity_choices_are_exhaustive(self):
+        codes = {code for code, _label in EmergencyAlert.SEVERITY_CHOICES}
+        self.assertEqual(codes, {'CRITICAL', 'WARNING', 'INFO'})
+
+    def test_string_representation(self):
+        alert = EmergencyAlert.objects.create(
+            title='Campus Evacuation', message='Proceed to the assembly point.',
+        )
+        self.assertIn('Campus Evacuation', str(alert))
+
+
+class EmergencyBroadcastApiTest(TestCase):
+    """Emergency API — trigger/resolve/active + role guards + fan-out.
+
+    Covers the admin trigger (creates the live alert, retires the previous
+    one, broadcasts + notifies every user, reports push diagnostics), the
+    resolve action (deactivates + stamps resolution), the student active-poll
+    endpoint, and the role guards on every route.
+    """
+
+    def setUp(self):
+        self.admin = User.objects.create_user(username='emg_admin', password='x12345678', is_staff=True)
+        self.student = User.objects.create_user(username='emg_student', password='x12345678')
+        self.other = User.objects.create_user(username='emg_other', password='x12345678')
+        self.client.force_login(self.admin)
+
+    # ------------------------------------------------------------------
+    # GET /api/emergency/active/
+    # ------------------------------------------------------------------
+    def test_active_returns_null_when_no_alert(self):
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('api_emergency_active'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['alert'], None)
+
+    def test_active_returns_live_alert(self):
+        self.client.force_login(self.student)
+        alert = EmergencyAlert.objects.create(
+            title='Fire Drill', message='Exit via the east stairs.',
+            severity_level='WARNING', is_active=True, created_by=self.admin,
+        )
+        response = self.client.get(reverse('api_emergency_active'))
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body['alert']['id'], alert.pk)
+        self.assertEqual(body['alert']['title'], 'Fire Drill')
+        self.assertEqual(body['alert']['message'], 'Exit via the east stairs.')
+        self.assertEqual(body['alert']['severity'], 'WARNING')
+        self.assertIn('severity_label', body['alert'])
+        self.assertIn('created_at', body['alert'])
+
+    def test_active_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse('api_emergency_active'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    # ------------------------------------------------------------------
+    # POST /api/admin/emergency/trigger/
+    # ------------------------------------------------------------------
+    def test_trigger_requires_admin(self):
+        self.client.force_login(self.student)
+        response = self.client.post(reverse('api_admin_emergency_trigger'), {
+            'title': 'Sneak', 'message': 'nope',
+        })
+        self.assertEqual(response.status_code, 403)
+
+    def test_trigger_requires_login(self):
+        self.client.logout()
+        response = self.client.post(reverse('api_admin_emergency_trigger'), {
+            'title': 'Sneak', 'message': 'nope',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_trigger_creates_active_alert_and_returns_payload(self):
+        with mock.patch('services.emergency_push._firebase_app', return_value=None):
+            response = self.client.post(reverse('api_admin_emergency_trigger'), {
+                'title': 'Severe Weather Warning',
+                'message': 'Stay indoors until the storm passes.',
+                'severity_level': 'CRITICAL',
+                'play_alarm_sound': 'true',
+            })
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body['status'], 'success')
+        self.assertEqual(body['alert']['title'], 'Severe Weather Warning')
+        self.assertEqual(body['alert']['severity'], 'CRITICAL')
+        self.assertTrue(body['alert']['play_alarm_sound'])
+        self.assertTrue(body['alert']['is_active'])
+        self.assertEqual(body['alert']['created_by'], 'emg_admin')
+        # Push is a graceful no-op when Firebase is unconfigured.
+        self.assertEqual(body['push_sent'], 0)
+        self.assertIn('Firebase not configured', body['push_note'])
+        # Exactly one live alert row exists.
+        self.assertEqual(EmergencyAlert.objects.filter(is_active=True).count(), 1)
+
+    def test_trigger_retires_previous_active_alert(self):
+        EmergencyAlert.objects.create(
+            title='Old Alert', message='previous', is_active=True, created_by=self.admin,
+        )
+        response = self.client.post(reverse('api_admin_emergency_trigger'), {
+            'title': 'New Alert', 'message': 'current',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(EmergencyAlert.objects.filter(is_active=True).count(), 1)
+        live = EmergencyAlert.objects.get(is_active=True)
+        self.assertEqual(live.title, 'New Alert')
+        self.assertFalse(EmergencyAlert.objects.get(title='Old Alert').is_active)
+
+    def test_trigger_broadcasts_to_emergency_group(self):
+        with mock.patch('core.views.broadcast_emergency') as mock_broadcast:
+            self.client.post(reverse('api_admin_emergency_trigger'), {
+                'title': 'Evacuate', 'message': 'Go to the field.',
+            })
+        mock_broadcast.assert_called_once()
+        event = mock_broadcast.call_args[0][0]
+        self.assertEqual(event['type'], 'trigger')
+        self.assertEqual(event['alert']['title'], 'Evacuate')
+
+    def test_trigger_fans_out_bell_notifications_to_active_users(self):
+        self.client.post(reverse('api_admin_emergency_trigger'), {
+            'title': 'Alert Everyone', 'message': 'heads up',
+        })
+        # A Notification row for every active user (urgent category).
+        rows = Notification.objects.filter(category='urgent')
+        self.assertEqual(rows.count(), 3)  # admin + student + other
+        for user in (self.admin, self.student, self.other):
+            self.assertTrue(rows.filter(user=user, title__contains='Alert Everyone').exists())
+
+    def test_trigger_rejects_missing_fields(self):
+        response = self.client.post(reverse('api_admin_emergency_trigger'), {
+            'title': '', 'message': '',
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['status'], 'error')
+
+    def test_trigger_rejects_invalid_severity(self):
+        response = self.client.post(reverse('api_admin_emergency_trigger'), {
+            'title': 'X', 'message': 'Y', 'severity_level': 'MEGA',
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('severity_level', response.json()['message'])
+
+    def test_trigger_requires_post(self):
+        response = self.client.get(reverse('api_admin_emergency_trigger'))
+        self.assertEqual(response.status_code, 405)
+
+    # ------------------------------------------------------------------
+    # POST /api/admin/emergency/resolve/
+    # ------------------------------------------------------------------
+    def test_resolve_deactivates_live_alert_and_stamps_resolution(self):
+        alert = EmergencyAlert.objects.create(
+            title='Evacuation', message='Move now.', is_active=True, created_by=self.admin,
+        )
+        with mock.patch('core.views.broadcast_emergency') as mock_broadcast:
+            response = self.client.post(reverse('api_admin_emergency_resolve'))
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body['status'], 'success')
+        alert.refresh_from_db()
+        self.assertFalse(alert.is_active)
+        self.assertIsNotNone(alert.resolved_at)
+        self.assertEqual(alert.resolved_by, self.admin)
+        # A resolve event was broadcast so every tab clears instantly.
+        event = mock_broadcast.call_args[0][0]
+        self.assertEqual(event['type'], 'resolve')
+        # The active poll now reports no live alert.
+        self.client.force_login(self.student)
+        self.assertEqual(self.client.get(reverse('api_emergency_active')).json()['alert'], None)
+
+    def test_resolve_with_no_active_alert_is_a_noop(self):
+        response = self.client.post(reverse('api_admin_emergency_resolve'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['alert'], None)
+
+    def test_resolve_requires_admin(self):
+        self.client.force_login(self.student)
+        response = self.client.post(reverse('api_admin_emergency_resolve'))
+        self.assertEqual(response.status_code, 403)
+
+    # ------------------------------------------------------------------
+    # Admin overview renders the emergency console with live state
+    # ------------------------------------------------------------------
+    def test_admin_overview_renders_emergency_console(self):
+        response = self.client.get(reverse('admin_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        for needle in [
+            'Emergency Siren / Broadcast',
+            'Trigger Emergency Alert',
+            'Clear / Resolve Emergency',
+            'emergency-modal',
+        ]:
+            self.assertContains(response, needle, msg_prefix=needle)
+        # No active alert → the idle state is rendered.
+        self.assertContains(response, 'campus is all clear')
+
+    def test_admin_overview_marks_live_alert(self):
+        EmergencyAlert.objects.create(
+            title='Flood Warning', message='Avoid low areas.',
+            severity_level='WARNING', is_active=True, created_by=self.admin,
+        )
+        response = self.client.get(reverse('admin_dashboard'))
+        self.assertContains(response, 'Flood Warning')
+        self.assertContains(response, 'is-live')
 
 
 class MealSubscriptionModelTest(TestCase):

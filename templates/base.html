@@ -87,6 +87,9 @@
     {{ ENDPOINTS|json_script:"app-endpoints" }}
 </head>
 <body class="font-sans antialiased min-h-screen flex overflow-x-hidden" data-app="campusdash">
+
+    <!-- Emergency broadcast banner + overlay + siren (active on every page) -->
+    {% include 'partials/emergency_banner.html' %}
     
     {% block sidebar %}
     <!-- Sidebar (hidden on mobile by default; toggled via hamburger). z-40 keeps it above the sticky header on mobile. -->

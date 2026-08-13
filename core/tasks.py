@@ -12,7 +12,7 @@ from django.utils import timezone
 from huey.contrib.djhuey import db_task
 
 from .consumers import notify_user
-from .models import NoteAnalysis, Notice, Notification, User
+from .models import EmergencyAlert, NoteAnalysis, Notice, Notification, User
 from .notes_analysis import count_sentences, extract_keywords, extract_summary
 
 logger = logging.getLogger('core.tasks')
@@ -56,6 +56,35 @@ def broadcast_notice(notice_id, bell_category):
             title='New notice: %s' % notice.title,
             message='%s — %s' % (notice.get_category_display(), notice.title),
             category=bell_category,
+        )
+        _push_notification(notification)
+        notified += 1
+    return notified
+
+
+@db_task()
+def broadcast_emergency_alert(alert_id):
+    """Fan out an ``EmergencyAlert`` to every active user's notification bell.
+
+    Mirrors ``broadcast_notice``: one ``Notification`` row per active user so
+    the topbar bell keeps the alert after the siren banner is dismissed, and
+    each row is pushed over the user's WebSocket group in real time. Runs off
+    the admin's trigger request path (immediate mode in dev/tests). Returns
+    the number of users notified.
+    """
+    try:
+        alert = EmergencyAlert.objects.get(pk=alert_id)
+    except EmergencyAlert.DoesNotExist:
+        logger.warning('broadcast_emergency_alert: alert %s not found', alert_id)
+        return 0
+
+    notified = 0
+    for student in User.objects.filter(is_active=True):
+        notification = Notification.objects.create(
+            user=student,
+            title='\U0001F6A8 %s' % alert.title,
+            message=alert.message,
+            category='urgent',
         )
         _push_notification(notification)
         notified += 1

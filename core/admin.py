@@ -14,6 +14,7 @@ from .models import (
     Department,
     Driver,
     EditablePage,
+    EmergencyAlert,
     FacultyMember,
     GoogleUserToken,
     MedicalAppointment,
@@ -102,6 +103,20 @@ class NoticeAdmin(admin.ModelAdmin):
     list_select_related = ('author',)
     date_hierarchy = 'created_at'
     readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(EmergencyAlert)
+class EmergencyAlertAdmin(admin.ModelAdmin):
+    """Campus-wide emergency broadcasts — inspect history + toggle the live state."""
+
+    list_display = ('title', 'severity_level', 'is_active', 'play_alarm_sound', 'created_by', 'created_at', 'resolved_at')
+    list_filter = ('severity_level', 'is_active', 'play_alarm_sound', 'created_at')
+    search_fields = ('title', 'message', 'created_by__username')
+    list_select_related = ('created_by', 'resolved_by')
+    date_hierarchy = 'created_at'
+    readonly_fields = ('created_at', 'resolved_at')
+    list_editable = ('is_active',)
+
 
 
 @admin.register(Course)

@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 97 | Emergency Announcement System — banner + siren + mobile push | `PENDING` |
 | 96 | Teacher Management + QR email dispatch + attendance report emails | `52735a4` |
 | 95 | Medical API payload alignment — booking keys + consultation lookup | `d2bf152` |
 | 94 | Mobile responsiveness (calendar / clock / attendance) + Transport payment gateway modal | `e8f3332` |
@@ -5612,3 +5613,98 @@ report.
 - Browser e2e: admin login → create teacher (assigned CSE-1101) → generate
   QR session → "Email QR to Teacher" and "Send Report to Teacher" both
   succeed with toasts → close auto-emails the report; zero console errors.
+
+
+## 97. Emergency Announcement System — Banner + Siren + Mobile Push
+
+Campus-wide emergency broadcasting: an admin triggers a live alert from the
+Admin Overview and every dashboard tab shows a severity-styled banner (and,
+for CRITICAL, a full-screen overlay) with an optional looping siren — plus an
+opt-in Firebase push fan-out for the mobile app.
+
+### 1. Backend & model
+
+- **Model (`core/models.py`)**: new `EmergencyAlert` — `title`, `message`,
+  `severity_level` (CRITICAL / WARNING / INFO), `play_alarm_sound`,
+  `is_active`, `created_by` (FK → admin), `created_at`, `resolved_at` /
+  `resolved_by`. **Only one alert is live at a time** — triggering a new
+  one retires the previous. `severity_lower` helper for client styling.
+- **Migration `0039_emergencyalert`**; registered in the Django admin.
+- **API**: `POST /api/admin/emergency/trigger/` (create + activate +
+  broadcast), `POST /api/admin/emergency/resolve/` (deactivate + stamp
+  resolution), `GET /api/emergency/active/` (student-side poll — returns
+  the live alert or `null`). Trigger/resolve are `admin_required`; the
+  active poll is `login_required`. Validation: missing title/message → 400,
+  unknown severity → 400, title > 200 chars → 400.
+
+### 2. Real-time delivery
+
+- **WebSocket** (`ws/emergency/`): new `EmergencyConsumer` joins the global
+  `emergency_alerts` group (auth required, anonymous rejected);
+  `broadcast_emergency(payload)` fans trigger/resolve events out to every
+  open tab. Channel-layer outages degrade gracefully to poll-only (never
+  raise).
+- **Bell fan-out** (`core.tasks.broadcast_emergency_alert`): one urgent
+  `Notification` row per active user + live push, off the trigger request
+  path (Huey immediate in dev/tests).
+- **Mobile push** (`services/emergency_push.py`): lazy firebase-admin
+  integration — high-priority FCM message (topic `emergency_alerts`) with
+  `data.type = EMERGENCY_ALERT`, severity, `emergency_siren.wav` sound,
+  critical-channel Android config and `apns-priority: 10`. Reads
+  `FIREBASE_CREDENTIALS` (inline JSON or path); **unconfigured → graceful
+  no-op** (`push_sent: 0`), never fatal. firebase_admin need not be
+  installed to run the portal.
+
+### 3. Student overlay + siren
+
+- `templates/partials/emergency_banner.html` included in **every shell**
+  (topbar, base, admin_base, club_base) for authenticated users: polls
+  `/api/emergency/active/` every 10 s + listens on `ws/emergency/` (instant
+  trigger/resolve). Renders a pulsating severity-styled fixed banner on ALL
+  dashboard pages (`/meals/`, `/transport/`, `/medical/`, `/attendance/`,
+  …), a full-screen overlay for CRITICAL alerts (dismissible, banner
+  persists), and loops the siren when `play_alarm_sound` is set — silenced
+  per-alert via the "Silence alarm" button, stopped on resolve. Content is
+  set via `textContent` (no XSS).
+- **Siren audio**: `static/audio/emergency_siren.wav` (4 s two-tone 660/880
+  Hz sweep, 44.1 kHz 16-bit mono, loop-friendly) generated with the Python
+  stdlib (`wave` + `math` — no ffmpeg on the box). WAV plays natively in
+  every browser; the spec's own push payload references
+  `emergency_siren.wav`. Browsers gate autoplay behind a first user
+  gesture — the driver retries on the next pointer/key event (bound once
+  per page).
+
+### 4. Admin broadcast console
+
+- New **Emergency Siren / Broadcast** card at the top of the Admin Overview
+  (`/dashboard/admin/`): live status chip (All clear ↔ LIVE ALERT with
+  pulse), the active alert's title/severity/timestamp/message, a red
+  **Trigger Emergency Alert** button opening a confirmation modal (title,
+  instructions textarea, severity select, play-alarm toggle) and a **Clear
+  / Resolve Emergency** button (enabled only while an alert is live). The
+  console polls the active endpoint every 8 s, so it stays in sync with
+  alerts triggered elsewhere.
+
+### 5. Files changed
+
+- `core/models.py`, `core/migrations/0039_emergencyalert.py`,
+  `core/admin.py`, `core/views.py`, `core/urls.py`,
+  `core/context_processors.py`, `core/consumers.py`, `core/routing.py`,
+  `core/tasks.py`
+- `services/emergency_push.py` (new), `config/settings.py`
+  (`FIREBASE_CREDENTIALS`)
+- `static/css/emergency.css` (new), `static/audio/emergency_siren.wav`
+  (new), `templates/partials/emergency_banner.html` (new),
+  `templates/admin/overview.html` (console + modal),
+  `templates/partials/topbar.html`, `templates/base.html`,
+  `templates/admin/admin_base.html`, `templates/club/club_base.html`
+- `core/tests.py` (3 new test classes: EmergencyAlertModel,
+  EmergencyBroadcastApi, EmergencyConsumer)
+
+### 6. Tests & verification
+
+- `python manage.py check` clean; **full suite 851 tests OK** (was 826).
+- Browser e2e: admin login → trigger CRITICAL alert with siren → student
+  /meals/ tab shows the pulsating banner + full-screen overlay (acknowledge
+  keeps the banner) → resolve from the admin console → banner clears across
+  tabs; zero console errors.

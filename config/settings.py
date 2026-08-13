@@ -479,3 +479,10 @@ OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions'
 # Convenience flag — mirrors whether a key is configured (used by the view to
 # decide between the live provider and the offline engine).
 OPENROUTER_ENABLED = bool(OPENROUTER_API_KEY)
+
+# --- Emergency push (Firebase Cloud Messaging) -------------------------------
+# Mobile push for Emergency Alerts. ``FIREBASE_CREDENTIALS`` is either the
+# inline JSON of a Firebase service-account file or a path to one. When unset,
+# ``services.emergency_push`` degrades to a no-op — the in-app banner,
+# WebSocket broadcast and polling still deliver alerts without push.
+FIREBASE_CREDENTIALS = env('FIREBASE_CREDENTIALS', default='')

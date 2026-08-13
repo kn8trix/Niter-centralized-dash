@@ -343,3 +343,182 @@ body.admin-area {
 
 .admin-alert.error { display: block; background: rgb(var(--color-danger-soft, 254 242 242)); color: rgb(var(--color-danger, 220 38 38)); border: 1px solid rgba(220, 38, 38, 0.2); }
 .admin-alert.success { display: block; background: rgb(var(--color-success-soft, 240 253 244)); color: rgb(var(--color-success, 22 163 74)); border: 1px solid rgba(22, 163, 74, 0.2); }
+
+/* ====================== Emergency Broadcast Console ====================== */
+.emergency-console {
+    border: 1px solid rgba(220, 38, 38, 0.18);
+    background: linear-gradient(180deg, rgb(var(--color-card, 255 255 255)) 0%, #fff7f7 100%);
+    margin-bottom: 1.25rem;
+}
+.emergency-console.is-live {
+    border-color: rgba(220, 38, 38, 0.55);
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.08);
+}
+.emergency-console-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.emergency-status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 0.4rem 0.8rem;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+.emergency-status-chip.idle {
+    background: rgb(var(--color-success-soft, 240 253 244));
+    color: rgb(var(--color-success, 22 163 74));
+    border: 1px solid rgba(22, 163, 74, 0.25);
+}
+.emergency-status-chip.live {
+    background: rgb(var(--color-danger-soft, 254 242 242));
+    color: rgb(var(--color-danger, 220 38 38));
+    border: 1px solid rgba(220, 38, 38, 0.35);
+    animation: emergency-chip-pulse 1.4s ease-in-out infinite;
+}
+.emergency-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+}
+.emergency-status-chip.live .emergency-status-dot { animation: emergency-dot-blink 0.9s ease-in-out infinite; }
+@keyframes emergency-chip-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.35); } 50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); } }
+@keyframes emergency-dot-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+.emergency-active {
+    margin: 0.9rem 0;
+    padding: 0.85rem 1rem;
+    border-radius: 0.6rem;
+    background: rgb(var(--color-danger-soft, 254 242 242));
+    border: 1px solid rgba(220, 38, 38, 0.22);
+}
+.emergency-active-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    font-size: 0.95rem;
+}
+.emergency-active-time {
+    font-size: 0.75rem;
+    color: rgb(var(--color-main, 43 41 39) / 0.5);
+}
+.emergency-active-msg { margin-top: 0.4rem; font-size: 0.875rem; color: rgb(var(--color-main, 43 41 39) / 0.75); }
+.emergency-active-idle {
+    margin: 0.9rem 0;
+    padding: 0.7rem 1rem;
+    border-radius: 0.6rem;
+    background: rgb(var(--color-success-soft, 240 253 244));
+    color: rgb(var(--color-success, 22 163 74));
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.emergency-console-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+.emergency-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: none;
+    border-radius: 0.55rem;
+    padding: 0.65rem 1.1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.15s ease, transform 0.1s ease;
+}
+.emergency-btn:active { transform: translateY(1px); }
+.emergency-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.emergency-btn.danger {
+    background: linear-gradient(135deg, #dc2626, #b91c1c);
+    color: #fff;
+    box-shadow: 0 6px 16px rgba(220, 38, 38, 0.28);
+}
+.emergency-btn.danger:hover:not(:disabled) { filter: brightness(1.08); }
+.emergency-btn.outline {
+    background: transparent;
+    color: rgb(var(--color-main, 43 41 39));
+    border: 1px solid rgb(var(--color-border, 235 230 223));
+}
+.emergency-btn.outline:hover:not(:disabled) { background: rgb(var(--color-chip, 240 235 225)); }
+
+/* Trigger modal */
+.emergency-modal { position: fixed; inset: 0; z-index: 7000; display: flex; align-items: center; justify-content: center; padding: 1.25rem; }
+.emergency-modal-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(15, 4, 4, 0.6);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+}
+.emergency-modal-card {
+    position: relative;
+    width: 100%;
+    max-width: 520px;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: rgb(var(--color-card, 255 255 255));
+    border-radius: 1rem;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.4);
+    border-top: 5px solid #dc2626;
+    padding: 1.4rem 1.5rem;
+    animation: emergency-modal-in 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+@keyframes emergency-modal-in {
+    from { opacity: 0; transform: translateY(18px) scale(0.97); }
+    to { opacity: 1; transform: none; }
+}
+.emergency-modal-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.1rem;
+}
+.emergency-modal-head h3 { font-size: 1.05rem; color: #b91c1c; }
+.emergency-modal-head p { font-size: 0.8rem; color: rgb(var(--color-main, 43 41 39) / 0.6); margin-top: 0.25rem; }
+.emergency-modal-close {
+    border: none; background: transparent; color: rgb(var(--color-main, 43 41 39) / 0.5);
+    font-size: 1.1rem; cursor: pointer; height: 2rem; width: 2rem; border-radius: 0.5rem;
+}
+.emergency-modal-close:hover { background: rgb(var(--color-chip, 240 235 225)); }
+.emergency-field { display: block; margin-bottom: 0.9rem; }
+.emergency-field > span { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.3rem; }
+.emergency-field input,
+.emergency-field textarea,
+.emergency-field select {
+    width: 100%;
+    border: 1px solid rgb(var(--color-border, 235 230 223));
+    border-radius: 0.5rem;
+    padding: 0.55rem 0.7rem;
+    font-size: 0.875rem;
+    background: rgb(var(--color-card, 255 255 255));
+    color: rgb(var(--color-main, 43 41 39));
+}
+.emergency-field input:focus,
+.emergency-field textarea:focus,
+.emergency-field select:focus {
+    outline: none;
+    border-color: #dc2626;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+.emergency-check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    margin: 0.8rem 0 1.1rem;
+    cursor: pointer;
+}
+.emergency-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }

@@ -85,6 +85,57 @@ def notify_user(user_id, payload):
         logger.warning('notify_user: channel layer push failed for user %s', user_id, exc_info=True)
 
 
+class EmergencyConsumer(AsyncJsonWebsocketConsumer):
+    """WebSocket endpoint streaming campus-wide emergency broadcasts.
+
+    Endpoint: ``ws/emergency/``. Authenticated users join the global
+    ``emergency_alerts`` group, so the moment an admin triggers or resolves an
+    alert every open dashboard tab updates without a poll. Payloads use the
+    event type ``'emergency'`` and carry the full alert object (see
+    ``broadcast_emergency``) — the browser renders the banner, overlay and
+    siren from that payload.
+
+    Anonymous connections are rejected; staff and students alike subscribe
+    (the trigger/resolve actions themselves stay admin-only at the API layer).
+    """
+
+    async def connect(self):
+        user = self.scope.get('user')
+        if user is None or not user.is_authenticated:
+            await self.close()
+            return
+        self.group_name = 'emergency_alerts'
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        if getattr(self, 'group_name', None):
+            await self.channel_layer.group_discard(self.group_name, self.channel_name)
+
+    async def emergency(self, event):
+        """Relay an emergency broadcast payload to every open tab."""
+        await self.send_json(event.get('payload', {}))
+
+
+def broadcast_emergency(payload):
+    """Broadcast an emergency event to every connected dashboard tab.
+
+    Mirrors ``notify_user``'s resilience: the channel layer may be absent or
+    unreachable (no Redis / plain WSGI), in which case clients pick the alert
+    up on their next ``/api/emergency/active/`` poll. Never raises.
+    """
+    channel_layer = get_channel_layer()
+    if channel_layer is None:
+        return
+    try:
+        async_to_sync(channel_layer.group_send)(
+            'emergency_alerts',
+            {'type': 'emergency', 'payload': payload},
+        )
+    except Exception:
+        logger.warning('broadcast_emergency: channel layer push failed', exc_info=True)
+
+
 class MedicalChatConsumer(AsyncJsonWebsocketConsumer):
     """Persistent patient ↔ doctor consultation chat over WebSockets.
 

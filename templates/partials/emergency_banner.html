@@ -1,0 +1,220 @@
+{% load static %}
+{% comment %}
+============================================================================
+Emergency Announcement System — real-time banner + overlay + siren
+--------------------------------------------------------------------------
+Included on every dashboard shell (topbar.html, base.html, admin_base.html,
+club_base.html). For authenticated users it:
+
+  * polls /api/emergency/active/ every 10s (works even without WebSockets)
+  * listens on ws://…/ws/emergency/ for instant trigger/resolve events
+  * shows a pulsating severity-styled banner on EVERY page while active
+  * raises a full-screen overlay for CRITICAL alerts
+  * loops the siren audio when play_alarm_sound is set (until resolved or
+    the student silences it; browsers gate autoplay behind first gesture)
+
+Anonymous visitors get nothing (emergency state is for signed-in users).
+============================================================================
+{% endcomment %}
+{% if user.is_authenticated %}
+<link rel="stylesheet" href="{% static 'css/emergency.css' %}">
+
+<!-- Top banner strip (all severities) -->
+<div class="emergency-banner" id="emergency-banner" role="alert" aria-live="assertive" hidden>
+    <span class="emergency-banner-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
+    <div class="emergency-banner-body">
+        <div class="emergency-banner-title">
+            <span id="emergency-banner-title">EMERGENCY</span>
+            <span class="emergency-banner-meta" id="emergency-banner-severity">WARNING</span>
+        </div>
+        <div class="emergency-banner-msg" id="emergency-banner-msg"></div>
+    </div>
+    <div class="emergency-banner-actions">
+        <button type="button" class="emergency-silence-btn" id="emergency-silence-btn" title="Stop the siren (the banner stays until the alert is resolved)">Silence alarm</button>
+    </div>
+</div>
+
+<!-- Full-screen overlay (CRITICAL only) -->
+<div class="emergency-overlay" id="emergency-overlay" role="alertdialog" aria-modal="true" aria-labelledby="emergency-overlay-title" hidden>
+    <div class="emergency-overlay-card">
+        <div class="emergency-overlay-siren"><i class="fa-solid fa-bullhorn"></i></div>
+        <div class="emergency-overlay-eyebrow" id="emergency-overlay-eyebrow">Critical Emergency</div>
+        <div class="emergency-overlay-title" id="emergency-overlay-title">—</div>
+        <div class="emergency-overlay-msg" id="emergency-overlay-msg"></div>
+        <div class="emergency-overlay-actions">
+            <button type="button" class="emergency-overlay-dismiss" id="emergency-overlay-dismiss">Acknowledge &amp; continue</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+    if (window.__emergencyBannerLoaded) return;   // one driver per page
+    window.__emergencyBannerLoaded = true;
+
+    var banner = document.getElementById('emergency-banner');
+    var overlay = document.getElementById('emergency-overlay');
+    if (!banner) return;
+
+    var ACTIVE_URL = '{% url "api_emergency_active" %}';
+    var SIREN_URL = '{% static "audio/emergency_siren.wav" %}';
+    var POLL_MS = 10000;
+    var WS_MAX_RETRIES = 5;
+    var siren = null;
+    var currentAlertId = null;
+    var silencedAlertId = null;
+    var gestureListenerBound = false;   // autoplay retry registered once per page
+
+    function severityClass(sev) {
+        return 'sev-' + String(sev || 'WARNING').toLowerCase();
+    }
+
+    function escapeHtml(value) {
+        var div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+
+    function formatTime(iso) {
+        if (!iso) return '';
+        var d = new Date(iso);
+        if (isNaN(d)) return iso;
+        return d.toLocaleString(undefined, {
+            day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit'
+        });
+    }
+
+    /* ---------- Siren ---------- */
+    function startSiren(alert) {
+        if (!alert || !alert.play_alarm_sound) return;
+        if (silencedAlertId === alert.id) return;   // student silenced this one
+        if (!siren) {
+            try {
+                siren = new Audio(SIREN_URL);
+                siren.loop = true;
+                siren.volume = 0.85;
+            } catch (err) { return; }
+        }
+        var tryPlay = function () {
+            var p = siren.play();
+            if (p && p.catch) p.catch(function () { /* needs a user gesture */ });
+        };
+        tryPlay();
+        // Browsers block audio until the first user gesture — retry on the
+        // next interaction, but only bind the retry listeners once per page
+        // (the alert is re-rendered on every poll tick).
+        if (!gestureListenerBound) {
+            gestureListenerBound = true;
+            var onGesture = function () { tryPlay(); };
+            document.addEventListener('pointerdown', onGesture, { once: true });
+            document.addEventListener('keydown', onGesture, { once: true });
+        }
+    }
+
+    function stopSiren() {
+        if (siren) {
+            try { siren.pause(); siren.currentTime = 0; } catch (err) { /* noop */ }
+        }
+    }
+
+    function silenceCurrent() {
+        if (currentAlertId !== null) silencedAlertId = currentAlertId;
+        stopSiren();
+        var btn = document.getElementById('emergency-silence-btn');
+        if (btn) { btn.textContent = 'Alarm silenced'; btn.classList.add('silenced'); }
+    }
+
+    /* ---------- Render ---------- */
+    function renderAlert(alert) {
+        if (!alert) { clearAlert(); return; }
+        currentAlertId = alert.id;
+        var severity = alert.severity || 'WARNING';
+        var isCritical = severity === 'CRITICAL';
+
+        banner.hidden = false;
+        banner.className = 'emergency-banner is-visible ' + severityClass(severity);
+        document.getElementById('emergency-banner-title').textContent =
+            '🚨 ' + (alert.title || 'EMERGENCY ALERT');
+        document.getElementById('emergency-banner-msg').textContent =
+            (alert.message || '') + (alert.created_at ? '  ·  ' + formatTime(alert.created_at) : '');
+        document.getElementById('emergency-banner-severity').textContent = severity;
+
+        // Full-screen overlay for CRITICAL alerts only.
+        if (isCritical) {
+            document.getElementById('emergency-overlay-eyebrow').textContent =
+                severity + ' Emergency';
+            document.getElementById('emergency-overlay-title').textContent = alert.title || 'Emergency';
+            document.getElementById('emergency-overlay-msg').textContent = alert.message || '';
+            overlay.hidden = false;
+            overlay.classList.add('is-visible');
+        } else {
+            overlay.hidden = true;
+            overlay.classList.remove('is-visible');
+        }
+
+        startSiren(alert);
+    }
+
+    function clearAlert() {
+        currentAlertId = null;
+        stopSiren();
+        banner.hidden = true;
+        banner.classList.remove('is-visible');
+        overlay.hidden = true;
+        overlay.classList.remove('is-visible');
+        var btn = document.getElementById('emergency-silence-btn');
+        if (btn) { btn.textContent = 'Silence alarm'; btn.classList.remove('silenced'); }
+    }
+
+    /* ---------- REST poll (fallback + on-load) ---------- */
+    function poll() {
+        fetch(ACTIVE_URL, { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || data.status !== 'success') return;
+                renderAlert(data.alert);
+            })
+            .catch(function () { /* network blip — retry next tick */ });
+    }
+
+    /* ---------- WebSocket (instant push) ---------- */
+    var wsRetries = 0;
+    function connectSocket() {
+        if (typeof WebSocket === 'undefined') return;
+        if (wsRetries >= WS_MAX_RETRIES) return;
+        var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+        var socket;
+        try { socket = new WebSocket(proto + location.host + '/ws/emergency/'); }
+        catch (err) { return; }
+        socket.onopen = function () { wsRetries = 0; };
+        socket.onmessage = function (event) {
+            var msg;
+            try { msg = JSON.parse(event.data); } catch (err) { return; }
+            if (!msg || !msg.type) return;
+            if (msg.type === 'trigger' && msg.alert) renderAlert(msg.alert);
+            else if (msg.type === 'resolve') clearAlert();
+        };
+        socket.onclose = function () {
+            wsRetries += 1;
+            setTimeout(connectSocket, 3000);
+        };
+    }
+
+    /* ---------- Wire up ---------- */
+    var silenceBtn = document.getElementById('emergency-silence-btn');
+    if (silenceBtn) silenceBtn.addEventListener('click', silenceCurrent);
+    var dismissBtn = document.getElementById('emergency-overlay-dismiss');
+    if (dismissBtn) {
+        dismissBtn.addEventListener('click', function () {
+            overlay.hidden = true;
+            overlay.classList.remove('is-visible');
+        });
+    }
+
+    poll();
+    setInterval(poll, POLL_MS);
+    connectSocket();
+})();
+</script>
+{% endif %}

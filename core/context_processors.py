@@ -95,6 +95,10 @@ def endpoints(request):
             'admin_attendance': reverse('admin_attendance'),
             'admin_teachers': reverse('admin_teachers'),
             'api_admin_teachers': reverse('api_admin_teachers'),
+            # Emergency broadcast system
+            'api_emergency_active': reverse('api_emergency_active'),
+            'api_admin_emergency_trigger': reverse('api_admin_emergency_trigger'),
+            'api_admin_emergency_resolve': reverse('api_admin_emergency_resolve'),
             # Attendance QR/report email dispatch take a <session_token> path
             # arg — resolved with {% url %} in the admin template.
             'attendance': reverse('attendance'),

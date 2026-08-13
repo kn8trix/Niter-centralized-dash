@@ -365,6 +365,82 @@ class Notification(models.Model):
         return self.title
 
 
+class EmergencyAlert(models.Model):
+    """A campus-wide emergency broadcast (siren banner + mobile push).
+
+    At most one alert is ``is_active`` at a time — triggering a new alert
+    deactivates the previous one so the student dashboards always show a
+    single live emergency state. The active payload is served by
+    ``/api/emergency/active/`` and pushed in real time over the global
+    ``emergency_alerts`` WebSocket group; ``play_alarm_sound`` asks clients
+    to loop the siren audio until the alert is resolved.
+    """
+
+    SEVERITY_CHOICES = [
+        ('CRITICAL', 'Critical'),
+        ('WARNING', 'Warning'),
+        ('INFO', 'Info'),
+    ]
+
+    title = models.CharField(
+        max_length=200,
+        help_text='Short headline, e.g. "Severe Weather Warning"',
+    )
+    message = models.TextField(
+        help_text='Detailed instructions shown to students',
+    )
+    severity_level = models.CharField(
+        max_length=20,
+        choices=SEVERITY_CHOICES,
+        default='WARNING',
+        db_index=True,
+    )
+    play_alarm_sound = models.BooleanField(
+        default=False,
+        help_text='Triggers the siren audio loop on student dashboards',
+    )
+    is_active = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text='Only one alert is live at a time — the active emergency state',
+    )
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='emergency_alerts_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    resolved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When an admin cleared/resolved this alert',
+    )
+    resolved_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='emergency_alerts_resolved',
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+        # Fast path for the live-state lookups used by every dashboard poll.
+        indexes = [
+            models.Index(fields=['is_active', '-created_at']),
+        ]
+
+    def __str__(self):
+        return '%s · %s' % (self.title, self.get_severity_level_display())
+
+    @property
+    def severity_lower(self):
+        """Lowercase severity key for client-side styling (critical/warning/info)."""
+        return (self.severity_level or 'WARNING').lower()
+
+
 class Notice(models.Model):
     """An official institutional announcement published on the /notices/ feed.
 

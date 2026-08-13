@@ -33,6 +33,83 @@
     </a>
 </div>
 
+<!-- ====================== Emergency Broadcast ====================== -->
+<div class="admin-card emergency-console {% if active_alert %}is-live{% endif %}" id="emergency-console" data-component="emergency-console">
+    <div class="emergency-console-head">
+        <div>
+            <h2><i class="fa-solid fa-siren"></i> Emergency Siren / Broadcast</h2>
+            <p class="admin-card-sub">Broadcast a campus-wide alert — every student dashboard shows the banner, plays the siren, and receives a mobile push.</p>
+        </div>
+        <span class="emergency-status-chip {% if active_alert %}live{% else %}idle{% endif %}" id="emergency-status-chip">
+            <span class="emergency-status-dot"></span>
+            <span id="emergency-status-label">{% if active_alert %}LIVE ALERT{% else %}All clear{% endif %}</span>
+        </span>
+    </div>
+
+    <!-- Active alert details (updates live via /api/emergency/active/) -->
+    <div class="emergency-active" id="emergency-active">
+        {% if active_alert %}
+        <div class="emergency-active-row">
+            <strong>{{ active_alert.title }}</strong>
+            <span class="admin-badge admin-badge-red">{{ active_alert.get_severity_level_display }}</span>
+            <span class="emergency-active-time">{{ active_alert.created_at|date:"M d, Y h:i A" }}</span>
+        </div>
+        <p class="emergency-active-msg">{{ active_alert.message }}</p>
+        {% else %}
+        <p class="emergency-active-idle"><i class="fa-solid fa-circle-check"></i> No active emergency — the campus is all clear.</p>
+        {% endif %}
+    </div>
+
+    <div class="emergency-console-actions">
+        <button type="button" class="emergency-btn danger" id="emergency-trigger-btn">
+            <i class="fa-solid fa-bullhorn"></i> Trigger Emergency Alert
+        </button>
+        <button type="button" class="emergency-btn outline" id="emergency-resolve-btn" {% if not active_alert %}disabled{% endif %}>
+            <i class="fa-solid fa-circle-check"></i> Clear / Resolve Emergency
+        </button>
+    </div>
+</div>
+
+<!-- Trigger confirmation modal -->
+<div class="emergency-modal" id="emergency-modal" hidden>
+    <div class="emergency-modal-backdrop"></div>
+    <div class="emergency-modal-card" role="dialog" aria-modal="true" aria-labelledby="emergency-modal-title">
+        <div class="emergency-modal-head">
+            <div>
+                <h3 id="emergency-modal-title"><i class="fa-solid fa-triangle-exclamation"></i> Trigger Emergency Alert</h3>
+                <p>This will immediately broadcast to every student dashboard and mobile app. Use only for real campus emergencies.</p>
+            </div>
+            <button type="button" class="emergency-modal-close" id="emergency-modal-close" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form id="emergency-form">
+            <label class="emergency-field">
+                <span>Alert Title</span>
+                <input type="text" name="title" placeholder="e.g. Severe Weather Warning" maxlength="200" required>
+            </label>
+            <label class="emergency-field">
+                <span>Detailed Instructions</span>
+                <textarea name="message" rows="3" placeholder="Tell students exactly what to do…" required></textarea>
+            </label>
+            <label class="emergency-field">
+                <span>Severity</span>
+                <select name="severity_level">
+                    <option value="CRITICAL">CRITICAL — full-screen overlay + siren</option>
+                    <option value="WARNING" selected>WARNING — banner + siren</option>
+                    <option value="INFO">INFO — banner only</option>
+                </select>
+            </label>
+            <label class="emergency-check">
+                <input type="checkbox" name="play_alarm_sound" checked>
+                <span><strong>Play alarm sound</strong> on student dashboards &amp; mobile</span>
+            </label>
+            <div class="emergency-modal-actions">
+                <button type="button" class="emergency-btn outline" id="emergency-modal-cancel">Cancel</button>
+                <button type="submit" class="emergency-btn danger"><i class="fa-solid fa-bullhorn"></i> Confirm &amp; Broadcast</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Stat cards -->
 <div class="admin-stats-grid">
     <div class="admin-stat-card">
@@ -141,4 +218,149 @@
         {% endif %}
     </div>
 </div>
+
+{% block extra_scripts %}
+<script>
+(function () {
+    'use strict';
+
+    var consoleEl = document.getElementById('emergency-console');
+    var modal = document.getElementById('emergency-modal');
+    if (!consoleEl || !modal) return;
+
+    var TRIGGER_URL = '{% url "api_admin_emergency_trigger" %}';
+    var RESOLVE_URL = '{% url "api_admin_emergency_resolve" %}';
+    var ACTIVE_URL = '{% url "api_emergency_active" %}';
+    var POLL_MS = 8000;
+
+    function getCookie(name) {
+        if (!document.cookie || document.cookie === '') return null;
+        for (var part of document.cookie.split(';')) {
+            var pair = part.trim();
+            if (pair.startsWith(name + '=')) {
+                return decodeURIComponent(pair.slice(name.length + 1));
+            }
+        }
+        return null;
+    }
+
+    /* ---- Modal open/close ---- */
+    function openModal() {
+        modal.hidden = false;
+        document.getElementById('emergency-form').reset();
+    }
+    function closeModal() { modal.hidden = true; }
+
+    document.getElementById('emergency-trigger-btn').addEventListener('click', openModal);
+    document.getElementById('emergency-modal-close').addEventListener('click', closeModal);
+    document.getElementById('emergency-modal-cancel').addEventListener('click', closeModal);
+    modal.addEventListener('click', function (e) {
+        if (e.target.classList.contains('emergency-modal-backdrop')) closeModal();
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !modal.hidden) closeModal();
+    });
+
+    /* ---- Trigger ---- */
+    document.getElementById('emergency-form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var data = new URLSearchParams();
+        data.set('title', document.querySelector('#emergency-form [name=title]').value);
+        data.set('message', document.querySelector('#emergency-form [name=message]').value);
+        data.set('severity_level', document.querySelector('#emergency-form [name=severity_level]').value);
+        data.set('play_alarm_sound', document.querySelector('#emergency-form [name=play_alarm_sound]').checked ? 'true' : 'false');
+
+        var btn = e.target.querySelector('[type=submit]');
+        var original = btn.innerHTML;
+        btn.disabled = true;
+        btn.textContent = 'Broadcasting…';
+
+        fetch(TRIGGER_URL, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') },
+            body: data,
+        })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+            .then(function (res) {
+                if (!res.ok) throw new Error(res.data && res.data.message ? res.data.message : 'Trigger failed');
+                window.showToast(res.data.message || 'Emergency alert broadcast.');
+                closeModal();
+                renderActive(res.data.alert);
+            })
+            .catch(function (err) {
+                window.showToast(err.message || 'Could not trigger the alert.', 'error');
+            })
+            .finally(function () {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            });
+    });
+
+    /* ---- Resolve ---- */
+    document.getElementById('emergency-resolve-btn').addEventListener('click', function () {
+        if (!window.confirm('Resolve the active emergency? This clears the banner, overlay and siren on every dashboard.')) return;
+        fetch(RESOLVE_URL, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') },
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.status !== 'success') throw new Error(d.message || 'Resolve failed');
+                window.showToast(d.message || 'Emergency resolved.');
+                renderActive(null);
+            })
+            .catch(function (err) {
+                window.showToast(err.message || 'Could not resolve the alert.', 'error');
+            });
+    });
+
+    /* ---- Live status ---- */
+    function renderActive(alert) {
+        var activeBox = document.getElementById('emergency-active');
+        var chip = document.getElementById('emergency-status-chip');
+        var label = document.getElementById('emergency-status-label');
+        var resolveBtn = document.getElementById('emergency-resolve-btn');
+
+        if (alert) {
+            consoleEl.classList.add('is-live');
+            chip.className = 'emergency-status-chip live';
+            label.textContent = 'LIVE ALERT';
+            resolveBtn.disabled = false;
+            activeBox.innerHTML =
+                '<div class="emergency-active-row"><strong></strong>' +
+                '<span class="admin-badge admin-badge-red"></span>' +
+                '<span class="emergency-active-time"></span></div>' +
+                '<p class="emergency-active-msg"></p>';
+            activeBox.querySelector('strong').textContent = '🚨 ' + alert.title;
+            activeBox.querySelector('.admin-badge').textContent = alert.severity_label || alert.severity;
+            activeBox.querySelector('.emergency-active-time').textContent = alert.created_at
+                ? new Date(alert.created_at).toLocaleString()
+                : '';
+            activeBox.querySelector('.emergency-active-msg').textContent = alert.message;
+        } else {
+            consoleEl.classList.remove('is-live');
+            chip.className = 'emergency-status-chip idle';
+            label.textContent = 'All clear';
+            resolveBtn.disabled = true;
+            activeBox.innerHTML =
+                '<p class="emergency-active-idle"><i class="fa-solid fa-circle-check"></i> No active emergency — the campus is all clear.</p>';
+        }
+    }
+
+    function poll() {
+        fetch(ACTIVE_URL, { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.status === 'success') renderActive(d.alert);
+            })
+            .catch(function () { /* keep last known state */ });
+    }
+
+    poll();
+    setInterval(poll, POLL_MS);
+})();
+</script>
+{% endblock %}
 {% endblock %}

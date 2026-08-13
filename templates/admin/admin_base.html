@@ -54,6 +54,9 @@
 </head>
 <body class="admin-area font-sans antialiased min-h-screen flex overflow-x-hidden" data-app="campusdash-admin">
 
+    <!-- Emergency broadcast banner + overlay + siren (active on every page) -->
+    {% include 'partials/emergency_banner.html' %}
+
     <!-- ======================= Admin Sidebar ======================= -->
     <aside data-region="sidebar" data-role="admin-sidebar" class="w-64 admin-sidebar h-screen fixed top-0 left-0 flex flex-col overflow-y-auto -translate-x-full lg:translate-x-0 transition-transform duration-200 z-40 lg:z-auto">
         <!-- Brand -->

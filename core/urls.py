@@ -130,6 +130,11 @@ urlpatterns = [
     # Real-time notification & system alert engine
     path('api/notifications/', views.fetch_notifications, name='api_notifications'),
     path('api/notifications/<int:notification_id>/read/', views.mark_notification_read, name='api_notification_read'),
+
+    # Emergency broadcast system — admin trigger/resolve + public active poll
+    path('api/admin/emergency/trigger/', views.api_emergency_trigger, name='api_admin_emergency_trigger'),
+    path('api/admin/emergency/resolve/', views.api_emergency_resolve, name='api_admin_emergency_resolve'),
+    path('api/emergency/active/', views.api_emergency_active, name='api_emergency_active'),
     
     # Campus services — meal, transport, medical action handlers
     path('claim-meal/', views.claim_meal, name='claim_meal_ticket'),
