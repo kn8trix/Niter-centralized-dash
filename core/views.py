@@ -1814,16 +1814,30 @@ def book_appointment(request):
             status=405,
         )
 
-    # Canonical field: doctor_name (aligns with the booking form). The legacy
-    # ``doctor`` id is still honoured as a fallback for older clients.
+    # Canonical field: doctor_name (aligns with the booking form). The ``doctor``
+    # id is honoured as a fallback for older / id-based clients — resolved
+    # server-side against the legacy constant catalog first, then the live DB
+    # ``Doctor`` rows (the same catalog the booking form renders), so a client
+    # can post either the name or the record id.
     doctor_id = request.POST.get('doctor', '').strip()
     doctor_name = request.POST.get('doctor_name', '').strip()
-    if not doctor_name and doctor_id in DOCTORS:
-        doctor_name = DOCTORS[doctor_id]
+    if not doctor_name and doctor_id:
+        doctor_name = DOCTORS.get(doctor_id, '')
+        if not doctor_name:
+            try:
+                doctor_name = (
+                    Doctor.objects.filter(pk=int(doctor_id), is_active=True)
+                    .values_list('name', flat=True)
+                    .first()
+                ) or ''
+            except (TypeError, ValueError):
+                doctor_name = ''
 
     date_raw = request.POST.get('appointment_date', '').strip()
     time_slot = request.POST.get('time_slot', '').strip()
-    reason = request.POST.get('reason', '').strip()
+    # ``reason`` is the canonical field; ``symptoms`` is accepted as an alias
+    # for clients that send the symptoms-text key.
+    reason = request.POST.get('reason', '').strip() or request.POST.get('symptoms', '').strip()
 
     if not doctor_name or not date_raw or not time_slot:
         return JsonResponse(
@@ -3078,9 +3092,14 @@ def medical_chat_start(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
 
+    # appointment_id is canonical; ``appointment`` is accepted as an alias for
+    # clients that post the record primary key under that name.
+    appointment_id = (
+        request.POST.get('appointment_id', '') or request.POST.get('appointment', '')
+    )
     try:
         appointment = MedicalAppointment.objects.select_related('user').get(
-            pk=request.POST.get('appointment_id', ''),
+            pk=appointment_id,
         )
     except (MedicalAppointment.DoesNotExist, ValueError, TypeError):
         return JsonResponse({'status': 'error', 'message': 'Appointment not found.'}, status=404)

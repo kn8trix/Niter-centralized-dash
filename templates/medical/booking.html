@@ -57,7 +57,7 @@
                         <select id="doctor-select" name="doctor_name" class="field-select" required>
                             <option value="">-- Choose a Doctor --</option>
                             {% for doctor in doctors %}
-                            <option value="{{ doctor.name }}">{{ doctor.name }}{% if doctor.specialty %} — {{ doctor.specialty }}{% endif %}</option>
+                            <option value="{{ doctor.name }}" data-doctor-id="{{ doctor.id }}">{{ doctor.name }}{% if doctor.specialty %} — {{ doctor.specialty }}{% endif %}</option>
                             {% endfor %}
                         </select>
                         <p class="field-error" id="err-doctor" hidden>Please choose a doctor.</p>
@@ -209,7 +209,7 @@
                         </div>
                         <span class="status-badge {% if thread.status == 'open' %}status-pending{% else %}status-confirmed{% endif %}">{{ thread.get_status_display }}</span>
                     </div>
-                    {% with last=thread.messages.all|last %}
+                    {% with last=thread.messages.all.reverse.0 %}
                     <div class="appt-meta">
                         <span><i class="fa-regular fa-message"></i> {{ last.content|default:"No messages yet — tap to open."|truncatechars:60 }}</span>
                     </div>
@@ -384,6 +384,12 @@
                 const doctor = formData.get('doctor_name');
                 const apptDate = formData.get('appointment_date');
                 const slot = formData.get('time_slot');
+                const symptoms = (formData.get('reason') || '').trim();
+                // Doctor record id from the selected option (``data-doctor-id``) —
+                // sent alongside the name so id-based API clients resolve too.
+                const doctorSelect = document.getElementById('doctor-select');
+                const selectedOpt = doctorSelect && doctorSelect.options[doctorSelect.selectedIndex];
+                const doctorId = selectedOpt ? (selectedOpt.dataset.doctorId || '') : '';
 
                 // Inline pre-submission validation — highlight each missing field.
                 const valid = Boolean(doctor) && Boolean(apptDate) && Boolean(slot);
@@ -402,7 +408,15 @@
                         method: 'POST',
                         credentials: 'same-origin',
                         headers: { 'X-CSRFToken': getCookie('csrftoken') },
-                        body: new URLSearchParams(formData).toString(),
+                        // Explicit, aligned payload: doctor id + name, date in
+                        // YYYY-MM-DD, slot string and the symptoms text.
+                        body: new URLSearchParams({
+                            doctor: doctorId,
+                            doctor_name: doctor,
+                            appointment_date: apptDate,
+                            time_slot: slot,
+                            symptoms: symptoms,
+                        }).toString(),
                     });
                     const ct = resp.headers.get('content-type') || '';
                     if (!ct.includes('application/json')) {
@@ -512,10 +526,18 @@
             });
 
             const startForm = document.getElementById('consult-start');
+            const consultSelect = document.getElementById('consult-appointment');
+            if (consultSelect) {
+                // Picking a valid appointment clears any leftover error banner
+                // instantly (the dropdown binds the appointment record id).
+                consultSelect.addEventListener('change', () => {
+                    if (consultSelect.value) hideAlert();
+                });
+            }
             if (startForm) {
                 startForm.addEventListener('submit', async (e) => {
                     e.preventDefault();
-                    const appointmentId = document.getElementById('consult-appointment').value;
+                    const appointmentId = consultSelect ? consultSelect.value : '';
                     if (!appointmentId) { showAlert('Choose an appointment first.', 'error'); return; }
                     const resp = await fetch(START_URL, {
                         method: 'POST',
@@ -524,6 +546,7 @@
                     });
                     const body = await resp.json();
                     if (resp.ok && body.thread) {
+                        hideAlert();
                         openThread(body.thread.id, body.thread.doctor_name);
                     } else {
                         showAlert(body.message || 'Could not start the consultation.', 'error');

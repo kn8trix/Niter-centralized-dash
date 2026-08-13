@@ -3473,6 +3473,28 @@ class BookAppointmentApiTest(TestCase):
             MedicalAppointment.objects.get(user=self.user).doctor_name, 'Dr. Sarah Smith',
         )
 
+    def test_book_accepts_live_db_doctor_id(self):
+        # Doctors managed through Medical Admin live in the DB — an id-based
+        # client must resolve them too (not just the legacy DOCTORS constants).
+        Doctor.objects.create(name='Dr. New DB Doctor', is_active=True)
+        db_doctor = Doctor.objects.get(name='Dr. New DB Doctor')
+        response = self._book(doctor_name='', doctor=str(db_doctor.pk))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            MedicalAppointment.objects.get(user=self.user).doctor_name,
+            'Dr. New DB Doctor',
+        )
+
+    def test_book_accepts_symptoms_alias(self):
+        # The symptoms-text key is accepted as an alias for ``reason`` so the
+        # booking payload contract (doctor/date/slot/symptoms) is honoured.
+        response = self._book(reason='', symptoms='Fever since Tuesday')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            MedicalAppointment.objects.get(user=self.user).reason,
+            'Fever since Tuesday',
+        )
+
     def test_book_success_creates_pending_appointment(self):
         response = self._book()
         self.assertEqual(response.status_code, 200)
@@ -5592,6 +5614,16 @@ class MedicalChatApiTest(TestCase):
         thread = MedicalChatThread.objects.get(appointment=self.appointment)
         self.assertEqual(thread.patient, self.patient)
         self.assertEqual(thread.doctor_name, 'Dr. Sarah Smith')
+
+    def test_start_accepts_appointment_alias_param(self):
+        # ``appointment`` is accepted as an alias for ``appointment_id`` so
+        # id-based clients resolve the record either way.
+        self.client.login(username='S2001', password='x12345678')
+        response = self.client.post(reverse('api_medical_chat_start'), {
+            'appointment': str(self.appointment.pk),
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['created'])
 
     def test_start_is_idempotent(self):
         self.client.login(username='S2001', password='x12345678')

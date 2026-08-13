@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 95 | Medical API payload alignment — booking keys + consultation lookup | *(see bottom)* |
 | 94 | Mobile responsiveness (calendar / clock / attendance) + Transport payment gateway modal | `e8f3332` |
 | 93 | Attendance page dark-mode theming (shared CSS tokens) | `85589ca` |
 | 90 | Dynamic user names on all passes + cleaned-up profile dropdown | `71ed77b` |
@@ -5481,3 +5482,60 @@ displayed on the route cards).
 - Browser e2e @ 380×740: student login → seat select → payment modal →
   bKash TrxID submit → boarding pass with `TR-…` QR token renders, zero
   console errors; seat-required validation toast intact.
+
+---
+
+## 95. Medical API Payload Alignment — Booking Keys + Consultation Lookup
+
+Aligned the medical booking/consultation frontend with what the backend
+serializers actually expect, so "all fields selected" forms no longer fail
+with 400s and "Start Consultation" no longer 404s.
+
+### 1. Appointment booking payload (`book_appointment`, core/views.py)
+
+- **Doctor id resolution:** the endpoint already honoured the legacy
+  constant catalog (`DOCTORS`) for a posted `doctor` id. It now also
+  resolves **live-DB `Doctor` rows** (`pk=int(id), is_active=True`) — the
+  same catalog the booking form renders — so an id-based client posting a
+  real record id gets the doctor name server-side.
+- **`symptoms` alias:** `reason` remains canonical, but the
+  `symptoms` key is now accepted as an alias (`reason` → `symptoms`
+  fallback), honouring the documented `{doctor, appointment_date,
+  time_slot, symptoms}` contract.
+- **Frontend (`templates/medical/booking.html`):** every `<option>` in the
+  doctor `<select>` now carries `data-doctor-id`; the submit handler posts
+  an **explicit, aligned payload** — `doctor` (record id), `doctor_name`,
+  `appointment_date` (`YYYY-MM-DD`), `time_slot`, `symptoms` — instead of
+  serializing raw form fields, and field errors clear the moment each
+  control is fixed (existing `change`/`input` listeners + generic-alert
+  auto-hide when all required fields are valid).
+
+### 2. Start-consultation lookup (`medical_chat_start`, core/views.py)
+
+- **`appointment_id` alias:** the canonical `appointment_id` key is
+  accepted, plus an `appointment` alias for clients posting the record PK
+  under that name; both resolve the same `MedicalAppointment` row
+  (owner-scoped 404 otherwise).
+- **Frontend:** the "Choose an appointment…" dropdown already bound
+  `value={{ appointment.id }}` (the record primary key, never the
+  concatenated label); the start handler posts `appointment_id` and now
+  **clears any active error banner on selection change** and after a
+  successful start, opening the consultation thread window immediately.
+
+### 3. Files changed
+
+- `core/views.py` (`book_appointment`, `medical_chat_start`)
+- `templates/medical/booking.html` (payload build, `data-doctor-id`,
+  error-banner clearing)
+- `core/tests.py` (4 new regression tests: live-DB doctor id,
+  symptoms alias, appointment alias param — plus the pre-existing
+  legacy-id test)
+
+### 4. Tests & verification
+
+- `python manage.py check` clean; **full suite 799 tests OK** (was 795).
+- Browser e2e: student login → book with Dr. Sarah Smith (200, inline
+  success, appears in Upcoming Appointments) → "Start Consultation"
+  without selection shows the choose-first banner → selecting clears it
+  instantly → start opens `Consultation #…` thread window; zero console
+  errors.
