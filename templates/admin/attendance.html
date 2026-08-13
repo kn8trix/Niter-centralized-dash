@@ -57,9 +57,17 @@
                 </div>
                 <div class="flex items-center justify-between mb-2">
                     <span class="text-sm text-main/60">Recent scans</span>
-                    <button type="button" id="live-close-btn" class="rounded-lg bg-red-600 text-white px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity">
-                        <i class="fa-solid fa-ban"></i> Close Session
-                    </button>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" id="email-qr-btn" class="rounded-lg bg-accent text-main px-3 py-1.5 text-xs font-medium hover:bg-accentHover transition-colors" title="Email the class QR code to the assigned course teacher">
+                            <i class="fa-solid fa-envelope"></i> Email QR to Teacher
+                        </button>
+                        <button type="button" id="email-report-btn" class="rounded-lg bg-accent text-main px-3 py-1.5 text-xs font-medium hover:bg-accentHover transition-colors" title="Email the attendance summary to the assigned course teacher">
+                            <i class="fa-solid fa-file-lines"></i> Send Report to Teacher
+                        </button>
+                        <button type="button" id="live-close-btn" class="rounded-lg bg-red-600 text-white px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity">
+                            <i class="fa-solid fa-ban"></i> Close Session
+                        </button>
+                    </div>
                 </div>
                 <ul class="live-list" id="live-list">
                     <li class="text-sm text-main/40">No scans yet.</li>
@@ -121,6 +129,8 @@
     const RECORDS_URL = '{% url "api_admin_attendance_records" %}';
     const LIVE_URL_TMPL = '{% url "api_admin_attendance_session_live" "TOKEN" %}';
     const CLOSE_URL_TMPL = '{% url "api_admin_attendance_session_close" "TOKEN" %}';
+    const EMAIL_QR_URL_TMPL = '{% url "api_attendance_session_email_qr" "TOKEN" %}';
+    const EMAIL_REPORT_URL_TMPL = '{% url "api_attendance_session_email_report" "TOKEN" %}';
 
     function getCookie(name) {
         if (!document.cookie || document.cookie === '') return null;
@@ -141,6 +151,13 @@
         return String(value == null ? '' : value)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function showSessionError(msg) {
+        const error = document.getElementById('session-error');
+        error.textContent = msg;
+        error.hidden = false;
+        setTimeout(() => { error.hidden = true; }, 5000);
     }
 
     // ====================================================================
@@ -231,6 +248,54 @@
         loadRecords();
     });
 
+    // Email the class QR code to the assigned course teacher.
+    document.getElementById('email-qr-btn').addEventListener('click', async () => {
+        if (!currentToken) return;
+        const btn = document.getElementById('email-qr-btn');
+        btn.disabled = true;
+        try {
+            const resp = await fetch(EMAIL_QR_URL_TMPL.replace('TOKEN', encodeURIComponent(currentToken)), {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') },
+            });
+            const body = await resp.json().catch(() => ({}));
+            if (resp.ok) {
+                if (window.showToast) window.showToast(body.message || 'QR code emailed to the teacher.');
+            } else {
+                showSessionError((body.message) || 'Could not email the QR code.');
+            }
+        } catch (err) {
+            showSessionError('Could not email the QR code.');
+        } finally {
+            btn.disabled = false;
+        }
+    });
+
+    // Email the attendance summary to the assigned course teacher.
+    document.getElementById('email-report-btn').addEventListener('click', async () => {
+        if (!currentToken) return;
+        const btn = document.getElementById('email-report-btn');
+        btn.disabled = true;
+        try {
+            const resp = await fetch(EMAIL_REPORT_URL_TMPL.replace('TOKEN', encodeURIComponent(currentToken)), {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') },
+            });
+            const body = await resp.json().catch(() => ({}));
+            if (resp.ok) {
+                if (window.showToast) window.showToast(body.message || 'Attendance report emailed to the teacher.');
+            } else {
+                showSessionError((body.message) || 'Could not email the attendance report.');
+            }
+        } catch (err) {
+            showSessionError('Could not email the attendance report.');
+        } finally {
+            btn.disabled = false;
+        }
+    });
+
     document.getElementById('live-close-btn').addEventListener('click', async () => {
         if (!currentToken) return;
         if (!confirm('Close this session? Students will no longer be able to scan in.')) return;
@@ -245,6 +310,14 @@
             clearInterval(liveTimer);
             if (body.data && body.data.count !== undefined) document.getElementById('live-count').textContent = body.data.count;
             currentToken = null;
+            const emailedTo = body.data && body.data.report_emailed_to;
+            if (emailedTo) {
+                if (window.showToast) window.showToast('Session closed — attendance report emailed to ' + emailedTo + '.');
+            } else {
+                if (window.showToast) window.showToast('Session closed.');
+            }
+        } else {
+            showSessionError((body.message) || 'Could not close the session.');
         }
     });
 

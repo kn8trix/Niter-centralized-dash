@@ -30,6 +30,7 @@ from .models import (
     ResearchThread,
     Report,
     Routine,
+    Teacher,
     TransportBooking,
     TransportRoute,
     UserNote,
@@ -243,6 +244,23 @@ class FacultyMemberAdmin(admin.ModelAdmin):
     list_filter = ('department',)
     search_fields = ('name', 'designation', 'email', 'department__name')
     list_select_related = ('department',)
+
+
+@admin.register(Teacher)
+class TeacherAdmin(admin.ModelAdmin):
+    """Course teachers — email recipients for class QR + attendance reports."""
+
+    list_display = ('name', 'email', 'department', 'designation', 'is_active', 'course_list')
+    list_filter = ('is_active', 'department')
+    search_fields = ('name', 'email', 'designation', 'phone_number')
+    list_select_related = ('department',)
+    filter_horizontal = ('courses',)
+    list_editable = ('is_active',)
+
+    @admin.display(description='Courses')
+    def course_list(self, obj):
+        codes = obj.course_codes
+        return ', '.join(codes) if codes else '—'
 
 
 @admin.register(ClassRoutine)

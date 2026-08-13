@@ -65,6 +65,7 @@ from core.models import (
     Report,
     Routine,
     StudentProfile,
+    Teacher,
     TransportBooking,
     TransportRoute,
     UserNote,
@@ -124,8 +125,8 @@ class StudentPagesSmokeTest(TestCase):
             'settings', 'profile', 'sys_admin', 'cafeteria_admin', 'club_admin',
             'reports_student', 'reports_admin',
             'student_dashboard', 'club_dashboard', 'admin_dashboard', 'admin_users', 'admin_club_accounts',
-            'admin_database', 'admin_content', 'admin_settings', 'admin_calendar',
-            'api_club_accounts', 'api_admin_academic_calendar',
+            'admin_database', 'admin_content', 'admin_settings', 'admin_calendar', 'admin_teachers',
+            'api_club_accounts', 'api_admin_academic_calendar', 'api_admin_teachers',
         ]:
             with self.subTest(endpoint=name):
                 self.assertIn(name, mapping)
@@ -8533,6 +8534,309 @@ class AdminAttendanceApiTest(TestCase):
 
         bad_date = self.client.get(reverse('api_admin_attendance_records'), {'date': 'nope'})
         self.assertEqual(bad_date.status_code, 400)
+
+
+class TeacherModelTest(TestCase):
+    """Teacher — fields, course assignment, and per-course lookup."""
+
+    def setUp(self):
+        self.dept = Department.objects.create(name='Computer Science', code='CS', slug='cs')
+        self.course = Course.objects.create(code='CS-1101', title='Programming', department='CSE')
+
+    def test_teacher_round_trip_with_courses(self):
+        teacher = Teacher.objects.create(
+            name='Dr. Ayesha', email='ayesha@niter.edu.bd',
+            department=self.dept, designation='Associate Professor',
+            phone_number='01712345678',
+        )
+        teacher.courses.set([self.course])
+        self.assertEqual(teacher.course_codes, ['CS-1101'])
+        self.assertEqual(str(teacher), 'Dr. Ayesha')
+        self.assertTrue(teacher.is_active)
+
+    def test_for_course_resolves_active_teacher_by_course(self):
+        teacher = Teacher.objects.create(name='Dr. B', email='b@niter.edu.bd')
+        teacher.courses.set([self.course])
+        self.assertEqual(Teacher.for_course('CS-1101'), teacher)
+        # Case-insensitive course lookup
+        self.assertEqual(Teacher.for_course('cs-1101'), teacher)
+        # Inactive teachers are skipped
+        teacher.is_active = False
+        teacher.save()
+        self.assertIsNone(Teacher.for_course('CS-1101'))
+        # No teacher for an unassigned course
+        self.assertIsNone(Teacher.for_course('NOPE-999'))
+
+    def test_for_course_is_case_insensitive(self):
+        Teacher.objects.create(name='Dr. C', email='c@niter.edu.bd').courses.set([self.course])
+        self.assertIsNotNone(Teacher.for_course('cs-1101'))
+
+
+class AdminTeachersApiTest(TestCase):
+    """Teacher Management — CRUD API + page + role guards."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(username='t_admin', password='x12345678', is_staff=True)
+        self.student = User.objects.create_user(username='t_stu', password='x12345678')
+        self.dept = Department.objects.create(name='Electrical', code='EE', slug='ee')
+        self.course = Course.objects.create(code='EE-201', title='Circuits', department='EEE')
+        self.client.force_login(self.staff)
+
+    def _payload(self, **overrides):
+        data = {
+            'name': 'Dr. Farah Rahman',
+            'email': 'farah@niter.edu.bd',
+            'department': str(self.dept.pk),
+            'designation': 'Professor',
+            'phone_number': '01712345678',
+            'is_active': '1',
+            'courses': [str(self.course.pk)],
+        }
+        data.update(overrides)
+        return data
+
+    def test_page_renders_for_staff(self):
+        response = self.client.get(reverse('admin_teachers'))
+        self.assertEqual(response.status_code, 200)
+        for needle in ['Teacher Management', 'Add a Teacher', 'Registered Teachers', 'Assigned Courses']:
+            self.assertContains(response, needle, msg_prefix=needle)
+
+    def test_page_blocked_for_students(self):
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('admin_teachers'))
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('student_dashboard'))
+
+    def test_api_list_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse('api_admin_teachers'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_api_requires_admin(self):
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('api_admin_teachers'))
+        self.assertEqual(response.status_code, 403)
+
+    def test_create_teacher_with_courses(self):
+        response = self.client.post(reverse('api_admin_teachers'), self._payload())
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        teacher = Teacher.objects.get(email='farah@niter.edu.bd')
+        self.assertEqual(teacher.name, 'Dr. Farah Rahman')
+        self.assertEqual(teacher.department, self.dept)
+        self.assertEqual(teacher.designation, 'Professor')
+        self.assertEqual(teacher.phone_number, '01712345678')
+        self.assertEqual(list(teacher.courses.all()), [self.course])
+
+    def test_create_rejects_missing_name_and_email(self):
+        for kwargs in ({'name': ''}, {'email': ''}, {'email': 'not-an-email'}):
+            with self.subTest(kwargs=kwargs):
+                response = self.client.post(reverse('api_admin_teachers'), self._payload(**kwargs))
+                self.assertEqual(response.status_code, 400)
+
+    def test_create_rejects_duplicate_email(self):
+        Teacher.objects.create(name='Dr. X', email='farah@niter.edu.bd')
+        response = self.client.post(reverse('api_admin_teachers'), self._payload())
+        self.assertEqual(response.status_code, 409)
+
+    def test_create_rejects_invalid_department_and_course(self):
+        response = self.client.post(reverse('api_admin_teachers'), self._payload(department='9999'))
+        self.assertEqual(response.status_code, 400)
+        response = self.client.post(reverse('api_admin_teachers'), self._payload(courses=['9999']))
+        self.assertEqual(response.status_code, 400)
+
+    def test_list_returns_serialized_teachers(self):
+        Teacher.objects.create(name='Dr. One', email='one@niter.edu.bd')
+        response = self.client.get(reverse('api_admin_teachers'))
+        self.assertEqual(response.status_code, 200)
+        teachers = response.json()['data']['teachers']
+        self.assertEqual(len(teachers), 1)
+        self.assertEqual(teachers[0]['email'], 'one@niter.edu.bd')
+        self.assertIn('department_id', teachers[0])
+        self.assertIn('courses', teachers[0])
+
+    def test_update_teacher(self):
+        teacher = Teacher.objects.create(name='Dr. Old', email='old@niter.edu.bd')
+        response = self.client.post(
+            reverse('api_admin_teacher_item', args=[teacher.pk]),
+            self._payload(name='Dr. New', email='new@niter.edu.bd', is_active='off'),
+        )
+        self.assertEqual(response.status_code, 200)
+        teacher.refresh_from_db()
+        self.assertEqual(teacher.name, 'Dr. New')
+        self.assertEqual(teacher.email, 'new@niter.edu.bd')
+        self.assertFalse(teacher.is_active)
+        self.assertEqual(list(teacher.courses.all()), [self.course])
+
+    def test_update_rejects_duplicate_email(self):
+        Teacher.objects.create(name='Dr. Other', email='other@niter.edu.bd')
+        teacher = Teacher.objects.create(name='Dr. Old', email='old@niter.edu.bd')
+        response = self.client.post(
+            reverse('api_admin_teacher_item', args=[teacher.pk]),
+            self._payload(email='other@niter.edu.bd'),
+        )
+        self.assertEqual(response.status_code, 409)
+
+    def test_delete_teacher(self):
+        teacher = Teacher.objects.create(name='Dr. Gone', email='gone@niter.edu.bd')
+        response = self.client.delete(reverse('api_admin_teacher_item', args=[teacher.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'success')
+        self.assertFalse(Teacher.objects.filter(pk=teacher.pk).exists())
+
+    def test_item_404_for_unknown_teacher(self):
+        response = self.client.post(reverse('api_admin_teacher_item', args=[9999]), self._payload())
+        self.assertEqual(response.status_code, 404)
+
+
+class AttendanceEmailDispatchApiTest(TestCase):
+    """Email-QR + email-report dispatch — teacher resolution + email content.
+
+    Uses the locmem email backend so sent mails land in ``mail.outbox``
+    (like the signup verification tests), with ``EMAIL_BACKEND`` overridden
+    for the whole class.
+    """
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def setUp(self):
+        self.staff = User.objects.create_user(username='att_admin2', password='x12345678', is_staff=True)
+        self.student = User.objects.create_user(
+            username='att_stu2', password='x12345678',
+            first_name='Rifat', last_name='Hasan', email='r@niter.edu.bd',
+        )
+        StudentProfile.objects.create(user=self.student, student_id='S7771', department='CSE')
+        Course.objects.create(code='CSE-2202', title='Data Structures', department='CSE')
+        self.teacher = Teacher.objects.create(
+            name='Dr. Tahmid', email='tahmid@niter.edu.bd',
+        )
+        self.teacher.courses.set([Course.objects.get(code='CSE-2202')])
+        self.session = AttendanceSession.objects.create(
+            course_code='CSE-2202',
+            session_token='ATD-TEST01',
+            expires_at=timezone.now() + timedelta(minutes=60),
+            is_active=True,
+        )
+        self.client.force_login(self.staff)
+
+    def test_email_qr_requires_admin(self):
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('api_attendance_session_email_qr', args=[self.session.session_token])
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_email_qr_requires_post(self):
+        response = self.client.get(
+            reverse('api_attendance_session_email_qr', args=[self.session.session_token])
+        )
+        self.assertEqual(response.status_code, 405)
+
+    def test_email_qr_sends_qr_png_to_teacher(self):
+        response = self.client.post(
+            reverse('api_attendance_session_email_qr', args=[self.session.session_token])
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body['status'], 'success')
+        self.assertEqual(body['data']['teacher'], 'tahmid@niter.edu.bd')
+        # One email, addressed to the teacher, with a PNG attachment.
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.to, ['tahmid@niter.edu.bd'])
+        self.assertIn('CSE-2202', message.subject)
+        self.assertIn(self.session.session_token, message.body)
+        # Attachments are (filename, content, mimetype) tuples.
+        pngs = [a for a in message.attachments if a[2] == 'image/png']
+        self.assertTrue(pngs)
+        self.assertIn(b'\x89PNG', pngs[0][1])
+
+    def test_email_qr_accepts_session_by_id(self):
+        # The endpoint resolves sessions by token OR numeric primary key.
+        response = self.client.post(
+            reverse('api_attendance_session_email_qr', args=[str(self.session.pk)])
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_email_qr_404_for_unknown_session(self):
+        response = self.client.post(
+            reverse('api_attendance_session_email_qr', args=['NOPE-0000'])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_email_qr_404_when_no_teacher_assigned(self):
+        self.teacher.is_active = False
+        self.teacher.save()
+        response = self.client.post(
+            reverse('api_attendance_session_email_qr', args=[self.session.session_token])
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('No teacher is assigned', response.json()['message'])
+
+    def test_email_report_includes_csv_and_html(self):
+        AttendanceRecord.objects.create(student=self.student, session=self.session, status='present')
+        response = self.client.post(
+            reverse('api_attendance_session_email_report', args=[self.session.session_token])
+        )
+        self.assertEqual(response.status_code, 200)
+        message = mail.outbox[0]
+        self.assertEqual(message.to, ['tahmid@niter.edu.bd'])
+        # CSV attachment present and contains the student (filename, content,
+        # mimetype tuples — content may be str or bytes depending on backend).
+        csvs = [a for a in message.attachments if a[2] == 'text/csv']
+        self.assertTrue(csvs)
+        csv_content = csvs[0][1]
+        if isinstance(csv_content, bytes):
+            csv_content = csv_content.decode('utf-8', 'replace')
+        self.assertIn('Rifat Hasan', csv_content)
+        # HTML alternative body present.
+        self.assertTrue(message.alternatives)
+        html, _ = message.alternatives[0]
+        self.assertIn('Attendance Summary', html)
+        self.assertIn('Rifat Hasan', html)
+
+    def test_email_report_marks_absent_for_roster_without_record(self):
+        # A student who attended a different session of the same course is on
+        # the roster and reported Absent for this session.
+        other_session = AttendanceSession.objects.create(
+            course_code='CSE-2202',
+            session_token='ATD-TEST02',
+            expires_at=timezone.now() + timedelta(minutes=60),
+            is_active=True,
+        )
+        AttendanceRecord.objects.create(student=self.student, session=other_session, status='present')
+        response = self.client.post(
+            reverse('api_attendance_session_email_report', args=[self.session.session_token])
+        )
+        self.assertEqual(response.status_code, 200)
+        html, _ = mail.outbox[0].alternatives[0]
+        self.assertIn('Absent', html)
+
+    def test_email_report_404_when_no_teacher(self):
+        self.teacher.delete()
+        response = self.client.post(
+            reverse('api_attendance_session_email_report', args=[self.session.session_token])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_close_session_auto_emails_report(self):
+        response = self.client.post(
+            reverse('api_admin_attendance_session_close', args=[self.session.session_token])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data']['report_emailed_to'], 'tahmid@niter.edu.bd')
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('Attendance Report', mail.outbox[0].subject)
+
+    def test_close_session_without_teacher_skips_report(self):
+        self.teacher.delete()
+        response = self.client.post(
+            reverse('api_admin_attendance_session_close', args=[self.session.session_token])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()['data']['report_emailed_to'])
+        self.assertEqual(len(mail.outbox), 0)
 
 
 class AttendancePageTest(TestCase):

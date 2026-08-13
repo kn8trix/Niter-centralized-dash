@@ -46,6 +46,11 @@ bleach>=6.0,<7.0
 pypdf>=4.0,<6.0
 python-docx>=1.1,<2.0
 
+# QR Code Email Dispatch — server-side class-QR PNG generation (qrcode +
+# its Pillow image backend) for the Attendance module's "email the QR code to
+# the course teacher" and attendance-report emails.
+qrcode[pil]>=7.4,<9.0
+
 # Production deployment & configuration
 # Environment-driven settings (secrets, DB URL, hosts) via a local .env
 django-environ>=0.11

@@ -93,6 +93,10 @@ def endpoints(request):
             'admin_settings': reverse('admin_settings'),
             'admin_calendar': reverse('admin_calendar'),
             'admin_attendance': reverse('admin_attendance'),
+            'admin_teachers': reverse('admin_teachers'),
+            'api_admin_teachers': reverse('api_admin_teachers'),
+            # Attendance QR/report email dispatch take a <session_token> path
+            # arg — resolved with {% url %} in the admin template.
             'attendance': reverse('attendance'),
             'academic_notes': reverse('academic_notes'),
             'notices': reverse('notices'),

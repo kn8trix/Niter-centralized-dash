@@ -807,6 +807,71 @@ class FacultyMember(models.Model):
         return self.name
 
 
+class Teacher(models.Model):
+    """A course teacher managed from the Admin dashboard's Teachers tab.
+
+    Teachers are the email recipients for the Attendance module's QR-dispatch
+    and session-report emails: the course a teacher is assigned to (via the
+    ``courses`` M2M) decides which class sessions' QR codes / reports are
+    emailed to them. ``is_active`` lets admins retire a teacher without
+    losing their historical email / course assignments.
+    """
+
+    name = models.CharField(max_length=120)
+    email = models.EmailField(
+        unique=True,
+        help_text='Email address the class QR code and attendance reports are sent to',
+    )
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='teachers',
+        help_text='The department this teacher belongs to',
+    )
+    designation = models.CharField(max_length=120, blank=True, default='')
+    phone_number = models.CharField(
+        max_length=30,
+        blank=True,
+        default='',
+        help_text='Optional contact number',
+    )
+    courses = models.ManyToManyField(
+        Course,
+        blank=True,
+        related_name='teachers',
+        help_text='Courses this teacher takes attendance for',
+    )
+    is_active = models.BooleanField(
+        default=True,
+        db_index=True,
+        help_text='Inactive teachers are hidden from dispatch selection',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def course_codes(self):
+        """Sorted list of assigned course codes (for admin tables/selects)."""
+        return sorted(self.courses.values_list('code', flat=True))
+
+    @classmethod
+    def for_course(cls, course_code):
+        """First active teacher assigned to a course code, or None."""
+        return (
+            cls.objects.filter(courses__code__iexact=course_code, is_active=True)
+            .distinct()
+            .first()
+        )
+
+
 class ClassRoutine(models.Model):
     """One weekly class/lab period on a department hub's schedule tab.
 

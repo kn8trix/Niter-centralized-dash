@@ -1,0 +1,241 @@
+{% extends "admin/admin_base.html" %}
+{% load static %}
+
+{% block title %}Teachers — Niter Hub Admin{% endblock %}
+{% block header %}Teacher Management{% endblock %}
+
+{% block content %}
+<div class="admin-alert" id="teacher-alert"></div>
+
+<!-- Add / edit teacher -->
+<div class="admin-card">
+    <h2 id="form-title"><i class="fa-solid fa-chalkboard-user"></i> Add a Teacher</h2>
+    <p class="admin-card-sub">Register a course teacher — their email receives the class QR code and attendance reports.</p>
+    <form id="teacher-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% csrf_token %}
+        <input type="hidden" id="teacher-id" name="teacher_id" value="">
+        <div class="admin-form-row">
+            <label for="t-name">Name *</label>
+            <input id="t-name" name="name" class="admin-input" required>
+        </div>
+        <div class="admin-form-row">
+            <label for="t-email">Email *</label>
+            <input id="t-email" name="email" type="email" class="admin-input" required>
+        </div>
+        <div class="admin-form-row">
+            <label for="t-department">Department</label>
+            <select id="t-department" name="department" class="admin-input">
+                <option value="">— No department —</option>
+                {% for dept in departments %}
+                <option value="{{ dept.pk }}">{{ dept.name }} ({{ dept.code }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="admin-form-row">
+            <label for="t-designation">Designation</label>
+            <input id="t-designation" name="designation" class="admin-input" placeholder="e.g. Assistant Professor">
+        </div>
+        <div class="admin-form-row">
+            <label for="t-phone">Phone number</label>
+            <input id="t-phone" name="phone_number" class="admin-input" placeholder="Optional">
+        </div>
+        <div class="admin-form-row">
+            <label class="block text-sm font-medium mb-1">Assigned Courses</label>
+            <div class="flex flex-wrap gap-3">
+                {% for course in courses %}
+                <label class="admin-check"><input type="checkbox" name="courses" value="{{ course.pk }}"> {{ course.code }}</label>
+                {% endfor %}
+                {% if not courses %}
+                <span class="text-sm text-main/50">No courses yet — add courses to assign them.</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="md:col-span-2">
+            <label class="admin-check"><input type="checkbox" id="t-active" name="is_active" value="1" checked> Active</label>
+        </div>
+        <div class="md:col-span-2 flex gap-3">
+            <button type="submit" class="admin-btn admin-btn-primary"><i class="fa-solid fa-floppy-disk"></i> <span id="submit-label">Save Teacher</span></button>
+            <button type="button" id="form-cancel" class="admin-btn" hidden><i class="fa-solid fa-xmark"></i> Cancel Edit</button>
+        </div>
+    </form>
+</div>
+
+<!-- Registered teachers -->
+<div class="admin-card">
+    <h2><i class="fa-solid fa-users-gear"></i> Registered Teachers</h2>
+    <p class="admin-card-sub">Edit details, assign courses, or remove a teacher.</p>
+    <div class="admin-table-wrap">
+        <table class="admin-table" id="teachers-table">
+            <thead>
+                <tr><th>Teacher</th><th>Department</th><th>Courses</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                <tr><td colspan="5" class="text-center text-main/50 py-4">Loading teachers…</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+    const alertBox = document.getElementById('teacher-alert');
+    const toast = document.createElement('div');
+    toast.className = 'admin-toast';
+    document.body.appendChild(toast);
+
+    function showToast(msg) {
+        toast.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3500);
+    }
+
+    function showAlert(type, msg) {
+        alertBox.className = 'admin-alert' + (type ? ' ' + type : '');
+        alertBox.textContent = msg || '';
+    }
+
+    function csrfToken() {
+        const m = document.querySelector('[name=csrfmiddlewaretoken]');
+        return m ? m.value : '';
+    }
+
+    function escapeHtml(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    const API_URL = '{{ ENDPOINTS.api_admin_teachers }}';
+
+    // ---- Form helpers ----
+    const form = document.getElementById('teacher-form');
+    const formTitle = document.getElementById('form-title');
+    const submitLabel = document.getElementById('submit-label');
+    const cancelBtn = document.getElementById('form-cancel');
+    let editingId = null;
+
+    function resetForm() {
+        editingId = null;
+        form.reset();
+        document.getElementById('t-active').checked = true;
+        formTitle.innerHTML = '<i class="fa-solid fa-chalkboard-user"></i> Add a Teacher';
+        submitLabel.textContent = 'Save Teacher';
+        cancelBtn.hidden = true;
+        form.querySelector('[name=name]').focus();
+    }
+
+    cancelBtn.addEventListener('click', resetForm);
+
+    function fillForm(teacher) {
+        editingId = teacher.id;
+        document.getElementById('teacher-id').value = teacher.id;
+        document.getElementById('t-name').value = teacher.name;
+        document.getElementById('t-email').value = teacher.email;
+        document.getElementById('t-designation').value = teacher.designation;
+        document.getElementById('t-phone').value = teacher.phone_number || '';
+        document.getElementById('t-department').value = teacher.department_id || '';
+        document.getElementById('t-active').checked = teacher.is_active;
+        // Pre-check the boxes whose course id is in the teacher's assignment
+        // (course_ids, not the display codes in ``courses``).
+        form.querySelectorAll('input[name=courses]').forEach(cb => {
+            cb.checked = (teacher.course_ids || []).indexOf(Number(cb.value)) !== -1;
+        });
+        formTitle.innerHTML = '<i class="fa-solid fa-pen-to-square"></i> Edit Teacher';
+        submitLabel.textContent = 'Update Teacher';
+        cancelBtn.hidden = false;
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        showAlert('', '');
+        const params = new URLSearchParams();
+        params.set('name', form.name.value.trim());
+        params.set('email', form.email.value.trim());
+        params.set('department', form.department.value);
+        params.set('designation', form.designation.value.trim());
+        params.set('phone_number', form.phone_number.value.trim());
+        params.set('is_active', form.is_active.checked ? '1' : 'off');
+        form.querySelectorAll('input[name=courses]:checked').forEach((cb) => params.append('courses', cb.value));
+
+        const url = editingId ? (API_URL.replace(/\/$/, '') + '/' + editingId + '/') : API_URL;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params.toString(),
+        });
+        let data = {};
+        try { data = await res.json(); } catch (err) { /* non-JSON */ }
+        if (res.ok && data.status === 'success') {
+            showToast(data.message);
+            resetForm();
+            loadTeachers();
+        } else {
+            showAlert('error', data.message || 'Could not save the teacher.');
+        }
+    });
+
+    // ---- Table ----
+    const tbody = document.querySelector('#teachers-table tbody');
+    let teachersCache = {};
+
+    async function loadTeachers() {
+        const res = await fetch(API_URL, { credentials: 'same-origin' });
+        const body = await res.json().catch(() => ({}));
+        const teachers = (body.data && body.data.teachers) || [];
+        teachersCache = {};
+        teachers.forEach((t) => { teachersCache[t.id] = t; });
+        if (!teachers.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-main/50 py-4">No teachers registered yet.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = teachers.map((t) =>
+            '<tr data-teacher-id="' + t.id + '">' +
+            '<td><span class="font-medium">' + escapeHtml(t.name) + '</span>' +
+            '<span class="mono block text-main/50">' + escapeHtml(t.email) + '</span></td>' +
+            '<td>' + escapeHtml(t.department || '—') + '</td>' +
+            '<td>' + (t.courses && t.courses.length
+                ? t.courses.map(escapeHtml).join(', ')
+                : '<span class="text-main/40">—</span>') + '</td>' +
+            '<td><span class="admin-badge ' + (t.is_active ? 'admin-badge-green' : 'admin-badge-red') + '">' +
+            (t.is_active ? 'Active' : 'Inactive') + '</span></td>' +
+            '<td><div class="flex flex-wrap gap-2">' +
+            '<button type="button" class="admin-btn action-edit"><i class="fa-solid fa-pen"></i> Edit</button>' +
+            '<button type="button" class="admin-btn action-delete"><i class="fa-solid fa-trash"></i> Delete</button>' +
+            '</div></td></tr>'
+        ).join('');
+    }
+
+    tbody.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        const tr = btn.closest('tr[data-teacher-id]');
+        const id = tr.dataset.teacherId;
+
+        if (btn.classList.contains('action-edit')) {
+            const row = teachersCache[id];
+            if (row) fillForm(row);
+            return;
+        }
+        if (btn.classList.contains('action-delete')) {
+            if (!confirm('Remove this teacher? Their course assignments are removed too.')) return;
+            const res = await fetch(API_URL.replace(/\/$/, '') + '/' + id + '/', {
+                method: 'DELETE',
+                headers: { 'X-CSRFToken': csrfToken() },
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.status === 'success') {
+                showToast(data.message);
+                if (editingId === Number(id)) resetForm();
+                loadTeachers();
+            } else {
+                showAlert('error', data.message || 'Could not remove the teacher.');
+            }
+        }
+    });
+
+    loadTeachers();
+})();
+</script>
+{% endblock %}

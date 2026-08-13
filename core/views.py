@@ -109,6 +109,7 @@ from .models import (
     Report,
     Routine,
     StudentProfile,
+    Teacher,
     TransportBooking,
     TransportRoute,
     UserNote,
@@ -129,6 +130,12 @@ from payments.services import (  # noqa: E402
 # Huey background task for notes analysis (off the request path). The
 # extractors themselves live in core/notes_analysis and run inside the task.
 from .tasks import analyze_note_content, broadcast_notice  # noqa: E402
+
+# Attendance QR-dispatch + report email service (services/attendance_email.py).
+from services.attendance_email import (  # noqa: E402
+    email_qr_to_teacher,
+    email_report_to_teacher,
+)
 
 
 def public_home(request):
@@ -1606,10 +1613,29 @@ def api_attendance_session_close(request, session_token):
         return JsonResponse({'status': 'error', 'message': 'Session not found.'}, status=404)
     session.is_active = False
     session.save(update_fields=['is_active'])
+
+    # Automatic report dispatch: when the session ends (admin closes it) the
+    # styled attendance summary is emailed to the assigned course teacher.
+    # Best-effort — a missing teacher or SMTP failure never blocks the close.
+    report_sent = None
+    teacher = Teacher.for_course(session.course_code)
+    if teacher is not None:
+        try:
+            email_report_to_teacher(session, teacher)
+            report_sent = teacher.email
+        except Exception:  # noqa: BLE001 - auto-dispatch must not fail the close
+            logger.exception(
+                'Auto attendance report email failed for session %s',
+                session.session_token,
+            )
+
     return JsonResponse({
         'status': 'success',
         'message': 'Session closed.',
-        'data': {'count': session.records.count()},
+        'data': {
+            'count': session.records.count(),
+            'report_emailed_to': report_sent,
+        },
     })
 
 
@@ -1662,6 +1688,264 @@ def api_attendance_records(request):
                 }
                 for r in records
             ],
+        },
+    })
+
+
+# ============================================================================
+# Teacher Management — admin CRUD + Attendance QR / report email dispatch
+# ============================================================================
+
+
+def _teacher_serialize(teacher):
+    """Compact Teacher row for the admin teachers API/tables."""
+    return {
+        'id': teacher.pk,
+        'name': teacher.name,
+        'email': teacher.email,
+        'department': teacher.department.name if teacher.department else '',
+        'department_id': teacher.department_id,
+        'designation': teacher.designation,
+        'phone_number': teacher.phone_number,
+        'is_active': teacher.is_active,
+        'courses': teacher.course_codes,
+        'course_ids': list(teacher.courses.values_list('pk', flat=True)),
+        'created_at': teacher.created_at.isoformat(),
+    }
+
+
+def _parse_teacher_payload(request):
+    """Extract + validate the Teacher fields from a form/JSON POST.
+
+    Returns ``(data, error)`` where ``error`` is a human message when the
+    payload is missing required fields.
+    """
+    name = (request.POST.get('name') or '').strip()
+    email = (request.POST.get('email') or '').strip().lower()
+    designation = (request.POST.get('designation') or '').strip()
+    phone_number = (request.POST.get('phone_number') or '').strip()
+    department_raw = (request.POST.get('department') or '').strip()
+    course_ids = request.POST.getlist('courses')
+    is_active = request.POST.get('is_active', 'on') != 'off'
+
+    if not name:
+        return None, 'Teacher name is required.'
+    if not email:
+        return None, 'Teacher email is required.'
+    try:
+        validate_email(email)
+    except ValidationError:
+        return None, 'Please enter a valid email address.'
+
+    department = None
+    if department_raw:
+        try:
+            department = Department.objects.get(pk=int(department_raw))
+        except (Department.DoesNotExist, TypeError, ValueError):
+            return None, 'Please choose a valid department.'
+
+    courses = []
+    for course_id in course_ids:
+        try:
+            courses.append(Course.objects.get(pk=int(course_id)))
+        except (Course.DoesNotExist, TypeError, ValueError):
+            return None, 'Please choose valid courses.'
+
+    return {
+        'name': name,
+        'email': email,
+        'designation': designation,
+        'phone_number': phone_number,
+        'department': department,
+        'courses': courses,
+        'is_active': is_active,
+    }, None
+
+
+@admin_required
+def admin_teachers_view(request):
+    """Admin Teachers — CRUD page for course teachers + assigned courses."""
+    return render(request, 'admin/teachers.html', {
+        'admin_section': 'teachers',
+        'departments': Department.objects.order_by('name'),
+        'courses': Course.objects.order_by('code'),
+    })
+
+
+@admin_required
+def api_admin_teachers(request):
+    """GET/POST /api/admin/teachers/ — list or create teacher rows.
+
+    GET returns the full teacher list (name, email, department, designation,
+    phone, active flag, assigned course codes). POST creates a teacher from
+    ``name`` / ``email`` / ``department`` / ``designation`` / ``phone_number``
+    / ``is_active`` / ``courses`` (list of course ids) — a duplicate email is
+    answered 409.
+    """
+    if request.method == 'GET':
+        teachers = Teacher.objects.select_related('department').prefetch_related('courses')
+        return JsonResponse({
+            'status': 'success',
+            'data': {
+                'teachers': [_teacher_serialize(t) for t in teachers],
+            },
+        })
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Method not allowed.'}, status=405)
+
+    data, error = _parse_teacher_payload(request)
+    if error:
+        return JsonResponse({'status': 'error', 'message': error}, status=400)
+    try:
+        with transaction.atomic():
+            teacher = Teacher.objects.create(
+                name=data['name'],
+                email=data['email'],
+                department=data['department'],
+                designation=data['designation'],
+                phone_number=data['phone_number'],
+                is_active=data['is_active'],
+            )
+            teacher.courses.set(data['courses'])
+    except IntegrityError:
+        return JsonResponse(
+            {'status': 'error', 'message': 'A teacher with this email already exists.'},
+            status=409,
+        )
+    return JsonResponse({
+        'status': 'success',
+        'message': '%s added as a course teacher.' % teacher.name,
+        'data': {'teacher': _teacher_serialize(teacher)},
+    })
+
+
+@admin_required
+def api_admin_teacher_item(request, teacher_id):
+    """PATCH/DELETE /api/admin/teachers/<id>/ — update or delete a teacher."""
+    try:
+        teacher = Teacher.objects.get(pk=teacher_id)
+    except (Teacher.DoesNotExist, ValueError, TypeError):
+        return JsonResponse({'status': 'error', 'message': 'Teacher not found.'}, status=404)
+
+    if request.method == 'DELETE':
+        name = teacher.name
+        teacher.delete()
+        return JsonResponse({
+            'status': 'success',
+            'message': '%s was removed.' % name,
+        })
+    if request.method not in ('POST', 'PATCH', 'PUT'):
+        return JsonResponse({'status': 'error', 'message': 'Method not allowed.'}, status=405)
+
+    data, error = _parse_teacher_payload(request)
+    if error:
+        return JsonResponse({'status': 'error', 'message': error}, status=400)
+    try:
+        with transaction.atomic():
+            teacher.name = data['name']
+            teacher.email = data['email']
+            teacher.department = data['department']
+            teacher.designation = data['designation']
+            teacher.phone_number = data['phone_number']
+            teacher.is_active = data['is_active']
+            teacher.save()
+            teacher.courses.set(data['courses'])
+    except IntegrityError:
+        return JsonResponse(
+            {'status': 'error', 'message': 'A teacher with this email already exists.'},
+            status=409,
+        )
+    return JsonResponse({
+        'status': 'success',
+        'message': '%s updated.' % teacher.name,
+        'data': {'teacher': _teacher_serialize(teacher)},
+    })
+
+
+def _resolve_attendance_session(session_token):
+    """Resolve an AttendanceSession by token or numeric primary key."""
+    session = AttendanceSession.objects.filter(session_token__iexact=session_token).first()
+    if session is not None:
+        return session
+    try:
+        return AttendanceSession.objects.get(pk=int(session_token))
+    except (AttendanceSession.DoesNotExist, TypeError, ValueError):
+        return None
+
+
+def _dispatch_teacher_email(session, kind):
+    """Send the QR or report email to the session course's teacher.
+
+    Returns ``(teacher, error)`` — ``error`` is None on success (or when no
+    teacher is assigned yet). SMTP failures surface as an error message so
+    the UI can tell the admin what went wrong.
+    """
+    teacher = Teacher.for_course(session.course_code)
+    if teacher is None:
+        return None, 'No teacher is assigned to %s yet — add one in the Teachers tab.' % session.course_code
+    try:
+        if kind == 'qr':
+            email_qr_to_teacher(session, teacher)
+        else:
+            email_report_to_teacher(session, teacher)
+    except Exception as exc:  # noqa: BLE001 - SMTP backend raises broadly
+        logger.exception('Attendance %s email failed for session %s', kind, session.session_token)
+        return teacher, 'The email could not be sent right now (%s). Please try again.' % type(exc).__name__
+    return teacher, None
+
+
+@admin_required
+def api_attendance_session_email_qr(request, session_token):
+    """POST /api/attendance/sessions/<token>/email-qr/ — email the class QR
+    code + session details to the assigned course teacher.
+
+    Generates the QR PNG server-side (``qrcode``) and attaches it to an email
+    that also carries the course, session token and expiry time. 404 when the
+    session or its course's teacher cannot be resolved.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    session = _resolve_attendance_session(session_token)
+    if session is None:
+        return JsonResponse({'status': 'error', 'message': 'Session not found.'}, status=404)
+    teacher, error = _dispatch_teacher_email(session, 'qr')
+    if error:
+        status = 404 if teacher is None else 502
+        return JsonResponse({'status': 'error', 'message': error}, status=status)
+    return JsonResponse({
+        'status': 'success',
+        'message': 'Class QR code emailed to %s (%s).' % (teacher.name, teacher.email),
+        'data': {
+            'teacher': teacher.email,
+            'course_code': session.course_code,
+            'session_token': session.session_token,
+        },
+    })
+
+
+@admin_required
+def api_attendance_session_email_report(request, session_token):
+    """POST /api/attendance/sessions/<token>/email-report/ — send the styled
+    attendance summary (HTML + CSV) to the assigned course teacher.
+
+    404 when the session or its teacher cannot be resolved.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    session = _resolve_attendance_session(session_token)
+    if session is None:
+        return JsonResponse({'status': 'error', 'message': 'Session not found.'}, status=404)
+    teacher, error = _dispatch_teacher_email(session, 'report')
+    if error:
+        status = 404 if teacher is None else 502
+        return JsonResponse({'status': 'error', 'message': error}, status=status)
+    return JsonResponse({
+        'status': 'success',
+        'message': 'Attendance report emailed to %s (%s).' % (teacher.name, teacher.email),
+        'data': {
+            'teacher': teacher.email,
+            'course_code': session.course_code,
+            'session_token': session.session_token,
         },
     })
 

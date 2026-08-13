@@ -44,6 +44,13 @@ urlpatterns = [
     path('api/admin/attendance/sessions/<str:session_token>/live/', views.api_attendance_session_live, name='api_admin_attendance_session_live'),
     path('api/admin/attendance/sessions/<str:session_token>/close/', views.api_attendance_session_close, name='api_admin_attendance_session_close'),
     path('api/admin/attendance/records/', views.api_attendance_records, name='api_admin_attendance_records'),
+    # Attendance QR / report email dispatch to the assigned course teacher
+    path('api/attendance/sessions/<str:session_token>/email-qr/', views.api_attendance_session_email_qr, name='api_attendance_session_email_qr'),
+    path('api/attendance/sessions/<str:session_token>/email-report/', views.api_attendance_session_email_report, name='api_attendance_session_email_report'),
+    # Teacher Management — admin CRUD (create/list + item update/delete)
+    path('dashboard/admin/teachers/', views.admin_teachers_view, name='admin_teachers'),
+    path('api/admin/teachers/', views.api_admin_teachers, name='api_admin_teachers'),
+    path('api/admin/teachers/<int:teacher_id>/', views.api_admin_teacher_item, name='api_admin_teacher_item'),
     path('profile/', views.profile_view, name='profile'),
 
     # Staff / admin dashboards

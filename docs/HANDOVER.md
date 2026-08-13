@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 96 | Teacher Management + QR email dispatch + attendance report emails | *(see bottom)* |
 | 95 | Medical API payload alignment — booking keys + consultation lookup | `d2bf152` |
 | 94 | Mobile responsiveness (calendar / clock / attendance) + Transport payment gateway modal | `e8f3332` |
 | 93 | Attendance page dark-mode theming (shared CSS tokens) | `85589ca` |
@@ -5539,3 +5540,75 @@ with 400s and "Start Consultation" no longer 404s.
   without selection shows the choose-first banner → selecting clears it
   instantly → start opens `Consultation #…` thread window; zero console
   errors.
+
+---
+
+## 96. Teacher Management + QR Email Dispatch + Attendance Report Emails
+
+Closed the teacher→QR→report email loop for the QR Attendance module:
+admins register course teachers, dispatch the class QR code by email when a
+session opens, and send (or auto-send on close) the styled attendance
+report.
+
+### 1. Teacher Management (Admin)
+
+- **Model (`core/models.py`)**: new `Teacher` — `name`, `email` (unique),
+  `department` (FK → `Department`), `designation`, `phone_number`
+  (optional), `courses` (M2M → `Course`), `is_active`, timestamps.
+  `Teacher.for_course(code)` resolves the active teacher for a course code
+  (case-insensitive) — the lookup the email dispatch uses.
+- **Migration `0038_teacher_and_more`** (plus Django's automatic
+  attendance index/field normalizations).
+- **Admin UI** (`/dashboard/admin/teachers/`): new **Teachers** tab in the
+  admin sidebar. Add/edit form (name, email, department, designation,
+  phone, active, assigned-course checkboxes) + a registered-teachers table
+  with Edit / Delete actions, wired to the CRUD API.
+- **API**: `GET/POST /api/admin/teachers/` (list / create),
+  `POST/DELETE /api/admin/teachers/<id>/` (update / delete) —
+  `admin_required`, duplicate email → 409, validation errors → 400.
+  Registered in the Django admin (`TeacherAdmin`, `filter_horizontal`
+  courses).
+
+### 2. QR Code Email Dispatch
+
+- **`services/attendance_email.py`**: `attendance_qr_png(session)` renders
+  the `ATT|<token>` payload to a PNG via the **`qrcode`** library (+Pillow,
+  newly pinned `qrcode[pil]>=7.4,<9.0`); `email_qr_to_teacher` attaches the
+  QR image and emails course + session token + expiry to the teacher using
+  the configured Django email backend (Gmail SMTP / console fallback).
+- **Button** "Email QR to Teacher" on the admin attendance live panel →
+  `POST /api/attendance/sessions/<token>/email-qr/` (admin-only; resolves
+  the session by token or numeric id; 404 when no teacher is assigned to
+  the course, 502 on SMTP failure).
+
+### 3. Attendance Report Email
+
+- **`attendance_report(session)`**: builds the per-session roster (every
+  student who attended any session of the course — Present with check-in
+  timestamps, others Absent), a styled inline-CSS **HTML** summary and a
+  **CSV** attachment.
+- **Button** "Send Report to Teacher" →
+  `POST /api/attendance/sessions/<token>/email-report/` (admin-only).
+- **Auto-dispatch**: closing a session now best-effort emails the report to
+  the assigned teacher automatically (`report_emailed_to` in the close
+  response, surfaced in the close toast); a missing teacher or SMTP failure
+  never blocks the close.
+
+### 4. Files changed
+
+- `core/models.py`, `core/migrations/0038_teacher_and_more.py`,
+  `core/admin.py`, `core/views.py`, `core/urls.py`,
+  `core/context_processors.py`
+- `services/attendance_email.py` (new), `services/__init__.py`
+- `templates/admin/teachers.html` (new), `templates/admin/attendance.html`,
+  `templates/admin/admin_base.html`
+- `requirements.txt` (`qrcode[pil]`)
+- `core/tests.py` (3 new test classes: TeacherModel, AdminTeachersApi,
+  AttendanceEmailDispatchApi)
+
+### 5. Tests & verification
+
+- `python manage.py check` clean; **full suite 826 tests OK** (was 799).
+- Browser e2e: admin login → create teacher (assigned CSE-1101) → generate
+  QR session → "Email QR to Teacher" and "Send Report to Teacher" both
+  succeed with toasts → close auto-emails the report; zero console errors.
