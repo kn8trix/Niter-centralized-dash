@@ -4,7 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 96 | Teacher Management + QR email dispatch + attendance report emails | *(see bottom)* |
+| 96 | Teacher Management + QR email dispatch + attendance report emails | `52735a4` |
 | 95 | Medical API payload alignment — booking keys + consultation lookup | `d2bf152` |
 | 94 | Mobile responsiveness (calendar / clock / attendance) + Transport payment gateway modal | `e8f3332` |
 | 93 | Attendance page dark-mode theming (shared CSS tokens) | `85589ca` |
