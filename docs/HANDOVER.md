@@ -4,7 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 93 | Attendance page dark-mode theming (shared CSS tokens) | `TBD` |
+| 93 | Attendance page dark-mode theming (shared CSS tokens) | `85589ca` |
 | 90 | Dynamic user names on all passes + cleaned-up profile dropdown | `71ed77b` |
 | 91 | QR Attendance System + Academic Calendar grid fix | `f832515` |
 | 92 | Two-step signup verification (Django Gmail SMTP) | `46585c0` |
