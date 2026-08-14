@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 109 | Visual builder — inline canvas editing + active-block sidebar sync + publish flow | *(this change)* |
 | 108 | Builder routes locked to Admin Console layout — no student nav on admin pages | `ace3441` |
 | 107 | Builder edit page — auto-opening Delete Section modal fix ([hidden] vs display:grid) | `acd73c0` |
 | 106 | Builder iframe fix — public pages frameable same-origin (X-Frame-Options SAMEORIGIN) | `f007cbf` |
@@ -6163,6 +6164,54 @@ math, so they were kept full-screen (decision confirmed with the user).
 **Regression guard:** `test_builder_dashboard_uses_admin_console_layout`
 asserts the admin sidebar renders, `partials/topbar` / `#avatar-btn` /
 student topbar ids are absent.
+
+---
+
+## 109. Visual Builder — Inline Canvas Editing + Active-Block Sync + Publish Flow
+
+**Date:** 14 August 2026  
+**Branch:** main
+
+Polished the `/builder/visual/<slug>/` editor so every canvas element is
+directly editable and stays in sync with the left inspector. The §103
+WYSIWYG overlay already shipped most of the machinery — this pass closed
+the binding gaps and matched the requested UX/toast wording.
+
+### What was already there (verified, no rework)
+
+- **Save / Publish endpoint:** `POST /api/builder/pages/<page_id>/save/`
+  (`builder_page_wysiwyg_save`) accepts `{page_id, blocks, is_published?}` —
+  blocks persist through the shared sanitizing `_save_content_block_data`
+  path and `is_published` toggles the live state while bumping `updated_at`.
+  The requested `/builder/api/save/` + `/builder/api/publish/` URL shapes are
+  served by this single endpoint (verified by `BuilderWysiwygSaveApiTest`).
+- **Canvas editing:** double-click text on an `html` block → `contenteditable`;
+  single click → floating style toolbar (font size / text colour /
+  background / alignment) with an "Edit text" button.
+- **Sidebar → canvas:** typing in the Active Blocks Content (HTML) textarea
+  or the Align / Color / Font size / Padding inputs updates the matching
+  `[data-editable-id]` element in the iframe in real time.
+
+### Gaps closed (`static/js/builder/editor.js`)
+
+- **Active-element outline:** the selected canvas element now shows the spec'd
+  `outline: 2px dashed #3b82f6` (was solid dark gray).
+- **Canvas → sidebar binding:** typing on the canvas now mirrors straight
+  into the Active Blocks Content (HTML) textarea (bidirectional — previously
+  only sidebar → canvas).
+- **Unified active block:** showing the floating toolbar now also drives the
+  inspector `.active` highlight + canvas outline through one `selectItem`
+  path, so canvas click, sidebar click, and toolbar selection all agree on
+  the same active block.
+- **Toasts:** Save Changes → "Draft Saved!", Publish Page →
+  "Page Published Successfully!".
+
+### Tests & verification
+
+- Full suite **884 tests OK** (was 883; +1 new `test_publish_bumps_updated_at`
+  asserting publishing touches the page's `updated_at`).
+- `editor.js` syntax-checked; existing `BuilderWysiwygSaveApiTest` (12)
+  unchanged and green.
 
 ---
 

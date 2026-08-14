@@ -6714,6 +6714,23 @@ class BuilderWysiwygSaveApiTest(TestCase):
         self.assertTrue(self.page.is_published)
         self.assertTrue(response.json()['is_published'])
 
+    def test_publish_bumps_updated_at(self):
+        # Publishing must touch the page's updated timestamp so the live page
+        # reflects the change immediately (updated_at is auto_now).
+        self.page.is_published = False
+        self.page.updated_at = timezone.now() - timedelta(days=1)
+        self.page.save(update_fields=['is_published', 'updated_at'])
+        before = self.page.updated_at
+        response = self.client.post(
+            self._url(),
+            data=json.dumps({'is_published': True, 'blocks': []}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.page.refresh_from_db()
+        self.assertTrue(self.page.is_published)
+        self.assertGreater(self.page.updated_at, before)
+
     def test_unknown_page_is_404(self):
         response = self.client.post(
             reverse('builder_page_wysiwyg_save', args=[99999]),

@@ -128,7 +128,8 @@
             styleEl.textContent = [
                 '[data-editable-id] { outline: 2px dashed rgba(39,39,42,.30); outline-offset: 3px; transition: outline-color .15s ease, background-color .15s ease; }',
                 '[data-editable-id]:hover { outline-color: #27272a; }',
-                '[data-editable-id].builder-selected { outline: 2px solid #27272a; background-color: rgba(232,226,216,.30); }',
+                // Active element: blue dashed edit outline (#3b82f6) as spec'd.
+                '[data-editable-id].builder-selected { outline: 2px dashed #3b82f6; outline-offset: 3px; background-color: rgba(59,130,246,.08); }',
             ].join('\n');
         } else {
             styleEl.textContent = '';
@@ -561,6 +562,10 @@
         selectedBlockId = id;
         selectedSection = iframeElement(id);
         if (!selectedSection) return;
+        // Unify the active-block state: the canvas click drives the inspector
+        // highlight + blue outline AND the floating toolbar off one block id.
+        const item = inspectorList.querySelector('[data-block-id="' + id + '"]');
+        if (item) selectItem(id, item);
         populateToolbar(id);
         positionToolbar();
     }
@@ -619,6 +624,15 @@
             if (isHtmlBlock(id)) {
                 if (!dirtyBlocks[id]) dirtyBlocks[id] = {};
                 dirtyBlocks[id].content_html = section.innerHTML.trim();
+                // Bidirectional binding: reflect canvas typing straight into
+                // the Active Blocks sidebar's Content (HTML) textarea.
+                const item = inspectorList.querySelector('[data-block-id="' + id + '"]');
+                if (item) {
+                    const textarea = item.querySelector('[data-edit="html"]');
+                    if (textarea && document.activeElement !== textarea) {
+                        textarea.value = section.innerHTML.trim();
+                    }
+                }
             }
         });
     }
@@ -666,7 +680,7 @@
             if (ok) {
                 // Flush the dirty map — everything just saved.
                 Object.keys(dirtyBlocks).forEach(function (id) { delete dirtyBlocks[id]; });
-                showToast('All changes saved ✓', true);
+                showToast('Draft Saved!', true);
             } else {
                 showToast('Some changes failed to save — check the fields and try again.', false);
             }
@@ -682,7 +696,7 @@
             publishBtn.disabled = false;
             if (data.status === 'success') {
                 publishBtn.dataset.published = 'true';
-                showToast('Page published — live for visitors ✓', true);
+                showToast('Page Published Successfully!', true);
             } else {
                 showToast('Publish failed — try again.', false);
             }
