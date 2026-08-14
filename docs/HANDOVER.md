@@ -4,9 +4,9 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 104 | Global News & Search widget (NewsAPI service + student/admin dashboards + search API) | *(this change)* |
-| 103 | Emergency alarm persistent-silence fix + WYSIWYG student-view editor overlay | *(this change)* |
-| 102 | dash-data CI failure root cause — ALLOWED_HOSTS vs localhost host fix | *(this change)* |
+| 104 | Global News & Search widget (NewsAPI service + student/admin dashboards + search API) | `991c4f8` |
+| 103 | Emergency alarm persistent-silence fix + WYSIWYG student-view editor overlay | `991c4f8` |
+| 102 | dash-data CI failure root cause — ALLOWED_HOSTS vs localhost host fix | `a7b0243` |
 | 101 | dash-data dashboard JSON embedding — verified present, calendar grid guards green | `8905493` |
 | 100 | CI hardening — pytest-proof channel layer + dash-data/Huey regression guards | `0a90ad5` |
 | 99 | Test-suite Redis isolation — in-memory channel layer under the test runner | `0c38e45` |
