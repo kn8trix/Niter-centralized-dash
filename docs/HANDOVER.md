@@ -4,7 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 108 | Builder routes locked to Admin Console layout — no student nav on admin pages | *(this change)* |
+| 108 | Builder routes locked to Admin Console layout — no student nav on admin pages | `ace3441` |
 | 107 | Builder edit page — auto-opening Delete Section modal fix ([hidden] vs display:grid) | `acd73c0` |
 | 106 | Builder iframe fix — public pages frameable same-origin (X-Frame-Options SAMEORIGIN) | `f007cbf` |
 | 105 | `seed_demo_data` command — realistic NITER demo dataset (+ MealMenu model) | `39f3488` |
