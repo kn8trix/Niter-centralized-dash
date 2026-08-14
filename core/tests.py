@@ -6876,6 +6876,21 @@ class BuilderPageManagerTest(TestCase):
         # Live preview iframe points at the public route.
         self.assertContains(response, reverse('editable_page', args=[self.page.slug]))
 
+    def test_modals_start_hidden(self):
+        """Neither the block library nor the delete-confirm modal may auto-open
+        on load — both backdrops render with the hidden attribute, so the
+        delete dialog can never stack over the library without a user click.
+        (Regression guard for the .pb-modal-backdrop display:grid override of
+        [hidden], same defect class as the §98 emergency modal.)"""
+        self.client.login(username='root_pm', password='rootpass123')
+        html = self.client.get(reverse('builder_editor', args=[self.page.slug])).content.decode()
+        for modal_id in ('pb-lib-modal', 'pb-confirm-modal'):
+            self.assertIn(
+                'id="%s" hidden' % modal_id,
+                html,
+                'backdrop %s must render hidden' % modal_id,
+            )
+
     def test_new_section_types_render_on_live_page(self):
         response = self.client.get(reverse('editable_page', args=[self.page.slug]))
         self.assertEqual(response.status_code, 200)

@@ -584,6 +584,14 @@ body.page-builder {
     padding: 1.2rem;
 }
 
+/* The [hidden] attribute must beat the display:grid above — otherwise both
+   backdrops render on load and the delete-confirm modal stacks over the
+   block library without any click. Same defect class as the §98 emergency
+   modal fix (.emergency-modal[hidden]). */
+.pb-modal-backdrop[hidden] {
+    display: none;
+}
+
 .pb-modal {
     width: min(760px, 94vw);
     max-height: 86vh;

@@ -4,7 +4,8 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 106 | Builder iframe fix — public pages frameable same-origin (X-Frame-Options SAMEORIGIN) | *(this change)* |
+| 107 | Builder edit page — auto-opening Delete Section modal fix ([hidden] vs display:grid) | *(this change)* |
+| 106 | Builder iframe fix — public pages frameable same-origin (X-Frame-Options SAMEORIGIN) | `f007cbf` |
 | 105 | `seed_demo_data` command — realistic NITER demo dataset (+ MealMenu model) | `39f3488` |
 | 104 | Global News & Search widget (NewsAPI service + student/admin dashboards + search API) | `991c4f8` |
 | 103 | Emergency alarm persistent-silence fix + WYSIWYG student-view editor overlay | `991c4f8` |
@@ -6096,6 +6097,35 @@ blocked (DENY is still the default for every other view).
 
 **Regression guard:** `EditablePageRenderTest.test_page_allows_same_origin_framing`
 asserts the header is exactly `SAMEORIGIN`.
+
+---
+
+## 107. Builder Edit Page — Auto-Opening "Delete Section" Modal Fix
+
+**Date:** 14 August 2026  
+**Branch:** main
+
+**Symptom:** loading `/builder/edit/<slug>/` immediately showed the "Delete
+Section" confirmation modal stacked on top of the "Block Library" modal,
+with no click.
+
+**Root cause:** same defect class as the §98 emergency modal —
+`.pb-modal-backdrop { display: grid; }` in `static/css/builder_page.css`
+overrides the `hidden` attribute, so **both** backdrops rendered on load. The
+delete-confirm backdrop sits later in the DOM and painted over the library
+backdrop (identical `z-index`, later element wins). The JS was never the
+problem: `openDeleteConfirm` is only reachable from an explicit trash-icon
+click, and `closeAllModals()` already exists.
+
+**Fix:**
+- `static/css/builder_page.css`: added `.pb-modal-backdrop[hidden] {
+  display: none; }` so the `hidden` attribute beats the `display: grid` rule.
+- `static/js/builder/page_manager.js`: hardened init — both modals are
+  explicitly forced to `hidden` and `pendingOrder` / `pendingDelete` are
+  cleared on load, so a future CSS regression can never auto-open a dialog.
+
+**Regression guard:** `BuilderPageManagerTest.test_modals_start_hidden`
+asserts both backdrops render with the `hidden` attribute.
 
 ---
 

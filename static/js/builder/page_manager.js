@@ -131,6 +131,16 @@
     var confirmClose = document.getElementById('pb-confirm-close');
     if (confirmClose) confirmClose.addEventListener('click', function () { closeModal(confirmModal); });
 
+    // Default state: both dialogs MUST start closed. The .pb-modal-backdrop
+    // display:grid rule can override the hidden attribute (same defect class
+    // as the §98 emergency modal), which stacks the delete-confirm modal over
+    // the block library on load. Force the closed state + clear any pending
+    // actions here so no modal ever auto-opens without a user click.
+    if (libModal) libModal.hidden = true;
+    if (confirmModal) confirmModal.hidden = true;
+    pendingOrder = null;
+    pendingDelete = null;
+
     /* ------------------------------------------------------------------ */
     /* Page settings — Save Draft / Publish                                */
     /* ------------------------------------------------------------------ */
