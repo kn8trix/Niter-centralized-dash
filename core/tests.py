@@ -8606,7 +8606,11 @@ class DashboardCalendarGridTest(TestCase):
     """
 
     def _dash_script(self):
-        html = self.client.get(reverse('student_dashboard'), HTTP_HOST='localhost').content.decode()
+        # Use the Django test client's canonical host (always allowed by the
+        # test runner's ALLOWED_HOSTS). HTTP_HOST='localhost' 400s on CI where
+        # ALLOWED_HOSTS is empty (no .env) — the runner only permits
+        # 'testserver' — producing a DisallowedHost page with no dash-data.
+        html = self.client.get(reverse('student_dashboard'), HTTP_HOST='testserver').content.decode()
         match = re.search(r'<script id="dash-data"[^>]*>(.*?)</script>', html, re.S)
         self.assertIsNotNone(match, 'dash-data script tag missing')
         return match.group(1), match.group(0), html

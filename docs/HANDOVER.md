@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 102 | dash-data CI failure root cause — ALLOWED_HOSTS vs localhost host fix | *(this change)* |
 | 101 | dash-data dashboard JSON embedding — verified present, calendar grid guards green | `8905493` |
 | 100 | CI hardening — pytest-proof channel layer + dash-data/Huey regression guards | `0a90ad5` |
 | 99 | Test-suite Redis isolation — in-memory channel layer under the test runner | `0c38e45` |
@@ -5868,7 +5869,46 @@ against `core/tests.py` (`test_clock_label_renders_from_dict`,
   pre-serialized-string regression.
 - Both regression guards pass locally and the full suite is green under the
   exact CI invocation (`TESTING=true python manage.py test`): **854 tests OK**.
-- **No code change was required** — the pasted CI failure log predates the
-  §91 (`json_script` embedding) / §100 (guard strengthening) fixes already
-  on `main`; this entry records the re-verification so a future CI failure
-  on `DashboardCalendarGridTest` is not mistaken for a regression.
+- **No code change was required** for the tag itself — but see §102: the
+  same CI log's `dash-data script tag missing` failures were eventually
+  traced to an `ALLOWED_HOSTS` mismatch, not a missing tag, and that fix
+  **did** require a code change.
+
+## 102. dash-data CI Failure — Real Root Cause: ALLOWED_HOSTS vs localhost
+
+**Date:** 14 August 2026  
+**Branch:** main
+
+Follow-up to §101: GitHub Actions still failed the two `DashboardCalendarGridTest`
+regression guards (`dash-data script tag missing`) even though the tag is
+present on `main`. This pass found and fixed the real root cause.
+
+### Root cause
+
+- `_dash_script()` requested the dashboard with `HTTP_HOST='localhost'`.
+- **Locally** `.env` sets `ALLOWED_HOSTS=localhost,127.0.0.1`, so the test
+  runner's `ALLOWED_HOSTS` (which becomes `['localhost', '127.0.0.1',
+  'testserver']`) permits `localhost` and the dashboard renders.
+- **In CI** there is no `.env` and the workflow sets no `ALLOWED_HOSTS`, so
+  `ALLOWED_HOSTS=[]` (the django-environ schema default). Django's test
+  runner then rewrites it to `['testserver']` — `localhost` is **not**
+  allowed, so `self.client.get(..., HTTP_HOST='localhost')` returns a **400
+  DisallowedHost** error page. That page contains no `dash-data` script tag,
+  hence `dash-data script tag missing` — the tag itself was never absent.
+- Reproduced locally with `ALLOWED_HOSTS='' DEBUG=true SECRET_KEY=ci-test-key
+  TESTING=true python manage.py test` — the identical 2 failures.
+
+### Fix
+
+- `core/tests.py` (`DashboardCalendarGridTest._dash_script`): request with
+  `HTTP_HOST='testserver'` — the Django test client's canonical host, which
+  the test runner always appends to `ALLOWED_HOSTS`. The dashboard view and
+  template are host-independent, so nothing else changed; no template or
+  view edits were needed, and no hardcoded fallback `<script>` was added.
+
+### Tests & verification
+
+- `python manage.py check` clean.
+- Full suite under the exact CI environment (`ALLOWED_HOSTS='' DEBUG=true
+  SECRET_KEY=ci-test-key TESTING=true python manage.py test`):
+  **854 tests OK** (was FAILED failures=2 before the fix).
