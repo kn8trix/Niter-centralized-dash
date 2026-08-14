@@ -4,7 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 110 | Global News nav tab + /news/ page; emergency resolve verified; student-page mobile pass | *(this change)* |
+| 110 | Global News nav tab + /news/ page; emergency resolve verified; student-page mobile pass | `0e37bd6` |
 | 109 | Visual builder — inline canvas editing + active-block sidebar sync + publish flow | `ce61dba` |
 | 108 | Builder routes locked to Admin Console layout — no student nav on admin pages | `ace3441` |
 | 107 | Builder edit page — auto-opening Delete Section modal fix ([hidden] vs display:grid) | `acd73c0` |
