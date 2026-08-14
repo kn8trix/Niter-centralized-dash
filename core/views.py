@@ -6166,6 +6166,18 @@ def api_news_search(request):
     return JsonResponse({'status': 'success', 'data': articles})
 
 
+def news_page(request):
+    """Student-facing Global News page at /news/.
+
+    Reuses the shared Global News & Search widget (headline feed + client-side
+    keyword search) on a dedicated page; the same ``news_articles`` payload
+    drives the widget on the student/admin dashboards.
+    """
+    return render(request, 'news.html', {
+        'news_articles': fetch_global_news(),
+    })
+
+
 @admin_required
 def admin_users_view(request):
     """User & Club Management — students, staff, admins and club managers.

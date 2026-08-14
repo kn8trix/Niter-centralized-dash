@@ -152,12 +152,13 @@ class UnifiedHeaderTest(TestCase):
         'checkout',
         'medical',
         'notices',
+        'news',
         'academic_notes',
         'research_ai',
         'departments',
     ]
 
-    NAV_LINKS = ['Dashboard', 'Academic Notes', 'Departments', 'Research AI', 'Notices', 'Transport', 'Meals', 'Medical', 'Clubs', 'Tickets']
+    NAV_LINKS = ['Dashboard', 'Academic Notes', 'Departments', 'Research AI', 'Notices', 'Transport', 'Meals', 'Medical', 'Clubs', 'Global News', 'Tickets']
 
     def test_pages_render_shared_header(self):
         for name in self.PAGES:
@@ -188,6 +189,7 @@ class UnifiedHeaderTest(TestCase):
             'clubs_dashboard': '/clubs/',
             'medical': '/medical/',
             'notices': '/notices/',
+            'news': '/news/',
             'academic_notes': '/notes/',
             'research_ai': '/research-ai/',
             'departments': '/departments/',
@@ -9105,6 +9107,20 @@ class GlobalNewsDashboardTest(TestCase):
         self.assertIn('data-widget="global-news"', html)
         self.assertIn('id="news-search-form"', html)
         self.assertIn('id="news-grid"', html)
+
+    def test_news_page_renders_widget_with_active_pill(self):
+        articles = [{'title': 'Campus story', 'description': 'd', 'url': 'https://x.com', 'image': '', 'source': 'Wire', 'published_at': ''}]
+        with mock.patch('core.views.fetch_global_news', return_value=articles):
+            html = self.client.get(reverse('news'), HTTP_HOST='testserver').content.decode()
+        # Global News appears in the nav pill (desktop + mobile), the page
+        # heading, and the widget title — assert presence, not an exact count.
+        self.assertGreaterEqual(html.count('Global News'), 2)
+        # The widget + search UI render on the dedicated page.
+        self.assertIn('id="news-search-form"', html)
+        self.assertIn('id="news-grid"', html)
+        self.assertIn('Campus story', html)
+        # The topbar pill is active on /news/.
+        self.assertIn('href="/news/" class="active"', html)
 
 
 class AttendanceModelTest(TestCase):

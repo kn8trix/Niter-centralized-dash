@@ -28,6 +28,7 @@ urlpatterns = [
     # Additional routes for sidebar links
     path('academic-notes/', views.academic_notes, name='academic_notes'),
     path('notices/', views.notices, name='notices'),
+    path('news/', views.news_page, name='news'),
 
     # Account & profile pages
     path('signup/', views.signup_view, name='signup'),

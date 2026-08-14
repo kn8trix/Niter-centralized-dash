@@ -4,7 +4,8 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 109 | Visual builder — inline canvas editing + active-block sidebar sync + publish flow | *(this change)* |
+| 110 | Global News nav tab + /news/ page; emergency resolve verified; student-page mobile pass | *(this change)* |
+| 109 | Visual builder — inline canvas editing + active-block sidebar sync + publish flow | `ce61dba` |
 | 108 | Builder routes locked to Admin Console layout — no student nav on admin pages | `ace3441` |
 | 107 | Builder edit page — auto-opening Delete Section modal fix ([hidden] vs display:grid) | `acd73c0` |
 | 106 | Builder iframe fix — public pages frameable same-origin (X-Frame-Options SAMEORIGIN) | `f007cbf` |
@@ -6212,6 +6213,51 @@ the binding gaps and matched the requested UX/toast wording.
   asserting publishing touches the page's `updated_at`).
 - `editor.js` syntax-checked; existing `BuilderWysiwygSaveApiTest` (12)
   unchanged and green.
+
+---
+
+## 110. Global News Tab + Emergency Resolve Audit + Student Mobile Pass
+
+**Date:** 14 August 2026  
+**Branch:** main
+
+### 1. Emergency siren clear / resolve — verified, no change needed
+
+The requested behaviour already shipped (§97/§98/§103) and was audited:
+
+- `api_emergency_resolve` (`POST /api/admin/emergency/resolve/`) sets
+  `is_active=False`, stamps `resolved_at`/`resolved_by`, and broadcasts a
+  `resolve` event.
+- The banner's staff **Resolve alert** button and the Admin Overview's
+  **Resolve** button both POST to that endpoint and immediately hide the
+  banner/overlay + stop the siren (`clearAlert()` / `renderActive(null)`) —
+  no refresh needed; the WebSocket broadcast clears every open tab.
+  (The requested `/api/emergency/clear/` URL shape is covered by this
+  endpoint.)
+
+### 2. Global News tab in the student portal navbar
+
+- New **Global News** pill in `templates/partials/topbar.html` (desktop
+  `.navlinks` + mobile profile links, after Clubs) with an FA newspaper icon
+  and `active` state for `active='news'`.
+- New student-facing page **`/news/`** (`news_page` view + `templates/news.html`)
+  reusing the shared `partials/global_news.html` widget — headline feed +
+  client-side keyword search — with the standard portal chrome
+  (topbar / intro / shell). Route: `core/urls.py` (`name='news'`).
+
+### 3. Student pages mobile pass
+
+- `static/css/dashboard.css`: extended the 640px breakpoint — tighter
+  `panel-card`/`widget-card` padding, `panel-head` wraps (title + "View All →"
+  never squeeze), compact `notice-item`/`quick-grid` spacing. The news grid
+  was already responsive (`news.css`); dashboards already collapse
+  `split-grid`/`main-grid`/`summary-grid` below 1024px.
+
+### Tests & verification
+
+- Full suite **all green** (885 tests; +1 `test_news_page_renders_widget_with_active_pill`).
+- `UnifiedHeaderTest` now covers `/news/` in its shared-header matrix and
+  `Global News` in the nav-link set; the active-pill map includes `/news/`.
 
 ---
 

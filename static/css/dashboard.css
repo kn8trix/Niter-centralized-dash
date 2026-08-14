@@ -567,6 +567,28 @@ body.dashboard a {
     .notice-text {
         white-space: normal;
     }
+
+    /* Mobile pass: tighter card padding, wrapping panel heads (title +
+       "View All →" link never squeezes onto one line), and compact notice /
+       shortcut spacing so nothing clips on small screens. */
+    .panel-card,
+    .widget-card {
+        padding: 1.1rem 1rem;
+    }
+
+    .panel-head {
+        flex-wrap: wrap;
+        row-gap: 0.4rem;
+    }
+
+    .notice-item {
+        gap: 0.65rem;
+        padding: 0.7rem 0.1rem;
+    }
+
+    .quick-grid {
+        gap: 0.6rem;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {

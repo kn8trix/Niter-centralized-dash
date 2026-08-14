@@ -12,7 +12,7 @@ holds user info, page links, and account actions — including Settings and
 Sign Out.
 
 Usage:  {% include 'partials/topbar.html' with active='transport' %}
-active: dashboard | notes | departments | research | notices | transport | meals | medical | clubs
+active: dashboard | notes | departments | research | notices | news | transport | meals | medical | clubs
 ============================================================================
 {% endcomment %}
 <header class="topbar" data-component="topbar">
@@ -80,6 +80,7 @@ active: dashboard | notes | departments | research | notices | transport | meals
                         <a href="{% url 'medical' %}" class="{% if active == 'medical' %}active{% endif %}"><i class="fa-solid fa-stethoscope"></i> Medical</a>
                         <a href="{% url 'attendance' %}" class="{% if active == 'attendance' %}active{% endif %}"><i class="fa-solid fa-clipboard-check"></i> Attendance</a>
                         <a href="{% url 'clubs_dashboard' %}" class="{% if active == 'clubs' %}active{% endif %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
+                        <a href="{% url 'news' %}" class="{% if active == 'news' %}active{% endif %}"><i class="fa-solid fa-newspaper"></i> Global News</a>
                         <a href="{% url 'tickets' %}"><i class="fa-solid fa-ticket"></i> Tickets</a>
                         {% if NAV_CUSTOM_PAGES %}
                         <span class="profile-links-label"><i class="fa-solid fa-sitemap"></i> Custom Pages</span>
@@ -124,6 +125,7 @@ active: dashboard | notes | departments | research | notices | transport | meals
         <a href="{% url 'medical' %}" class="{% if active == 'medical' %}active{% endif %}"><i class="fa-solid fa-stethoscope"></i> Medical</a>
         <a href="{% url 'attendance' %}" class="{% if active == 'attendance' %}active{% endif %}"><i class="fa-solid fa-clipboard-check"></i> Attendance</a>
         <a href="{% url 'clubs_dashboard' %}" class="{% if active == 'clubs' %}active{% endif %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
+        <a href="{% url 'news' %}" class="{% if active == 'news' %}active{% endif %}"><i class="fa-solid fa-newspaper"></i> Global News</a>
         {% if NAV_CUSTOM_PAGES %}
         <div class="nav-dropdown" data-component="nav-dropdown">
             <button type="button" class="nav-dropdown-btn" aria-haspopup="true" aria-expanded="false">
