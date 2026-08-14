@@ -115,6 +115,20 @@
     border-style: dashed;
 }
 
+.emergency-resolve-btn {
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    background: rgba(0, 0, 0, 0.22);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+.emergency-resolve-btn:hover { background: rgba(0, 0, 0, 0.4); }
+.emergency-resolve-btn:disabled { opacity: 0.6; cursor: default; }
+
 /* ---- Full-screen overlay (CRITICAL) ---- */
 .emergency-overlay {
     position: fixed;

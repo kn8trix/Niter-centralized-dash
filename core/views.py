@@ -46,6 +46,7 @@ from .roles import get_user_role, role_home_path
 from .middleware import _client_ip, is_campus_wifi
 from .forms import SignUpForm
 from .block_sanitizer import sanitize_css, sanitize_html
+from .news_service import fetch_global_news
 from .templatetags.builder_tags import render_block_html
 from .google_service import (
     GoogleAccountNotConnected,
@@ -393,6 +394,8 @@ def student_dashboard(request):
         'quick_notice': quick_notice,
         'recent_notices': recent_notices,
         'course_links': course_links,
+        # Global news widget — degrades to sample headlines, never blocks.
+        'news_articles': fetch_global_news(),
     })
 
 def tickets(request):
@@ -5324,6 +5327,67 @@ def builder_blocks_reorder(request):
 
 
 @change_editablepage_required
+def builder_page_wysiwyg_save(request, page_id):
+    """JSON API: WYSIWYG editor bulk save for a page (blocks + publish state).
+
+    The student-view overlay editor posts its canvas state here:
+    ``{page_id, blocks: [{element_id, content_html?, style_json?, block_type?,
+    content_json?, order?}], is_published?}``. Every block is persisted through
+    the shared ``_save_content_block_data`` path (sanitized + partial-update
+    safe), and ``is_published`` toggles the page's live state — so both the
+    Save Changes and Publish Page actions share one endpoint.
+    """
+    data, error = _parse_json_body(request)
+    if error is not None:
+        return error
+
+    try:
+        page = EditablePage.objects.get(pk=int(page_id))
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {'status': 'error', 'message': 'page_id must be an integer'},
+            status=400,
+        )
+    except EditablePage.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Page not found'}, status=404)
+
+    blocks = data.get('blocks')
+    if blocks is not None and not isinstance(blocks, list):
+        return JsonResponse(
+            {'status': 'error', 'message': 'blocks must be a list'},
+            status=400,
+        )
+
+    results = []
+    if blocks:
+        for block in blocks:
+            if not isinstance(block, dict) or not block.get('element_id'):
+                results.append({
+                    'status': 'error',
+                    'element_id': block.get('element_id') if isinstance(block, dict) else None,
+                })
+                continue
+            resp = _save_content_block_data(page, block)
+            results.append({
+                'element_id': block.get('element_id'),
+                'status': 'success' if resp.status_code == 200 else 'error',
+            })
+
+    update_fields = ['updated_at']
+    if 'is_published' in data:
+        page.is_published = _as_bool(data.get('is_published'))
+        update_fields.append('is_published')
+    page.save(update_fields=update_fields)
+
+    return JsonResponse({
+        'status': 'success',
+        'page_slug': page.slug,
+        'is_published': page.is_published,
+        'blocks': results,
+    })
+
+
+@change_editablepage_required
 def builder_blocks_save(request):
     """JSON API: create / update / delete a ContentBlock for the page builder.
 
@@ -6075,7 +6139,23 @@ def admin_dashboard(request):
         'recent_notices': recent_notices,
         'latest_pages': latest_pages,
         'active_alert': active_alert,
+        # Global news widget — degrades to sample headlines, never blocks.
+        'news_articles': fetch_global_news(),
     })
+
+
+def api_news_search(request):
+    """GET /api/news/search/?q=… — keyword news search for the dashboard widget.
+
+    Returns the normalized article list from :func:`fetch_global_news` (sample
+    headlines when the live API is unavailable). Public — it only mirrors
+    public news content.
+    """
+    if request.method != 'GET':
+        return JsonResponse({'status': 'error', 'message': 'GET required'}, status=405)
+    query = (request.GET.get('q') or '').strip()
+    articles = fetch_global_news(query=query or None, page_size=12)
+    return JsonResponse({'status': 'success', 'data': articles})
 
 
 @admin_required

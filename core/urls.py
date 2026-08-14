@@ -36,6 +36,7 @@ urlpatterns = [
     # Student dashboard — AI routine extraction + academic calendar month API.
     path('api/routine/extract/', views.routine_extract, name='api_routine_extract'),
     path('api/calendar/events/', views.api_calendar_events, name='api_calendar_events'),
+    path('api/news/search/', views.api_news_search, name='api_news_search'),
     # QR Attendance — student scan + stats, admin session management
     path('attendance/', views.attendance_dashboard, name='attendance'),
     path('api/attendance/scan/', views.api_attendance_scan, name='api_attendance_scan'),
@@ -83,6 +84,8 @@ urlpatterns = [
     path('builder/api/blocks/reorder/', views.builder_blocks_reorder, name='builder_blocks_reorder'),
     path('builder/api/blocks/save/', views.builder_blocks_save, name='builder_blocks_save'),
     path('builder/api/page/save/', views.builder_page_save, name='builder_page_save'),
+    # WYSIWYG student-view overlay editor — bulk block + publish save by page id
+    path('api/builder/pages/<int:page_id>/save/', views.builder_page_wysiwyg_save, name='builder_page_wysiwyg_save'),
     # Block library: create from a section template + delete by block id
     path('builder/api/blocks/create/', views.builder_block_create, name='builder_block_create'),
     path('builder/api/blocks/<int:block_id>/delete/', views.builder_block_delete, name='builder_block_delete'),

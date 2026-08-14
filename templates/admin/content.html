@@ -40,7 +40,7 @@
                     <td>{{ page.updated_at|date:"M d, Y" }}</td>
                     <td class="text-right whitespace-nowrap">
                         {% if can_build %}
-                        <a href="{% url 'builder_editor' page.slug %}" class="admin-btn"><i class="fa-solid fa-pen"></i> Edit</a>
+                        <a href="{% url 'visual_editor' page.slug %}" class="admin-btn"><i class="fa-solid fa-pen"></i> Edit</a>
                         {% endif %}
                         <a href="{% url 'editable_page' page.slug %}" class="admin-btn"><i class="fa-solid fa-eye"></i> View</a>
                     </td>

@@ -25,8 +25,10 @@
 <body class="editor-app"
       data-app="campusdash-admin"
       data-page-slug="{{ page.slug }}"
+      data-page-id="{{ page.pk }}"
       data-save-block-url="{% url 'save_content_block' %}"
-      data-save-css-url="{% url 'save_page_css' %}">
+      data-save-css-url="{% url 'save_page_css' %}"
+      data-wysiwyg-save-url="{% url 'builder_page_wysiwyg_save' page.pk %}">
 
     <!-- ============================================================
          Top bar
@@ -64,9 +66,12 @@
                 <span class="toggle-track"><span class="toggle-thumb"></span></span>
             </label>
 
-            <!-- Save all -->
+            <!-- WYSIWYG actions -->
             <button type="button" class="btn primary save-all" id="save-all">
-                <i class="fa-solid fa-floppy-disk"></i> Publish / Save All
+                <i class="fa-solid fa-floppy-disk"></i> Save Changes
+            </button>
+            <button type="button" class="btn primary publish-page" id="publish-page" {% if page.is_published %}data-published="true"{% endif %}>
+                <i class="fa-solid fa-rocket"></i> Publish Page
             </button>
         </div>
     </header>
@@ -189,6 +194,49 @@
             <div class="canvas-frame" id="canvas-frame" data-viewport="desktop">
                 <iframe id="page-preview" src="{% url 'editable_page' page.slug %}" title="Live page preview"></iframe>
             </div>
+
+            <!-- ============================================================
+                 Floating WYSIWYG style toolbar — appears when a text element
+                 or section block is clicked on the canvas. Offers inline text
+                 editing (contenteditable), font size, text colour, alignment
+                 and card/background colour. Save Changes + Publish Page live
+                 in the top bar and POST to /api/builder/pages/<id>/save/.
+                 ============================================================ -->
+            <div class="wysiwyg-toolbar" id="wysiwyg-toolbar" hidden>
+                <div class="wysiwyg-toolbar-head">
+                    <strong><i class="fa-solid fa-wand-magic-sparkles"></i> Style</strong>
+                    <span class="wysiwyg-target" id="wysiwyg-target"></span>
+                    <button type="button" class="wysiwyg-close" id="wysiwyg-close" aria-label="Close style toolbar"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="wysiwyg-toolbar-row">
+                    <label class="wysiwyg-field">
+                        <span>Font size</span>
+                        <input type="number" id="wysiwyg-font-size" min="8" max="96" placeholder="18">
+                    </label>
+                    <label class="wysiwyg-field">
+                        <span>Text colour</span>
+                        <input type="color" id="wysiwyg-color" value="#1f2937">
+                    </label>
+                </div>
+                <div class="wysiwyg-toolbar-row">
+                    <label class="wysiwyg-field">
+                        <span>Background</span>
+                        <input type="color" id="wysiwyg-bg" value="#ffffff">
+                    </label>
+                    <span class="wysiwyg-align" role="group" aria-label="Text alignment">
+                        <span class="wysiwyg-label">Align</span>
+                        <button type="button" class="wysiwyg-align-btn" data-align="left" title="Align left" aria-label="Align left"><i class="fa-solid fa-align-left"></i></button>
+                        <button type="button" class="wysiwyg-align-btn" data-align="center" title="Align center" aria-label="Align center"><i class="fa-solid fa-align-center"></i></button>
+                        <button type="button" class="wysiwyg-align-btn" data-align="right" title="Align right" aria-label="Align right"><i class="fa-solid fa-align-right"></i></button>
+                    </span>
+                </div>
+                <div class="wysiwyg-toolbar-row wysiwyg-toolbar-actions">
+                    <span class="wysiwyg-hint">Click text to edit it directly on the canvas.</span>
+                    <button type="button" class="btn wysiwyg-edit-text" id="wysiwyg-edit-text">
+                        <i class="fa-solid fa-pen"></i> Edit text
+                    </button>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -196,6 +244,9 @@
     <div class="builder-toast" id="builder-toast" role="status" aria-live="polite"></div>
 
     {% csrf_token %}
+
+    <!-- Server-rendered block state for the WYSIWYG overlay (types + styles) -->
+    {{ blocks|json_script:"wysiwyg-blocks" }}
 
     <script src="{% static 'js/builder/editor.js' %}"></script>
 </body>

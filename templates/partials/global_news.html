@@ -1,0 +1,86 @@
+{% load static %}
+<link rel="stylesheet" href="{% static 'css/news.css' %}">
+
+<!-- ============================================================
+     Global News & Search — shared by the student dashboard and
+     the admin overview. Server-renders {{ news_articles }}; the
+     search box queries /api/news/search/?q=… client-side.
+============================================================ -->
+<section class="news-section" data-component="news" data-widget="global-news">
+    <div class="news-head">
+        <h3 class="news-title-heading"><i class="fa-solid fa-newspaper"></i> Global News</h3>
+        <span class="news-source-note">Top headlines from around the world</span>
+    </div>
+
+    <form class="news-search" id="news-search-form" role="search">
+        <i class="fa-solid fa-magnifying-glass news-search-icon"></i>
+        <input type="search" id="news-search-input" placeholder="Search global news…" aria-label="Search global news">
+        <button type="submit" class="news-search-btn">Search</button>
+    </form>
+
+    <div class="news-grid" id="news-grid">
+        {% for article in news_articles %}
+        <a class="news-card" href="{{ article.url }}" target="_blank" rel="noopener">
+            {% if article.image %}
+            <div class="news-card-media">
+                <img src="{{ article.image }}" alt="" loading="lazy">
+            </div>
+            {% endif %}
+            <div class="news-card-body">
+                {% if article.source %}<span class="news-source">{{ article.source }}</span>{% endif %}
+                <h4 class="news-title">{{ article.title }}</h4>
+                {% if article.description %}<p class="news-text">{{ article.description|truncatewords:18 }}</p>{% endif %}
+            </div>
+        </a>
+        {% empty %}
+        <p class="news-empty">No articles right now — check back soon.</p>
+        {% endfor %}
+    </div>
+</section>
+
+<script>
+(function () {
+    'use strict';
+    var form = document.getElementById('news-search-form');
+    var input = document.getElementById('news-search-input');
+    var grid = document.getElementById('news-grid');
+    if (!form || !input || !grid) return;
+
+    function esc(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function render(articles) {
+        if (!articles.length) {
+            grid.innerHTML = '<p class="news-empty">No articles found. Try a different search.</p>';
+            return;
+        }
+        grid.innerHTML = articles.map(function (a) {
+            var media = a.image ? '<div class="news-card-media"><img src="' + esc(a.image) + '" alt="" loading="lazy"></div>' : '';
+            var source = a.source ? '<span class="news-source">' + esc(a.source) + '</span>' : '';
+            var text = a.description ? '<p class="news-text">' + esc(a.description) + '</p>' : '';
+            var url = (/^https?:\/\//i.test(a.url || '')) ? a.url : '#';
+            return '<a class="news-card" href="' + esc(url) + '" target="_blank" rel="noopener">' + media +
+                '<div class="news-card-body">' + source + '<h4 class="news-title">' + esc(a.title) + '</h4>' +
+                text + '</div></a>';
+        }).join('');
+    }
+
+    form.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        var q = input.value.trim();
+        grid.innerHTML = '<p class="news-empty">Searching…</p>';
+        fetch('/api/news/search/?q=' + encodeURIComponent(q))
+            .then(function (res) { return res.json(); })
+            .then(function (json) { render((json && json.data) || []); })
+            .catch(function () {
+                grid.innerHTML = '<p class="news-empty">Search failed — please try again.</p>';
+            });
+    });
+})();
+</script>

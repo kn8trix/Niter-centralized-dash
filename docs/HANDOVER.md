@@ -4,6 +4,8 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 104 | Global News & Search widget (NewsAPI service + student/admin dashboards + search API) | *(this change)* |
+| 103 | Emergency alarm persistent-silence fix + WYSIWYG student-view editor overlay | *(this change)* |
 | 102 | dash-data CI failure root cause — ALLOWED_HOSTS vs localhost host fix | *(this change)* |
 | 101 | dash-data dashboard JSON embedding — verified present, calendar grid guards green | `8905493` |
 | 100 | CI hardening — pytest-proof channel layer + dash-data/Huey regression guards | `0a90ad5` |
@@ -5873,6 +5875,141 @@ against `core/tests.py` (`test_clock_label_renders_from_dict`,
   same CI log's `dash-data script tag missing` failures were eventually
   traced to an `ALLOWED_HOSTS` mismatch, not a missing tag, and that fix
   **did** require a code change.
+
+## 103. Emergency Alarm Persistent Silence + WYSIWYG Student-View Editor Overlay
+
+**Date:** 14 August 2026  
+**Branch:** main
+
+Two features shipped together: (1) the emergency banner's "Silence alarm" now
+actually stays silenced across pages, and staff can resolve from the banner
+itself; (2) the Website Builder's visual editor becomes a full WYSIWYG
+student-view overlay — click-to-edit text on the canvas, a floating style
+toolbar, Save Changes / Publish Page wired to a new per-page endpoint.
+
+### 1. Emergency alarm — persistent silence + banner resolve
+
+- **Root cause:** "Silence alarm" only stopped the siren in-memory
+  (`silencedAlertId` was a page-scoped variable), so the banner + siren came
+  back on every page navigation — the exact "stays active across admin pages"
+  report.
+- **Fix (`templates/partials/emergency_banner.html`):**
+  - The silenced alert id is now persisted to `localStorage` under
+    `emergency_alarm_silenced`; on load the driver reads it back, so silence
+    survives navigation for that alert.
+  - Silencing hides the **banner + overlay** too (not just the siren) and
+    flips the button to "Alarm silenced"; clicking again un-silences.
+  - A **new alert id re-arms** the alarm automatically (the old silenced id is
+    cleared), and resolving the alert clears the localStorage key.
+  - **Staff get a "Resolve alert" button** right on the banner (staff-only,
+    `{% if user.is_staff %}`) that POSTs to `/api/admin/emergency/resolve/`
+    with CSRF — ends the emergency site-wide for everyone from any page.
+- `static/css/emergency.css`: `.emergency-resolve-btn` styling.
+
+### 2. Website Builder — WYSIWYG student-view editor overlay
+
+- **Entry points:** the builder dashboard's "Edit Page" and the admin CMS
+  table's "Edit" now open `/builder/visual/<slug>/` (the student-layout
+  editor) instead of the block manager; "Block Manager" stays one click away
+  on the dashboard. The admin overview's "Website Builder" tile still lands
+  on the builder console.
+- **Canvas:** the editor renders the real student page (topbar + blocks) in a
+  same-origin iframe — the exact layout visitors see.
+- **Inline editing:** double-clicking text inside an `html`-type block makes
+  it `contenteditable` on the canvas; edits are captured into a dirty map and
+  sent on save. (Structured blocks stay style-editable; their content lives
+  in `content_json` and is edited via the block library.)
+- **Floating style toolbar (`#wysiwyg-toolbar`):** clicking any block pops it
+  up near the section — font size, text colour, background colour, and
+  left/center/right alignment, applied live to the section via its
+  `style_json`. Includes an "Edit text" button and Escape/✕ dismissal.
+- **Top bar:** "Save Changes" POSTs `{blocks: [...]}` (content + style)
+  plus the page CSS to the new endpoint; "Publish Page" POSTs
+  `is_published: true`. Both go to
+  **`POST /api/builder/pages/<page_id>/save/`**.
+- **New endpoint (`builder_page_wysiwyg_save`):** accepts
+  `{blocks: [{element_id, content_html?, style_json?, block_type?,
+  content_json?, order?}], is_published?}`; every block reuses the shared
+  `_save_content_block_data` path (sanitized + partial-update safe), and
+  `is_published` toggles the page's live state. Gated by
+  `@change_editablepage_required`.
+- `templates/builder/editor.html`, `static/js/builder/editor.js`,
+  `static/css/builder_editor.css`, `core/views.py`, `core/urls.py`.
+
+### Tests & verification
+
+- `python manage.py check` clean; full suite **869 tests OK** (was 854).
+- New guards: `EmergencyBannerSilenceTest` (5) — localStorage persistence,
+  visual hide, new-alert re-arm, staff-resolve vs student banner;
+  `BuilderWysiwygSaveApiTest` (12) — block content/style save, html-block
+  save, sanitizer, publish toggle, 403/302/404 guards, editor chrome render,
+  edit-link rewiring.
+
+---
+
+## 104. Global News & Search Widget (Student + Admin Dashboards)
+
+**Date:** 14 August 2026  
+**Branch:** main
+
+A Global News & Search section on both dashboards — top headlines from
+NewsAPI.org on the student dashboard and the admin overview, with a keyword
+search box that queries a new JSON endpoint. The widget must never take a
+dashboard down over an external service, so every failure mode degrades to
+deterministic sample headlines.
+
+### 1. Backend service (`core/news_service.py`)
+
+- `fetch_global_news(query=None, category="technology", page_size=12)`:
+  - No query → `https://newsapi.org/v2/top-headlines` (category feed);
+    query → `https://newsapi.org/v2/everything` (keyword search).
+  - Reads `NEWS_API_KEY` from the environment; unset/placeholder
+    (`dummy_key`) → fallback feed, no network.
+  - 5s timeout; any exception, non-200 (rate limit 429 included) → fallback
+    feed. 200 responses are normalized to a stable shape
+    (`title / description / url / image / source / published_at`) with blank
+    titles and non-dict entries dropped.
+- `get_fallback_news_data(query)` — deterministic sample headlines in the
+  same article shape; ``query`` flavors the titles so a degraded search still
+  looks relevant.
+- **Test-run short-circuit** (`_is_test_run()`, mirrors
+  `config.settings._running_tests`): under `manage.py test` / `TESTING` /
+  pytest the fetch is skipped entirely — the suite stays fast and
+  network-free, and every dashboard render test is deterministic.
+- Uses `logging` (project convention), not `print`.
+
+### 2. Views & API
+
+- `student_dashboard` and `admin_dashboard` now pass `news_articles`
+  (always a list) into their templates.
+- **`GET /api/news/search/?q=…`** (`api_news_search`) — public JSON search:
+  `{status: "success", data: [articles]}`; `q` optional (headlines when
+  omitted); non-GET → 405. Route: `core/urls.py`.
+
+### 3. UI (shared partial + CSS)
+
+- `templates/partials/global_news.html` — the same section on both
+  dashboards: search bar + responsive article-card grid. Server-rendered on
+  load; the search box fetches `/api/news/search/` client-side and
+  re-renders the grid (all API strings HTML-escaped before innerHTML,
+  non-http(s) links dropped).
+- Included in `templates/dashboard/home.html` (after the feeds row) and
+  `templates/admin/overview.html` (after the Latest Builder Pages row).
+- `static/css/news.css` — self-contained card styling using CSS-variable
+  fallbacks so it matches both the student theme and the admin tokens.
+
+### Tests & verification
+
+- Full suite **880 tests OK** (was 869; +11 new).
+- `GlobalNewsServiceTest` (6) — test-run short-circuit, dummy-key fallback,
+  network-error fallback, rate-limit fallback, article normalization,
+  everything-endpoint params.
+- `GlobalNewsApiTest` (3) — search returns articles, no-query headline feed,
+  405 on POST.
+- `GlobalNewsDashboardTest` (2) — widget renders on the student dashboard and
+  the admin overview.
+
+---
 
 ## 102. dash-data CI Failure — Real Root Cause: ALLOWED_HOSTS vs localhost
 

@@ -28,6 +28,7 @@ from services.openrouter import call_openrouter
 from services.parser import extract_document_text
 
 from core.forms import SignUpForm
+from core.news_service import fetch_global_news
 from core.views import VERIFY_CODE_MAX_ATTEMPTS
 
 from core.models import (
@@ -3248,6 +3249,52 @@ class EmergencyBroadcastApiTest(TestCase):
         response = self.client.get(reverse('admin_dashboard'))
         self.assertContains(response, 'Flood Warning')
         self.assertContains(response, 'is-live')
+
+
+class EmergencyBannerSilenceTest(TestCase):
+    """Emergency banner — persistent silence (localStorage) + staff resolve.
+
+    Regression guards for the 'Silence alarm' fix: silencing an alert must
+    persist across page navigations (localStorage keyed by alert id) instead
+    of coming back on every admin/dashboard page, and staff get a Resolve
+    action right on the banner that clears the alert site-wide.
+    """
+
+    def setUp(self):
+        self.admin = User.objects.create_user(username='bnr_admin', password='x12345678', is_staff=True)
+        self.student = User.objects.create_user(username='bnr_student', password='x12345678')
+
+    def _banner_script(self, user):
+        self.client.force_login(user)
+        html = self.client.get(reverse('student_dashboard')).content.decode()
+        start = html.find('window.__emergencyBannerLoaded')
+        return html[start:html.find('</script>', start)] if start != -1 else ''
+
+    def test_silence_persists_alert_id_in_local_storage(self):
+        script = self._banner_script(self.student)
+        self.assertIn("emergency_alarm_silenced", script)
+        self.assertIn('localStorage.setItem(SILENCE_KEY', script)
+        self.assertIn('localStorage.getItem(SILENCE_KEY', script)
+        self.assertIn('localStorage.removeItem(SILENCE_KEY', script)
+
+    def test_silence_hides_banner_and_overlay_visually(self):
+        script = self._banner_script(self.student)
+        self.assertIn('banner.hidden = true', script)
+        self.assertIn('overlay.hidden = true', script)
+
+    def test_new_alert_id_rearms_silenced_alarm(self):
+        script = self._banner_script(self.student)
+        # A different alert id clears the silenced state so the new alert shows.
+        self.assertIn('silencedAlertId !== currentAlertId', script)
+
+    def test_staff_banner_has_resolve_action_student_does_not(self):
+        self.client.force_login(self.admin)
+        admin_html = self.client.get(reverse('admin_dashboard')).content.decode()
+        self.assertIn('id="emergency-resolve-btn"', admin_html)
+        self.assertIn('api_admin_emergency_resolve', admin_html)
+        self.client.force_login(self.student)
+        student_html = self.client.get(reverse('student_dashboard')).content.decode()
+        self.assertNotIn('id="emergency-resolve-btn"', student_html)
 
 
 class MealSubscriptionModelTest(TestCase):
@@ -6552,6 +6599,149 @@ class BuilderBlockOrderingTest(TestCase):
         self.assertContains(response, 'id="save-css"')
 
 
+class BuilderWysiwygSaveApiTest(TestCase):
+    """WYSIWYG overlay save endpoint — POST /api/builder/pages/<id>/save/.
+
+    The student-view overlay editor posts its canvas state here: block
+    content/styles (reusing the shared sanitizing save path) plus the page's
+    publish state, so Save Changes and Publish Page share one endpoint.
+    """
+
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(
+            username='root_ws', email='rws@niter.edu.bd', password='rootpass123',
+        )
+        self.staff = User.objects.create_user(
+            username='staff_ws', password='staffpass123', is_staff=True,
+        )
+        self.page = EditablePage.objects.create(title='WYSIWYG', slug='wysiwyg-page')
+        self.block = ContentBlock.objects.create(
+            page=self.page, element_id='hero', block_type='hero',
+            content_json={'headline': 'Welcome', 'primary_label': 'Go', 'primary_url': '/departments/'},
+        )
+        self.client.force_login(self.superuser)
+
+    def _url(self):
+        return reverse('builder_page_wysiwyg_save', args=[self.page.pk])
+
+    def test_saves_block_content_and_style(self):
+        response = self.client.post(
+            self._url(),
+            data=json.dumps({'blocks': [{
+                'element_id': 'hero',
+                'content_json': {'headline': 'Edited headline', 'primary_label': 'Apply', 'primary_url': '/signup/'},
+                'style_json': {'color': '#123456', 'textAlign': 'center'},
+            }]}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body['status'], 'success')
+        self.assertEqual(body['blocks'][0]['status'], 'success')
+        self.block.refresh_from_db()
+        self.assertEqual(self.block.content_json['headline'], 'Edited headline')
+        self.assertEqual(self.block.style_json.get('color'), '#123456')
+        self.assertEqual(self.block.style_json.get('textAlign'), 'center')
+
+    def test_saves_plain_html_block_content(self):
+        response = self.client.post(
+            self._url(),
+            data=json.dumps({'blocks': [{
+                'element_id': 'body-1',
+                'block_type': 'html',
+                'content_html': '<h2>New section</h2><p>Edited on the canvas.</p>',
+            }]}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        block = ContentBlock.objects.get(page=self.page, element_id='body-1')
+        self.assertEqual(block.block_type, 'html')
+        self.assertIn('Edited on the canvas.', block.content_html)
+
+    def test_sanitizes_unsafe_html(self):
+        response = self.client.post(
+            self._url(),
+            data=json.dumps({'blocks': [{
+                'element_id': 'xss',
+                'content_html': '<p>ok</p><script>alert(1)</script><img src=x onerror=alert(2)>',
+            }]}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        block = ContentBlock.objects.get(page=self.page, element_id='xss')
+        self.assertNotIn('<script', block.content_html)
+        self.assertNotIn('onerror', block.content_html)
+        self.assertIn('ok', block.content_html)
+
+    def test_publish_toggles_is_published(self):
+        self.page.is_published = False
+        self.page.save(update_fields=['is_published'])
+        response = self.client.post(
+            self._url(),
+            data=json.dumps({'is_published': True, 'blocks': []}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.page.refresh_from_db()
+        self.assertTrue(self.page.is_published)
+        self.assertTrue(response.json()['is_published'])
+
+    def test_unknown_page_is_404(self):
+        response = self.client.post(
+            reverse('builder_page_wysiwyg_save', args=[99999]),
+            data=json.dumps({'blocks': []}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_requires_permission(self):
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            self._url(),
+            data=json.dumps({'blocks': []}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_requires_login(self):
+        self.client.logout()
+        response = self.client.post(
+            self._url(),
+            data=json.dumps({'blocks': []}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_rejects_non_list_blocks(self):
+        response = self.client.post(
+            self._url(),
+            data=json.dumps({'blocks': 'nope'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_visual_editor_renders_wysiwyg_chrome(self):
+        response = self.client.get(reverse('visual_editor', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="wysiwyg-toolbar"')
+        self.assertContains(response, 'id="publish-page"')
+        self.assertContains(response, 'id="save-all"')
+        self.assertContains(response, 'data-wysiwyg-save-url')
+        self.assertContains(response, 'wysiwyg-blocks')
+        self.assertContains(response, 'id="wysiwyg-edit-text"')
+
+    def test_admin_content_edit_links_to_wysiwyg_editor(self):
+        response = self.client.get(reverse('admin_content'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse('visual_editor', args=[self.page.slug]))
+
+    def test_builder_dashboard_edit_links_to_wysiwyg_editor(self):
+        response = self.client.get(reverse('builder_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse('visual_editor', args=[self.page.slug]))
+
+
 class CustomPagesNavTest(TestCase):
     """Page lifecycle navigation: published pages flagged ``show_in_nav``
     surface in the shared topbar's Pages dropdown and the mobile profile
@@ -8642,6 +8832,134 @@ class DashboardCalendarGridTest(TestCase):
     def test_clock_label_renders_from_dict(self):
         _, _, html = self._dash_script()
         self.assertIn('id="clock-date"', html)
+
+
+class GlobalNewsServiceTest(TestCase):
+    """core.news_service — normalization, fallback policy, test-run short-circuit."""
+
+    def test_test_run_short_circuits_to_fallback(self):
+        # Under the runner the fetch must never touch the network — the suite
+        # stays fast and deterministic (mirrors config.settings._running_tests).
+        with mock.patch('core.news_service._is_test_run', return_value=True), \
+                mock.patch('core.news_service.requests.get') as fake_get:
+            articles = fetch_global_news()
+        fake_get.assert_not_called()
+        self.assertTrue(articles)
+        self.assertEqual(articles[0]['source'], 'Sample Wire')
+        self.assertIn('title', articles[0])
+
+    def test_dummy_key_returns_fallback(self):
+        with mock.patch('core.news_service._is_test_run', return_value=False), \
+                mock.patch('core.news_service.os.getenv', return_value='dummy_key'), \
+                mock.patch('core.news_service.requests.get') as fake_get:
+            articles = fetch_global_news()
+        fake_get.assert_not_called()
+        self.assertTrue(articles)
+
+    def test_network_error_returns_fallback(self):
+        with mock.patch('core.news_service._is_test_run', return_value=False), \
+                mock.patch('core.news_service.os.getenv', return_value='abc123'), \
+                mock.patch('core.news_service.requests.get', side_effect=Exception('boom')):
+            articles = fetch_global_news(query='campus')
+        self.assertTrue(articles)
+        self.assertIn('campus', articles[0]['title'].lower())
+
+    def test_rate_limit_returns_fallback(self):
+        resp = mock.Mock(status_code=429)
+        resp.json.return_value = {'articles': []}
+        with mock.patch('core.news_service._is_test_run', return_value=False), \
+                mock.patch('core.news_service.os.getenv', return_value='abc123'), \
+                mock.patch('core.news_service.requests.get', return_value=resp):
+            articles = fetch_global_news()
+        self.assertTrue(articles)
+        self.assertEqual(articles[0]['source'], 'Sample Wire')
+
+    def test_normalizes_articles_from_api_response(self):
+        resp = mock.Mock(status_code=200)
+        resp.json.return_value = {'articles': [
+            {
+                'title': 'Campus robotics team wins regional title',
+                'description': 'A weekend of competition ends in gold.',
+                'url': 'https://example.com/robotics',
+                'urlToImage': 'https://example.com/robotics.jpg',
+                'source': {'name': 'Campus Daily'},
+                'publishedAt': '2026-08-01T10:00:00Z',
+            },
+            {'title': '   ', 'description': 'blank title must be dropped'},
+            'not-a-dict',
+        ]}
+        with mock.patch('core.news_service._is_test_run', return_value=False), \
+                mock.patch('core.news_service.os.getenv', return_value='abc123'), \
+                mock.patch('core.news_service.requests.get', return_value=resp):
+            articles = fetch_global_news()
+        self.assertEqual(len(articles), 1)
+        article = articles[0]
+        self.assertEqual(article['title'], 'Campus robotics team wins regional title')
+        self.assertEqual(article['source'], 'Campus Daily')
+        self.assertEqual(article['image'], 'https://example.com/robotics.jpg')
+        self.assertEqual(article['url'], 'https://example.com/robotics')
+        self.assertEqual(article['published_at'], '2026-08-01T10:00:00Z')
+
+    def test_search_uses_everything_endpoint_with_query(self):
+        resp = mock.Mock(status_code=200)
+        resp.json.return_value = {'articles': []}
+        with mock.patch('core.news_service._is_test_run', return_value=False), \
+                mock.patch('core.news_service.os.getenv', return_value='abc123'), \
+                mock.patch('core.news_service.requests.get', return_value=resp) as fake_get:
+            fetch_global_news(query='climate')
+        fake_get.assert_called_once()
+        url = fake_get.call_args.args[0]
+        params = fake_get.call_args.kwargs['params']
+        self.assertIn('/everything', url)
+        self.assertEqual(params['q'], 'climate')
+        self.assertEqual(params['pageSize'], 12)
+        self.assertEqual(params['language'], 'en')
+
+
+class GlobalNewsApiTest(TestCase):
+    """GET /api/news/search/?q=… — JSON search for the dashboard widget."""
+
+    def test_search_returns_articles(self):
+        articles = [{'title': 'One', 'description': '', 'url': '', 'image': '', 'source': 'Wire', 'published_at': ''}]
+        with mock.patch('core.views.fetch_global_news', return_value=articles) as fake_fetch:
+            response = self.client.get(reverse('api_news_search'), {'q': 'campus'})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'success')
+        self.assertEqual(payload['data'], articles)
+        fake_fetch.assert_called_once_with(query='campus', page_size=12)
+
+    def test_search_without_query_uses_headline_feed(self):
+        with mock.patch('core.views.fetch_global_news', return_value=[]) as fake_fetch:
+            response = self.client.get(reverse('api_news_search'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data'], [])
+        fake_fetch.assert_called_once_with(query=None, page_size=12)
+
+    def test_search_requires_get(self):
+        response = self.client.post(reverse('api_news_search'))
+        self.assertEqual(response.status_code, 405)
+
+
+class GlobalNewsDashboardTest(TestCase):
+    """The Global News & Search widget renders on both dashboards."""
+
+    def test_student_dashboard_renders_news_section(self):
+        articles = [{'title': 'Hello Campus', 'description': 'd', 'url': 'https://x.com', 'image': '', 'source': 'Wire', 'published_at': ''}]
+        with mock.patch('core.views.fetch_global_news', return_value=articles):
+            html = self.client.get(reverse('student_dashboard'), HTTP_HOST='testserver').content.decode()
+        self.assertIn('Global News', html)
+        self.assertIn('id="news-search-form"', html)
+        self.assertIn('Hello Campus', html)
+
+    def test_admin_dashboard_renders_news_section(self):
+        staff = User.objects.create_user(username='news_admin', password='x12345678', is_staff=True)
+        self.client.force_login(staff)
+        with mock.patch('core.views.fetch_global_news', return_value=[]):
+            html = self.client.get(reverse('admin_dashboard'), HTTP_HOST='testserver').content.decode()
+        self.assertIn('data-widget="global-news"', html)
+        self.assertIn('id="news-search-form"', html)
+        self.assertIn('id="news-grid"', html)
 
 
 class AttendanceModelTest(TestCase):

@@ -1,0 +1,173 @@
+/* ============================================================
+   Global News & Search widget — shared by the student dashboard
+   and the admin overview. Self-contained card styling that works
+   inside both layouts (theme.css + admin_dashboard.css tokens).
+============================================================ */
+.news-section {
+    background: var(--bg-card, rgb(var(--color-card, 255 255 255)));
+    border: 1px solid var(--border-color, rgb(var(--color-border, 235 230 223)));
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card, none);
+    padding: 1.3rem 1.4rem;
+    margin-top: 1.1rem;
+}
+
+.news-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.8rem;
+    margin-bottom: 0.9rem;
+    padding-bottom: 0.8rem;
+    border-bottom: 1px solid var(--border-color, rgb(var(--color-border, 235 230 223)));
+}
+
+.news-title-heading {
+    font-size: 1.02rem;
+    font-weight: 700;
+    color: var(--text-strong, rgb(var(--color-main, 43 41 39)));
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.news-title-heading i {
+    color: var(--accent-primary, rgb(var(--color-accent-hover, 216 202 180)));
+}
+
+.news-source-note {
+    font-size: 0.78rem;
+    color: var(--text-muted, rgb(var(--color-main, 43 41 39)));
+    opacity: 0.6;
+}
+
+/* ---- Search bar ---- */
+.news-search {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg-subtle, rgb(var(--color-chip, 245 242 237)));
+    border: 1px solid var(--border-color, rgb(var(--color-border, 235 230 223)));
+    border-radius: 0.75rem;
+    padding: 0.4rem 0.4rem 0.4rem 0.85rem;
+    margin-bottom: 1rem;
+}
+
+.news-search-icon {
+    color: var(--text-muted, rgb(var(--color-main, 43 41 39)));
+    opacity: 0.5;
+    font-size: 0.85rem;
+}
+
+.news-search input[type="search"] {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 0.9rem;
+    color: var(--text-strong, rgb(var(--color-main, 43 41 39)));
+}
+
+.news-search input[type="search"]::placeholder {
+    color: var(--text-muted, rgb(var(--color-main, 43 41 39)));
+    opacity: 0.55;
+}
+
+.news-search-btn {
+    border: none;
+    cursor: pointer;
+    background: var(--accent-primary, rgb(var(--color-accent-hover, 216 202 180)));
+    color: var(--accent-contrast, #fff);
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 0.45rem 1rem;
+    border-radius: 0.55rem;
+    transition: filter 0.15s ease;
+    white-space: nowrap;
+}
+
+.news-search-btn:hover {
+    filter: brightness(0.94);
+}
+
+/* ---- Article grid ---- */
+.news-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 0.9rem;
+}
+
+.news-card {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    background: var(--bg-subtle, rgb(var(--color-chip, 245 242 237)));
+    border: 1px solid var(--border-color, rgb(var(--color-border, 235 230 223)));
+    border-radius: 0.8rem;
+    overflow: hidden;
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.news-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-primary, rgb(var(--color-accent-hover, 216 202 180)));
+    box-shadow: var(--shadow-card, 0 4px 14px rgb(0 0 0 / 0.06));
+}
+
+.news-card-media {
+    aspect-ratio: 16 / 9;
+    background: var(--bg-card, rgb(var(--color-card, 255 255 255)));
+}
+
+.news-card-media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.news-card-body {
+    padding: 0.75rem 0.85rem 0.9rem;
+}
+
+.news-source {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--accent-primary, rgb(var(--color-accent-hover, 216 202 180)));
+    margin-bottom: 0.3rem;
+}
+
+.news-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--text-strong, rgb(var(--color-main, 43 41 39)));
+    margin: 0 0 0.35rem;
+}
+
+.news-text {
+    font-size: 0.8rem;
+    line-height: 1.45;
+    color: var(--text-muted, rgb(var(--color-main, 43 41 39)));
+    opacity: 0.75;
+    margin: 0;
+}
+
+.news-empty {
+    grid-column: 1 / -1;
+    font-size: 0.85rem;
+    color: var(--text-muted, rgb(var(--color-main, 43 41 39)));
+    opacity: 0.65;
+    margin: 0.4rem 0;
+}
+
+@media (max-width: 640px) {
+    .news-grid {
+        grid-template-columns: 1fr;
+    }
+}
