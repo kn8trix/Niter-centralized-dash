@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 105 | `seed_demo_data` command — realistic NITER demo dataset (+ MealMenu model) | *(this change)* |
 | 104 | Global News & Search widget (NewsAPI service + student/admin dashboards + search API) | `991c4f8` |
 | 103 | Emergency alarm persistent-silence fix + WYSIWYG student-view editor overlay | `991c4f8` |
 | 102 | dash-data CI failure root cause — ALLOWED_HOSTS vs localhost host fix | `a7b0243` |
@@ -6008,6 +6009,66 @@ deterministic sample headlines.
   405 on POST.
 - `GlobalNewsDashboardTest` (2) — widget renders on the student dashboard and
   the admin overview.
+
+---
+
+## 105. `seed_demo_data` — Realistic NITER Demo Dataset (run against Supabase)
+
+**Date:** 14 August 2026  
+**Branch:** main
+
+A management command that populates a realistic NITER campus mock dataset —
+run against the live Supabase database on request:
+
+    python manage.py seed_demo_data
+
+### New model: `MealMenu` (migration `0040_mealmenu`)
+
+The cafeteria daily menu had no DB home — added a small model
+(`day` / `meal_type` / `items` / `is_active`, unique on day+meal_type) so the
+breakfast / lunch / evening-snacks menu is actually seedable.
+
+### Dataset seeded (all via `get_or_create` — idempotent, re-run safe)
+
+- **Accounts & profiles** (password `password123`; existing users are never
+  touched — passwords never reset, only a blank email gets filled):
+  `admin@niter.edu.bd` (superuser), `dr.chen@niter.edu.bd` +
+  `prof.rahman@niter.edu.bd` (staff + `Teacher` rows), `kn8trix@niter.edu.bd`
+  (Ahsanul Haque, EEE, `2026-EEE-01`), `student2@niter.edu.bd` (CSE).
+- **Departments** CSE / EEE (get_or_create by code) and **Teachers** linked
+  to their courses.
+- **Transport**: 3 routes — NITER Campus ↔ Mirpur 10 / Farmgate (Bus #01,
+  07:30 AM & 04:30 PM), ↔ Uttara / Gazipur (Bus #02, 08:00 AM & 05:00 PM),
+  ↔ Baipal / Nabinagar Shuttle (Bus #03); 3 drivers; 3 paid seat bookings
+  with boarding QR tokens.
+- **Medical**: Dr. Michael Chen (General Physician) + Dr. Emily Johnson
+  (Dentist) — **converged via `update_or_create`** to clinic hours
+  Sun–Thu 09:00 AM – 05:00 PM (a data migration had seeded them with other
+  values); 3 appointments (confirmed / pending / completed).
+- **Cafeteria**: 3 `MealMenu` lines (breakfast / lunch / evening snacks);
+  2 active `MealSubscription`s; 4 paid digital `MealTicket`s
+  (`#MEAL-1001/1002/2001/2002`).
+- **Academic**: 3 courses (EEE-2101, CSE-1101, EEE-3105) + 5
+  `CourseMaterial` rows (PDF notes, lab manual, lecture slides, study guide).
+- **Clubs**: NITER Computer Club (NCC) + NITER Robotics Society; 2 upcoming
+  `ClubEvent`s; 3 published `Notice` announcements.
+
+### Notes
+
+- Existing migration-seeded rows (3 generic transport routes, 4 default
+  doctors, 6 default clubs) are left in place; the command only adds its own
+  named rows and converges the two named doctors.
+- `timezone.now().date()` is used (not `timezone.localdate()`) because the
+  project runs `USE_TZ=False`.
+
+### Tests & verification
+
+- Full suite **883 tests OK** (was 880; +3 new `SeedDemoDataCommandTest`
+  guards — full dataset created, idempotent re-run, existing users never
+  touched).
+- Executed against Supabase: migration `0040_mealmenu` applied, seed run
+  twice (second run all-skipped except the doctor convergence) — verified
+  with read-only row counts.
 
 ---
 

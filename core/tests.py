@@ -56,6 +56,7 @@ from core.models import (
     MedicalAppointment,
     MedicalChatMessage,
     MedicalChatThread,
+    MealMenu,
     MealSubscription,
     MealTicket,
     Notice,
@@ -8622,6 +8623,91 @@ class SeedDemoUsersCommandTest(TestCase):
         self.assertTrue(User.objects.get(username='admin').check_password('S3cret!x'))
         # student keeps its documented password
         self.assertTrue(User.objects.get(username='student').check_password('student123'))
+
+
+class SeedDemoDataCommandTest(TestCase):
+    """The ``seed_demo_data`` command seeds the full demo dataset and is
+    idempotent — re-running never duplicates rows or resets passwords."""
+
+    def _run(self):
+        from django.core.management import call_command
+        return call_command('seed_demo_data', verbosity=0)
+
+    def test_creates_demo_dataset(self):
+        self._run()
+        # Accounts & profiles.
+        admin = User.objects.get(username='admin')
+        self.assertTrue(admin.is_staff and admin.is_superuser)
+        self.assertTrue(admin.check_password('password123'))
+        self.assertEqual(admin.email, 'admin@niter.edu.bd')
+        kn8trix = User.objects.get(username='kn8trix')
+        self.assertEqual(kn8trix.student_profile.student_id, '2026-EEE-01')
+        self.assertEqual(kn8trix.student_profile.department, 'EEE')
+        self.assertTrue(User.objects.get(username='student2').check_password('password123'))
+        # Teachers + departments.
+        self.assertEqual(Teacher.objects.filter(email='dr.chen@niter.edu.bd').count(), 1)
+        self.assertTrue(Teacher.objects.get(email='dr.chen@niter.edu.bd').courses.filter(code='EEE-2101').exists())
+        # Transport: the 3 requested routes + schedules (a data migration
+        # seeds 3 generic routes too, so we assert on our named ones), 3 paid
+        # bookings on the seeded routes.
+        self.assertEqual(TransportRoute.objects.filter(name__contains='Bus #').count(), 3)
+        self.assertEqual(BusSchedule.objects.filter(route__name__contains='Bus #').count(), 6)
+        self.assertEqual(TransportBooking.objects.filter(payment_status='paid').count(), 3)
+        # Medical: our 2 named doctors converge to the requested clinic spec
+        # (even though a data migration seeds them with other values first),
+        # plus 3 appointments in the requested states.
+        chen = Doctor.objects.get(name='Dr. Michael Chen')
+        self.assertEqual(chen.specialty, 'General Physician')
+        self.assertEqual(chen.working_days, 'Sunday - Thursday')
+        self.assertEqual((chen.start_time, chen.end_time), ('09:00 AM', '05:00 PM'))
+        self.assertEqual(Doctor.objects.get(name='Dr. Emily Johnson').specialty, 'Dentist')
+        self.assertEqual(MedicalAppointment.objects.count(), 3)
+        self.assertEqual(MedicalAppointment.objects.filter(status='confirmed').count(), 1)
+        self.assertEqual(MedicalAppointment.objects.filter(status='pending').count(), 1)
+        self.assertEqual(MedicalAppointment.objects.filter(status='completed').count(), 1)
+        # Cafeteria: 3 menu lines, 2 subscriptions, 4 paid tokens.
+        self.assertEqual(MealMenu.objects.count(), 3)
+        self.assertEqual(MealSubscription.objects.count(), 2)
+        self.assertEqual(MealTicket.objects.filter(payment_status='paid').count(), 4)
+        # Academic: 3 courses, 5 materials.
+        self.assertEqual(Course.objects.filter(code__in=['EEE-2101', 'CSE-1101', 'EEE-3105']).count(), 3)
+        self.assertEqual(CourseMaterial.objects.count(), 5)
+        # Clubs: our 2 named clubs (a data migration also seeds defaults),
+        # 2 events, 3 published notices.
+        self.assertEqual(Club.objects.filter(slug__in=['niter-computer-club', 'niter-robotics-society']).count(), 2)
+        self.assertEqual(
+            ClubEvent.objects.filter(title__in=['NCC Annual Hackathon 2026', 'Robotics Workshop: Line Follower Basics']).count(),
+            2,
+        )
+        self.assertEqual(Notice.objects.filter(is_published=True).count(), 3)
+
+    def test_idempotent_on_rerun(self):
+        self._run()
+        first_counts = (
+            User.objects.count(), TransportRoute.objects.count(),
+            TransportBooking.objects.count(), MedicalAppointment.objects.count(),
+            MealTicket.objects.count(), CourseMaterial.objects.count(),
+            ClubEvent.objects.count(), Notice.objects.count(),
+        )
+        self._run()  # second run must not duplicate anything
+        second_counts = (
+            User.objects.count(), TransportRoute.objects.count(),
+            TransportBooking.objects.count(), MedicalAppointment.objects.count(),
+            MealTicket.objects.count(), CourseMaterial.objects.count(),
+            ClubEvent.objects.count(), Notice.objects.count(),
+        )
+        self.assertEqual(first_counts, second_counts)
+        # Unique constraints intact — no IntegrityError means nothing clashed.
+        self.assertEqual(User.objects.filter(username='admin').count(), 1)
+        self.assertEqual(TransportRoute.objects.filter(name__contains='Bus #01').count(), 1)
+
+    def test_existing_users_not_touched(self):
+        # Pre-existing admin (as seed_demo_users would create) keeps its password.
+        User.objects.create_user(username='admin', password='keep-me-secret', is_staff=True, is_superuser=True)
+        self._run()
+        admin = User.objects.get(username='admin')
+        self.assertTrue(admin.check_password('keep-me-secret'))
+        self.assertFalse(admin.check_password('password123'))
 
 
 class RoutineParserTest(SimpleTestCase):

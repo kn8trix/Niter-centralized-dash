@@ -706,6 +706,38 @@ class MealTicket(models.Model):
         return self.ticket_token
 
 
+class MealMenu(models.Model):
+    """A cafeteria daily-menu line (breakfast / lunch / evening snacks).
+
+    Seeded by ``seed_demo_data``; consumed by the cafeteria UI to show what
+    is being served on a given day.
+    """
+
+    MEAL_TYPE_CHOICES = [
+        ('breakfast', 'Morning Breakfast'),
+        ('lunch', 'Lunch'),
+        ('snacks', 'Evening Snacks'),
+    ]
+
+    day = models.CharField(
+        max_length=20,
+        default='Daily',
+        help_text='Day label, e.g. Daily or a weekday (Sun, Mon, …)',
+    )
+    meal_type = models.CharField(max_length=20, choices=MEAL_TYPE_CHOICES)
+    items = models.TextField(
+        help_text='Comma-separated menu items served for this meal',
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['id']
+        unique_together = ('day', 'meal_type')
+
+    def __str__(self):
+        return '%s — %s' % (self.day, self.get_meal_type_display())
+
+
 class TransportBooking(models.Model):
     """A booked seat on a campus transport route (QR-checked on boarding).
 
