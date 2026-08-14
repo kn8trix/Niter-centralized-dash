@@ -4,7 +4,8 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 105 | `seed_demo_data` command — realistic NITER demo dataset (+ MealMenu model) | *(this change)* |
+| 106 | Builder iframe fix — public pages frameable same-origin (X-Frame-Options SAMEORIGIN) | *(this change)* |
+| 105 | `seed_demo_data` command — realistic NITER demo dataset (+ MealMenu model) | `39f3488` |
 | 104 | Global News & Search widget (NewsAPI service + student/admin dashboards + search API) | `991c4f8` |
 | 103 | Emergency alarm persistent-silence fix + WYSIWYG student-view editor overlay | `991c4f8` |
 | 102 | dash-data CI failure root cause — ALLOWED_HOSTS vs localhost host fix | `a7b0243` |
@@ -6069,6 +6070,32 @@ breakfast / lunch / evening-snacks menu is actually seedable.
 - Executed against Supabase: migration `0040_mealmenu` applied, seed run
   twice (second run all-skipped except the doctor convergence) — verified
   with read-only row counts.
+
+---
+
+## 106. Builder Preview Iframe Fix — X-Frame-Options SAMEORIGIN on Public Pages
+
+**Date:** 14 August 2026  
+**Branch:** main
+
+**Symptom:** the builder's live preview iframe refused to load the page
+("Firefox Can't Open This Page" / blank frame) on `/builder/visual/<slug>/`.
+
+**Root cause:** `config/settings.py` sets the global `X_FRAME_OPTIONS =
+'DENY'` (`XFrameOptionsMiddleware`), so the public page served at
+`/page/<slug>/` — which the editor embeds in a same-origin `<iframe>`
+(`templates/builder/editor.html` `#page-preview`, src=`{% url 'editable_page'
+page.slug %}`) — was refused by the browser.
+
+**Fix (`core/views.py`):** decorated `editable_page_view` with
+`@xframe_options_sameorigin` (from `django.views.decorators.clickjacking`).
+The middleware leaves a response's existing `X-Frame-Options` header alone, so
+public builder pages now respond with `X-Frame-Options: SAMEORIGIN` — the
+same-origin editor iframe loads, while cross-origin clickjacking stays
+blocked (DENY is still the default for every other view).
+
+**Regression guard:** `EditablePageRenderTest.test_page_allows_same_origin_framing`
+asserts the header is exactly `SAMEORIGIN`.
 
 ---
 

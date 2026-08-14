@@ -1827,6 +1827,15 @@ class EditablePageRenderTest(TestCase):
         html = self.client.get(reverse('editable_page', args=[self.page.slug])).content.decode()
         self.assertIn('name="description" content="NITER research assistant page."', html)
 
+    def test_page_allows_same_origin_framing(self):
+        """The builder editor embeds this page in a same-origin <iframe>
+        (editor.html#page-preview). The global X_FRAME_OPTIONS='DENY' would
+        refuse the frame — the view must relax it to SAMEORIGIN (still blocks
+        cross-origin clickjacking)."""
+        response = self.client.get(reverse('editable_page', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['X-Frame-Options'], 'SAMEORIGIN')
+
     def test_unknown_slug_returns_404(self):
         response = self.client.get(reverse('editable_page', args=['does-not-exist']))
         self.assertEqual(response.status_code, 404)

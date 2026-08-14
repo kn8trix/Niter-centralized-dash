@@ -27,6 +27,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 
 import logging
 
@@ -4923,6 +4924,11 @@ def _color_palette():
 COLOR_PALETTE = _color_palette()
 
 
+@xframe_options_sameorigin
+# The builder editor embeds this page in a same-origin <iframe> preview
+# (templates/builder/editor.html#page-preview); with the global
+# X_FRAME_OPTIONS='DENY' the frame is refused. SAMEORIGIN keeps the editor
+# working while still blocking cross-origin clickjacking.
 def editable_page_view(request, slug):
     """Public renderer for a builder-authored page and its ContentBlocks.
 
