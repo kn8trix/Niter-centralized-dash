@@ -2016,6 +2016,24 @@ class BuilderBackendTest(TestCase):
         self.assertContains(response, 'name="template_id"')
         self.assertContains(response, 'Template Blueprints')
 
+    def test_builder_dashboard_uses_admin_console_layout(self):
+        """Admin routes must never render the student navigation — the builder
+        console extends admin/admin_base.html (dark Admin Console sidebar with
+        the Website Builder / CMS nav item active) instead of the student
+        topbar."""
+        self.client.login(username='root', password='rootpass123')
+        response = self.client.get(reverse('builder_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        # Admin Console chrome present.
+        self.assertIn('data-region="sidebar" data-role="admin-sidebar"', html)
+        self.assertIn('Admin Console', html)
+        self.assertIn('data-route="admin_content"', html)
+        self.assertNotIn('partials/topbar', html)
+        # Student navigation must be absent (avatar menu, student topbar ids).
+        self.assertNotIn('id="avatar-btn"', html)
+        self.assertNotIn('data-region="topbar"', html)
+
     # ------------------------------------------------------------------
     # create_page API
     # ------------------------------------------------------------------

@@ -4,7 +4,8 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 107 | Builder edit page — auto-opening Delete Section modal fix ([hidden] vs display:grid) | *(this change)* |
+| 108 | Builder routes locked to Admin Console layout — no student nav on admin pages | *(this change)* |
+| 107 | Builder edit page — auto-opening Delete Section modal fix ([hidden] vs display:grid) | `acd73c0` |
 | 106 | Builder iframe fix — public pages frameable same-origin (X-Frame-Options SAMEORIGIN) | `f007cbf` |
 | 105 | `seed_demo_data` command — realistic NITER demo dataset (+ MealMenu model) | `39f3488` |
 | 104 | Global News & Search widget (NewsAPI service + student/admin dashboards + search API) | `991c4f8` |
@@ -6126,6 +6127,42 @@ click, and `closeAllModals()` already exists.
 
 **Regression guard:** `BuilderPageManagerTest.test_modals_start_hidden`
 asserts both backdrops render with the `hidden` attribute.
+
+---
+
+## 108. Builder Routes Locked to the Admin Console Layout
+
+**Date:** 14 August 2026  
+**Branch:** main
+
+**Goal:** every admin route (`/dashboard/admin/*`, `/builder/*`,
+`/builder/edit/*`, `/builder/visual/*`) must render the dark Admin Console
+sidebar ("Niter Hub / Admin Console") — never the student top navigation.
+
+**Audit result:** `/dashboard/admin/*` already extended
+`admin/admin_base.html`. The one violation was the builder **console** at
+`/builder/` — `templates/builder/dashboard.html` included the **student**
+`partials/topbar.html`. The two full-screen editors (`/builder/visual/*`
+`editor.html`, `/builder/edit/*` `edit_page.html`) are standalone
+full-height workspaces (`body { height: 100vh }`, `calc(100vh - topbar)`
+canvases + iframe previews) with their own admin tooling and **no** student
+navigation — wrapping them in the 256px sidebar would break their layout
+math, so they were kept full-screen (decision confirmed with the user).
+
+**Changes:**
+- `templates/builder/dashboard.html` — now `{% extends "admin/admin_base.html" %}`:
+  the dark sidebar with the Website Builder / CMS nav item highlighted
+  (`admin_section='content'` added to the `builder_dashboard` view), the
+  admin sticky header, emergency banner + toasts — student topbar removed.
+  The create-page modal, inline script, and `builder.css` (loaded via
+  `{% block extra_head %}`) are unchanged.
+- Both editor top bars now carry an **Admin Console** pill badge
+  (`.admin-console-badge`, `#2B2927` matching the sidebar chrome) so the
+  full-screen editors read unmistakably as admin tooling.
+
+**Regression guard:** `test_builder_dashboard_uses_admin_console_layout`
+asserts the admin sidebar renders, `partials/topbar` / `#avatar-btn` /
+student topbar ids are absent.
 
 ---
 

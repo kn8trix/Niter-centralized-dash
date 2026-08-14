@@ -5006,6 +5006,8 @@ def builder_dashboard(request):
     )
     templates = PageTemplate.objects.order_by('name')
     return render(request, 'builder/dashboard.html', {
+        # Admin Console chrome: highlights the Website Builder / CMS nav item.
+        'admin_section': 'content',
         'pages': pages,
         'templates': templates,
     })

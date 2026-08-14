@@ -80,6 +80,29 @@ body.page-builder {
 
 .pb-identity { display: flex; align-items: center; gap: 0.8rem; min-width: 0; }
 
+/* Matches the Admin Console sidebar chrome (admin_base.html, #2B2927) so the
+   full-screen block manager reads as part of the admin console, not the
+   student app. */
+.admin-console-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #ffffff;
+    background: #2b2927;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    padding: 0.3rem 0.65rem;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.admin-console-badge i {
+    color: #d8cab4;
+}
+
 .pb-back {
     display: grid;
     place-items: center;
