@@ -4,7 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 118 | Online Pharmacy polish — BD medicine catalog seed, product detail modal, Buy Now checkout, stock requests, nav buttons, modal CSS fix | *pending* |
+| 118 | Online Pharmacy polish — BD medicine catalog seed, product detail modal, Buy Now checkout, stock requests, nav buttons, modal CSS fix | `6e5430b` |
 | 117 | Website Builder overhaul — system page registration, feature blocks, live editing, UI redesign | `1908512` |
 | 116 | Fix 500 on /study-corner/ — guard fileless CourseMaterial rows | `3fa4aa1` |
 | 115 | Signup — show/hide password toggle | `e4d6a25` |
