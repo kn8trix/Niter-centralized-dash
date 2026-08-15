@@ -507,7 +507,7 @@ class Course(models.Model):
 
 class CourseMaterial(models.Model):
     """A single uploaded document (lecture slides, manual, problem set) for a
-    course, served to students on the Academic Notes drive."""
+    course, served to students on the Study Corner drive."""
 
     course = models.ForeignKey(
         Course,

@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 113 | Study Corner — Academic Notes + YouTube lectures + AI Study Assistant | *(this change)* |
 | 112 | Global News — dedicated Video News section (YouTube Data API v3) | `965064e` |
 | 111 | Remove email OTP verification from signup — direct registration | `1447f87` |
 | 110 | Global News nav tab + /news/ page; emergency resolve verified; student-page mobile pass | `0e37bd6` |
@@ -6383,3 +6384,57 @@ section with playable YouTube cards alongside the text-article grid.
   API + dashboard video rendering. Live check with the configured
   `YOUTUBE_API_KEY`: `fetch_youtube_videos('bangladesh')` returned 4 real
   video cards (BD NEWS71 / Jamuna TV).
+
+---
+
+## 113. Study Corner — Academic Notes + YouTube Lectures + AI Study Assistant
+
+**Date:** 15 August 2026  
+**Branch:** main
+
+The Academic Notes page becomes **Study Corner** (`/study-corner/`): the
+course-material drive gains a YouTube lecture-video search module and an AI
+Study Assistant chat box in a responsive two-column layout.
+
+### Changes
+
+- **Rename:** `academic_notes` view/route → `study_corner` (`/study-corner/`,
+  URL name `study_corner`); the old `/academic-notes/` URL stays as a
+  permanent 301 redirect. Nav labels updated everywhere: topbar pills (desktop
+  + mobile profile links, active state `study`), `base.html` sidebar, dashboard
+  quick tiles / panel, `department_detail.html` CTA, `sw.js` precache (`v3`),
+  context-processor `ENDPOINTS.study_corner`, README.
+- **`core/study_service.py`** (new) — `search_lecture_videos(query, max_results=6)`
+  hits `GET https://www.googleapis.com/youtube/v3/search` with
+  `part=snippet&type=video&q={query} lecture tutorial&maxResults=6&key=…`
+  (or a default `university lecture` query on page load) and returns raw API
+  items (`id.videoId` / `snippet.*`), filtered to real videos. No key or any
+  failure → `[]`; short-circuits under the test runner. Also owns
+  `STUDY_SYSTEM_PROMPT` + `offline_study_response` (deterministic chat reply).
+- **`core/views.py`** — `study_corner` renders the new template (notes drive +
+  server-rendered default lecture videos); `study_youtube_search`
+  (`GET /api/study/youtube/?q=…`) and `study_chat`
+  (`POST /api/study/chat/`, OpenRouter with a study-tutor system prompt and
+  the last ~10 turns kept in the session; offline fallback when no
+  `OPENROUTER_API_KEY`).
+- **`templates/academic/study_corner.html`** (new, replaces `academic/notes.html`)
+  — two-column layout: left (70-75%) holds the Academic Notes & Resources
+  manager (search + upload, folders, documents) on top and the "Video
+  Tutorials & Lectures" module (inline search + `.yt-study-card` grid with
+  16:9 iframe players and a red VIDEO LECTURE badge) below; right (25-30%) is
+  the sticky Study Assistant chat (markdown-lite bubbles, typing indicator,
+  CSRF-protected POST). Stacks to one column ≤1024px.
+- **`static/css/study.css`** (new) — layout grid, YouTube module, chat box,
+  mobile breakpoints, dark-mode overrides. `notes.css` header comment updated.
+- **`core/tests.py`** — `AcademicNotesPageTest` → `StudyCornerPageTest` (plus
+  heading/module assertions and the 301 redirect check); new
+  `StudyYouTubeApiTest` + `StudyChatApiTest` (offline + OpenRouter modes,
+  session context across turns); nav/PWA/security tests updated to
+  `study_corner` / "Study Corner" label.
+
+### Tests & verification
+
+- `python manage.py check` clean; study/nav/PWA suites green (33 tests).
+- Live check with the configured `YOUTUBE_API_KEY`:
+  `search_lecture_videos('circuit analysis')` returned 6 real lecture videos
+  (e.g. Engineering Circuit Analysis playlists).

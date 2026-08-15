@@ -2,7 +2,7 @@
  *
  * Strategy:
  *   - install:  precache the core static assets (theme/topbar/page CSS) plus
- *               the offline routes (/academic-notes/, /transport/) and the
+ *               the offline routes (/study-corner/, /transport/) and the
  *               app shell pages;
  *   - navigate: network-first with cache fallback, so the notes catalog and
  *               transport schedules stay fresh online but still render
@@ -13,20 +13,21 @@
  *
  * Bump VERSION when the precache list or caching rules change.
  */
-var VERSION = 'v2';
+var VERSION = 'v3';
 var CACHE = 'niterhub-' + VERSION;
 
 var PRECACHE = [
   '/manifest.json',
   '/',
   '/dashboard/',
-  '/academic-notes/',
+  '/study-corner/',
   '/transport/',
   '/static/css/theme.css',
   '/static/css/topbar.css',
   '/static/css/main.css',
   '/static/css/dashboard.css',
   '/static/css/notes.css',
+  '/static/css/study.css',
   '/static/css/transport.css',
   '/static/css/notices.css',
   '/static/css/editable_page.css',

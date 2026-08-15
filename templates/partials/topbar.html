@@ -12,7 +12,7 @@ holds user info, page links, and account actions — including Settings and
 Sign Out.
 
 Usage:  {% include 'partials/topbar.html' with active='transport' %}
-active: dashboard | notes | departments | research | notices | news | transport | meals | medical | clubs
+active: dashboard | study | notes | departments | research | notices | news | transport | meals | medical | clubs
 ============================================================================
 {% endcomment %}
 <header class="topbar" data-component="topbar">
@@ -71,7 +71,7 @@ active: dashboard | notes | departments | research | notices | news | transport 
                     -->
                     <nav class="profile-links" aria-label="Page links">
                         <a href="{% url 'dashboard' %}" class="{% if active == 'dashboard' %}active{% endif %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
-                        <a href="{% url 'notes' %}" class="{% if active == 'notes' %}active{% endif %}"><i class="fa-solid fa-book-open"></i> Academic Notes</a>
+                        <a href="{% url 'study_corner' %}" class="{% if active == 'study' %}active{% endif %}"><i class="fa-solid fa-book-open"></i> Study Corner</a>
                         <a href="{% url 'departments' %}" class="{% if active == 'departments' %}active{% endif %}"><i class="fa-solid fa-building-columns"></i> Departments</a>
                         <a href="{% url 'research_ai' %}" class="{% if active == 'research' %}active{% endif %}"><i class="fa-solid fa-robot"></i> Research AI</a>
                         <a href="{% url 'notices' %}" class="{% if active == 'notices' %}active{% endif %}"><i class="fa-solid fa-bullhorn"></i> Notices</a>
@@ -116,7 +116,7 @@ active: dashboard | notes | departments | research | notices | news | transport 
     <!-- Row 2: Desktop navigation pills (hidden on mobile, see topbar.css) -->
     <nav class="navlinks" aria-label="Primary navigation">
         <a href="{% url 'dashboard' %}" class="{% if active == 'dashboard' %}active{% endif %}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
-        <a href="{% url 'notes' %}" class="{% if active == 'notes' %}active{% endif %}"><i class="fa-solid fa-book-open"></i> Academic Notes</a>
+        <a href="{% url 'study_corner' %}" class="{% if active == 'study' %}active{% endif %}"><i class="fa-solid fa-book-open"></i> Study Corner</a>
         <a href="{% url 'departments' %}" class="{% if active == 'departments' %}active{% endif %}"><i class="fa-solid fa-building-columns"></i> Departments</a>
         <a href="{% url 'research_ai' %}" class="{% if active == 'research' %}active{% endif %}"><i class="fa-solid fa-robot"></i> Research AI</a>
         <a href="{% url 'notices' %}" class="{% if active == 'notices' %}active{% endif %}"><i class="fa-solid fa-bullhorn"></i> Notices</a>

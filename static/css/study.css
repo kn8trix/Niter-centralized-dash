@@ -1,0 +1,536 @@
+/* ============================================================================
+   CampusDash — Study Corner (/study-corner/)
+   ----------------------------------------------------------------------------
+   Complements static/css/notes.css (the Academic Notes drive styles, still
+   loaded by this page). Adds the two-column desktop layout (main 70-75% +
+   chat aside 25-30%), the YouTube "Video Tutorials & Lectures" module, and
+   the AI Study Assistant chat box. The layout stacks to a single column on
+   mobile.
+
+   Sections:
+     1. Layout (two columns → single column)
+     2. Section panels
+     3. YouTube search + lecture cards
+     4. Study Assistant chat
+     5. Responsive & motion
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   1. Layout — two columns on desktop, stacked below 1024px
+--------------------------------------------------------------------------- */
+body.study-corner .shell {
+    max-width: 1320px;
+}
+
+.study-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 330px;
+    gap: 1.4rem;
+    align-items: start;
+    margin-top: 1.4rem;
+}
+
+.study-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.4rem;
+}
+
+.study-aside {
+    min-width: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   2. Section panels
+--------------------------------------------------------------------------- */
+.study-panel {
+    background: var(--bg-card, #ffffff);
+    border: 1px solid var(--border-color, #f0ebe1);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card, 0 4px 12px rgba(0, 0, 0, 0.03));
+    padding: 1.3rem 1.4rem 1.5rem;
+}
+
+.study-panel-head {
+    margin-bottom: 1rem;
+}
+
+.study-panel-head .section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin-bottom: 0.2rem;
+}
+
+.study-panel-head .section-title i {
+    color: var(--accent-dark, #27272a);
+    font-size: 1.05rem;
+}
+
+.study-panel-head .section-subtitle {
+    margin-bottom: 0;
+}
+
+.study-sub-title {
+    margin: 1.2rem 0 0.15rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary, #1f2937);
+}
+
+.study-sub-caption {
+    margin: 0 0 0.9rem;
+    font-size: 0.82rem;
+    color: var(--text-muted, #6b7280);
+}
+
+/* ---------------------------------------------------------------------------
+   3. YouTube search + lecture cards
+--------------------------------------------------------------------------- */
+.yt-search {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg-subtle, #f7f4ef);
+    border: 1px solid var(--border-color, #f0ebe1);
+    border-radius: 999px;
+    padding: 0.4rem 0.4rem 0.4rem 1rem;
+    margin-bottom: 1.1rem;
+}
+
+.yt-search-icon {
+    color: var(--text-muted, #6b7280);
+    font-size: 0.85rem;
+}
+
+.yt-search input[type="search"] {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 0.9rem;
+    color: var(--text-primary, #1f2937);
+}
+
+.yt-search input[type="search"]::placeholder {
+    color: var(--text-muted, #6b7280);
+    opacity: 0.8;
+}
+
+.yt-search-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    border: none;
+    cursor: pointer;
+    background: #ef4444;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 0.5rem 1.05rem;
+    border-radius: 999px;
+    white-space: nowrap;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.yt-search-btn:hover {
+    background: #dc2626;
+    transform: translateY(-1px);
+}
+
+.yt-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 0.9rem;
+}
+
+.yt-study-card {
+    display: flex;
+    flex-direction: column;
+    background: #1e1e24;
+    border: 1px solid #2d2d38;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.yt-study-media {
+    position: relative;
+    padding-bottom: 56.25%;
+    height: 0;
+    overflow: hidden;
+    background: #000;
+}
+
+.yt-study-media iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+.yt-study-body {
+    padding: 12px;
+}
+
+.yt-study-badge {
+    display: inline-block;
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.15);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.yt-study-title {
+    color: #ffffff;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.35;
+    margin: 8px 0 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.yt-study-channel {
+    color: #9ca3af;
+    font-size: 0.8rem;
+    margin: 4px 0 0;
+}
+
+/* ---------------------------------------------------------------------------
+   4. Study Assistant chat
+--------------------------------------------------------------------------- */
+.chat-panel {
+    position: sticky;
+    top: 1rem;
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 8rem);
+    min-height: 420px;
+    max-height: 640px;
+}
+
+.chat-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-bottom: 0.7rem;
+    padding-bottom: 0.7rem;
+    border-bottom: 1px solid var(--border-color, #f0ebe1);
+}
+
+.chat-head .section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin: 0;
+    font-size: 1rem;
+}
+
+.chat-head .section-title i {
+    color: var(--accent-dark, #27272a);
+    font-size: 1rem;
+}
+
+.chat-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted, #6b7280);
+}
+
+.chat-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15);
+}
+
+.chat-body {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    padding: 0.2rem 0.15rem 0.6rem;
+    scroll-behavior: smooth;
+}
+
+.chat-msg {
+    display: flex;
+    gap: 0.55rem;
+    max-width: 92%;
+}
+
+.chat-msg.user {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+}
+
+.chat-avatar {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--bg-subtle, #f7f4ef);
+    border: 1px solid var(--border-color, #f0ebe1);
+    color: var(--accent-dark, #27272a);
+    font-size: 0.85rem;
+}
+
+.chat-bubble {
+    background: var(--bg-subtle, #f7f4ef);
+    border: 1px solid var(--border-color, #f0ebe1);
+    border-radius: 0.85rem 0.85rem 0.85rem 0.2rem;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.85rem;
+    line-height: 1.55;
+    color: var(--text-primary, #1f2937);
+    min-width: 0;
+    word-break: break-word;
+}
+
+.chat-msg.user .chat-bubble {
+    background: var(--accent-primary, #e8e2d8);
+    border-color: var(--accent-primary, #e8e2d8);
+    border-radius: 0.85rem 0.85rem 0.2rem 0.85rem;
+}
+
+/* Markdown-lite inside bubbles */
+.chat-bubble h3,
+.chat-bubble h4 {
+    margin: 0.4rem 0 0.2rem;
+    font-size: 0.9rem;
+    line-height: 1.35;
+}
+
+.chat-bubble h3:first-child,
+.chat-bubble h4:first-child {
+    margin-top: 0;
+}
+
+.chat-bubble ul {
+    margin: 0.3rem 0;
+    padding-left: 1.1rem;
+}
+
+.chat-bubble p {
+    margin: 0.3rem 0;
+}
+
+.chat-bubble p:first-child {
+    margin-top: 0;
+}
+
+.chat-bubble .inline-code,
+.chat-bubble code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.78rem;
+    background: rgba(0, 0, 0, 0.06);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+}
+
+.chat-code {
+    margin: 0.4rem 0;
+    padding: 0.55rem 0.7rem;
+    background: #18181b;
+    color: #e4e4e7;
+    border-radius: 8px;
+    font-size: 0.76rem;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.chat-form {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.7rem;
+    padding-top: 0.7rem;
+    border-top: 1px solid var(--border-color, #f0ebe1);
+}
+
+.chat-form input[type="text"] {
+    flex: 1;
+    min-width: 0;
+    padding: 0.65rem 0.95rem;
+    background: var(--bg-subtle, #f7f4ef);
+    border: 1px solid var(--border-color, #f0ebe1);
+    border-radius: 999px;
+    font-family: inherit;
+    font-size: 0.88rem;
+    color: var(--text-primary, #1f2937);
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chat-form input[type="text"]:focus {
+    border-color: var(--accent-primary, #e8e2d8);
+    box-shadow: 0 0 0 3px rgba(232, 226, 216, 0.55);
+}
+
+.chat-send {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent-dark, #27272a);
+    color: #ffffff;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.chat-send:hover {
+    background: #3f3f46;
+    transform: translateY(-1px);
+}
+
+/* Typing indicator */
+.chat-typing-dots {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    padding: 0.15rem 0.1rem;
+}
+
+.chat-typing-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted, #6b7280);
+    animation: chat-blink 1.2s infinite both;
+}
+
+.chat-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.chat-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes chat-blink {
+    0%, 80%, 100% { opacity: 0.25; }
+    40% { opacity: 1; }
+}
+
+/* ---------------------------------------------------------------------------
+   5. Responsive & motion
+--------------------------------------------------------------------------- */
+@media (max-width: 1024px) {
+    .study-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .chat-panel {
+        position: static;
+        height: 480px;
+        max-height: none;
+    }
+}
+
+@media (max-width: 640px) {
+    .yt-search {
+        flex-wrap: wrap;
+        border-radius: 0.85rem;
+        padding: 0.5rem;
+    }
+
+    .yt-search input[type="search"] {
+        flex-basis: 100%;
+        padding: 0.3rem 0.4rem 0.3rem 0.1rem;
+    }
+
+    .yt-search-btn {
+        justify-content: center;
+        width: 100%;
+    }
+
+    .yt-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .study-panel {
+        padding: 1.1rem 1rem 1.2rem;
+    }
+
+    .chat-panel {
+        height: 420px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-body {
+        scroll-behavior: auto;
+    }
+
+    .yt-search-btn,
+    .chat-send {
+        transition: none;
+    }
+
+    .chat-typing-dots span {
+        animation: none;
+        opacity: 0.5;
+    }
+}
+
+/* Dark mode — the shared tokens flip, but keep the dark video cards + chat
+   code blocks readable (they're already dark) and lift muted text. */
+html[data-theme='dark'] .chat-avatar,
+html[data-theme='dark'] .chat-form input[type="text"] {
+    background: var(--bg-subtle, #2e2e33);
+    border-color: var(--border-color, #3f3f46);
+}
+
+html[data-theme='dark'] .chat-bubble {
+    background: #2e2e33;
+    border-color: #3f3f46;
+    color: #f4f4f5;
+}
+
+html[data-theme='dark'] .chat-msg.user .chat-bubble {
+    background: #3a3a40;
+    border-color: #3a3a40;
+}
+
+html[data-theme='dark'] .yt-search {
+    background: #2e2e33;
+    border-color: #3f3f46;
+}
+
+html[data-theme='dark'] .yt-search input[type="search"] {
+    color: #ffffff;
+}
+
+html[data-theme='dark'] .yt-search input[type="search"]::placeholder {
+    color: #9ca3af;
+    opacity: 1;
+}
+
+html[data-theme='dark'] .chat-bubble .inline-code,
+html[data-theme='dark'] .chat-bubble code {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme='dark'] .study-panel-head .section-title i,
+html[data-theme='dark'] .chat-head .section-title i {
+    color: #fbbf24;
+}

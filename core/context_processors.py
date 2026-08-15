@@ -102,7 +102,7 @@ def endpoints(request):
             # Attendance QR/report email dispatch take a <session_token> path
             # arg — resolved with {% url %} in the admin template.
             'attendance': reverse('attendance'),
-            'academic_notes': reverse('academic_notes'),
+            'study_corner': reverse('study_corner'),
             'notices': reverse('notices'),
             'tickets': reverse('tickets'),
             'medical': reverse('medical'),

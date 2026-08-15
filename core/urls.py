@@ -1,4 +1,6 @@
 from django.urls import path
+from django.views.generic import RedirectView
+
 from . import views
 
 urlpatterns = [
@@ -26,7 +28,11 @@ urlpatterns = [
     path('notes/', views.notes, name='notes'),
     
     # Additional routes for sidebar links
-    path('academic-notes/', views.academic_notes, name='academic_notes'),
+    # Study Corner — the renamed Academic Notes drive + YouTube lectures + AI
+    # Study Assistant. The old /academic-notes/ URL stays as a permanent
+    # redirect so bookmarks/service-worker caches keep working.
+    path('study-corner/', views.study_corner, name='study_corner'),
+    path('academic-notes/', RedirectView.as_view(pattern_name='study_corner', permanent=True), name='academic_notes'),
     path('notices/', views.notices, name='notices'),
     path('news/', views.news_page, name='news'),
 
@@ -37,6 +43,9 @@ urlpatterns = [
     path('api/routine/extract/', views.routine_extract, name='api_routine_extract'),
     path('api/calendar/events/', views.api_calendar_events, name='api_calendar_events'),
     path('api/news/search/', views.api_news_search, name='api_news_search'),
+    # Study Corner — YouTube lecture search + AI Study Assistant chat.
+    path('api/study/youtube/', views.study_youtube_search, name='api_study_youtube_search'),
+    path('api/study/chat/', views.study_chat, name='api_study_chat'),
     # QR Attendance — student scan + stats, admin session management
     path('attendance/', views.attendance_dashboard, name='attendance'),
     path('api/attendance/scan/', views.api_attendance_scan, name='api_attendance_scan'),

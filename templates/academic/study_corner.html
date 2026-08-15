@@ -1,0 +1,423 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Study Corner — Niter Hub</title>
+    <meta name="description" content="Study Corner — course notes and PDFs, YouTube video lectures, and an AI study assistant.">
+
+    {% include 'partials/pwa_head.html' %}
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Global display preferences (theme / timezone / density) -- no-flash driver -->
+    {% include 'partials/display_prefs.html' %}
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Academic notes drive styles -->
+    <link rel="stylesheet" href="{% static 'css/notes.css' %}">
+    <!-- Study Corner layout (two columns, YouTube, chat) -->
+    <link rel="stylesheet" href="{% static 'css/study.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="notes study-corner" data-app="campusdash-public">
+
+    <div class="shell">
+
+        {% include 'partials/topbar.html' with active='study' %}
+
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <div class="intro">
+            <h1>Study Corner</h1>
+            <p>Notes, video lectures, and an AI study assistant — everything you need to prep for exams.</p>
+        </div>
+
+        <div class="study-layout">
+
+            <!-- ============================================================
+                 LEFT / MAIN column (70-75%): notes drive + video lectures
+            ============================================================ -->
+            <div class="study-main">
+
+                <!-- Section 1: Academic Notes & Resource Download Manager -->
+                <section class="study-panel" id="notes-panel" aria-labelledby="notes-panel-title">
+                    <div class="study-panel-head">
+                        <h2 class="section-title" id="notes-panel-title"><i class="fa-solid fa-book-open"></i> Academic Notes &amp; Resources</h2>
+                        <p class="section-subtitle">Browse study material by department, search, and download.</p>
+                    </div>
+
+                    <div class="drive-controls">
+                        <div class="search-box">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="notes-search" placeholder="Search notes, topics, or course codes..." aria-label="Search notes">
+                        </div>
+                        <button type="button" class="upload-btn" id="upload-btn">
+                            <i class="fa-solid fa-arrow-up-from-bracket"></i> Upload Note / PDF
+                        </button>
+                    </div>
+
+                    <h3 class="study-sub-title">Course Folders</h3>
+                    <p class="study-sub-caption">Browse study material by department folder.</p>
+                    <div class="folders-grid" id="folders-grid">
+                        {% for folder in folders %}
+                        <article class="folder-card" data-folder="{{ folder.code }}" tabindex="0">
+                            <div class="folder-card-top">
+                                <span class="folder-icon"><i class="fa-solid {{ folder.icon }}"></i></span>
+                                <span class="folder-count">{{ folder.count }} file{{ folder.count|pluralize }}</span>
+                            </div>
+                            <h3 class="folder-name">{{ folder.name }}</h3>
+                            <p class="folder-code">{{ folder.code }}</p>
+                        </article>
+                        {% empty %}
+                        <p class="empty-docs">No courses in the catalog yet.</p>
+                        {% endfor %}
+                    </div>
+
+                    <h3 class="study-sub-title">Recent Documents</h3>
+                    <p class="study-sub-caption">Latest uploads with file size and course details.</p>
+                    <div class="docs-grid" id="docs-grid">
+                        {% for material in materials %}
+                        <article class="doc-card" data-dept="{{ material.course.department }}"
+                                 data-search="{{ material.title|lower }} {{ material.course.code|lower }} {{ material.course.title|lower }}">
+                            <div class="doc-card-head">
+                                <span class="doc-icon"><i class="fa-solid fa-file-lines"></i></span>
+                                <span class="doc-course">{{ material.course.code }}</span>
+                            </div>
+                            <h3 class="doc-title">{{ material.title }}</h3>
+                            <p class="doc-snippet">{{ material.course.title }}</p>
+                            <div class="doc-tags"><span class="doc-tag">{{ material.course.get_department_display }}</span></div>
+                            <div class="doc-meta">
+                                <span><i class="fa-regular fa-file"></i> {{ material.size_display }}</span>
+                                <span><i class="fa-regular fa-calendar"></i> {{ material.uploaded_at|date:"M d, Y" }}</span>
+                                <a href="{{ material.file.url }}" class="doc-view" target="_blank" rel="noopener">Open</a>
+                            </div>
+                        </article>
+                        {% endfor %}
+                        <p class="empty-docs" id="docs-empty" {% if materials %}hidden{% endif %}>
+                            {% if materials %}No documents match your search.{% else %}No course materials uploaded yet — check back soon.{% endif %}
+                        </p>
+                    </div>
+                </section>
+
+                <!-- Section 2: YouTube Video Tutorials & Lectures -->
+                <section class="study-panel" id="youtube-panel" aria-labelledby="youtube-panel-title">
+                    <div class="study-panel-head">
+                        <h2 class="section-title" id="youtube-panel-title"><i class="fa-brands fa-youtube"></i> Video Tutorials &amp; Lectures</h2>
+                        <p class="section-subtitle">Search YouTube for lectures on any topic — Circuit Analysis, Calculus, Java Programming and more.</p>
+                    </div>
+
+                    <form class="yt-search" id="yt-search-form" role="search">
+                        <i class="fa-solid fa-magnifying-glass yt-search-icon"></i>
+                        <input type="search" id="yt-search-input" placeholder="Search lectures — e.g. Circuit Analysis, Calculus, Java Programming…" aria-label="Search video lectures">
+                        <button type="submit" class="yt-search-btn"><i class="fa-solid fa-play"></i> Search Videos</button>
+                    </form>
+
+                    <div class="yt-grid" id="yt-grid">
+                        {% for video in videos %}
+                        <div class="yt-study-card">
+                            <div class="yt-study-media">
+                                <iframe src="https://www.youtube.com/embed/{{ video.id.videoId }}" title="{{ video.snippet.title }}" allowfullscreen loading="lazy"></iframe>
+                            </div>
+                            <div class="yt-study-body">
+                                <span class="yt-study-badge">VIDEO LECTURE</span>
+                                <h4 class="yt-study-title">{{ video.snippet.title }}</h4>
+                                <p class="yt-study-channel">{{ video.snippet.channelTitle }}</p>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <p class="empty-docs" id="yt-empty">
+                            No lectures loaded yet — try a search above, or connect a YOUTUBE_API_KEY to load suggestions.
+                        </p>
+                        {% endfor %}
+                    </div>
+                </section>
+            </div>
+
+            <!-- ============================================================
+                 RIGHT column (25-30%): AI Study Assistant chat
+            ============================================================ -->
+            <aside class="study-aside">
+                <section class="study-panel chat-panel" id="chat-panel" aria-labelledby="chat-panel-title">
+                    <div class="chat-head">
+                        <h2 class="section-title" id="chat-panel-title"><i class="fa-solid fa-robot"></i> Study Assistant</h2>
+                        <span class="chat-status" id="chat-status"><span class="chat-status-dot"></span> online</span>
+                    </div>
+
+                    <div class="chat-body" id="chat-body" role="log" aria-live="polite">
+                        <div class="chat-msg bot">
+                            <span class="chat-avatar"><i class="fa-solid fa-robot"></i></span>
+                            <div class="chat-bubble">Hi! I'm your Study Assistant. Ask me about any course topic, homework problem, or how to prepare for an exam.</div>
+                        </div>
+                    </div>
+
+                    <form class="chat-form" id="chat-form">
+                        {% csrf_token %}
+                        <input type="text" id="chat-input" placeholder="Ask a study question…" aria-label="Ask a study question" autocomplete="off">
+                        <button type="submit" class="chat-send" aria-label="Send message"><i class="fa-solid fa-paper-plane"></i></button>
+                    </form>
+                </section>
+            </aside>
+        </div>
+    </div>
+
+    <script>
+        // ====================================================================
+        // Notes search + folder filtering over the server-rendered documents
+        // ====================================================================
+        (function () {
+            const foldersGrid = document.getElementById('folders-grid');
+            const docsGrid = document.getElementById('docs-grid');
+            const searchInput = document.getElementById('notes-search');
+            const emptyEl = document.getElementById('docs-empty');
+            const uploadBtn = document.getElementById('upload-btn');
+            const toastEl = document.getElementById('toast');
+            let toastTimer;
+            let folderFilter = null;
+
+            function showToast(message) {
+                if (!toastEl) return;
+                toastEl.textContent = message;
+                toastEl.classList.add('show');
+                clearTimeout(toastTimer);
+                toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3800);
+            }
+
+            function applyFilters() {
+                const q = (searchInput.value || '').trim().toLowerCase();
+                let visible = 0;
+                docsGrid.querySelectorAll('.doc-card').forEach((card) => {
+                    const matchesFolder = !folderFilter || card.dataset.dept === folderFilter;
+                    const haystack = (card.dataset.search || '').toLowerCase();
+                    const matchesQuery = !q || haystack.includes(q);
+                    const show = matchesFolder && matchesQuery;
+                    card.hidden = !show;
+                    if (show) visible++;
+                });
+                if (emptyEl) emptyEl.hidden = visible > 0;
+            }
+
+            if (searchInput) searchInput.addEventListener('input', applyFilters);
+
+            if (foldersGrid) {
+                foldersGrid.addEventListener('click', (e) => {
+                    const card = e.target.closest('[data-folder]');
+                    if (!card) return;
+                    const code = card.dataset.folder;
+                    folderFilter = folderFilter === code ? null : code;
+                    foldersGrid.querySelectorAll('.folder-card').forEach((c) =>
+                        c.classList.toggle('selected', c === card && folderFilter === code));
+                    applyFilters();
+                });
+
+                // Folder cards are keyboard-accessible (Enter / Space)
+                foldersGrid.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    e.preventDefault();
+                    const card = e.target.closest('[data-folder]');
+                    if (card) card.click();
+                });
+            }
+
+            if (uploadBtn) {
+                uploadBtn.addEventListener('click', () => {
+                    showToast('Upload is ready — drag a PDF or connect Google Drive to continue.');
+                });
+            }
+
+            applyFilters();
+        })();
+
+        // ====================================================================
+        // YouTube lecture search — AJAX into /api/study/youtube/
+        // ====================================================================
+        (function () {
+            const form = document.getElementById('yt-search-form');
+            const input = document.getElementById('yt-search-input');
+            const grid = document.getElementById('yt-grid');
+            if (!form || !input || !grid) return;
+
+            function esc(value) {
+                return String(value == null ? '' : value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            function render(videos) {
+                if (!videos.length) {
+                    grid.innerHTML = '<p class="empty-docs">No lectures found for that topic. Try another search.</p>';
+                    return;
+                }
+                grid.innerHTML = videos.map(function (v) {
+                    const id = ((v && v.id) || {}).videoId || '';
+                    const snippet = (v && v.snippet) || {};
+                    if (!id) return '';
+                    return '<div class="yt-study-card">' +
+                        '<div class="yt-study-media"><iframe src="https://www.youtube.com/embed/' + esc(id) +
+                        '" title="' + esc(snippet.title || '') + '" allowfullscreen loading="lazy"></iframe></div>' +
+                        '<div class="yt-study-body">' +
+                        '<span class="yt-study-badge">VIDEO LECTURE</span>' +
+                        '<h4 class="yt-study-title">' + esc(snippet.title || '') + '</h4>' +
+                        '<p class="yt-study-channel">' + esc(snippet.channelTitle || '') + '</p>' +
+                        '</div></div>';
+                }).join('');
+            }
+
+            form.addEventListener('submit', function (ev) {
+                ev.preventDefault();
+                const q = input.value.trim();
+                grid.innerHTML = '<p class="empty-docs">Searching lectures…</p>';
+                fetch('{% url "api_study_youtube_search" %}?q=' + encodeURIComponent(q))
+                    .then(function (res) { return res.json(); })
+                    .then(function (json) { render((json && json.data) || []); })
+                    .catch(function () {
+                        grid.innerHTML = '<p class="empty-docs">Search failed — please try again.</p>';
+                    });
+            });
+        })();
+
+        // ====================================================================
+        // Study Assistant chat — POST /api/study/chat/ with markdown-lite render
+        // ====================================================================
+        (function () {
+            const form = document.getElementById('chat-form');
+            const input = document.getElementById('chat-input');
+            const body = document.getElementById('chat-body');
+            if (!form || !input || !body) return;
+
+            function getCookie(name) {
+                if (!document.cookie || document.cookie === '') return null;
+                for (const part of document.cookie.split(';')) {
+                    const pair = part.trim();
+                    if (pair.startsWith(name + '=')) {
+                        return decodeURIComponent(pair.slice(name.length + 1));
+                    }
+                }
+                return null;
+            }
+
+            function scrollBottom() { body.scrollTop = body.scrollHeight; }
+
+            // Markdown-lite renderer (headings, bullets, bold/italic, inline code).
+            function escapeHtml(s) {
+                return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            }
+
+            function inlineFmt(s) {
+                return s
+                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                    .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+            }
+
+            function renderBlocks(text) {
+                const lines = escapeHtml(text).split('\n');
+                let html = '';
+                let inList = false;
+                function closeList() { if (inList) { html += '</ul>'; inList = false; } }
+                for (const raw of lines) {
+                    const line = raw.trim();
+                    if (/^### /.test(line)) { closeList(); html += '<h4>' + inlineFmt(line.slice(4)) + '</h4>'; }
+                    else if (/^## /.test(line)) { closeList(); html += '<h3>' + inlineFmt(line.slice(3)) + '</h3>'; }
+                    else if (/^[-*] /.test(line)) {
+                        if (!inList) { html += '<ul>'; inList = true; }
+                        html += '<li>' + inlineFmt(line.replace(/^[-*] /, '')) + '</li>';
+                    }
+                    else if (line === '') { closeList(); }
+                    else { closeList(); html += '<p>' + inlineFmt(line) + '</p>'; }
+                }
+                closeList();
+                return html;
+            }
+
+            function renderMarkdown(text) {
+                const parts = text.split(/```/);
+                let html = '';
+                parts.forEach(function (part, i) {
+                    if (i % 2 === 1) {
+                        html += '<pre class="chat-code"><code>' + escapeHtml(part.trim()) + '</code></pre>';
+                    } else {
+                        html += renderBlocks(part);
+                    }
+                });
+                return html;
+            }
+
+            function appendMsg(role, text) {
+                const div = document.createElement('div');
+                div.className = 'chat-msg ' + role;
+                if (role === 'bot') {
+                    div.innerHTML = '<span class="chat-avatar"><i class="fa-solid fa-robot"></i></span>' +
+                        '<div class="chat-bubble">' + renderMarkdown(text) + '</div>';
+                } else {
+                    div.innerHTML = '<div class="chat-bubble">' + escapeHtml(text) + '</div>';
+                }
+                body.appendChild(div);
+                scrollBottom();
+            }
+
+            function showTyping() {
+                const div = document.createElement('div');
+                div.className = 'chat-msg bot';
+                div.id = 'chat-typing';
+                div.innerHTML = '<span class="chat-avatar"><i class="fa-solid fa-robot"></i></span>' +
+                    '<div class="chat-bubble"><span class="chat-typing-dots"><span></span><span></span><span></span></span></div>';
+                body.appendChild(div);
+                scrollBottom();
+            }
+
+            function hideTyping() {
+                const el = document.getElementById('chat-typing');
+                if (el) el.remove();
+            }
+
+            form.addEventListener('submit', function (ev) {
+                ev.preventDefault();
+                const text = input.value.trim();
+                if (!text) return;
+                appendMsg('user', text);
+                input.value = '';
+                showTyping();
+                fetch('{% url "api_study_chat" %}', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'X-CSRFToken': getCookie('csrftoken'),
+                    },
+                    body: 'message=' + encodeURIComponent(text),
+                })
+                    .then(function (res) { return res.json(); })
+                    .then(function (json) {
+                        hideTyping();
+                        if (json && json.status === 'success') {
+                            appendMsg('bot', json.response);
+                        } else {
+                            appendMsg('bot', (json && json.message) || 'Sorry, something went wrong — please try again.');
+                        }
+                    })
+                    .catch(function () {
+                        hideTyping();
+                        appendMsg('bot', 'Could not reach the assistant — please try again.');
+                    });
+            });
+        })();
+    </script>
+
+    <!-- PWA service worker registration (offline caching) -->
+    <script src="{% static 'js/pwa-register.js' %}" defer></script>
+</body>
+</html>

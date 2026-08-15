@@ -45,6 +45,11 @@ from .middleware import _client_ip, is_campus_wifi
 from .forms import SignUpForm
 from .block_sanitizer import sanitize_css, sanitize_html
 from .news_service import fetch_global_news, fetch_youtube_videos
+from .study_service import (
+    STUDY_SYSTEM_PROMPT,
+    offline_study_response,
+    search_lecture_videos,
+)
 from .templatetags.builder_tags import render_block_html
 from .google_service import (
     GoogleAccountNotConnected,
@@ -429,7 +434,7 @@ def medical(request):
 def notes(request):
     """Notes Engine workspace — the editor plus the live academic catalog.
 
-    The sidebar is wired to the same database rows as the /academic-notes/
+    The sidebar is wired to the same database rows as the /study-corner/
     drive: folder categories are built from the real ``Department`` rows that
     own at least one ``Course`` (falling back to ``StudentProfile`` choices
     for codes without a hub row), the Recent PDFs list shows the newest
@@ -481,8 +486,15 @@ _DEPARTMENT_ICONS = {
 }
 
 
-def academic_notes(request):
-    """Academic Notes Drive — live Course folders + CourseMaterial documents."""
+def study_corner(request):
+    """Study Corner — Academic Notes drive + YouTube lectures + AI assistant.
+
+    Renders the two-column Study Corner page (``/study-corner/``): the
+    course-material drive (live ``Course`` / ``CourseMaterial`` rows), a
+    YouTube lecture-video search module (server-rendered default results,
+    refined client-side via ``/api/study/youtube/``), and the Study Assistant
+    chat sidebar (``/api/study/chat/``).
+    """
     courses = Course.objects.prefetch_related('materials').order_by('code')
     materials = CourseMaterial.objects.select_related('course').order_by('-uploaded_at')
 
@@ -506,10 +518,87 @@ def academic_notes(request):
             'icon': _DEPARTMENT_ICONS.get(code, 'fa-folder'),
         })
 
-    return render(request, 'academic/notes.html', {
+    return render(request, 'academic/study_corner.html', {
         'courses': courses,
         'materials': materials,
         'folders': folders,
+        'videos': search_lecture_videos(),
+    })
+
+
+def study_youtube_search(request):
+    """GET /api/study/youtube/?q=… — YouTube lecture search for Study Corner.
+
+    Returns the raw YouTube Data API items (``id.videoId`` / ``snippet.*``)
+    from :func:`core.study_service.search_lecture_videos`; ``[]`` when no
+    ``YOUTUBE_API_KEY`` is configured or the API is unreachable.
+    """
+    if request.method != 'GET':
+        return JsonResponse({'status': 'error', 'message': 'GET required'}, status=405)
+    query = (request.GET.get('q') or '').strip()
+    if not query:
+        return JsonResponse({'status': 'error', 'message': 'q is required.'}, status=400)
+    return JsonResponse({'status': 'success', 'data': search_lecture_videos(query)})
+
+
+def study_chat(request):
+    """POST /api/study/chat/ — AI Study Assistant (session history, OpenRouter).
+
+    Keeps the last ~10 turns of the conversation in the session so the widget
+    has context across messages (no DB rows needed). When
+    ``OPENROUTER_API_KEY`` is configured the reply comes from OpenRouter with
+    a study-tutor system prompt; otherwise the deterministic
+    :func:`offline_study_response` answers, so the chat works with zero
+    configuration.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    message = (request.POST.get('message') or '').strip()
+    if not message:
+        return JsonResponse({'status': 'error', 'message': 'message is required.'}, status=400)
+
+    history = request.session.get('study_chat_history') or []
+    history = [
+        turn for turn in history
+        if isinstance(turn, dict)
+        and turn.get('role') in ('user', 'assistant')
+        and turn.get('content')
+    ][-10:]
+    messages = history + [{'role': 'user', 'content': message}]
+
+    try:
+        if openrouter_enabled():
+            text, used_model = call_openrouter(
+                messages,
+                system_prompt=STUDY_SYSTEM_PROMPT,
+                referer='https://' + request.get_host(),
+            )
+            engine, model = 'openrouter', used_model
+        else:
+            text = offline_study_response(message)
+            engine, model = 'offline', None
+    except OpenRouterError as exc:
+        # Friendly JSON error; the user turn stays out of the session history
+        # so a failed request can simply be retried.
+        return JsonResponse(
+            {'status': 'error', 'message': str(exc)},
+            status=_OPENROUTER_ERROR_STATUS.get(type(exc), 502),
+        )
+
+    request.session['study_chat_history'] = (
+        messages + [{'role': 'assistant', 'content': text}]
+    )[-10:]
+    request.session.modified = True
+    return JsonResponse({
+        'status': 'success',
+        'response': text,
+        'engine': engine,
+        'model': model,
+        'message': (
+            'Answered via OpenRouter (%s).' % model
+            if engine == 'openrouter'
+            else 'Answered by the built-in study engine.'
+        ),
     })
 
 def notices(request):

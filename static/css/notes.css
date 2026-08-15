@@ -1,8 +1,10 @@
 /* ============================================================================
-   CampusDash — Academic Notes & PDF Drive (Warm Light Theme)
+   CampusDash — Study Corner notes drive (Warm Light Theme)
    ----------------------------------------------------------------------------
-   Standalone styles for templates/academic/notes.html — a frontend-only
-   notes drive with course folders and document previews (mock JS data).
+   Shared drive styles for templates/academic/study_corner.html — course
+   folders and document previews rendered live from the Course /
+   CourseMaterial tables (the Study Corner layout + YouTube + chat live in
+   static/css/study.css).
 
    Palette: bg #faf9f6 · card #ffffff · border #f0ebe1 · accent #e8e2d8
             (hover #dfd7cb) · text #1f2937 · muted #6b7280

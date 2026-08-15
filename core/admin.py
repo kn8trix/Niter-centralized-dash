@@ -130,7 +130,7 @@ class CourseAdmin(admin.ModelAdmin):
 
 @admin.register(CourseMaterial)
 class CourseMaterialAdmin(admin.ModelAdmin):
-    """Uploaded documents served on the Academic Notes drive."""
+    """Uploaded documents served on the Study Corner drive."""
 
     list_display = ('title', 'course', 'display_type', 'file', 'uploaded_at')
     list_filter = ('uploaded_at', 'course__department')

@@ -98,7 +98,7 @@ class StudentPagesSmokeTest(TestCase):
     PAGES = [
         'home',
         'dashboard',
-        'academic_notes',
+        'study_corner',
         'notices',
         'tickets',
         'medical',
@@ -152,12 +152,12 @@ class UnifiedHeaderTest(TestCase):
         'medical',
         'notices',
         'news',
-        'academic_notes',
+        'study_corner',
         'research_ai',
         'departments',
     ]
 
-    NAV_LINKS = ['Dashboard', 'Academic Notes', 'Departments', 'Research AI', 'Notices', 'Transport', 'Meals', 'Medical', 'Clubs', 'Global News', 'Tickets']
+    NAV_LINKS = ['Dashboard', 'Study Corner', 'Departments', 'Research AI', 'Notices', 'Transport', 'Meals', 'Medical', 'Clubs', 'Global News', 'Tickets']
 
     def test_pages_render_shared_header(self):
         for name in self.PAGES:
@@ -189,7 +189,7 @@ class UnifiedHeaderTest(TestCase):
             'medical': '/medical/',
             'notices': '/notices/',
             'news': '/news/',
-            'academic_notes': '/notes/',
+            'study_corner': '/study-corner/',
             'research_ai': '/research-ai/',
             'departments': '/departments/',
         }
@@ -4031,8 +4031,8 @@ class CreateNoticeApiTest(TestCase):
         self.assertTrue(Notification.objects.filter(category='urgent').exists())
 
 
-class AcademicNotesPageTest(TestCase):
-    """/academic-notes/ — live Course folders and CourseMaterial documents."""
+class StudyCornerPageTest(TestCase):
+    """/study-corner/ — the Study Corner: notes drive + YouTube + chat."""
 
     def setUp(self):
         self.course = Course.objects.create(
@@ -4041,7 +4041,7 @@ class AcademicNotesPageTest(TestCase):
         Course.objects.create(code='TEX101', title='Fibre Science', department='TEX')
 
     def test_renders_course_folders_from_catalog(self):
-        response = self.client.get(reverse('academic_notes'))
+        response = self.client.get(reverse('study_corner'))
         self.assertEqual(response.status_code, 200)
         # Folder cards group by department code + display the full name.
         self.assertContains(response, 'CSE')
@@ -4054,7 +4054,7 @@ class AcademicNotesPageTest(TestCase):
             course=self.course, title='Lecture 1 Slides',
             file=SimpleUploadedFile('lec1.pdf', b'%PDF-1.4 fake', content_type='application/pdf'),
         )
-        response = self.client.get(reverse('academic_notes'))
+        response = self.client.get(reverse('study_corner'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Lecture 1 Slides')
         self.assertContains(response, 'PDF')  # display_type derived from extension
@@ -4065,15 +4065,96 @@ class AcademicNotesPageTest(TestCase):
 
     def test_empty_catalog_renders_empty_states(self):
         Course.objects.all().delete()
-        response = self.client.get(reverse('academic_notes'))
+        response = self.client.get(reverse('study_corner'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'No courses in the catalog yet.')
         self.assertContains(response, 'No course materials uploaded yet')
 
+    def test_renders_study_corner_heading_and_modules(self):
+        response = self.client.get(reverse('study_corner'))
+        self.assertEqual(response.status_code, 200)
+        # Page heading + both modules + the chat box render.
+        self.assertContains(response, 'Study Corner')
+        self.assertContains(response, 'Video Tutorials &amp; Lectures')
+        self.assertContains(response, 'id="yt-search-form"')
+        self.assertContains(response, 'Study Assistant')
+        self.assertContains(response, 'id="chat-form"')
+
+    def test_old_academic_notes_url_redirects_to_study_corner(self):
+        response = self.client.get('/academic-notes/')
+        self.assertEqual(response.status_code, 301)
+        self.assertRedirects(response, '/study-corner/', status_code=301, fetch_redirect_response=False)
+
+
+class StudyYouTubeApiTest(TestCase):
+    """GET /api/study/youtube/?q=… — YouTube lecture search for Study Corner."""
+
+    def test_search_returns_videos(self):
+        videos = [{'id': {'videoId': 'abc123'},
+                   'snippet': {'title': 'Circuit Analysis lecture', 'channelTitle': 'Prof X'}}]
+        with mock.patch('core.views.search_lecture_videos', return_value=videos) as fake_search:
+            response = self.client.get(reverse('api_study_youtube_search'), {'q': 'circuit analysis'})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'success')
+        self.assertEqual(payload['data'], videos)
+        fake_search.assert_called_once_with('circuit analysis')
+
+    def test_search_requires_query(self):
+        response = self.client.get(reverse('api_study_youtube_search'))
+        self.assertEqual(response.status_code, 400)
+
+    def test_search_requires_get(self):
+        response = self.client.post(reverse('api_study_youtube_search'), {'q': 'calculus'})
+        self.assertEqual(response.status_code, 405)
+
+
+class StudyChatApiTest(TestCase):
+    """POST /api/study/chat/ — AI Study Assistant (offline + OpenRouter modes)."""
+
+    def test_offline_mode_answers_without_provider(self):
+        with mock.patch('core.views.openrouter_enabled', return_value=False):
+            response = self.client.post(reverse('api_study_chat'), {'message': 'How do I study calculus?'})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'success')
+        self.assertEqual(payload['engine'], 'offline')
+        self.assertIn('calculus', payload['response'].lower())
+
+    def test_openrouter_mode_returns_assistant_reply(self):
+        with mock.patch('core.views.openrouter_enabled', return_value=True), \
+                mock.patch('core.views.call_openrouter', return_value=('Worked example: derivative of x^2.', 'model-x')):
+            response = self.client.post(reverse('api_study_chat'), {'message': 'Explain derivatives'})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'success')
+        self.assertEqual(payload['engine'], 'openrouter')
+        self.assertEqual(payload['response'], 'Worked example: derivative of x^2.')
+        # Session history now holds the user + assistant turns.
+        history = self.client.session.get('study_chat_history') or []
+        self.assertEqual([t['role'] for t in history], ['user', 'assistant'])
+
+    def test_chat_keeps_context_across_turns(self):
+        with mock.patch('core.views.openrouter_enabled', return_value=True), \
+                mock.patch('core.views.call_openrouter', return_value=('A1', 'model-x')) as fake_call:
+            self.client.post(reverse('api_study_chat'), {'message': 'First question'})
+            self.client.post(reverse('api_study_chat'), {'message': 'Second question'})
+        # The second call carries the full conversation so the model has context.
+        messages = fake_call.call_args_list[1].args[0]
+        self.assertEqual([m['role'] for m in messages], ['user', 'assistant', 'user'])
+
+    def test_chat_requires_message(self):
+        response = self.client.post(reverse('api_study_chat'), {'message': '   '})
+        self.assertEqual(response.status_code, 400)
+
+    def test_chat_requires_post(self):
+        response = self.client.get(reverse('api_study_chat'))
+        self.assertEqual(response.status_code, 405)
+
 
 class NotesEnginePageTest(TestCase):
     """Notes Engine sidebar is wired to live Course / Department / CourseMaterial
-    rows (same catalog as /academic-notes/)."""
+    rows (same catalog as /study-corner/)."""
 
     def setUp(self):
         self.course = Course.objects.create(
@@ -7669,7 +7750,7 @@ class SecurityAuditTest(TestCase):
         public = [
             '/', reverse('dashboard'), reverse('student_dashboard'),
             reverse('tickets'), reverse('medical'),
-            reverse('notes'), reverse('academic_notes'), reverse('notices'),
+            reverse('notes'), reverse('study_corner'), reverse('notices'),
             reverse('clubs_dashboard'), reverse('transport_dashboard'),
             reverse('meal_dashboard'), reverse('checkout'), reverse('research_ai'),
             reverse('departments'), reverse('signup'), reverse('login'),
@@ -7709,7 +7790,7 @@ class PwaTests(TestCase):
         self.assertEqual(response['Service-Worker-Allowed'], '/')
         body = response.content.decode()
         # The two offline routes + core CSS are precached by the worker.
-        self.assertIn('/academic-notes/', body)
+        self.assertIn('/study-corner/', body)
         self.assertIn('/transport/', body)
         self.assertIn('/static/css/theme.css', body)
 
@@ -7720,7 +7801,7 @@ class PwaTests(TestCase):
         self.assertIn('theme-color', html)
 
     def test_offline_routes_link_manifest_and_register_worker(self):
-        for url in (reverse('academic_notes'), reverse('transport_dashboard')):
+        for url in (reverse('study_corner'), reverse('transport_dashboard')):
             html = self.client.get(url).content.decode()
             self.assertIn('rel="manifest" href="/manifest.json"', html)
             self.assertIn('pwa-register.js', html)
