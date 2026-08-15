@@ -1,0 +1,26 @@
+{% load builder_tags %}
+{% comment %}
+    Image Card Grid block — news-style cards with image, title and source.
+    Data schema: { "title": "…", "subtitle": "…", "items": [{ "image_url": "…", "title": "…", "source": "…", "url": "…" }] }
+{% endcomment %}
+<section class="builder-block card-grid-block" data-builder-block="card_grid">
+    <div class="bb-inner">
+        {% if data.title %}<h2 class="bb-title" data-edit-field="title">{{ data.title }}</h2>{% endif %}
+        {% if data.subtitle %}<p class="bb-subtitle" data-edit-field="subtitle">{{ data.subtitle }}</p>{% endif %}
+        {% if data.items %}
+        <div class="bb-grid">
+            {% for item in data.items %}
+            <article class="bb-card bb-news-card">
+                {% if item.image_url %}<img src="{{ item.image_url|safe_url }}" alt="{{ item.title }}" loading="lazy">{% endif %}
+                <div class="bb-news-body">
+                    {% if item.source %}<span class="bb-chip" data-edit-field="items.{{ forloop.counter0 }}.source">{{ item.source }}</span>{% endif %}
+                    {% if item.url %}<a href="{{ item.url|safe_url }}" data-edit-field="items.{{ forloop.counter0 }}.title">{{ item.title }}</a>{% else %}<strong data-edit-field="items.{{ forloop.counter0 }}.title">{{ item.title }}</strong>{% endif %}
+                </div>
+            </article>
+            {% empty %}
+            <p class="bb-empty">No stories yet.</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</section>

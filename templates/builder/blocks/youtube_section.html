@@ -1,0 +1,19 @@
+{% load builder_tags %}
+{% comment %}
+    YouTube Search & Video Section block — an embeddable player with a search hint.
+    Data schema: { "title": "…", "subtitle": "…", "placeholder": "…", "embed_url": "https://www.youtube.com/embed/…" }
+{% endcomment %}
+<section class="builder-block youtube-block" data-builder-block="youtube">
+    <div class="bb-inner">
+        {% if data.title %}<h2 class="bb-title" data-edit-field="title">{{ data.title }}</h2>{% endif %}
+        {% if data.subtitle %}<p class="bb-subtitle" data-edit-field="subtitle">{{ data.subtitle }}</p>{% endif %}
+        {% if data.placeholder %}
+        <p class="bb-hint"><i class="fa-solid fa-magnifying-glass"></i> Search: <em data-edit-field="placeholder">{{ data.placeholder }}</em></p>
+        {% endif %}
+        {% if data.embed_url %}
+        <div class="bb-embed">
+            <iframe src="{{ data.embed_url|safe_url }}" title="{{ data.title|default:'Video' }}" allowfullscreen loading="lazy"></iframe>
+        </div>
+        {% endif %}
+    </div>
+</section>

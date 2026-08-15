@@ -1,0 +1,19 @@
+{% load builder_tags %}
+{% comment %}
+    Hero Promo Banner block — headline + subtext + optional image + CTA.
+    Data schema: { "headline": "…", "subtext": "…", "image_url": "…", "primary_label": "…", "primary_url": "…" }
+{% endcomment %}
+<section class="builder-block promo-block" data-builder-block="promo">
+    <div class="bb-inner bb-promo">
+        <div class="bb-promo-copy">
+            {% if data.headline %}<h2 class="bb-title" data-edit-field="headline">{{ data.headline }}</h2>{% endif %}
+            {% if data.subtext %}<p class="bb-subtitle" data-edit-field="subtext">{{ data.subtext }}</p>{% endif %}
+            {% if data.primary_label and data.primary_url %}
+            <a class="bb-btn bb-btn--primary" href="{{ data.primary_url|safe_url }}" data-edit-field="primary_label">{{ data.primary_label }}</a>
+            {% endif %}
+        </div>
+        {% if data.image_url %}
+        <img class="bb-promo-image" src="{{ data.image_url|safe_url }}" alt="{{ data.headline|default:'Promo' }}" loading="lazy">
+        {% endif %}
+    </div>
+</section>

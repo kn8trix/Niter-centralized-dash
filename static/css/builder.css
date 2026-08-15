@@ -751,3 +751,112 @@ body.builder a {
         transition: none;
     }
 }
+
+/* ---------------------------------------------------------------------------
+   14. Builder overhaul — metrics header, search/filter toolbar, panels
+--------------------------------------------------------------------------- */
+
+.hidden {
+    display: none !important;
+}
+
+.builder-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.9rem;
+    margin-bottom: 1.4rem;
+}
+
+.metric-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 1rem 1.2rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 0.9rem;
+    box-shadow: var(--shadow-card);
+}
+
+.metric-value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--text-primary);
+}
+
+.metric-value.metric-pub { color: #16a34a; }
+.metric-value.metric-draft { color: #d97706; }
+.metric-value.metric-blocks { color: var(--accent-primary); }
+
+.metric-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.metric-label i { margin-right: 0.3rem; }
+
+.panel-sub {
+    margin: -0.4rem 0 1rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.builder-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.1rem;
+}
+
+.builder-search {
+    position: relative;
+    flex: 1 1 240px;
+    max-width: 380px;
+}
+
+.builder-search i {
+    position: absolute;
+    left: 0.8rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.builder-search input {
+    width: 100%;
+    padding: 0.55rem 0.9rem 0.55rem 2.1rem;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 0.7rem;
+    font-family: inherit;
+    font-size: 0.88rem;
+    color: var(--text-primary);
+    outline: none;
+}
+
+.builder-search input:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+}
+
+.builder-filter {
+    padding: 0.55rem 0.8rem;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 0.7rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    outline: none;
+    cursor: pointer;
+}
+
+.template-card .template-create-btn {
+    margin-top: 0.8rem;
+    width: 100%;
+}

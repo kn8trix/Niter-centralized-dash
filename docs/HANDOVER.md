@@ -6581,3 +6581,59 @@ it.` The demo rows seeded by `seed_demo_data` were created with only
   200 against the same fileless rows.
 - Seed verified against a throwaway DB: 5 fresh materials get real files on
   disk; re-run stays idempotent (no duplicates).
+
+## 117. Website Builder Overhaul — System Page Registration + Feature Blocks + Live Editing + UI
+
+**Date:** 15 August 2026  
+**Branch:** main
+
+Comprehensive Website Builder / CMS overhaul: core system pages are now
+auto-registered in the CMS, their default components are exposed as editable
+feature blocks (Block Manager), edits render live on the public routes with a
+clean fallback to the default templates, and the `/builder/` dashboard got a
+UI redesign.
+
+### Changes
+
+- **System page discovery & registration** — new `core/system_pages.py`
+  registry + `register_system_pages` management command (auto-run on every
+  `/builder/` visit, idempotent). Registers the 5 core routes as
+  `EditablePage` rows keyed by the new `system_key` field: Home (`/`),
+  Study Corner (`/study-corner/`), Online Pharmacy (`/pharmacy/`), Global
+  News (`/news/`), Clubs Hub (`/clubs/`) — all listed in the Editable Pages
+  grid. Re-runs never clobber admin edits.
+- **Feature-block extraction** — each system page seeds its default
+  components as `ContentBlock`s (hidden until revealed):
+  Landing → hero banner / quick announcements / feature grid; Study Corner →
+  notes listing / YouTube section / study assistant chat; Pharmacy → category
+  nav / hero promo / top brands / product grid; News → search bar / image
+  card grid / video feed. 11 new block types + partials
+  (`templates/builder/blocks/*`), each editable (headings, subtext, media
+  URLs) and registered in the shared `render_block_html` map.
+- **Live route rendering** — new `cms_system_blocks` context processor maps
+  the current URL name to its system page and injects visible, content-bearing
+  blocks as `cms_blocks`; the shared `templates/cms/system_zone.html` partial
+  (added to all 5 system templates + `static/css/cms.css`) renders them. No
+  edits → empty zone → default templates render untouched. New
+  `ContentBlock.visible` toggle (Block Manager eye button + save API +
+  `editable_page_view` skips hidden blocks) shows/hides sections like video
+  feeds or chat boxes live.
+- **Builder dashboard UI** — metrics header (total / published / drafts /
+  blocks), client-side search + status/type filter bar, upgraded page cards
+  (live route slug, published/draft badges, block count, last-modified), and
+  the 3 starter blueprints ("Standard Landing Page", "Resource Hub",
+  "Noticeboard Grid") with 1-click **Create from Template** that prefills and
+  submits the create modal.
+- **Models / migration** — `EditablePage.system_key`, `ContentBlock.visible`,
+  11 new block types + schemas (`core/migrations/0043_*`).
+
+### Tests & verification
+
+- `python manage.py check` clean; 17 new CMS tests (registration spec +
+  idempotency + edit preservation, live zone rendering on all 5 routes,
+  dashboard listing/metrics, visibility toggle API + render gating) + 79
+  regression tests (builder backend, touched system pages, news, clubs)
+  green.
+- Verified live: system routes return 200 with no zone before edits; revealing
+  a block renders it on the route; hiding restores defaults; `/builder/`
+  lists all system pages with metrics and blueprints.

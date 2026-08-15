@@ -1,0 +1,23 @@
+{% load builder_tags %}
+{% comment %}
+    Product Grid block — featured medicine cards with prices.
+    Data schema: { "title": "…", "subtitle": "…", "items": [{ "name": "…", "price": "৳10", "url": "…" }] }
+{% endcomment %}
+<section class="builder-block products-block" data-builder-block="products">
+    <div class="bb-inner">
+        {% if data.title %}<h2 class="bb-title" data-edit-field="title">{{ data.title }}</h2>{% endif %}
+        {% if data.subtitle %}<p class="bb-subtitle" data-edit-field="subtitle">{{ data.subtitle }}</p>{% endif %}
+        {% if data.items %}
+        <div class="bb-grid">
+            {% for item in data.items %}
+            <a class="bb-card bb-product" href="{% firstof item.url|safe_url '/pharmacy/' %}">
+                <strong data-edit-field="items.{{ forloop.counter0 }}.name">{{ item.name|default:'Medicine' }}</strong>
+                {% if item.price %}<span class="bb-price" data-edit-field="items.{{ forloop.counter0 }}.price">{{ item.price }}</span>{% endif %}
+            </a>
+            {% empty %}
+            <p class="bb-empty">No products listed.</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</section>

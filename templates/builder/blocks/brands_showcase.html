@@ -1,0 +1,24 @@
+{% load builder_tags %}
+{% comment %}
+    Top Brands Showcase block — a row of brand cards with optional logos.
+    Data schema: { "title": "…", "subtitle": "…", "items": [{ "name": "…", "tagline": "…", "logo_url": "…" }] }
+{% endcomment %}
+<section class="builder-block brands-block" data-builder-block="brands">
+    <div class="bb-inner">
+        {% if data.title %}<h2 class="bb-title" data-edit-field="title">{{ data.title }}</h2>{% endif %}
+        {% if data.subtitle %}<p class="bb-subtitle" data-edit-field="subtitle">{{ data.subtitle }}</p>{% endif %}
+        {% if data.items %}
+        <div class="bb-grid bb-grid--brands">
+            {% for item in data.items %}
+            <div class="bb-card bb-brand">
+                {% if item.logo_url %}<img src="{{ item.logo_url|safe_url }}" alt="{{ item.name }}" loading="lazy">{% endif %}
+                <strong data-edit-field="items.{{ forloop.counter0 }}.name">{{ item.name }}</strong>
+                {% if item.tagline %}<span data-edit-field="items.{{ forloop.counter0 }}.tagline">{{ item.tagline }}</span>{% endif %}
+            </div>
+            {% empty %}
+            <p class="bb-empty">No brands yet.</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</section>

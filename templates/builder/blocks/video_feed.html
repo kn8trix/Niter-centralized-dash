@@ -1,0 +1,29 @@
+{% load builder_tags %}
+{% comment %}
+    YouTube Video Feed block — embedded video cards.
+    Data schema: { "title": "…", "items": [{ "video_id": "…", "title": "…", "channel": "…" }] }
+{% endcomment %}
+<section class="builder-block video-feed-block" data-builder-block="video_feed">
+    <div class="bb-inner">
+        {% if data.title %}<h2 class="bb-title" data-edit-field="title">{{ data.title }}</h2>{% endif %}
+        {% if data.items %}
+        <div class="bb-grid bb-grid--videos">
+            {% for item in data.items %}
+            <article class="bb-card bb-video">
+                {% if item.video_id %}
+                <div class="bb-embed">
+                    <iframe src="https://www.youtube.com/embed/{{ item.video_id }}" title="{{ item.title|default:'Video' }}" allowfullscreen loading="lazy"></iframe>
+                </div>
+                {% endif %}
+                <div class="bb-news-body">
+                    {% if item.title %}<strong data-edit-field="items.{{ forloop.counter0 }}.title">{{ item.title }}</strong>{% endif %}
+                    {% if item.channel %}<span data-edit-field="items.{{ forloop.counter0 }}.channel">{{ item.channel }}</span>{% endif %}
+                </div>
+            </article>
+            {% empty %}
+            <p class="bb-empty">No videos yet.</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</section>

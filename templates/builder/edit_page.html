@@ -117,6 +117,9 @@
                     <span class="pb-type-badge">{{ block.type_label }}</span>
                     <span class="pb-eid">#{{ block.element_id }}</span>
                     <span class="pb-item-actions">
+                        <button type="button" class="pb-icon-btn {% if not block.visible %}off{% endif %}" data-action="toggle" title="{% if block.visible %}Hide section on the live page{% else %}Show section on the live page{% endif %}" aria-label="{% if block.visible %}Hide section{% else %}Show section{% endif %}">
+                            <i class="fa-solid {% if block.visible %}fa-eye{% else %}fa-eye-slash{% endif %}"></i>
+                        </button>
                         <button type="button" class="pb-icon-btn" data-action="edit" title="Edit block" aria-label="Edit block">
                             <i class="fa-solid fa-pen"></i>
                         </button>
@@ -194,6 +197,9 @@
                             <span class="pb-type-badge">{{ block.type_label }}</span>
                             <span class="pb-eid">#{{ block.element_id }}</span>
                             <span class="pb-item-actions">
+                                <button type="button" class="pb-icon-btn {% if not block.visible %}off{% endif %}" data-action="toggle" title="{% if block.visible %}Hide section on the live page{% else %}Show section on the live page{% endif %}" aria-label="{% if block.visible %}Hide section{% else %}Show section{% endif %}">
+                                    <i class="fa-solid {% if block.visible %}fa-eye{% else %}fa-eye-slash{% endif %}"></i>
+                                </button>
                                 <button type="button" class="pb-icon-btn" data-action="style" title="Section style (colors)" aria-label="Section style">
                                     <i class="fa-solid fa-palette"></i>
                                 </button>

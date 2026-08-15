@@ -457,12 +457,44 @@
                 openDeleteConfirm(row.dataset.blockPk, elementId);
             } else if (action === 'style') {
                 openStylePopover(btn, row);
+            } else if (action === 'toggle') {
+                toggleVisibility(elementId);
             }
         });
     }
 
     if (canvas) handleToolbarClick(canvas, '.pb-section');
     if (list) handleToolbarClick(list, '.pb-item');
+
+    /* ------------------------------------------------------------------ */
+    /* Visibility toggle (show / hide a section on the live page)         */
+    /* ------------------------------------------------------------------ */
+    function toggleVisibility(elementId) {
+        var data = blocksData[elementId];
+        if (!data) return;
+        var next = !data.visible;
+        postJson(URLS.blocksSave, {
+            page_slug: PAGE_SLUG,
+            element_id: elementId,
+            visible: next,
+        }).then(function (_a) {
+            if (!_a.ok) {
+                showToast((_a.data && _a.data.message) || 'Could not update visibility.', true);
+                return;
+            }
+            data.visible = next;
+            var buttons = document.querySelectorAll('[data-block-id="' + elementId + '"] [data-action="toggle"]');
+            for (var i = 0; i < buttons.length; i++) {
+                buttons[i].classList.toggle('off', !next);
+                var icon = buttons[i].querySelector('i');
+                icon.className = next ? 'fa-solid fa-eye' : 'fa-solid fa-eye-slash';
+                buttons[i].title = next ? 'Hide section on the live page' : 'Show section on the live page';
+                buttons[i].setAttribute('aria-label', next ? 'Hide section' : 'Show section');
+            }
+            showToast(next ? 'Section shown on the live page.' : 'Section hidden on the live page.');
+            refreshPreview();
+        }).catch(requestFailed);
+    }
 
     /* ------------------------------------------------------------------ */
     /* Inline contenteditable editing + 64-colour style picker             */

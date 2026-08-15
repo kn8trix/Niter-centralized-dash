@@ -45,6 +45,7 @@ from .middleware import _client_ip, is_campus_wifi
 from .forms import SignUpForm
 from .block_sanitizer import sanitize_css, sanitize_html
 from .news_service import fetch_global_news, fetch_youtube_videos
+from .system_pages import SYSTEM_PAGES, register_system_pages
 from .study_service import (
     STUDY_SYSTEM_PROMPT,
     offline_study_response,
@@ -5339,7 +5340,9 @@ def editable_page_view(request, slug):
             'rendered_html': render_block_html(block),
             'style_attr': _style_attr(block.style_json),
         }
-        for block in page.content_blocks.order_by('order', 'id')
+        # Hidden blocks (visibility toggled off in the Block Manager) never
+        # render on the live page.
+        for block in page.content_blocks.filter(visible=True).order_by('order', 'id')
     ]
     # custom_css is injected with ``|safe`` inside a <style> tag — re-run the
     # save-time break-out guard at render time so an admin-edited row can never
@@ -5380,19 +5383,45 @@ def _parse_json_body(request):
 
 @change_editablepage_required
 def builder_dashboard(request):
-    """Super admin console listing every EditablePage and PageTemplate."""
-    pages = (
+    """Super admin console listing every EditablePage and PageTemplate.
+
+    Every visit (re)registers the core system pages + their feature blocks
+    and the starter blueprints — idempotent, so the grid always shows the
+    live system routes even on a fresh database. Each page row also carries
+    its live ``view_url`` (the real system route for registered pages, else
+    ``/page/<slug>/``) and the published/draft metrics for the header.
+    """
+    register_system_pages()
+    pages = list(
         EditablePage.objects
         .select_related('template')
         .annotate(block_count=Count('content_blocks'))
         .order_by('title')
     )
+    system_view_urls = {
+        page['key']: page['route_url']
+        for page in SYSTEM_PAGES
+    }
+    for page in pages:
+        page.view_url = (
+            system_view_urls.get(page.system_key)
+            if page.system_key
+            else reverse('editable_page', args=[page.slug])
+        )
     templates = PageTemplate.objects.order_by('name')
     return render(request, 'builder/dashboard.html', {
         # Admin Console chrome: highlights the Website Builder / CMS nav item.
         'admin_section': 'content',
         'pages': pages,
         'templates': templates,
+        'page_types': EditablePage.PAGE_TYPES,
+        # Header metrics: totals, published/draft split, and total blocks.
+        'metrics': {
+            'total': len(pages),
+            'published': sum(1 for p in pages if p.is_published),
+            'drafts': sum(1 for p in pages if not p.is_published),
+            'blocks': sum(p.block_count for p in pages),
+        },
     })
 
 
@@ -5407,6 +5436,7 @@ def visual_editor(request, page_slug):
             'content_html': block.content_html,
             'content_json': block.content_json or {},
             'style': block.style_json or {},
+            'visible': block.visible,
             'order': block.order,
         }
         for block in page.content_blocks.order_by('order', 'id')
@@ -5589,6 +5619,9 @@ def _save_content_block_data(page, data):
         'content_html': sanitize_html(data.get('content_html', '')) if 'content_html' in data else (existing.content_html if existing else ''),
         'content_json': content_json,
         'style_json': style_json,
+        # Visibility toggle (show/hide individual sections like video feeds
+        # or chat boxes). Only written when the payload carries it.
+        'visible': _as_bool(data['visible']) if 'visible' in data else (existing.visible if existing else True),
     }
     if existing is None:
         # New block: append after the current last block unless the payload
@@ -5646,6 +5679,7 @@ def builder_editor(request, page_slug):
             'type_label': type_labels.get(block.block_type, block.block_type),
             'content_html': block.content_html,
             'content_json': block.content_json or {},
+            'visible': block.visible,
             'order': block.order,
             # Server-rendered section markup for the inline canvas.
             'rendered_html': render_block_html(block),

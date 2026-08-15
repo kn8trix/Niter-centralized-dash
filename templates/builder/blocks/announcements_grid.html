@@ -1,0 +1,23 @@
+{% load builder_tags %}
+{% comment %}
+    Quick Announcements block — a list of short campus announcements.
+    Data schema: { "title": "…", "subtitle": "…", "items": [{ "title": "…", "text": "…" }] }
+{% endcomment %}
+<section class="builder-block announcements-block" data-builder-block="announcements">
+    <div class="bb-inner">
+        {% if data.title %}<h2 class="bb-title" data-edit-field="title">{{ data.title }}</h2>{% endif %}
+        {% if data.subtitle %}<p class="bb-subtitle" data-edit-field="subtitle">{{ data.subtitle }}</p>{% endif %}
+        {% if data.items %}
+        <div class="bb-list">
+            {% for item in data.items %}
+            <article class="bb-announcement">
+                {% if item.title %}<h3 data-edit-field="items.{{ forloop.counter0 }}.title">{{ item.title }}</h3>{% endif %}
+                {% if item.text %}<p data-edit-field="items.{{ forloop.counter0 }}.text">{{ item.text }}</p>{% endif %}
+            </article>
+            {% empty %}
+            <p class="bb-empty">No announcements yet.</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</section>

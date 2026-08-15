@@ -167,6 +167,10 @@ TEMPLATES = [
                 'core.context_processors.custom_pages_nav',
                 # Global display preferences (theme / timezone / density)
                 'core.context_processors.display_prefs',
+                # Customized CMS blocks for the current core system route
+                'core.context_processors.cms_system_blocks',
+                # Customized CMS blocks for the current core system route
+                'core.context_processors.cms_system_blocks',
             ],
         },
     },

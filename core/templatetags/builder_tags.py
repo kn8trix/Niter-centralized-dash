@@ -50,6 +50,18 @@ _BLOCK_PARTIALS = {
     'stats': 'builder/blocks/stats_grid.html',
     'testimonials': 'builder/blocks/testimonial_slider.html',
     'cta': 'builder/blocks/cta_section.html',
+    # System-page feature blocks (extracted core-route components).
+    'announcements': 'builder/blocks/announcements_grid.html',
+    'notes': 'builder/blocks/notes_listing.html',
+    'youtube': 'builder/blocks/youtube_section.html',
+    'chat': 'builder/blocks/chat_container.html',
+    'category_nav': 'builder/blocks/category_nav.html',
+    'promo': 'builder/blocks/promo_banner.html',
+    'brands': 'builder/blocks/brands_showcase.html',
+    'products': 'builder/blocks/product_grid.html',
+    'news_search': 'builder/blocks/news_search.html',
+    'card_grid': 'builder/blocks/card_grid.html',
+    'video_feed': 'builder/blocks/video_feed.html',
 }
 
 

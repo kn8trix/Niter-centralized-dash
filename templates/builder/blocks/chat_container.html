@@ -1,0 +1,15 @@
+{% load builder_tags %}
+{% comment %}
+    Study Assistant Chat Container block — a styled chat prompt card.
+    Data schema: { "title": "…", "subtitle": "…", "placeholder": "…" }
+{% endcomment %}
+<section class="builder-block chat-block" data-builder-block="chat">
+    <div class="bb-inner">
+        {% if data.title %}<h2 class="bb-title" data-edit-field="title">{{ data.title }}</h2>{% endif %}
+        {% if data.subtitle %}<p class="bb-subtitle" data-edit-field="subtitle">{{ data.subtitle }}</p>{% endif %}
+        <div class="bb-chat-prompt" aria-label="{{ data.title|default:'Chat prompt' }}">
+            <span class="bb-chat-avatar"><i class="fa-solid fa-robot"></i></span>
+            <span class="bb-chat-placeholder" data-edit-field="placeholder">{{ data.placeholder|default:'Ask a question…' }}</span>
+        </div>
+    </div>
+</section>

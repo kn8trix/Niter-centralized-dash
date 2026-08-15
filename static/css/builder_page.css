@@ -39,6 +39,15 @@ body.page-builder {
 .pb-icon-btn:hover { background: var(--bg-subtle, #f6f2ea); color: var(--text-primary); transform: translateY(-1px); }
 .pb-icon-btn.danger:hover { background: #fdecec; color: #b91c1c; }
 
+/* Visibility toggle — dimmed when the section is hidden on the live page */
+.pb-icon-btn.off {
+    color: #9ca3af;
+    background: var(--bg-subtle, #f6f2ea);
+    border-style: dashed;
+    opacity: 0.75;
+}
+.pb-icon-btn.off:hover { color: var(--text-primary); opacity: 1; }
+
 .btn.pb-btn {
     display: inline-flex;
     align-items: center;

@@ -1,0 +1,14 @@
+{% load builder_tags %}
+{% comment %}
+    News Search Bar block — a styled search prompt for the news module.
+    Data schema: { "title": "…", "placeholder": "…" }
+{% endcomment %}
+<section class="builder-block news-search-block" data-builder-block="news_search">
+    <div class="bb-inner">
+        {% if data.title %}<h2 class="bb-title" data-edit-field="title">{{ data.title }}</h2>{% endif %}
+        <div class="bb-search" role="search">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <span class="bb-search-placeholder" data-edit-field="placeholder">{{ data.placeholder|default:'Search news…' }}</span>
+        </div>
+    </div>
+</section>

@@ -1,0 +1,260 @@
+/* ============================================================================
+   CampusDash — CMS System Zone
+   ----------------------------------------------------------------------------
+   Styles the live injection zone for customized feature blocks on the core
+   system routes (Landing / Study Corner / Pharmacy / News / Clubs). Uses the
+   shared design tokens so it blends with both light and dark themes.
+   ========================================================================== */
+
+.cms-system-zone {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    margin: 1.5rem 0;
+}
+
+.cms-block {
+    width: 100%;
+}
+
+/* ---- Shared block partial chrome ---------------------------------------- */
+.builder-block .bb-inner {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+
+.bb-title {
+    margin: 0 0 0.35rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-heading, var(--text-primary, #ffffff));
+}
+
+.bb-subtitle {
+    margin: 0 0 1.1rem;
+    font-size: 0.95rem;
+    color: var(--text-muted, #d1d5db);
+}
+
+.bb-hint {
+    margin: 0 0 0.9rem;
+    font-size: 0.85rem;
+    color: var(--text-muted, #d1d5db);
+}
+
+.bb-empty {
+    margin: 0;
+    color: var(--text-muted, #9ca3af);
+    font-size: 0.9rem;
+}
+
+.bb-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+}
+
+.bb-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 1rem;
+    border: 1px solid var(--border-color, #2d2d38);
+    border-radius: 10px;
+    background: var(--bg-card, #1e1e24);
+    color: var(--text-primary, #ffffff);
+    text-decoration: none;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+a.bb-card:hover {
+    border-color: var(--accent-primary, #60a5fa);
+    transform: translateY(-1px);
+}
+
+.bb-card img {
+    width: 100%;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 6px;
+    background: rgba(128, 128, 128, 0.15);
+}
+
+.bb-card strong {
+    font-size: 0.92rem;
+    font-weight: 600;
+}
+
+.bb-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    align-self: flex-start;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--accent-primary, #60a5fa);
+    background: color-mix(in srgb, var(--accent-primary, #60a5fa) 12%, transparent);
+}
+
+.bb-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+
+.bb-chip--link {
+    padding: 0.5rem 1rem;
+    text-decoration: none;
+}
+
+a.bb-chip--link:hover {
+    filter: brightness(1.15);
+}
+
+.bb-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 1.25rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.bb-btn--primary {
+    background: var(--accent-primary, #3b82f6);
+    color: #ffffff;
+}
+
+.bb-btn--primary:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+}
+
+/* ---- Promo banner -------------------------------------------------------- */
+.bb-promo {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 1.5rem;
+    align-items: center;
+}
+
+.bb-promo-image {
+    width: 100%;
+    max-height: 220px;
+    object-fit: cover;
+    border-radius: 10px;
+    background: rgba(128, 128, 128, 0.15);
+}
+
+/* ---- Embed (YouTube) ----------------------------------------------------- */
+.bb-embed {
+    position: relative;
+    width: 100%;
+    padding-bottom: 56.25%;
+    height: 0;
+    overflow: hidden;
+    border-radius: 10px;
+    background: #000;
+}
+
+.bb-embed iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+.bb-grid--videos .bb-embed {
+    padding-bottom: 56.25%;
+}
+
+/* ---- Chat prompt card ---------------------------------------------------- */
+.bb-chat-prompt {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.9rem 1.1rem;
+    border: 1px solid var(--border-color, #2d2d38);
+    border-radius: 12px;
+    background: var(--bg-main, #17171c);
+}
+
+.bb-chat-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 50%;
+    color: #ffffff;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    flex-shrink: 0;
+}
+
+.bb-chat-placeholder {
+    color: var(--text-muted, #9ca3af);
+    font-size: 0.9rem;
+}
+
+/* ---- Search prompt ------------------------------------------------------- */
+.bb-search {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    max-width: 480px;
+    padding: 0.7rem 1rem;
+    border: 1px solid var(--border-color, #2d2d38);
+    border-radius: 999px;
+    background: var(--bg-main, #17171c);
+    color: var(--text-muted, #9ca3af);
+}
+
+.bb-search-placeholder {
+    font-size: 0.9rem;
+}
+
+/* ---- Announcements list -------------------------------------------------- */
+.bb-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+
+.bb-announcement {
+    padding: 0.9rem 1rem;
+    border-left: 3px solid var(--accent-primary, #60a5fa);
+    border-radius: 0 8px 8px 0;
+    background: var(--bg-card, #1e1e24);
+}
+
+.bb-announcement h3 {
+    margin: 0 0 0.2rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-heading, #ffffff);
+}
+
+.bb-announcement p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-muted, #d1d5db);
+}
+
+/* ---- Mobile -------------------------------------------------------------- */
+@media (max-width: 768px) {
+    .bb-promo {
+        grid-template-columns: 1fr;
+    }
+
+    .bb-grid {
+        grid-template-columns: 1fr;
+    }
+}

@@ -80,6 +80,13 @@ class EditablePage(models.Model):
         unique=True,
         help_text="URL endpoint, e.g., 'dashboard', 'research-ai'",
     )
+    system_key = models.CharField(
+        max_length=50,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Registered core system page key (home / study-corner / pharmacy / news / clubs) — set by the register_system_pages command",
+    )
     page_type = models.CharField(max_length=20, choices=PAGE_TYPES, default='global')
     template = models.ForeignKey(
         PageTemplate,
@@ -138,6 +145,19 @@ class ContentBlock(models.Model):
         ('stats', 'Stats Counter Grid'),
         ('testimonials', 'Testimonial Slider'),
         ('cta', 'CTA Section'),
+        # System-page feature blocks (extracted from the core routes so admins
+        # can edit them from the Block Manager and render them live).
+        ('announcements', 'Quick Announcements'),
+        ('notes', 'Notes Listing'),
+        ('youtube', 'YouTube Search & Video Section'),
+        ('chat', 'Study Assistant Chat Container'),
+        ('category_nav', 'Category Navigation Strip'),
+        ('promo', 'Hero Promo Banner'),
+        ('brands', 'Top Brands Showcase'),
+        ('products', 'Product Grid'),
+        ('news_search', 'News Search Bar'),
+        ('card_grid', 'Image Card Grid'),
+        ('video_feed', 'YouTube Video Feed'),
     ]
 
     # Documented JSON shape of ``content_json`` per structured block type.
@@ -205,6 +225,76 @@ class ContentBlock(models.Model):
             'secondary_label': 'Learn More',
             'secondary_url': '/departments/',
         },
+        # --- System-page feature blocks (Website Builder CMS overhaul) ---
+        'announcements': {
+            'title': 'Quick Announcements',
+            'subtitle': 'Optional intro line',
+            'items': [
+                {'title': 'Notice title', 'text': 'Short description…'},
+            ],
+        },
+        'notes': {
+            'title': 'Academic Notes',
+            'subtitle': 'Optional intro line',
+            'items': [
+                {'title': 'Lecture 1', 'course': 'CSE-1101', 'url': '/study-corner/'},
+            ],
+        },
+        'youtube': {
+            'title': 'Video Tutorials & Lectures',
+            'subtitle': 'Optional intro line',
+            'placeholder': 'e.g. Circuit Analysis',
+            'embed_url': 'https://www.youtube.com/embed/…',
+        },
+        'chat': {
+            'title': 'Study Assistant',
+            'subtitle': 'Ask questions about your courses',
+            'placeholder': 'Type a question…',
+        },
+        'category_nav': {
+            'title': 'Shop by Category',
+            'items': [
+                {'label': 'Tablets', 'icon': 'fa-tablets', 'url': '/pharmacy/'},
+            ],
+        },
+        'promo': {
+            'headline': 'Special offer headline',
+            'subtext': 'Supporting line',
+            'image_url': 'https://…',
+            'primary_label': 'Shop Now',
+            'primary_url': '/pharmacy/',
+        },
+        'brands': {
+            'title': 'Top Brands',
+            'subtitle': 'Optional intro line',
+            'items': [
+                {'name': 'Brand', 'tagline': 'Tagline', 'logo_url': 'https://…'},
+            ],
+        },
+        'products': {
+            'title': 'Featured Medicines',
+            'subtitle': 'Optional intro line',
+            'items': [
+                {'name': 'Napa 500mg', 'price': '৳10', 'url': '/pharmacy/'},
+            ],
+        },
+        'news_search': {
+            'title': 'Search the News',
+            'placeholder': 'e.g. bangladesh',
+        },
+        'card_grid': {
+            'title': 'Latest Stories',
+            'subtitle': 'Optional intro line',
+            'items': [
+                {'image_url': 'https://…', 'title': 'Headline', 'source': 'Source', 'url': 'https://…'},
+            ],
+        },
+        'video_feed': {
+            'title': 'Video News',
+            'items': [
+                {'video_id': '…', 'title': 'Video title', 'channel': 'Channel name'},
+            ],
+        },
     }
 
     page = models.ForeignKey(
@@ -227,6 +317,10 @@ class ContentBlock(models.Model):
         help_text='Structured data for faq / stats / testimonials / cta blocks — see BLOCK_SCHEMAS',
     )
     style_json = models.JSONField(default=dict, blank=True)
+    visible = models.BooleanField(
+        default=True,
+        help_text='Show / hide this block on the live page (system-page sections like video feeds or chat boxes)',
+    )
     order = models.PositiveIntegerField(
         default=0,
         db_index=True,

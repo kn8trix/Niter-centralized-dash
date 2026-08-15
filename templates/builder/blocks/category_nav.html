@@ -1,0 +1,21 @@
+{% load builder_tags %}
+{% comment %}
+    Category Navigation Strip block — horizontal chips of pharmacy categories.
+    Data schema: { "title": "…", "items": [{ "label": "…", "icon": "fa-tablets", "url": "…" }] }
+{% endcomment %}
+<section class="builder-block category-nav-block" data-builder-block="category_nav">
+    <div class="bb-inner">
+        {% if data.title %}<h2 class="bb-title" data-edit-field="title">{{ data.title }}</h2>{% endif %}
+        {% if data.items %}
+        <div class="bb-chip-row">
+            {% for item in data.items %}
+            <a class="bb-chip bb-chip--link" href="{% firstof item.url|safe_url '/pharmacy/' %}" data-edit-field="items.{{ forloop.counter0 }}.label">
+                {% if item.icon %}<i class="fa-solid {{ item.icon }}"></i>{% endif %} {{ item.label }}
+            </a>
+            {% empty %}
+            <span class="bb-empty">No categories yet.</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</section>

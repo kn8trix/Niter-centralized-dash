@@ -14,7 +14,7 @@
     <div class="shell">
 
         <!-- ============================================================
-             Intro
+             Intro + metrics
         ============================================================ -->
         <header class="builder-intro">
             <span class="page-badge"><i class="fa-solid fa-wand-magic-sparkles"></i> Super Admin</span>
@@ -22,8 +22,27 @@
             <p>Manage live pages, create new ones from blueprints, and open the visual editor.</p>
         </header>
 
+        <section class="builder-metrics" aria-label="Page metrics">
+            <div class="metric-card">
+                <span class="metric-value">{{ metrics.total }}</span>
+                <span class="metric-label"><i class="fa-solid fa-file-lines"></i> Total Pages</span>
+            </div>
+            <div class="metric-card">
+                <span class="metric-value metric-pub">{{ metrics.published }}</span>
+                <span class="metric-label"><i class="fa-solid fa-circle-check"></i> Published</span>
+            </div>
+            <div class="metric-card">
+                <span class="metric-value metric-draft">{{ metrics.drafts }}</span>
+                <span class="metric-label"><i class="fa-regular fa-circle"></i> Drafts</span>
+            </div>
+            <div class="metric-card">
+                <span class="metric-value metric-blocks">{{ metrics.blocks }}</span>
+                <span class="metric-label"><i class="fa-solid fa-cubes"></i> Content Blocks</span>
+            </div>
+        </section>
+
         <!-- ============================================================
-             Editable pages
+             Editable pages + search / filter bar
         ============================================================ -->
         <section class="panel">
             <div class="panel-head">
@@ -31,14 +50,37 @@
                 <button type="button" class="btn primary panel-btn" id="open-create-modal">
                     <i class="fa-solid fa-plus"></i> New Page
                 </button>
-                <span class="count-badge">{{ pages|length }}</span>
+                <span class="count-badge" id="page-count">{{ pages|length }}</span>
             </div>
 
-            <div class="page-grid">
+            <div class="builder-toolbar">
+                <div class="builder-search">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" id="page-filter" placeholder="Search pages by title or route…"
+                           aria-label="Search pages">
+                </div>
+                <select id="status-filter" class="builder-filter" aria-label="Filter by status">
+                    <option value="all">All statuses</option>
+                    <option value="published">Published</option>
+                    <option value="draft">Draft</option>
+                </select>
+                <select id="type-filter" class="builder-filter" aria-label="Filter by type">
+                    <option value="all">All types</option>
+                    {% for code, label in page_types %}
+                    <option value="{{ code }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="page-grid" id="page-grid">
                 {% for page in pages %}
-                <article class="page-card">
+                <article class="page-card" data-title="{{ page.title|lower }}" data-route="{{ page.slug|lower }}"
+                         data-status="{% if page.is_published %}published{% else %}draft{% endif %}"
+                         data-type="{{ page.page_type }}">
                     <div class="page-card-top">
-                        <span class="type-badge">{{ page.get_page_type_display }}</span>
+                        <span class="type-badge">
+                            {% if page.system_key %}<i class="fa-solid fa-link"></i> System{% else %}{{ page.get_page_type_display }}{% endif %}
+                        </span>
                         {% if page.is_published %}
                         <span class="pub-badge pub"><i class="fa-solid fa-circle-check"></i> Published</span>
                         {% else %}
@@ -47,11 +89,11 @@
                     </div>
 
                     <h3>{{ page.title }}</h3>
-                    <p class="slug">/page/{{ page.slug }}/</p>
+                    <p class="slug"><i class="fa-solid fa-route"></i> {{ page.view_url }}</p>
 
                     <div class="page-meta">
-                        <span title="Template"><i class="fa-regular fa-clone"></i> {{ page.template.name|default:"No template" }}</span>
-                        <span title="Content blocks"><i class="fa-regular fa-square"></i> {{ page.block_count }} blocks</span>
+                        <span title="Content blocks"><i class="fa-solid fa-cubes"></i> {{ page.block_count }} blocks</span>
+                        <span title="Last modified"><i class="fa-regular fa-clock"></i> {{ page.updated_at|date:"M j, Y · H:i" }}</span>
                     </div>
 
                     <div class="page-actions">
@@ -61,7 +103,7 @@
                         <a class="btn ghost" href="{% url 'builder_editor' page.slug %}">
                             <i class="fa-solid fa-layer-group"></i> Block Manager
                         </a>
-                        <a class="btn ghost" href="{% url 'editable_page' page.slug %}" target="_blank" rel="noopener">
+                        <a class="btn ghost" href="{{ page.view_url }}" target="_blank" rel="noopener">
                             <i class="fa-solid fa-arrow-up-right-from-square"></i> View
                         </a>
                     </div>
@@ -70,26 +112,30 @@
                 <p class="empty-note">No pages yet — create your first page with <em>New Page</em> above.</p>
                 {% endfor %}
             </div>
+            <p class="empty-note hidden" id="no-filter-results">No pages match your search.</p>
         </section>
 
         <!-- ============================================================
-             Page templates (blueprints)
+             Page templates (blueprints) — 1-click creation
         ============================================================ -->
         <section class="panel">
             <div class="panel-head">
                 <h2><i class="fa-regular fa-copy"></i> Template Blueprints</h2>
                 <span class="count-badge">{{ templates|length }}</span>
             </div>
+            <p class="panel-sub">Start a new page from a starter blueprint — create it and jump straight into the editor.</p>
 
             <div class="template-grid">
                 {% for template in templates %}
-                <article class="template-card">
+                <article class="template-card" data-template-id="{{ template.id }}" data-template-name="{{ template.name }}">
                     <h3><i class="fa-regular fa-layer-group"></i> {{ template.name }}</h3>
                     <p class="template-desc">{{ template.description|default:"No description" }}</p>
                     <p class="template-meta">
-                        <span>Created {{ template.created_at|date:"M j, Y" }}</span>
                         <span><i class="fa-regular fa-rectangle-list"></i> {{ template.layout_json.sections|length }} sections</span>
                     </p>
+                    <button type="button" class="btn primary template-create-btn">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Create from Template
+                    </button>
                 </article>
                 {% empty %}
                 <p class="empty-note">No templates yet — create blueprints under <em>Core → Page templates</em> in the Django admin.</p>
@@ -157,6 +203,7 @@
             const submitBtn = document.getElementById('create-page-submit');
             const slugInput = document.getElementById('page-slug');
             const titleInput = document.getElementById('page-title');
+            const templateSelect = document.getElementById('page-template');
             const createUrl = "{% url 'create_page' %}";
 
             function getCookie(name) {
@@ -204,6 +251,52 @@
             });
             slugInput.addEventListener('input', function () { slugInput.dataset.touched = '1'; });
 
+            // 1-click blueprint creation: prefill the modal from the card.
+            document.querySelectorAll('.template-create-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    const card = btn.closest('.template-card');
+                    const templateId = card.dataset.templateId;
+                    const templateName = card.dataset.templateName;
+                    const base = templateName.replace(/\s+/g, ' ').trim();
+                    titleInput.value = base;
+                    slugInput.value = base.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+                    delete slugInput.dataset.touched;
+                    templateSelect.value = templateId;
+                    openModal();
+                });
+            });
+
+            // Search / filter the page grid client-side.
+            const grid = document.getElementById('page-grid');
+            const cards = Array.prototype.slice.call(grid.querySelectorAll('.page-card'));
+            const noResults = document.getElementById('no-filter-results');
+            const pageCount = document.getElementById('page-count');
+            const filterInput = document.getElementById('page-filter');
+            const statusFilter = document.getElementById('status-filter');
+            const typeFilter = document.getElementById('type-filter');
+
+            function applyFilters() {
+                const q = (filterInput.value || '').trim().toLowerCase();
+                const status = statusFilter.value;
+                const type = typeFilter.value;
+                let visible = 0;
+                cards.forEach(function (card) {
+                    const matchQ = !q || (card.dataset.title + ' ' + card.dataset.route).indexOf(q) !== -1;
+                    const matchStatus = status === 'all' || card.dataset.status === status;
+                    const matchType = type === 'all' || card.dataset.type === type;
+                    const show = matchQ && matchStatus && matchType;
+                    card.style.display = show ? '' : 'none';
+                    if (show) visible += 1;
+                });
+                noResults.classList.toggle('hidden', visible > 0);
+                pageCount.textContent = visible;
+            }
+
+            [filterInput, statusFilter, typeFilter].forEach(function (el) {
+                el.addEventListener('input', applyFilters);
+                el.addEventListener('change', applyFilters);
+            });
+
             document.getElementById('open-create-modal').addEventListener('click', openModal);
             document.getElementById('create-page-close').addEventListener('click', closeModal);
             document.querySelectorAll('[data-close-modal]').forEach(function (btn) {
@@ -220,7 +313,7 @@
                 e.preventDefault();
                 const title = titleInput.value.trim();
                 const slug = slugInput.value.trim();
-                const templateId = document.getElementById('page-template').value;
+                const templateId = templateSelect.value;
 
                 if (!title) return setError('Please enter a page title.');
                 if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {

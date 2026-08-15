@@ -1,0 +1,20 @@
+{% load static %}
+{% comment %}
+    CMS system zone — the live injection point for customized feature blocks
+    on the core system routes.
+
+    Renders every visible, content-bearing block registered for the current
+    system page (see core.context_processors.cms_system_blocks). When the
+    admin has not customized anything, ``cms_blocks`` is empty and this
+    partial renders nothing, so the page keeps its default template content.
+{% endcomment %}
+{% if cms_blocks %}
+<link rel="stylesheet" href="{% static 'css/cms.css' %}">
+<section class="cms-system-zone" id="cms-system-blocks" aria-label="Custom content">
+    {% for block in cms_blocks %}
+    <div class="cms-block" id="cms-{{ block.element_id }}" data-block="{{ block.element_id }}" data-block-type="{{ block.block_type }}">
+        {{ block.rendered_html|safe }}
+    </div>
+    {% endfor %}
+</section>
+{% endif %}

@@ -7,11 +7,60 @@ without touching template HTML.
 """
 
 import json
+import logging
 
 from django.urls import reverse
 
-from core.models import EditablePage, UserNotificationPreference
+from core.models import ContentBlock, EditablePage, UserNotificationPreference
 from core.roles import get_user_role
+from core.system_pages import SYSTEM_ROUTE_KEYS
+from core.templatetags.builder_tags import render_block_html
+
+logger = logging.getLogger(__name__)
+
+
+def _block_has_content(block):
+    """A block renders only when it actually carries editable content."""
+    if block.content_html and block.content_html.strip():
+        return True
+    data = block.content_json or {}
+    return bool(data) and any(
+        data.get(key) for key in ('headline', 'title', 'items', 'subtext', 'placeholder', 'embed_url')
+    )
+
+
+def cms_system_blocks(request):
+    """Expose customized CMS blocks for the current core system route.
+
+    Core routes (home / study-corner / pharmacy / news / clubs) render their
+    default templates until an admin edits one of the registered feature
+    blocks in the Block Manager and reveals it. When visible, customized
+    blocks are rendered into ``cms_blocks`` and injected by the shared
+    ``cms/system_zone.html`` partial — hidden or empty blocks are skipped, so
+    the fallback defaults stay untouched. Any failure degrades to an empty
+    list (never a 500).
+    """
+    url_name = getattr(request.resolver_match, 'url_name', None)
+    system_key = SYSTEM_ROUTE_KEYS.get(url_name)
+    if not system_key:
+        return {}
+    try:
+        page = EditablePage.objects.filter(system_key=system_key).first()
+        if page is None:
+            return {}
+        blocks = [
+            {
+                'element_id': block.element_id,
+                'block_type': block.block_type,
+                'rendered_html': render_block_html(block),
+            }
+            for block in page.content_blocks.filter(visible=True).order_by('order', 'id')
+            if _block_has_content(block)
+        ]
+        return {'cms_blocks': blocks}
+    except Exception:
+        logger.exception('cms_system_blocks failed for %s', url_name)
+        return {}
 
 
 def display_prefs(request):

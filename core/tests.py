@@ -10684,3 +10684,208 @@ class PharmacyAdminTest(TestCase):
             {'action': 'bogus', 'ids': [str(self.medicine.id)]},
         )
         self.assertEqual(response.status_code, 400)
+
+
+# --- Website Builder / CMS overhaul -------------------------------------------
+# System page registration + feature-block extraction + live route rendering
+# + builder dashboard overhaul + Block Manager visibility toggles.
+
+
+class RegisterSystemPagesTest(TestCase):
+    """register_system_pages() — auto-registration of the core system routes."""
+
+    def test_registers_system_pages_with_feature_blocks(self):
+        from core.system_pages import register_system_pages
+        register_system_pages()
+        keys = set(EditablePage.objects.filter(system_key__isnull=False).values_list('system_key', flat=True))
+        self.assertEqual(keys, {'home', 'study-corner', 'pharmacy', 'news', 'clubs'})
+        home = EditablePage.objects.get(system_key='home')
+        self.assertEqual(home.slug, 'home')
+        self.assertEqual(home.is_published, True)
+        # Landing features: hero banner + announcements + feature grid.
+        self.assertEqual(
+            set(home.content_blocks.values_list('element_id', flat=True)),
+            {'hero-banner', 'quick-announcements', 'feature-grid'},
+        )
+        # Seeded blocks start hidden so the default template keeps rendering.
+        self.assertFalse(home.content_blocks.first().visible)
+
+    def test_study_corner_blocks_per_spec(self):
+        from core.system_pages import register_system_pages
+        register_system_pages()
+        page = EditablePage.objects.get(system_key='study-corner')
+        self.assertEqual(
+            set(page.content_blocks.values_list('element_id', flat=True)),
+            {'notes-listing', 'youtube-section', 'study-assistant'},
+        )
+
+    def test_pharmacy_blocks_per_spec(self):
+        from core.system_pages import register_system_pages
+        register_system_pages()
+        page = EditablePage.objects.get(system_key='pharmacy')
+        self.assertEqual(
+            set(page.content_blocks.values_list('element_id', flat=True)),
+            {'category-nav', 'hero-promo', 'top-brands', 'product-grid'},
+        )
+
+    def test_news_blocks_per_spec(self):
+        from core.system_pages import register_system_pages
+        register_system_pages()
+        page = EditablePage.objects.get(system_key='news')
+        self.assertEqual(
+            set(page.content_blocks.values_list('element_id', flat=True)),
+            {'news-search', 'image-card-grid', 'video-feed'},
+        )
+
+    def test_seeds_starter_blueprints(self):
+        from core.system_pages import register_system_pages
+        register_system_pages()
+        names = set(PageTemplate.objects.values_list('name', flat=True))
+        self.assertEqual(
+            names,
+            {'Standard Landing Page', 'Resource Hub', 'Noticeboard Grid'},
+        )
+
+    def test_idempotent_and_preserves_admin_edits(self):
+        from core.system_pages import register_system_pages
+        register_system_pages()
+        register_system_pages()
+        self.assertEqual(EditablePage.objects.filter(system_key__isnull=False).count(), 5)
+        # An admin edit (visibility + content) survives a re-register.
+        page = EditablePage.objects.get(system_key='home')
+        block = page.content_blocks.get(element_id='hero-banner')
+        block.visible = True
+        block.content_json['headline'] = 'Custom headline'
+        block.save()
+        register_system_pages()
+        block.refresh_from_db()
+        self.assertTrue(block.visible)
+        self.assertEqual(block.content_json['headline'], 'Custom headline')
+
+    def test_management_command_runs(self):
+        from django.core.management import call_command
+        call_command('register_system_pages', verbosity=0)
+        self.assertEqual(EditablePage.objects.filter(system_key='home').count(), 1)
+
+
+class SystemCmsZoneTest(TestCase):
+    """Live route rendering — CMS blocks appear only after an admin reveals them."""
+
+    def setUp(self):
+        from core.system_pages import register_system_pages
+        register_system_pages()
+
+    def test_system_routes_render_defaults_without_zone(self):
+        for url in ('/', '/study-corner/', '/pharmacy/', '/news/', '/clubs/'):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertNotContains(response, 'cms-system-zone')
+
+    def test_revealed_block_renders_live_on_route(self):
+        page = EditablePage.objects.get(system_key='study-corner')
+        block = page.content_blocks.get(element_id='notes-listing')
+        block.visible = True
+        block.content_json['title'] = 'My Custom Notes Title'
+        block.save()
+        response = self.client.get('/study-corner/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'cms-system-zone')
+        self.assertContains(response, 'cms-notes-listing')
+        self.assertContains(response, 'My Custom Notes Title')
+
+    def test_hidden_block_restores_defaults(self):
+        page = EditablePage.objects.get(system_key='news')
+        block = page.content_blocks.get(element_id='video-feed')
+        block.visible = True
+        block.save()
+        self.assertContains(self.client.get('/news/'), 'cms-video-feed')
+        block.visible = False
+        block.save()
+        response = self.client.get('/news/')
+        self.assertNotContains(response, 'cms-system-zone')
+
+    def test_unregistered_route_has_no_cms_context(self):
+        response = self.client.get('/transport/')
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'cms-system-zone')
+
+
+class BuilderDashboardSystemPagesTest(TestCase):
+    """/builder/ — system pages listed, metrics header, blueprints, 1-click create."""
+
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(
+            username='cms_root', email='cms@niter.edu.bd', password='rootpass123',
+        )
+        self.client.login(username='cms_root', password='rootpass123')
+
+    def test_dashboard_lists_system_pages_and_metrics(self):
+        response = self.client.get(reverse('builder_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        # Auto-registration happened on visit.
+        self.assertEqual(EditablePage.objects.filter(system_key='home').count(), 1)
+        self.assertContains(response, 'Study Corner')
+        self.assertContains(response, 'Online Pharmacy')
+        self.assertContains(response, 'Global News')
+        self.assertContains(response, 'Clubs Hub')
+        self.assertContains(response, 'metric-card')
+        self.assertContains(response, 'page-filter')
+        self.assertContains(response, 'Standard Landing Page')
+        self.assertContains(response, 'Create from Template')
+
+    def test_dashboard_shows_live_route_slug(self):
+        response = self.client.get(reverse('builder_dashboard'))
+        self.assertContains(response, '/study-corner/')
+        self.assertContains(response, '/pharmacy/')
+
+    def test_requires_permission(self):
+        self.client.logout()
+        response = self.client.get(reverse('builder_dashboard'))
+        self.assertEqual(response.status_code, 302)  # anonymous → login
+
+
+class ContentBlockVisibilityTest(TestCase):
+    """ContentBlock.visible — save API toggle + live render gating."""
+
+    def setUp(self):
+        from core.system_pages import register_system_pages
+        register_system_pages()
+        self.superuser = User.objects.create_superuser(
+            username='vis_root', email='v@niter.edu.bd', password='rootpass123',
+        )
+        self.client.login(username='vis_root', password='rootpass123')
+        self.page = EditablePage.objects.get(system_key='home')
+        self.block = self.page.content_blocks.get(element_id='hero-banner')
+
+    def test_save_api_toggles_visibility(self):
+        self.block.visible = False
+        self.block.save()
+        response = self.client.post(
+            reverse('builder_blocks_save'),
+            data=json.dumps({
+                'page_slug': self.page.slug,
+                'element_id': 'hero-banner',
+                'visible': True,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.block.refresh_from_db()
+        self.assertTrue(self.block.visible)
+
+    def test_editable_page_view_skips_hidden_blocks(self):
+        self.block.visible = False
+        self.block.save()
+        response = self.client.get(reverse('editable_page', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'cms-hero-banner')
+        # The rendered block (partial output) must be absent too.
+        self.assertNotContains(response, 'hero-block')
+
+    def test_visible_blocks_render_on_editable_page(self):
+        self.block.visible = True
+        self.block.save()
+        response = self.client.get(reverse('editable_page', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'hero-block')
