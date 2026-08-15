@@ -5342,6 +5342,10 @@ The template already loads the theme system correctly (`theme.css` +
 **Date:** 13 August 2026  
 **Branch:** main
 
+> **Superseded by §111** — the email OTP verification was removed; signup now
+> creates the account immediately, signs the student in and redirects to the
+> dashboard. The flow below is historical.
+
 Self-registration now verifies the student's email address before any
 account is created: step 1 collects the signup form and emails a 6-digit
 code; step 2 confirms the code and only then persists the `User` +
@@ -6299,3 +6303,38 @@ present on `main`. This pass found and fixed the real root cause.
 - Full suite under the exact CI environment (`ALLOWED_HOSTS='' DEBUG=true
   SECRET_KEY=ci-test-key TESTING=true python manage.py test`):
   **854 tests OK** (was FAILED failures=2 before the fix).
+
+---
+
+## 111. Remove Email OTP Verification from Signup — Direct Registration
+
+**Date:** 15 August 2026  
+**Branch:** main
+
+The two-step email verification (§92) is gone: signup now creates the account
+immediately instead of emailing a 6-digit code and gating account creation
+behind a verify step — registration works end-to-end with no email server
+connection.
+
+### Changes
+
+- `core/views.py` — `signup_view` now validates `SignUpForm`, creates the
+  `User` + `StudentProfile` right away (`is_active=True` via `create_user`),
+  signs the student in (`auth_login`) and redirects to their dashboard
+  (`/dashboard/student/`). Deleted `verify_email_view`, `_generate_verify_code`,
+  `_verify_code_hash`, `_send_verify_code_email`, `_pending_signup`,
+  `_mask_email`, the code constants, and the now-unused `hashlib` / `hmac` /
+  `time` imports.
+- `core/urls.py` — dropped the `signup/verify/` route (`verify_email`).
+- `templates/verify_email.html` — deleted; `templates/signup.html` no longer
+  reads "Step 1 of 2" (subtitle + button now say "Create Account").
+- `static/css/signup.css` — removed the dead `.verify-code-input` /
+  `.field-help` / `.auth-resend-*` styles.
+- `core/tests.py` — `TwoStepSignupTest` replaced by `SignupViewTest` (creates
+  user + profile, signs in, redirects); signup tests now assert immediate
+  account creation with `is_active=True` and no email/OTP dependency.
+
+### Tests & verification
+
+- `python manage.py check` clean; signup tests green — registration no longer
+  requires an email server connection.
