@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- White alert triangle (exclamation) — notification small icon. Android
+     tints status-bar icons, so the glyph is drawn in pure white. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Triangle outline -->
+    <path
+        android:pathData="M12,3.2 L22.4,20.8 L1.6,20.8 Z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <!-- Exclamation bar -->
+    <path
+        android:pathData="M12,8.2 L12,14.6"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round" />
+
+    <!-- Exclamation dot -->
+    <path
+        android:pathData="M12,18.2 m-1.1,0 a1.1,1.1 0 1,0 2.2,0 a1.1,1.1 0 1,0 -2.2,0"
+        android:fillColor="#FFFFFF" />
+</vector>

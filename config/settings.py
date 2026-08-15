@@ -391,6 +391,14 @@ LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/dashboard/'
 LOGOUT_REDIRECT_URL = '/'
 
+# Persistent sessions — students stay logged in for a full year (or until
+# they explicitly tap "Log Out"): the session cookie survives browser/app
+# restarts, so the Android WebView wrapper lands directly on the dashboard
+# without re-authenticating. ``SESSION_COOKIE_AGE`` is 31,536,000 s (365 days)
+# and matches the 1-year HSTS window used elsewhere in this file.
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_COOKIE_AGE = 31536000  # 365 days — 31,536,000 seconds
+
 # Django's default password policy is EMPTY unless configured — without this
 # block, ``validate_password`` would accept "password" / "12345678" and the
 # registration form would never run the common-password check. These four

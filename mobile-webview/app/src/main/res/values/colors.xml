@@ -2,4 +2,10 @@
 <resources>
     <!-- Brand ink (Main #2B2927) used as the adaptive-icon background -->
     <color name="ic_launcher_background">#2B2927</color>
+
+    <!-- Splash + notification brand palette -->
+    <color name="brand_ink">#2B2927</color>
+    <color name="brand_paper">#FBF9F5</color>
+    <color name="brand_beige">#EADCC9</color>
+    <color name="brand_sky">#0284C7</color>
 </resources>

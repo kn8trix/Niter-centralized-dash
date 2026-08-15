@@ -87,12 +87,22 @@ def send_emergency_push(alert):
     # app team; with no token registry in this repo we broadcast via topics.
     # Topic messaging lets the Android app subscribe on first launch without
     # any per-device token management on the server.
+    # ``play_alarm_sound`` tells the Android app whether to loop the bundled
+    # siren (``res/raw/emergency_siren.wav``) until dismissed; ``banner`` is
+    # an optional picture URL the app renders as a BigPicture notification
+    # (the app falls back to its bundled banner image when absent).
+    data = dict(
+        EMERGENCY_DATA,
+        severity=alert.severity_level or 'WARNING',
+        play_alarm_sound=str(bool(alert.play_alarm_sound)).lower(),
+        banner=getattr(alert, 'banner_url', '') or '',
+    )
     message = messaging.Message(
         notification=messaging.Notification(
             title='🚨 EMERGENCY ALERT: %s' % alert.title,
             body=alert.message,
         ),
-        data=dict(EMERGENCY_DATA, severity=alert.severity_level or 'WARNING'),
+        data=data,
         android=messaging.AndroidConfig(
             priority='high',
             notification=messaging.AndroidNotification(

@@ -14,4 +14,10 @@
         <item name="colorPrimaryDark">#2B2927</item>
         <item name="colorAccent">#2B2927</item>
     </style>
+
+    <!-- Splash theme — charcoal backdrop so the logo fades in cleanly with no
+         white flash before SplashActivity's layout draws. -->
+    <style name="Theme.NiterDash.Splash" parent="Theme.NiterDash">
+        <item name="android:windowBackground">#2B2927</item>
+    </style>
 </resources>

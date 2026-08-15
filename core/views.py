@@ -153,7 +153,15 @@ from services.emergency_push import send_emergency_push  # noqa: E402
 
 
 def public_home(request):
-    """Public homepage (landing page) served at the root URL."""
+    """Public homepage (landing page) served at the root URL.
+
+    Signed-in users are bounced straight to their role dashboard (student →
+    ``/dashboard/student/``, admin → ``/dashboard/admin/``, club →
+    ``/dashboard/club/``) instead of the hero landing page, so the Android
+    WebView wrapper and every returning session land directly on the portal
+    with one tap. Guests keep the public landing page (hero + Login)."""
+    if request.user.is_authenticated:
+        return redirect(role_home_path(get_user_role(request.user)))
     return render(request, 'index.html')
 
 

@@ -1,19 +1,30 @@
-# Niter Dash — Android WebView Wrapper
+# Niter Campus Hub — Student Edition (Android)
 
-A lightweight Android app that renders **Niter Centralized Dash** in a full-screen
-`WebView`, giving students a native launcher for the campus dashboard
-(`https://niter-centralized-dash.onrender.com`).
+A full-fledged, **student-only** native Android app for **Niter Centralized
+Dash**. It renders the campus portal (`https://niter-centralized-dash.onrender.com`)
+in a full-screen `WebView` and adds native polish on top: a branded splash +
+launcher icon, persistent login, direct dashboard landing, native permissions,
+Firebase Cloud Messaging push with **picture banners**, and an **emergency
+siren** that breaks through silent mode.
 
 ## Features
 
 | Requirement | Implementation |
 |---|---|
+| Branded splash | `SplashActivity` — charcoal screen with the campus-hub logo + "NITER Campus Hub — Student Edition", then a hand-off to the WebView shell |
+| Custom app icon | PNG `ic_launcher` / `ic_launcher_round` at every mipmap density (mdpi→xxxhdpi) — charcoal rounded square/circle with a beige "N" monogram (regenerate with `scripts/generate_assets.py`) |
+| Persistent login | The 1-year Django session cookie (`SESSION_COOKIE_AGE = 31536000`) is stored by `CookieManager`, so students stay signed in between launches until they tap **Log Out** |
+| Direct dashboard landing | `/` redirects authenticated sessions straight to `/dashboard/student/`; guests get the hero + Login |
+| Student-only shell | Staff/admin URLs (`/builder/`, `/admin/`, `/dashboard/admin/`, `/dashboard/club/`, `/dashboard/medical/`, `/medical/admin/`, `/host/`) are blocked inside the wrapper and bounced to the student dashboard — defense in depth on top of the server-side RBAC |
+| Native permissions | INTERNET, ACCESS_NETWORK_STATE, CAMERA, READ_MEDIA_IMAGES, READ/WRITE_EXTERNAL_STORAGE (legacy caps), POST_NOTIFICATIONS (runtime-requested on Android 13+), VIBRATE, WAKE_LOCK |
+| FCM push w/ picture banners | `EmergencyMessagingService` subscribes to the `emergency_alerts` topic; pushes render as BigPicture notifications (push `banner` URL, or the bundled `emergency_banner.png`) |
+| Emergency siren controls | High-importance `emergency_alerts` channel plays `res/raw/emergency_siren.wav` + vibrates; `play_alarm_sound` data loops the siren until dismissed via the **Stop Siren** notification action or by opening the app |
 | Full-screen web experience | `Theme.AppCompat.NoActionBar` + `android:windowFullscreen` + `WindowInsetsControllerCompat` hides the ActionBar, status bar and navigation bar |
-| JavaScript + storage | `setJavaScriptEnabled(true)`, `setDomStorageEnabled(true)`, `setDatabaseEnabled(true)`, `setAllowFileAccess(true)` (see `configureWebView()` in `MainActivity.kt`) |
-| Google OAuth works | `chromeLikeUserAgent()` strips the `Version/4.0` marker and normalises the Chrome token, so Google's "disallowed_useragent" block never triggers; allauth + Drive callbacks stay in the WebView |
-| External links | `shouldOverrideUrlLoading` keeps all `http`/`https` (Google auth, payments) inside the WebView and hands `mailto:`/`tel:`/`intent:`/`whatsapp://` to external apps |
+| JavaScript + storage | `setJavaScriptEnabled(true)`, `setDomStorageEnabled(true)`, `setDatabaseEnabled(true)`, `setAllowFileAccess(true)` (see `configureWebView()`) |
+| Google OAuth works | `chromeLikeUserAgent()` strips the `Version/4.0` marker and normalises the Chrome token, so Google's "disallowed_useragent" block never triggers |
+| External links | `shouldOverrideUrlLoading` keeps `http`/`https` inside the WebView and hands `mailto:`/`tel:`/`intent:`/`whatsapp://` to external apps |
 | Hardware BACK | `OnBackPressedCallback` walks `WebView` history first, exits only at the root page |
-| File uploads | `WebChromeClient.onShowFileChooser` → system picker (via `ActivityResultContracts.StartActivityForResult`), used by the Notes Engine and the Reports & Feedback attachments |
+| File uploads | `WebChromeClient.onShowFileChooser` → system picker (Notes Engine, Reports attachments, profile photos) |
 | HTTPS enforced | `network_security_config.xml` forbids cleartext everywhere except loopback hosts for local dev |
 
 ## Project layout
@@ -21,16 +32,47 @@ A lightweight Android app that renders **Niter Centralized Dash** in a full-scre
 ```
 mobile-webview/
 ├── settings.gradle.kts          # repo config (Google + Maven Central)
-├── build.gradle.kts             # AGP 8.10.1, Kotlin 2.0.21
+├── build.gradle.kts             # AGP 8.10.1, Kotlin 2.0.21, google-services 4.4.2
 ├── gradle.properties
 ├── gradle/wrapper/gradle-wrapper.properties
+├── scripts/
+│   └── generate_assets.py       # regenerates launcher icons + siren WAV + banner (Pillow)
 └── app/
-    ├── build.gradle.kts         # namespace com.niterhub.dash, minSdk 26, targetSdk 36
+    ├── build.gradle.kts         # com.niterhub.dash, minSdk 26, targetSdk 36, firebase-messaging
     └── src/main/
-        ├── AndroidManifest.xml
-        ├── java/com/niterhub/dash/MainActivity.kt
-        └── res/                 # layout, theme, strings, adaptive icon, xml/network_security_config
+        ├── AndroidManifest.xml  # permissions, splash launcher, FCM service
+        ├── java/com/niterhub/dash/
+        │   ├── SplashActivity.kt            # branded splash → WebView shell
+        │   ├── MainActivity.kt              # WebView shell + student-only guard + FCM subscribe
+        │   ├── EmergencyMessagingService.kt # FCM: emergency/general pushes, siren control
+        │   └── NotificationHelper.kt        # channels, BigPicture banners, siren loop
+        └── res/
+            ├── drawable/        # adaptive foreground, alert small-icon, emergency banner
+            ├── mipmap-*/        # ic_launcher + ic_launcher_round PNGs (all densities)
+            ├── raw/             # emergency_siren.wav (bundled siren)
+            ├── layout/          # WebView + progress bar + splash screen
+            └── values/ xml/     # strings, theme (incl. splash), colors, network security config
 ```
+
+## Firebase Cloud Messaging (push notifications)
+
+Push is **plumbed but Firebase-optional**: the app builds and runs perfectly
+without a Firebase project — the FCM service is simply never invoked. To turn
+push on:
+
+1. **Create a Firebase project** at <https://console.firebase.google.com> and
+   add an **Android app** with package name `com.niterhub.dash`.
+2. **Download `google-services.json`** from Firebase console → Project settings
+   → Your apps → `com.niterhub.dash`, and place it in
+   `mobile-webview/app/google-services.json`. The Gradle plugin auto-activates
+   on the next sync (the build script applies it only when the file exists).
+3. **Server side**: set `FIREBASE_CREDENTIALS` (Firebase service-account JSON,
+   inline or path) in the Django environment. The backend
+   (`services/emergency_push.py`) broadcasts Emergency Alerts to the
+   `emergency_alerts` **topic** — the app subscribes on first launch, so no
+   per-device token management is needed.
+4. Rebuild the APK. Emergency broadcasts now push with a picture banner, siren
+   sound, and vibration.
 
 ## Requirements
 
@@ -38,7 +80,7 @@ mobile-webview/
   JDK 17+ and will auto-provision the Gradle wrapper).
 - **Android SDK** — `platforms;android-36` and `build-tools;35.0.0` (Android
   Studio's SDK Manager installs these automatically on first sync).
-- Internet access on first build (Gradle downloads AGP/Kotlin/AndroidX).
+- Internet access on first build (Gradle downloads AGP/Kotlin/AndroidX/Firebase).
 
 ## Open & build the APK (Android Studio)
 
@@ -70,7 +112,17 @@ Edit the `startUrl` constant at the top of `MainActivity.kt`:
 private val startUrl = "https://niter-centralized-dash.onrender.com"
 ```
 
-Rebuild and reinstall — no other changes are needed.
+Rebuild and reinstall — no other changes are needed. The student-dashboard
+bounce URL is derived from it (`$startUrl/dashboard/student/`).
+
+## Regenerating assets
+
+Launcher icons, the emergency banner and the siren WAV are generated (Pillow,
+pure-Python WAV):
+
+```bash
+python3 mobile-webview/scripts/generate_assets.py
+```
 
 ## Troubleshooting
 
@@ -84,6 +136,11 @@ Rebuild and reinstall — no other changes are needed.
 - **App shows a blank screen** — check the device has an internet connection
   and that `https://niter-centralized-dash.onrender.com` is reachable; try
   `adb logcat | grep chromium` for WebView errors.
+- **No push notifications arrive** — confirm `google-services.json` is in
+  `mobile-webview/app/`, the APK was rebuilt after adding it, and the server
+  has `FIREBASE_CREDENTIALS` set. On Android 13+ the notification permission
+  must be granted (the app asks on first launch; enable it in Settings if
+  denied).
 - **Cleartext blocked when testing against a LAN dev server** — the network
   security config only whitelists loopback hosts; if you point `startUrl` at a
   machine on your LAN (e.g. `http://192.168.x.x:8000`) from a physical device,
@@ -96,4 +153,7 @@ Rebuild and reinstall — no other changes are needed.
   and `allowUniversalAccessFromFileURLs` are explicitly `false` so untrusted
   `file://` content cannot reach the network or other origins.
 - The WebView keeps session cookies, so students stay logged in between app
-  launches (Django session cookie persists until it expires).
+  launches (1-year Django session cookie). Logging out in the app clears the
+  session server-side.
+- The wrapper blocks staff/admin areas at the navigation layer (student-only
+  edition); the server enforces the same RBAC independently.

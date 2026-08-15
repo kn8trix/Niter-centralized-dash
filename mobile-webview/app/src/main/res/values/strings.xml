@@ -1,4 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Niter Dash</string>
+    <string name="app_name">NITER Campus Hub</string>
+
+    <!-- Splash screen -->
+    <string name="splash_title">NITER Campus Hub</string>
+    <string name="splash_subtitle">Student Edition</string>
+
+    <!-- Native notifications -->
+    <string name="channel_emergency">Emergency Alerts</string>
+    <string name="channel_general">Campus Notifications</string>
+    <string name="channel_emergency_desc">Campus-wide emergency broadcasts — plays the siren and bypasses silent mode.</string>
+    <string name="channel_general_desc">General campus and pharmacy notifications.</string>
+    <string name="notif_stop_siren">Stop Siren</string>
+    <string name="notif_open">Open</string>
 </resources>

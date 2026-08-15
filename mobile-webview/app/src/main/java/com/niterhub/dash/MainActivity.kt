@@ -1,10 +1,14 @@
 package com.niterhub.dash
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.webkit.CookieManager
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -15,19 +19,28 @@ import android.widget.ProgressBar
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 /**
- * Lightweight WebView wrapper for the Niter Centralized Dash web app.
+ * WebView shell for the Niter Campus Hub — Student Edition.
  *
  * - Renders [startUrl] full-screen (no ActionBar / status bar — the dashboard
- *   IS the interface).
+ *   IS the interface). A logged-in student lands straight on the dashboard:
+ *   the root URL redirects authenticated sessions to ``/dashboard/student/``
+ *   and the persistent 1-year session cookie survives app restarts.
  * - Advertises a standard mobile Chrome User-Agent so Google OAuth does not
  *   reject the embedded browser with "disallowed_useragent".
+ * - **Student-only shell**: staff/admin URLs (builder, Django admin, medical
+ *   admin, club management) are blocked inside the wrapper and bounced to the
+ *   student dashboard — defense in depth on top of the server-side RBAC.
  * - Keeps Google auth redirects (accounts.google.com, drive callbacks) and the
  *   app itself inside the WebView; hands non-http(s) schemes (mailto:/tel:/
  *   intent:/whatsapp://…) to external apps.
+ * - Registers for Firebase Cloud Messaging (emergency + campus pushes) and
+ *   requests the POST_NOTIFICATIONS permission on Android 13+ — all guarded,
+ *   so the app works untouched until ``google-services.json`` is added.
  * - Hardware BACK walks the WebView history before exiting the app.
  * - Supports file uploads (Notes Engine, Reports attachments, profile photos)
  *   through [android.webkit.WebChromeClient.onShowFileChooser].
@@ -37,11 +50,33 @@ class MainActivity : AppCompatActivity() {
     /** Point the app at a different deployment by changing this constant. */
     private val startUrl = "https://niter-centralized-dash.onrender.com"
 
+    private val studentDashboardUrl = "$startUrl/dashboard/student/"
+
+    /**
+     * Staff/admin areas hidden from the student wrapper. Path prefixes are
+     * matched so deep links and server redirects into these areas are bounced
+     * back to the student dashboard.
+     */
+    private val staffAreaPrefixes = listOf(
+        "/builder/",
+        "/admin/",
+        "/django-admin/",
+        "/dashboard/admin/",
+        "/dashboard/club/",
+        "/dashboard/medical/",
+        "/medical/admin/",
+        "/host/",
+    )
+
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
 
     /** Held while the system file picker is open; cleared when the result lands. */
     private var pendingFileCallback: ValueCallback<Array<Uri>>? = null
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* Result is non-blocking — the OS shows the channel settings. */ }
 
     private val filePicker = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -89,10 +124,27 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        // Native push: channels + topic subscription + notification permission.
+        NotificationHelper.ensureChannels(this)
+        EmergencyMessagingService.subscribe(this)
+        requestNotificationPermissionIfNeeded()
+
         if (savedInstanceState == null) {
             webView.loadUrl(startUrl)
         } else {
             webView.restoreState(savedInstanceState)
+        }
+    }
+
+    /** Ask for POST_NOTIFICATIONS on Android 13+ (the manifest declares it). */
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            val granted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 
@@ -113,6 +165,12 @@ class MainActivity : AppCompatActivity() {
         settings.allowFileAccessFromFileURLs = false
         settings.allowUniversalAccessFromFileURLs = false
 
+        // Persistent login: the 1-year Django session cookie is kept on disk,
+        // so students stay signed in between app launches until they tap
+        // "Log Out". Third-party cookies are kept for the Google OAuth flow.
+        CookieManager.getInstance().setAcceptCookie(true)
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+
         // Google OAuth blocks embedded WebViews that advertise "Version/4.0".
         // Rebuild the UA into a standard mobile-Chrome-looking string instead.
         settings.userAgentString = chromeLikeUserAgent(settings.userAgentString)
@@ -131,6 +189,17 @@ class MainActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
                 val uri = Uri.parse(url ?: return false)
                 return handleNavigation(uri)
+            }
+
+            // Catch server-side redirects (e.g. role home routing after a
+            // fresh login) that land in a staff area and bounce them back.
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                val uri = url?.let { Uri.parse(it) }
+                if (uri != null && isStaffArea(uri) && webView.url != studentDashboardUrl) {
+                    webView.stopLoading()
+                    webView.loadUrl(studentDashboardUrl)
+                }
             }
         }
 
@@ -172,6 +241,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** True when the URL points into a staff/admin area the student app hides. */
+    private fun isStaffArea(uri: Uri): Boolean {
+        val path = uri.path ?: return false
+        return staffAreaPrefixes.any { prefix ->
+            path == prefix.trimEnd('/') || path.startsWith(prefix)
+        }
+    }
+
     /**
      * Rewrites the embedded-WebView User-Agent into a normal mobile-Chrome UA.
      *
@@ -196,9 +273,15 @@ class MainActivity : AppCompatActivity() {
      * Decides where a navigation goes.
      *
      * @return `true` if the WebView should NOT load the URL (we handled it by
-     *         handing it to an external app), `false` to load it in the WebView.
+     *         bouncing it or handing it to an external app), `false` to load
+     *         it in the WebView.
      */
     private fun handleNavigation(url: Uri): Boolean {
+        // Student-only shell: never open staff/admin areas inside the app.
+        if (isStaffArea(url)) {
+            webView.loadUrl(studentDashboardUrl)
+            return true
+        }
         return when (url.scheme?.lowercase()) {
             // http/https — including Google OAuth (accounts.google.com), the
             // allauth callback and payment pages — stay inside the WebView.
@@ -209,6 +292,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        webView.onResume()
+        // The app is open — hand the siren over to the in-app banner so the
+        // native loop and the WebView siren never play at the same time.
+        EmergencyMessagingService.stopSiren(this)
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         webView.saveState(outState)
@@ -217,11 +308,6 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         webView.onPause()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        webView.onResume()
     }
 
     override fun onDestroy() {

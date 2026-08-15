@@ -587,6 +587,39 @@ class RoleRoutingTest(TestCase):
                 self.assertIn(reverse('login'), response.url)
 
 
+class LandingRedirectTest(TestCase):
+    """Authenticated users skip the hero landing page — the root URL
+    redirects straight to their role dashboard (the Android WebView wrapper
+    relies on this for one-tap dashboard landing). Guests keep the hero."""
+
+    def setUp(self):
+        self.student = User.objects.create_user(username='landing_stu', password='x12345678')
+        self.staff = User.objects.create_user(username='landing_adm', password='x12345678', is_staff=True)
+        self.club = Club.objects.create(name='Landing Club', slug='landing-club')
+
+    def test_anonymous_keeps_hero_landing_page(self):
+        response = self.client.get(reverse('home'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Welcome to CampusDash')
+        self.assertContains(response, 'btn-pharmacy-hero')
+
+    def test_student_redirected_past_hero_to_student_dashboard(self):
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('home'))
+        self.assertRedirects(response, reverse('student_dashboard'))
+
+    def test_staff_redirected_past_hero_to_admin_dashboard(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse('home'))
+        self.assertRedirects(response, reverse('admin_dashboard'))
+
+    def test_club_manager_redirected_past_hero_to_club_workspace(self):
+        ClubAccount.objects.create(user=self.student, club=self.club, role='manager')
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('home'))
+        self.assertRedirects(response, reverse('club_dashboard'))
+
+
 class ToastPartialRenderTest(TestCase):
     """The shared toast partial must never render recursively.
 

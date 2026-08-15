@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 122 | Student Edition Android app — branded splash + launcher icons, persistent sessions, direct dashboard landing, native permissions, FCM push with picture banners, emergency siren | *(pending)* |
 | 121 | Public pharmacy storefront — guest browsing/cart, hero button contrast fix, auto-seeded BD catalog | `29688ff` |
 | 120 | Club dashboard sub-routes + event banner upload + event visibility sync to student portals | `5c90964` |
 | 119 | Fix visual builder empty canvas — default block HTML backfill, preview-mode canvas, template-cache flush on save/publish | `a164e8a` |
@@ -6911,3 +6912,85 @@ medicine catalog now auto-seeds on every deploy.
 - Rendered pages verified: `/` returns 200 with the new button; `/pharmacy/`
   returns 200 anonymous with `USER_AUTH=false`, add-to-cart ungated, and
   checkout / stock request still login-gated.
+
+---
+
+## 122. Student Edition Android App — Splash + Icons, Persistent Sessions, FCM Push & Emergency Siren
+
+**Date:** 16 August 2026  
+**Branch:** main
+
+Upgraded the §85 Android WebView wrapper into a full-fledged **Student
+Edition** app: branded splash + launcher icons at every density, 1-year
+persistent login with direct dashboard landing, a student-only navigation
+shell, the full native-permission set, Firebase Cloud Messaging push with
+**picture banners**, and an **emergency siren** that breaks through silent
+mode. Every native feature is Firebase-optional — the app builds and runs
+unchanged until `google-services.json` is dropped in.
+
+### Backend (Django)
+
+- **Persistent sessions (`config/settings.py`)** — `SESSION_EXPIRE_AT_BROWSER_CLOSE
+  = False` and `SESSION_COOKIE_AGE = 31536000` (1 year): students stay logged
+  in indefinitely until they explicitly tap **Log Out**, so the app lands
+  straight on the dashboard after every launch.
+- **Direct dashboard landing (`core/views.py` `public_home`)** — the root URL
+  now redirects authenticated users to their role home (student →
+  `/dashboard/student/`, admin → `/dashboard/admin/`, club →
+  `/dashboard/club/`) instead of the hero; guests keep the landing page.
+- **Emergency push payload (`services/emergency_push.py`)** — the FCM
+  broadcast now carries `play_alarm_sound` (loop the siren) and a `banner`
+  picture field alongside `type=EMERGENCY_ALERT` / `severity`.
+
+### Native app (`mobile-webview`)
+
+- **Splash (`SplashActivity.kt`, `layout/activity_splash.xml`)** — launcher
+  entry: charcoal screen with the campus-hub logo + "NITER Campus Hub —
+  Student Edition", then a hand-off to the WebView shell (`Theme.NiterDash.Splash`
+  prevents any white flash).
+- **Launcher icons (`scripts/generate_assets.py`)** — PNG `ic_launcher` /
+  `ic_launcher_round` (charcoal rounded square / circle with the beige "N"
+  monogram) generated for **mdpi / hdpi / xhdpi / xxhdpi / xxxhdpi**; the
+  adaptive vector foreground is unchanged. `android:roundIcon` wired.
+- **Permissions (`AndroidManifest.xml`)** — INTERNET, ACCESS_NETWORK_STATE,
+  CAMERA, READ_MEDIA_IMAGES, READ/WRITE_EXTERNAL_STORAGE (legacy caps),
+  POST_NOTIFICATIONS (runtime-requested on Android 13+), VIBRATE, WAKE_LOCK.
+- **Persistent login (`MainActivity.kt`)** — `CookieManager` stores the 1-year
+  session cookie; `setAcceptThirdPartyCookies` keeps Google OAuth working.
+- **Student-only shell** — staff/admin URL prefixes (`/builder/`, `/admin/`,
+  `/django-admin/`, `/dashboard/admin/`, `/dashboard/club/`,
+  `/dashboard/medical/`, `/medical/admin/`, `/host/`) are blocked at the
+  navigation layer and bounced to `/dashboard/student/` — defense in depth
+  on top of the server-side `RoleAccessMiddleware`.
+- **FCM push (`EmergencyMessagingService.kt`, `NotificationHelper.kt`)** —
+  subscribes to the `emergency_alerts` topic; `EMERGENCY_ALERT` pushes render
+  as high-priority **BigPicture** notifications (push `banner` URL, or the
+  bundled `drawable/emergency_banner.png`); other pushes use a general
+  channel. `google-services` Gradle plugin is applied **only when
+  `google-services.json` exists**, so the build never breaks without Firebase.
+- **Emergency siren controls** — `raw/emergency_siren.wav` (6 s two-tone,
+  generated) plays through a high-importance `emergency_alerts` channel with
+  vibration; `play_alarm_sound=true` loops the siren until dismissed via the
+  **Stop Siren** notification action or by opening the app (which hands
+  control to the in-app banner so the native loop and WebView siren never
+  overlap).
+
+### Tests & verification
+
+- `LandingRedirectTest` (new): anonymous `/` keeps the hero; student / staff /
+  club-manager are redirected past the hero to their role dashboard.
+- 21 tests OK (landing redirect + role routing + pharmacy nav) · `manage.py
+  check` clean.
+- All 10 Android XML resources validated well-formed; icons verified
+  (transparent corners, charcoal body, beige monogram); siren WAV is valid
+  16-bit PCM. APK build remains an Android Studio step (no Android SDK on the
+  dev box) — see `mobile-webview/README.md`.
+
+### Firebase activation (optional, for real push)
+
+1. Firebase console → add Android app `com.niterhub.dash` → download
+   `google-services.json` into `mobile-webview/app/`.
+2. Set `FIREBASE_CREDENTIALS` (service-account JSON) in the Django env — the
+   backend already broadcasts to the `emergency_alerts` topic.
+3. Rebuild the APK; emergency broadcasts then push with picture banner +
+   siren. Without these steps push is inert and the app is unaffected.
