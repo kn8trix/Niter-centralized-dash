@@ -89,11 +89,18 @@ push on:
      (the one containing `settings.gradle.kts`) → **OK**.
    - If asked whether to trust the project, choose **Trust Project**.
 2. **Let Gradle sync** — Android Studio downloads the Gradle 8.11.1 wrapper and
-   all dependencies automatically. If the wrapper JAR is missing from
-   `gradle/wrapper/`, Android Studio restores it during sync (or run
-   `gradle wrapper` in a terminal inside `mobile-webview/`).
+   all dependencies automatically (the wrapper JAR and `gradlew` scripts are
+   committed, so this works out of the box).
    - If the SDK isn't found, set the SDK path via
      **File → Project Structure → SDK Location**.
+
+**Command-line build** (JDK 17+ required):
+
+```bash
+cd mobile-webview
+./gradlew assembleDebug          # Windows: gradlew.bat assembleDebug
+# APK → app/build/outputs/apk/debug/app-debug.apk
+```
 3. **Build a debug APK**
    - **Build → Build App Bundle(s) / APK(s) → Build APK(s)**.
    - The APK lands in `app/build/outputs/apk/debug/app-debug.apk` — copy it to
