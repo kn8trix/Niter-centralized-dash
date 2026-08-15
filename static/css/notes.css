@@ -371,6 +371,20 @@ body.notes a {
     transform: translateY(-1px);
 }
 
+/* Materials without an attached file render as a muted dash instead of a
+   dead "Open" link (fileless rows are valid — e.g. seeded demo data). */
+.doc-view.doc-view-muted {
+    background: transparent;
+    color: var(--text-muted);
+    cursor: default;
+    border: 1px dashed var(--border-color);
+}
+
+.doc-view.doc-view-muted:hover {
+    background: transparent;
+    transform: none;
+}
+
 .empty-docs {
     grid-column: 1 / -1;
     text-align: center;

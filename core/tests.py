@@ -4074,6 +4074,18 @@ class StudyCornerPageTest(TestCase):
         self.assertContains(response, 'No courses in the catalog yet.')
         self.assertContains(response, 'No course materials uploaded yet')
 
+    def test_fileless_material_does_not_crash(self):
+        """Regression guard for the 500: a CourseMaterial row with an empty
+        ``file`` (e.g. seeded demo data) must render without calling
+        ``material.file.url``."""
+        CourseMaterial.objects.create(
+            course=self.course, title='Fileless Notes', file_type='PDF',
+        )
+        response = self.client.get(reverse('study_corner'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Fileless Notes')
+        self.assertContains(response, 'doc-view-muted')  # no dead Open link
+
     def test_renders_study_corner_heading_and_modules(self):
         response = self.client.get(reverse('study_corner'))
         self.assertEqual(response.status_code, 200)
@@ -4201,6 +4213,16 @@ class NotesEnginePageTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'No course folders yet.')
         self.assertContains(response, 'No course materials uploaded yet.')
+
+    def test_fileless_material_does_not_crash(self):
+        """Regression guard: fileless CourseMaterial rows render on /notes/
+        without evaluating ``material.file.url`` (which raises ValueError)."""
+        CourseMaterial.objects.create(
+            course=self.course, title='Fileless PDF', file_type='PDF',
+        )
+        response = self.client.get(reverse('notes'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Fileless PDF')
 
     def test_upload_handler_binds_auth_status_and_redirect_guard(self):
         """Regression guard for the upload UX: the page probes Drive health via

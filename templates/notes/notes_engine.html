@@ -125,8 +125,9 @@
 
             <div id="pdf-list" class="space-y-1">
                 {% for material in materials %}
-                <a href="{{ material.file.url }}" target="_blank" rel="noopener"
-                   class="pdf-item group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer border border-border {% if forloop.first %}bg-accent/30 border-l-2 border-main{% endif %}"
+                <a href="{% if material.file %}{{ material.file.url }}{% elif material.drive_view_link %}{{ material.drive_view_link }}{% else %}#{% endif %}"
+                   target="{% if material.file or material.drive_view_link %}_blank{% endif %}" rel="noopener"
+                   class="pdf-item group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-base transition-colors cursor-pointer border border-border {% if not material.file and not material.drive_view_link %}pointer-events-none opacity-60{% endif %} {% if forloop.first %}bg-accent/30 border-l-2 border-main{% endif %}"
                    data-dept="{{ material.course.department }}" data-search="{{ material.title|lower }} {{ material.course.code|lower }}">
                     <svg class="w-4 h-4 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>

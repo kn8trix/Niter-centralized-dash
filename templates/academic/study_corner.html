@@ -100,7 +100,13 @@
                             <div class="doc-meta">
                                 <span><i class="fa-regular fa-file"></i> {{ material.size_display }}</span>
                                 <span><i class="fa-regular fa-calendar"></i> {{ material.uploaded_at|date:"M d, Y" }}</span>
+                                {% if material.file %}
                                 <a href="{{ material.file.url }}" class="doc-view" target="_blank" rel="noopener">Open</a>
+                                {% elif material.drive_view_link %}
+                                <a href="{{ material.drive_view_link }}" class="doc-view" target="_blank" rel="noopener">Open</a>
+                                {% else %}
+                                <span class="doc-view doc-view-muted" title="No file attached yet">—</span>
+                                {% endif %}
                             </div>
                         </article>
                         {% endfor %}

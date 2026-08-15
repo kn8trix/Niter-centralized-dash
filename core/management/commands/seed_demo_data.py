@@ -21,9 +21,11 @@ Accounts created (password ``password123`` unless already present):
 - ``student2@niter.edu.bd`` — student (CSE)
 """
 
+import re
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -50,6 +52,28 @@ from core.models import (
 User = get_user_model()
 
 DEMO_PASSWORD = 'password123'
+
+
+def _placeholder_pdf(title):
+    """A tiny but valid single-page PDF so seeded demo materials are
+    downloadable instead of carrying an empty ``file`` field."""
+    text = (title or 'Niter Hub demo material').encode('latin-1', 'replace')
+    stream = b'BT /F1 14 Tf 72 720 Td (%s) Tj ET\n' % text
+    content = (
+        b'%PDF-1.4\n'
+        b'1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n'
+        b'2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n'
+        b'3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n'
+        b'4 0 obj<</Length '
+        + str(len(stream)).encode('ascii')
+        + b'>>stream\n'
+        + stream
+        + b'endstream\nendobj\n'
+        b'5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n'
+        b'trailer<</Root 1 0 R>>\n'
+        b'%%EOF\n'
+    )
+    return content
 
 
 class Command(BaseCommand):
@@ -394,6 +418,20 @@ class Command(BaseCommand):
                 title=title,
                 defaults={'file_type': file_type},
             )
+            # Attach a real placeholder file so the Study Corner drive never
+            # renders a material with an empty ``file`` (which would crash
+            # ``material.file.url`` in the templates). Rows that already have
+            # a file (real uploads) are never touched; the check is on the
+            # file field, not ``created``, so re-running the seed also
+            # backfills files onto older fileless demo rows.
+            if not material.file:
+                slug = re.sub(r'[^A-Za-z0-9]+', '-', title.lower()).strip('-')
+                material.file.save(
+                    '%s-%s.pdf' % (code.replace('-', '').lower(), slug[:40]),
+                    ContentFile(_placeholder_pdf(title)),
+                    save=False,
+                )
+                material.save(update_fields=['file'])
             self._report(created, 'Material %s — %s' % (code, title))
         return courses
 

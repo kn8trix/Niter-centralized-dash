@@ -498,35 +498,51 @@ def study_corner(request):
     YouTube lecture-video search module (server-rendered default results,
     refined client-side via ``/api/study/youtube/``), and the Study Assistant
     chat sidebar (``/api/study/chat/``).
-    """
-    courses = Course.objects.prefetch_related('materials').order_by('code')
-    materials = CourseMaterial.objects.select_related('course').order_by('-uploaded_at')
 
-    # Folder cards: one per department that has at least one course, showing
-    # the number of uploaded materials in that department (2 queries total).
-    course_departments = set(Course.objects.values_list('department', flat=True))
-    material_counts = {
-        row['course__department']: row['count']
-        for row in CourseMaterial.objects.values('course__department').annotate(
-            count=Count('id')
-        )
-    }
+    Each data source is fetched under its own guard: a query or API failure
+    logs the error and degrades to an empty list so the page never 500s
+    (the templates already render gracefully without files/videos).
+    """
+    courses = Course.objects.none()
+    materials = CourseMaterial.objects.none()
     folders = []
-    for code, name in StudentProfile.DEPARTMENT_CHOICES:
-        if code not in course_departments:
-            continue
-        folders.append({
-            'code': code,
-            'name': name,
-            'count': material_counts.get(code, 0),
-            'icon': _DEPARTMENT_ICONS.get(code, 'fa-folder'),
-        })
+    try:
+        courses = Course.objects.prefetch_related('materials').order_by('code')
+        materials = CourseMaterial.objects.select_related('course').order_by('-uploaded_at')
+
+        # Folder cards: one per department that has at least one course, showing
+        # the number of uploaded materials in that department (2 queries total).
+        course_departments = set(Course.objects.values_list('department', flat=True))
+        material_counts = {
+            row['course__department']: row['count']
+            for row in CourseMaterial.objects.values('course__department').annotate(
+                count=Count('id')
+            )
+        }
+        folders = []
+        for code, name in StudentProfile.DEPARTMENT_CHOICES:
+            if code not in course_departments:
+                continue
+            folders.append({
+                'code': code,
+                'name': name,
+                'count': material_counts.get(code, 0),
+                'icon': _DEPARTMENT_ICONS.get(code, 'fa-folder'),
+            })
+    except Exception as exc:
+        logger.error('Study Corner: error loading the notes catalog: %s', exc)
+
+    videos = []
+    try:
+        videos = search_lecture_videos()
+    except Exception as exc:
+        logger.error('Study Corner: error fetching YouTube videos: %s', exc)
 
     return render(request, 'academic/study_corner.html', {
         'courses': courses,
         'materials': materials,
         'folders': folders,
-        'videos': search_lecture_videos(),
+        'videos': videos,
     })
 
 
