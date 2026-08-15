@@ -106,6 +106,7 @@ from .models import (
     MealSubscription,
     MealTicket,
     MedicineItem,
+    MedicineRequest,
     NoteAnalysis,
     Notice,
     Notification,
@@ -661,6 +662,9 @@ def _pharmacy_medicine_catalog():
             'generic': item.generic_name,
             'strength': item.strength,
             'category': item.get_category_display(),
+            'manufacturer': item.manufacturer,
+            'image': item.image_url,
+            'delivery_eta': item.delivery_eta,
             'price': str(item.price),
             'rx': item.is_prescription,
             'stock': item.stock_quantity,
@@ -668,6 +672,10 @@ def _pharmacy_medicine_catalog():
             'expiry': item.expiry_date.isoformat() if item.expiry_date else None,
             'batch': item.batch_number,
             'description': item.description,
+            'usage': item.usage_info,
+            'dosage': item.dosage_info,
+            'precautions': item.precautions,
+            'side_effects': item.side_effects,
         }
         for item in MedicineItem.objects.filter(is_active=True)
     ]
@@ -761,10 +769,13 @@ def medical_pharmacy(request):
     rx_queue = Prescription.objects.filter(status='pending').select_related('user')
     orders = PharmacyOrder.objects.select_related('user', 'prescription').prefetch_related('items')
     medicines = MedicineItem.objects.all()
+    requests = MedicineRequest.objects.select_related('user', 'medicine')
     return render(request, 'pharmacy/admin.html', {
         'rx_queue': rx_queue,
         'orders': orders,
         'medicines': medicines,
+        'requests': requests,
+        'pending_requests_count': requests.filter(status='pending').count(),
         'orders_json': json.dumps([_pharmacy_order_json(o) for o in orders]),
     })
 
@@ -1053,6 +1064,112 @@ def api_pharmacy_order_status(request, order_id):
         'status': 'success',
         'order': _pharmacy_order_json(order),
         'message': 'Order %s updated.' % order.reference,
+    })
+
+
+@login_required
+def api_pharmacy_stock_request(request):
+    """POST /api/pharmacy/request-stock/ — request an out-of-stock medicine.
+
+    Raised from the storefront's "Request Stock" modal when an item is out of
+    stock: quantity (>= 1), an optional urgency note, and a contact phone are
+    persisted as a ``pending`` MedicineRequest for the pharmacy staff to
+    review (they restock / procure and mark it fulfilled).
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    try:
+        payload = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'status': 'error', 'message': 'Invalid JSON payload.'}, status=400)
+
+    try:
+        medicine = MedicineItem.objects.get(pk=int(payload.get('medicine_id')), is_active=True)
+    except (TypeError, ValueError, MedicineItem.DoesNotExist):
+        return JsonResponse({'status': 'error', 'message': 'Medicine not found.'}, status=404)
+
+    try:
+        quantity = int(payload.get('quantity') or 0)
+    except (TypeError, ValueError):
+        quantity = 0
+    if quantity < 1 or quantity > 999:
+        return JsonResponse({'status': 'error', 'message': 'Enter how many packs you need (1-999).'}, status=400)
+
+    phone = (payload.get('phone') or '').strip()[:20]
+    if not phone:
+        return JsonResponse({'status': 'error', 'message': 'Add a contact phone number.'}, status=400)
+
+    urgency_note = (payload.get('urgency_note') or '').strip()[:500]
+
+    medicine_request = MedicineRequest.objects.create(
+        medicine=medicine,
+        user=request.user,
+        quantity=quantity,
+        urgency_note=urgency_note,
+        phone=phone,
+    )
+    notification = Notification.objects.create(
+        user=request.user,
+        title='Medicine request received',
+        message='Your request for %s (%d pack%s) was sent to the medical center — they will restock or procure it.' % (
+            medicine.name, quantity, '' if quantity == 1 else 's',
+        ),
+        category='medical',
+    )
+    _broadcast_notification(notification)
+    return JsonResponse({
+        'status': 'success',
+        'request_id': medicine_request.pk,
+        'message': 'Request sent — the pharmacy will notify you once %s is available.' % medicine.name,
+    })
+
+
+@admin_required
+def api_pharmacy_request_status(request, request_id):
+    """POST /api/pharmacy/admin/requests/<id>/status/ — fulfil or reject a
+    medicine request; the student is notified of the outcome in real time."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    action = (request.POST.get('action') or '').strip()
+    medicine_request = get_object_or_404(
+        MedicineRequest.objects.select_related('user', 'medicine'),
+        pk=request_id,
+    )
+    if medicine_request.status != 'pending':
+        return JsonResponse(
+            {'status': 'error', 'message': 'This request was already reviewed.'},
+            status=409,
+        )
+
+    if action == 'fulfill':
+        medicine_request.status = 'fulfilled'
+        medicine_request.admin_note = (request.POST.get('admin_note') or '').strip()[:300]
+        title = 'Medicine request fulfilled'
+        message = 'Good news — %s is now available at the campus pharmacy.' % medicine_request.medicine.name
+    elif action == 'reject':
+        medicine_request.status = 'rejected'
+        medicine_request.admin_note = (request.POST.get('admin_note') or '').strip()[:300]
+        title = 'Medicine request declined'
+        message = 'Your request for %s could not be fulfilled.%s' % (
+            medicine_request.medicine.name,
+            ' Reason: %s' % medicine_request.admin_note if medicine_request.admin_note else '',
+        )
+    else:
+        return JsonResponse({'status': 'error', 'message': 'Invalid action.'}, status=400)
+    medicine_request.save()
+
+    notification = Notification.objects.create(
+        user=medicine_request.user,
+        title=title,
+        message=message,
+        category='medical',
+    )
+    _broadcast_notification(notification)
+    return JsonResponse({
+        'status': 'success',
+        'request_id': medicine_request.pk,
+        'new_status': medicine_request.status,
+        'message': 'Request %s.' % ('fulfilled' if action == 'fulfill' else 'rejected'),
     })
 
 

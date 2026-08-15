@@ -23,6 +23,7 @@ from .models import (
     MealSubscription,
     MealTicket,
     MedicineItem,
+    MedicineRequest,
     NoteAnalysis,
     Notice,
     Notification,
@@ -148,11 +149,21 @@ class CourseMaterialAdmin(admin.ModelAdmin):
 class MedicineItemAdmin(admin.ModelAdmin):
     """Pharmacy medicine catalog — stock, batch, expiry and Rx flag."""
 
-    list_display = ('name', 'strength', 'generic_name', 'price', 'stock_quantity',
+    list_display = ('name', 'strength', 'generic_name', 'manufacturer', 'price', 'stock_quantity',
                     'expiry_date', 'reorder_level', 'is_prescription', 'is_active')
     list_filter = ('is_prescription', 'is_active', 'category')
-    search_fields = ('name', 'generic_name', 'batch_number')
+    search_fields = ('name', 'generic_name', 'manufacturer', 'batch_number')
     list_editable = ('stock_quantity', 'is_active')
+
+
+@admin.register(MedicineRequest)
+class MedicineRequestAdmin(admin.ModelAdmin):
+    """Student out-of-stock medicine requests and their review state."""
+
+    list_display = ('id', 'medicine', 'user', 'quantity', 'status', 'phone', 'created_at')
+    list_filter = ('status', 'created_at')
+    search_fields = ('medicine__name', 'user__username', 'phone')
+    readonly_fields = ('created_at', 'updated_at')
 
 
 @admin.register(Prescription)

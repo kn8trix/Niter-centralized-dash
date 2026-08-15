@@ -127,6 +127,37 @@
     </div>
 
     <!-- ============================================================
+         Request stock modal (out-of-stock medicines)
+    ============================================================ -->
+    <div class="modal-backdrop" id="request-modal" hidden>
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="request-modal-title">
+            <button type="button" class="modal-close" data-close="request-modal" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+            <h3 id="request-modal-title"><i class="fa-solid fa-truck-medical"></i> Request Medicine</h3>
+            <p class="modal-note" id="request-medicine-label"></p>
+
+            <div class="field">
+                <label for="req-qty" class="field-label">Required Quantity (packs)</label>
+                <input type="number" id="req-qty" class="field-input" min="1" max="999" value="1" aria-label="Required quantity">
+            </div>
+            <div class="field">
+                <label for="req-note" class="field-label">Urgency Note</label>
+                <textarea id="req-note" class="field-input" rows="3" maxlength="500" placeholder="e.g. Needed for a fever this week — please restock as soon as possible"></textarea>
+            </div>
+            <div class="field">
+                <label for="req-phone" class="field-label">Contact Phone</label>
+                <input type="tel" id="req-phone" class="field-input" placeholder="01XXXXXXXXX" maxlength="20" aria-label="Contact phone">
+            </div>
+
+            <p class="rx-alert" id="req-alert" hidden></p>
+
+            <div class="modal-actions">
+                <button type="button" class="btn-ghost" data-close="request-modal">Cancel</button>
+                <button type="button" class="btn-primary" id="req-submit-btn"><i class="fa-solid fa-paper-plane"></i> Send Request</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
          Cart + multi-step checkout modal
     ============================================================ -->
     <div class="modal-backdrop" id="checkout-modal" hidden>
@@ -297,29 +328,40 @@
             return '<span class="stock-badge stock-in">In Stock</span>';
         }
 
+        function cardImage(m) {
+            if (!m.image) return '';
+            return '<div class="med-img">' +
+                '<img src="' + esc(m.image) + '" alt="' + esc(m.name) + '" loading="lazy" onerror="this.closest(\'.med-img\').classList.add(\'no-img\')">' +
+                '<span class="med-img-fallback"><i class="fa-solid fa-pills"></i></span>' +
+            '</div>';
+        }
+
         function renderCatalog(filter) {
             const q = (filter || '').trim().toLowerCase();
             const items = CATALOG.filter((m) => {
                 if (!q) return true;
-                return (m.name + ' ' + m.generic + ' ' + m.category + ' ' + m.strength).toLowerCase().includes(q);
+                return (m.name + ' ' + m.generic + ' ' + m.category + ' ' + m.strength + ' ' + (m.manufacturer || '')).toLowerCase().includes(q);
             });
             grid.innerHTML = items.map(function (m) {
                 const rx = m.rx ? '<span class="rx-badge">Rx Required</span>' : '';
-                const disabled = m.stock <= 0 ? ' disabled' : '';
+                const out = m.stock <= 0;
                 return '<article class="med-card" data-id="' + m.id + '">' +
+                    cardImage(m) +
                     '<div class="med-card-head">' +
                         '<span class="med-category">' + esc(m.category) + '</span>' +
                         rx +
                     '</div>' +
                     '<h3 class="med-name">' + esc(m.name) + (m.strength ? ' <span class="med-strength">' + esc(m.strength) + '</span>' : '') + '</h3>' +
-                    (m.generic ? '<p class="med-generic">' + esc(m.generic) + '</p>' : '') +
+                    (m.generic ? '<p class="med-generic">' + esc(m.generic) + (m.manufacturer ? ' · ' + esc(m.manufacturer) : '') + '</p>' : '') +
                     '<div class="med-foot">' +
                         '<span class="med-price">৳' + esc(m.price) + '</span>' +
                         stockLabel(m) +
                     '</div>' +
                     '<div class="med-actions">' +
                         '<button type="button" class="btn-ghost med-detail" data-id="' + m.id + '">Details</button>' +
-                        '<button type="button" class="btn-primary med-add" data-id="' + m.id + '"' + disabled + '><i class="fa-solid fa-cart-plus"></i> Add</button>' +
+                        (out
+                            ? '<button type="button" class="btn-primary med-request" data-id="' + m.id + '"><i class="fa-solid fa-truck-medical"></i> Request</button>'
+                            : '<button type="button" class="btn-primary med-add" data-id="' + m.id + '"><i class="fa-solid fa-cart-plus"></i> Add</button>') +
                     '</div>' +
                 '</article>';
             }).join('');
@@ -364,6 +406,11 @@
                 showToast('Added to cart.');
                 return;
             }
+            const requestBtn = e.target.closest('.med-request');
+            if (requestBtn) {
+                openRequest(Number(requestBtn.dataset.id));
+                return;
+            }
             const detailBtn = e.target.closest('.med-detail');
             if (detailBtn) openProduct(Number(detailBtn.dataset.id));
         });
@@ -371,6 +418,19 @@
         // ====================================================================
         // Product detail + generic substitutes
         // ====================================================================
+        function detailSection(title, icon, text) {
+            if (!text) return '';
+            return '<div class="pd-section">' +
+                '<h4><i class="fa-solid ' + icon + '"></i> ' + title + '</h4>' +
+                '<p>' + esc(text) + '</p>' +
+            '</div>';
+        }
+
+        function stockUnits(item) {
+            if (item.stock <= 0) return '<span class="stock-units stock-units-out"><i class="fa-solid fa-circle-exclamation"></i> Out of Stock</span>';
+            return '<span class="stock-units stock-units-in"><i class="fa-solid fa-boxes-stacked"></i> In Stock: ' + item.stock + ' pack' + (item.stock === 1 ? '' : 's') + '</span>';
+        }
+
         function openProduct(id) {
             const item = CATALOG.find((m) => m.id === id);
             if (!item) return;
@@ -394,15 +454,29 @@
                 subsHtml = '<div class="substitutes"><h4><i class="fa-solid fa-arrows-rotate"></i> Generic Substitutes</h4>' +
                     '<p class="modal-note">No in-stock ' + esc(item.generic) + ' alternatives right now — check back soon.</p></div>';
             }
+            const imgHtml = item.image
+                ? '<div class="pd-img"><img src="' + esc(item.image) + '" alt="' + esc(item.name) + '" onerror="this.closest(\'.pd-img\').classList.add(\'no-img\')"><span class="pd-img-fallback"><i class="fa-solid fa-pills"></i></span></div>'
+                : '';
+            const actionBtns = outOfStock
+                ? '<button type="button" class="btn-primary pd-request" data-id="' + item.id + '"><i class="fa-solid fa-truck-medical"></i> Request Stock</button>'
+                : '<button type="button" class="btn-ghost pd-buy" data-id="' + item.id + '"><i class="fa-solid fa-bolt"></i> Buy Now</button>' +
+                  '<button type="button" class="btn-primary pd-add" data-id="' + item.id + '"><i class="fa-solid fa-cart-plus"></i> Add to Cart</button>';
             document.getElementById('product-detail').innerHTML =
+                imgHtml +
                 '<div class="pd-head">' +
                     '<span class="med-category">' + esc(item.category) + '</span>' +
                     (item.rx ? '<span class="rx-badge">Rx Required</span>' : '') +
                 '</div>' +
                 '<h2 class="pd-name">' + esc(item.name) + (item.strength ? ' <span>' + esc(item.strength) + '</span>' : '') + '</h2>' +
-                (item.generic ? '<p class="pd-generic">' + esc(item.generic) + '</p>' : '') +
-                '<div class="pd-price">৳' + esc(item.price) + ' ' + stockLabel(item) + '</div>' +
+                '<p class="pd-generic">' + esc(item.generic) + (item.manufacturer ? ' · ' + esc(item.manufacturer) : '') + '</p>' +
+                '<div class="pd-price">৳' + esc(item.price) + '</div>' +
+                stockUnits(item) +
+                (item.delivery_eta ? '<p class="pd-eta"><i class="fa-solid fa-truck-fast"></i> Delivered within ' + esc(item.delivery_eta) + '</p>' : '') +
                 (item.description ? '<p class="pd-desc">' + esc(item.description) + '</p>' : '') +
+                detailSection('Usage', 'fa-circle-info', item.usage) +
+                detailSection('Dosage', 'fa-prescription-bottle-medical', item.dosage) +
+                detailSection('Precautions', 'fa-triangle-exclamation', item.precautions) +
+                detailSection('Side Effects', 'fa-list-check', item.side_effects) +
                 '<div class="pd-meta">' +
                     (item.batch ? '<span><i class="fa-solid fa-box"></i> Batch ' + esc(item.batch) + '</span>' : '') +
                     (item.expiry ? '<span><i class="fa-regular fa-calendar"></i> Exp ' + esc(item.expiry) + '</span>' : '') +
@@ -410,7 +484,7 @@
                 subsHtml +
                 '<div class="modal-actions">' +
                     '<button type="button" class="btn-ghost" data-close="product-modal">Close</button>' +
-                    '<button type="button" class="btn-primary pd-add" data-id="' + item.id + '"' + (item.stock <= 0 ? ' disabled' : '') + '><i class="fa-solid fa-cart-plus"></i> Add to Cart</button>' +
+                    actionBtns +
                 '</div>';
             openModal('product-modal');
         }
@@ -424,6 +498,23 @@
                 cart[id] = (cart[id] || 0) + 1;
                 saveCart(cart);
                 showToast('Added to cart.');
+                return;
+            }
+            const buyBtn = e.target.closest('.pd-buy');
+            if (buyBtn) {
+                if (!requireAuth()) return;
+                const id = Number(buyBtn.dataset.id);
+                const cart = getCart();
+                cart[id] = (cart[id] || 0) + 1;
+                saveCart(cart);
+                closeModal('product-modal');
+                openCheckout();
+                return;
+            }
+            const requestBtn = e.target.closest('.pd-request');
+            if (requestBtn) {
+                closeModal('product-modal');
+                openRequest(Number(requestBtn.dataset.id));
                 return;
             }
             const subBtn = e.target.closest('.sub-add');
@@ -512,6 +603,74 @@
         });
 
         // ====================================================================
+        // Request stock (out-of-stock medicine)
+        // ====================================================================
+        var requestedMedicine = null;
+
+        function openRequest(id) {
+            if (!requireAuth()) return;
+            const item = CATALOG.find((m) => m.id === id);
+            if (!item) return;
+            requestedMedicine = item;
+            document.getElementById('request-medicine-label').textContent =
+                item.name + (item.strength ? ' ' + item.strength : '') + ' is out of stock — tell the pharmacy what you need and they will restock or procure it.';
+            document.getElementById('req-qty').value = 1;
+            document.getElementById('req-note').value = '';
+            document.getElementById('req-phone').value = '';
+            document.getElementById('req-alert').hidden = true;
+            openModal('request-modal');
+        }
+
+        document.getElementById('req-submit-btn').addEventListener('click', () => {
+            if (!requireAuth() || !requestedMedicine) return;
+            const quantity = parseInt(document.getElementById('req-qty').value, 10) || 0;
+            const phone = document.getElementById('req-phone').value.trim();
+            const alertEl = document.getElementById('req-alert');
+            if (quantity < 1 || quantity > 999) {
+                alertEl.textContent = 'Enter how many packs you need (1-999).';
+                alertEl.hidden = false;
+                return;
+            }
+            if (!phone) {
+                alertEl.textContent = 'Add a contact phone number.';
+                alertEl.hidden = false;
+                return;
+            }
+            alertEl.hidden = true;
+            document.getElementById('req-submit-btn').disabled = true;
+            fetch('{% url "api_pharmacy_stock_request" %}', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: JSON.stringify({
+                    medicine_id: requestedMedicine.id,
+                    quantity: quantity,
+                    urgency_note: document.getElementById('req-note').value.trim(),
+                    phone: phone,
+                }),
+            })
+                .then((r) => r.json())
+                .then((json) => {
+                    document.getElementById('req-submit-btn').disabled = false;
+                    if (json.status === 'success') {
+                        closeModal('request-modal');
+                        showToast(json.message);
+                    } else {
+                        alertEl.textContent = json.message || 'Could not send the request.';
+                        alertEl.hidden = false;
+                    }
+                })
+                .catch(() => {
+                    document.getElementById('req-submit-btn').disabled = false;
+                    alertEl.textContent = 'Could not send the request — please try again.';
+                    alertEl.hidden = false;
+                });
+        });
+
+        // ====================================================================
         // Checkout — multi-step modal
         // ====================================================================
         var checkoutModal = document.getElementById('checkout-modal');
@@ -529,7 +688,7 @@
             return cartLines().reduce((sum, line) => sum + line.item.price * line.qty, 0);
         }
 
-        document.getElementById('cart-btn').addEventListener('click', () => {
+        function openCheckout() {
             if (!requireAuth()) return;
             const lines = cartLines();
             if (!lines.length) {
@@ -538,6 +697,11 @@
             }
             resetCheckout();
             openModal('checkout-modal');
+        }
+
+        document.getElementById('cart-btn').addEventListener('click', () => {
+            if (!requireAuth()) return;
+            openCheckout();
         });
 
         function resetCheckout() {

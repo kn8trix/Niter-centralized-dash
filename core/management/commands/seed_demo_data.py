@@ -518,6 +518,10 @@ class Command(BaseCommand):
         self._seed_cafeteria(kn8trix, student2)
         self._seed_clubs(admin, kn8trix)
 
+        # Pharmacy catalog — the 8 popular BD medicines (idempotent).
+        from core.management.commands.seed_pharmacy_catalog import Command as PharmacySeed
+        PharmacySeed().handle()
+
         self.stdout.write(self.style.SUCCESS(
             'Demo dataset seeded — all rows created idempotently (re-run safe).'
         ))

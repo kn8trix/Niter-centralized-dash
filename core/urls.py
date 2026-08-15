@@ -31,10 +31,12 @@ urlpatterns = [
     path('api/pharmacy/prescription/upload/', views.api_pharmacy_prescription_upload, name='api_pharmacy_prescription_upload'),
     path('api/pharmacy/checkout/', views.api_pharmacy_checkout, name='api_pharmacy_checkout'),
     path('api/pharmacy/orders/<str:reference>/', views.api_pharmacy_order_detail, name='api_pharmacy_order_detail'),
-    # Pharmacy admin — Rx verification queue + order management + inventory
+    path('api/pharmacy/request-stock/', views.api_pharmacy_stock_request, name='api_pharmacy_stock_request'),
+    # Pharmacy admin — Rx verification queue + order management + inventory + requests
     path('dashboard/medical/pharmacy/', views.medical_pharmacy, name='medical_pharmacy'),
     path('api/pharmacy/admin/prescriptions/<int:prescription_id>/review/', views.api_pharmacy_prescription_review, name='api_pharmacy_prescription_review'),
     path('api/pharmacy/admin/orders/<int:order_id>/status/', views.api_pharmacy_order_status, name='api_pharmacy_order_status'),
+    path('api/pharmacy/admin/requests/<int:request_id>/status/', views.api_pharmacy_request_status, name='api_pharmacy_request_status'),
     path('api/pharmacy/admin/stock/update/', views.api_pharmacy_stock_update, name='api_pharmacy_stock_update'),
     path('notes/', views.notes, name='notes'),
     

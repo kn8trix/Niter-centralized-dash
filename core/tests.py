@@ -59,6 +59,7 @@ from core.models import (
     MealSubscription,
     MealTicket,
     MedicineItem,
+    MedicineRequest,
     Notice,
     Notification,
     PageTemplate,
@@ -7729,6 +7730,9 @@ class SecurityAuditTest(TestCase):
             (reverse('api_medical_chat_start'), 'POST'),
             (reverse('api_medical_chat_messages', args=[1]), 'GET'),
             (reverse('api_medical_queue'), 'GET'),
+            # Pharmacy — stock request (student) + request review (staff)
+            (reverse('api_pharmacy_stock_request'), 'POST'),
+            (reverse('api_pharmacy_request_status', args=[1]), 'POST'),
             # Staff dashboards + staff actions
             (reverse('sys_admin'), 'GET'),
             (reverse('cafeteria_admin'), 'GET'),
@@ -10246,7 +10250,8 @@ class PharmacyStorePageTest(TestCase):
     """Public storefront — catalog JSON, Rx flag, anonymous handling."""
 
     def test_public_storefront_renders_catalog(self):
-        _make_medicine(name='Napa', is_prescription=True)
+        _make_medicine(name='Napa', is_prescription=True, manufacturer='Square',
+                       image_url='https://placehold.co/x.png', delivery_eta='30-45 mins')
         _make_medicine(name='Ace', is_prescription=False)
         response = self.client.get(reverse('pharmacy_store'))
         self.assertEqual(response.status_code, 200)
@@ -10256,6 +10261,22 @@ class PharmacyStorePageTest(TestCase):
         self.assertContains(response, '"rx": true')
         self.assertContains(response, '"rx": false')
         self.assertContains(response, '"name": "Napa"')
+        # New catalog fields — manufacturer / image / delivery estimate.
+        self.assertContains(response, '"manufacturer": "Square"')
+        self.assertContains(response, '"image": "https://placehold.co/x.png"')
+        self.assertContains(response, '"delivery_eta": "30-45 mins"')
+
+    def test_request_stock_modal_and_buy_now_markup_present(self):
+        response = self.client.get(reverse('pharmacy_store'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'request-modal')
+        self.assertContains(response, 'Request Medicine')
+        self.assertContains(response, 'req-submit-btn')
+        self.assertContains(response, reverse('api_pharmacy_stock_request'))
+        # Buy Now appears in the product-detail renderer.
+        self.assertContains(response, 'pd-buy')
+        self.assertContains(response, 'Buy Now')
+        self.assertContains(response, 'stock-units')
 
     def test_anonymous_sees_sign_in_prompt_in_rx_modal(self):
         response = self.client.get(reverse('pharmacy_store'))
@@ -10684,6 +10705,225 @@ class PharmacyAdminTest(TestCase):
             {'action': 'bogus', 'ids': [str(self.medicine.id)]},
         )
         self.assertEqual(response.status_code, 400)
+
+
+class PharmacyCatalogSeedCommandTest(TestCase):
+    """seed_pharmacy_catalog — the 8 popular Bangladeshi medicines, idempotent."""
+
+    def test_seeds_the_documented_catalog(self):
+        from django.core.management import call_command
+        call_command('seed_pharmacy_catalog', verbosity=0)
+        self.assertEqual(MedicineItem.objects.count(), 8)
+        for name, generic, manufacturer in (
+            ('Napa Extra', 'Paracetamol + Caffeine', 'Square Pharmaceuticals'),
+            ('Seclo', 'Omeprazole', 'Square Pharmaceuticals'),
+            ('Sergel', 'Esomeprazole', 'Incepta Pharmaceuticals'),
+            ('Ace Plus', 'Paracetamol', 'Beximco Pharmaceuticals'),
+            ('Entacyd', 'Antacid (Chewable)', 'Square Pharmaceuticals'),
+            ('Savlon Antiseptic Liquid', 'Chlorhexidine', 'ACI Limited'),
+            ('Ceevit', 'Vitamin C', 'Square Pharmaceuticals'),
+            ('Monas', 'Montelukast', 'Acme Laboratories'),
+        ):
+            item = MedicineItem.objects.get(name=name)
+            self.assertEqual(item.generic_name, generic)
+            self.assertEqual(item.manufacturer, manufacturer)
+            self.assertGreater(item.price, 0)
+            self.assertTrue(item.image_url)
+            self.assertTrue(item.usage_info)
+            self.assertTrue(item.dosage_info)
+            self.assertTrue(item.precautions)
+            self.assertTrue(item.side_effects)
+            self.assertTrue(item.delivery_eta)
+
+    def test_idempotent_rerun(self):
+        from django.core.management import call_command
+        call_command('seed_pharmacy_catalog', verbosity=0)
+        call_command('seed_pharmacy_catalog', verbosity=0)
+        self.assertEqual(MedicineItem.objects.count(), 8)
+
+    def test_edited_rows_preserved_on_rerun(self):
+        from django.core.management import call_command
+        call_command('seed_pharmacy_catalog', verbosity=0)
+        item = MedicineItem.objects.get(name='Napa Extra')
+        item.price = '99.00'
+        item.save()
+        call_command('seed_pharmacy_catalog', verbosity=0)
+        item.refresh_from_db()
+        self.assertEqual(str(item.price), '99.00')
+
+    def test_monas_is_rx_and_out_of_stock_for_request_demo(self):
+        from django.core.management import call_command
+        call_command('seed_pharmacy_catalog', verbosity=0)
+        monas = MedicineItem.objects.get(name='Monas')
+        self.assertTrue(monas.is_prescription)
+        self.assertEqual(monas.stock_quantity, 0)
+
+
+class PharmacyStockRequestApiTest(TestCase):
+    """POST /api/pharmacy/request-stock/ — login + validation + persistence."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='requester', password='x12345678')
+        self.medicine = _make_medicine(name='Monas', stock_quantity=0)
+        self.client.login(username='requester', password='x12345678')
+
+    def _request(self, **overrides):
+        payload = {
+            'medicine_id': self.medicine.id,
+            'quantity': 3,
+            'urgency_note': 'Need for my allergy this week',
+            'phone': '01712345678',
+        }
+        payload.update(overrides)
+        return self.client.post(
+            reverse('api_pharmacy_stock_request'),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+    def test_anonymous_redirects_to_login(self):
+        self.client.logout()
+        response = self._request()
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_creates_pending_request_and_notifies(self):
+        response = self._request()
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'success')
+        medicine_request = MedicineRequest.objects.get(pk=payload['request_id'])
+        self.assertEqual(medicine_request.medicine, self.medicine)
+        self.assertEqual(medicine_request.user, self.user)
+        self.assertEqual(medicine_request.quantity, 3)
+        self.assertEqual(medicine_request.phone, '01712345678')
+        self.assertEqual(medicine_request.status, 'pending')
+        notification = Notification.objects.get(user=self.user, category='medical')
+        self.assertIn('request', notification.message.lower())
+        self.assertIn(self.medicine.name, notification.message)
+
+    def test_unknown_medicine_404(self):
+        response = self._request(medicine_id=99999)
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(MedicineRequest.objects.exists())
+
+    def test_invalid_quantity_rejected(self):
+        for qty in (0, -1, 1000):
+            with self.subTest(qty=qty):
+                response = self._request(quantity=qty)
+                self.assertEqual(response.status_code, 400)
+        self.assertFalse(MedicineRequest.objects.exists())
+
+    def test_missing_phone_rejected(self):
+        response = self._request(phone='')
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(MedicineRequest.objects.exists())
+
+
+class PharmacyRequestStatusApiTest(TestCase):
+    """POST /api/pharmacy/admin/requests/<id>/status/ — staff fulfil/reject."""
+
+    def setUp(self):
+        self.student = User.objects.create_user(username='req_student', password='x12345678')
+        self.staff = User.objects.create_user(username='req_admin', password='x12345678', is_staff=True)
+        self.student_user = User.objects.create_user(username='req_plain', password='x12345678')
+        self.medicine = _make_medicine(name='Ceevit', stock_quantity=0)
+        self.medicine_request = MedicineRequest.objects.create(
+            medicine=self.medicine,
+            user=self.student,
+            quantity=2,
+            urgency_note='Urgent',
+            phone='01712345678',
+        )
+
+    def _login_staff(self):
+        self.client.login(username='req_admin', password='x12345678')
+
+    def test_requires_staff(self):
+        response = self.client.post(
+            reverse('api_pharmacy_request_status', args=[self.medicine_request.id]),
+            {'action': 'fulfill'},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.client.login(username='req_plain', password='x12345678')
+        response = self.client.post(
+            reverse('api_pharmacy_request_status', args=[self.medicine_request.id]),
+            {'action': 'fulfill'},
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_fulfill_marks_and_notifies(self):
+        self._login_staff()
+        response = self.client.post(
+            reverse('api_pharmacy_request_status', args=[self.medicine_request.id]),
+            {'action': 'fulfill', 'admin_note': 'Restocked today'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.medicine_request.refresh_from_db()
+        self.assertEqual(self.medicine_request.status, 'fulfilled')
+        self.assertEqual(self.medicine_request.admin_note, 'Restocked today')
+        notification = Notification.objects.get(user=self.student, category='medical')
+        self.assertIn('available', notification.message.lower())
+        self.assertIn(self.medicine.name, notification.message)
+
+    def test_reject_with_reason(self):
+        self._login_staff()
+        response = self.client.post(
+            reverse('api_pharmacy_request_status', args=[self.medicine_request.id]),
+            {'action': 'reject', 'admin_note': 'Not available this semester'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.medicine_request.refresh_from_db()
+        self.assertEqual(self.medicine_request.status, 'rejected')
+        notification = Notification.objects.get(user=self.student, category='medical')
+        self.assertIn('Not available this semester', notification.message)
+
+    def test_already_reviewed_rejected(self):
+        self._login_staff()
+        self.medicine_request.status = 'fulfilled'
+        self.medicine_request.save()
+        response = self.client.post(
+            reverse('api_pharmacy_request_status', args=[self.medicine_request.id]),
+            {'action': 'fulfill'},
+        )
+        self.assertEqual(response.status_code, 409)
+
+    def test_invalid_action_rejected(self):
+        self._login_staff()
+        response = self.client.post(
+            reverse('api_pharmacy_request_status', args=[self.medicine_request.id]),
+            {'action': 'bogus'},
+        )
+        self.assertEqual(response.status_code, 400)
+
+
+class PharmacyNavButtonsTest(TestCase):
+    """Online Pharmacy entry points — hero button + medical page shortcut."""
+
+    def test_hero_has_online_pharmacy_button(self):
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Online Pharmacy')
+        self.assertContains(response, reverse('pharmacy_store'))
+        self.assertContains(response, 'hero-btn-pharmacy')
+
+    def test_medical_page_has_online_pharmacy_button(self):
+        response = self.client.get(reverse('medical'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Online Pharmacy')
+        self.assertContains(response, reverse('pharmacy_store'))
+        self.assertContains(response, 'med-pharmacy-btn')
+
+
+class PharmacyModalCssGuardTest(TestCase):
+    """The modal backdrop ``[hidden]`` rule must exist so modals stay closed on
+    page load (same defect class as the §98 / §107 modal fixes)."""
+
+    def test_modal_backdrop_hidden_rule_present(self):
+        from pathlib import Path
+        css = Path('static/css/pharmacy.css').read_text()
+        self.assertIn('.modal-backdrop[hidden]', css)
+        self.assertIn('display: none', css.split('.modal-backdrop[hidden]')[1])
 
 
 # --- Website Builder / CMS overhaul -------------------------------------------

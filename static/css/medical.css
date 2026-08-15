@@ -228,6 +228,38 @@ body.medical a {
     cursor: not-allowed;
 }
 
+/* Online Pharmacy shortcut button under the intro */
+.intro-actions {
+    margin-top: 1rem;
+}
+
+.med-pharmacy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.3rem;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+    box-shadow: var(--shadow-card);
+    transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+
+.med-pharmacy-btn:hover {
+    background: var(--bg-subtle);
+    border-color: var(--accent-primary-hover);
+    transform: translateY(-1px);
+}
+
+.med-pharmacy-btn i {
+    color: #16a34a;
+}
+
 /* Inline booking feedback (slot conflict / validation / success) */
 .appt-alert {
     margin-bottom: 1rem;

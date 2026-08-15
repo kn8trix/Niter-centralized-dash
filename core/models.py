@@ -1541,6 +1541,24 @@ class MedicineItem(models.Model):
     )
     strength = models.CharField(max_length=60, blank=True, default='', help_text='e.g. 500mg')
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='tablet')
+    manufacturer = models.CharField(
+        max_length=120,
+        blank=True,
+        default='',
+        help_text='Brand / manufacturer, e.g. Square Pharmaceuticals',
+    )
+    image_url = models.CharField(
+        max_length=500,
+        blank=True,
+        default='',
+        help_text='Medicine photo URL — rendered on the store card + detail modal',
+    )
+    delivery_eta = models.CharField(
+        max_length=120,
+        blank=True,
+        default='',
+        help_text='Estimated delivery time shown on the product detail, e.g. 30-45 mins on campus',
+    )
     price = models.DecimalField(max_digits=10, decimal_places=2)
     is_prescription = models.BooleanField(
         default=False,
@@ -1553,7 +1571,11 @@ class MedicineItem(models.Model):
         default=10,
         help_text='Restock warning threshold — stock at or below this is low',
     )
-    description = models.TextField(blank=True, default='')
+    description = models.TextField(blank=True, default='', help_text='Short description on the card')
+    usage_info = models.TextField(blank=True, default='', help_text='Usage instructions')
+    dosage_info = models.TextField(blank=True, default='', help_text='Dosage instructions')
+    precautions = models.TextField(blank=True, default='', help_text='Precautions / warnings')
+    side_effects = models.TextField(blank=True, default='', help_text='Possible side effects')
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -1734,6 +1756,51 @@ class PharmacyOrderItem(models.Model):
 
     def __str__(self):
         return '%s x%d' % (self.medicine.name, self.quantity)
+
+
+class MedicineRequest(models.Model):
+    """A student request for an out-of-stock (or hard-to-find) medicine.
+
+    Raised from the storefront's "Request Stock" modal when an item is out of
+    stock; staff review it from the pharmacy admin dashboard's Medicine
+    Requests tab and mark it fulfilled (restocked / procured) or rejected.
+    """
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('fulfilled', 'Fulfilled'),
+        ('rejected', 'Rejected'),
+    ]
+
+    medicine = models.ForeignKey(
+        MedicineItem,
+        on_delete=models.CASCADE,
+        related_name='stock_requests',
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='medicine_requests',
+        db_index=True,
+    )
+    quantity = models.PositiveIntegerField(default=1)
+    urgency_note = models.TextField(blank=True, default='', help_text='Why it is needed urgently')
+    phone = models.CharField(max_length=20, blank=True, default='')
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        db_index=True,
+    )
+    admin_note = models.CharField(max_length=300, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return '%s — %s x%d' % (self.medicine.name, self.user.username, self.quantity)
 
 
 class PaymentTransaction(models.Model):

@@ -53,6 +53,9 @@
             <button type="button" class="admin-tab" data-tab="stock" role="tab" aria-selected="false">
                 <i class="fa-solid fa-boxes-stacked"></i> Inventory
             </button>
+            <button type="button" class="admin-tab" data-tab="requests" role="tab" aria-selected="false">
+                <i class="fa-solid fa-truck-medical"></i> Medicine Requests <span class="tab-count">{{ pending_requests_count }}</span>
+            </button>
         </div>
 
         <!-- ============================================================
@@ -135,6 +138,45 @@
                     </tbody>
                 </table>
             </div>
+        </section>
+
+        <!-- ============================================================
+             Tab 4: Medicine Requests (out-of-stock reorder requests)
+        ============================================================ -->
+        <section class="admin-pane" id="tab-requests" hidden>
+            <div class="admin-pane-head">
+                <h2 class="section-title">Medicine Requests</h2>
+                <p class="section-subtitle">Students request out-of-stock medicines from the storefront — restock or procure, then mark fulfilled.</p>
+            </div>
+
+            {% if requests %}
+            <div class="rx-queue">
+                {% for req in requests %}
+                <article class="rx-review-card" data-request-id="{{ req.id }}">
+                    <div class="rx-review-head">
+                        <span class="rx-review-user"><i class="fa-solid fa-pills"></i> {{ req.medicine.name }}{% if req.medicine.strength %} {{ req.medicine.strength }}{% endif %}</span>
+                        <span class="rx-review-date">{{ req.created_at|date:"M d, Y · h:i A" }}</span>
+                    </div>
+                    <p class="rx-review-notes">
+                        <strong>{{ req.user.get_full_name|default:req.user.username }}</strong> ({{ req.user.username }}) · {{ req.quantity }} pack{{ req.quantity|pluralize }}
+                        {% if req.phone %} · <a href="tel:{{ req.phone }}" class="order-phone">{{ req.phone }}</a>{% endif %}
+                    </p>
+                    {% if req.urgency_note %}<p class="rx-review-notes"><i class="fa-solid fa-note-sticky"></i> {{ req.urgency_note }}</p>{% endif %}
+                    <p class="rx-review-notes muted">Stock: {{ req.medicine.stock_quantity }} · Status: {{ req.get_status_display }}</p>
+                    <div class="rx-review-actions">
+                        {% if req.status == 'pending' %}
+                        <button type="button" class="btn-approve" data-request-action="fulfill"><i class="fa-solid fa-check"></i> Mark Fulfilled</button>
+                        <button type="button" class="btn-reject" data-request-action="reject"><i class="fa-solid fa-xmark"></i> Reject</button>
+                        {% else %}
+                        <span class="order-status status-{{ req.status }}">{{ req.get_status_display }}</span>
+                        {% endif %}
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="empty-docs">No medicine requests yet.</p>
+            {% endif %}
         </section>
 
         <!-- ============================================================
@@ -298,6 +340,40 @@
                     if (json.status === 'success') renderOrderRow(json);
                 })
                 .catch(() => showToast('Action failed — please try again.'));
+        });
+
+        // ====================================================================
+        // Medicine requests — fulfil / reject
+        // ====================================================================
+        document.querySelectorAll('.rx-review-card[data-request-id]').forEach(function (card) {
+            card.querySelectorAll('[data-request-action]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    const action = btn.dataset.requestAction;
+                    const id = card.dataset.requestId;
+                    const note = window.prompt(
+                        action === 'fulfill' ? 'Note for the student (optional):' : 'Rejection reason (shown to the student):',
+                        '',
+                    );
+                    post('{% url "api_pharmacy_request_status" 0 %}'.replace('/0/', '/' + id + '/'), new URLSearchParams({
+                        action: action,
+                        admin_note: (note || '').trim(),
+                    })).then(function (json) {
+                        showToast(json.message || 'Request updated.');
+                        if (json.status === 'success') {
+                            const countEl = document.querySelector('.admin-tab[data-tab="requests"] .tab-count');
+                            if (countEl) {
+                                const n = Math.max(0, (parseInt(countEl.textContent, 10) || 1) - 1);
+                                countEl.textContent = n;
+                            }
+                            card.querySelectorAll('[data-request-action]').forEach((b) => b.remove());
+                            const statusEl = document.createElement('span');
+                            statusEl.className = 'order-status status-' + json.new_status;
+                            statusEl.textContent = json.new_status === 'fulfilled' ? 'Fulfilled' : 'Rejected';
+                            card.querySelector('.rx-review-actions').appendChild(statusEl);
+                        }
+                    }).catch(() => showToast('Action failed — please try again.'));
+                });
+            });
         });
 
         // ====================================================================

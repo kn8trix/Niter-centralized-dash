@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 118 | Online Pharmacy polish — BD medicine catalog seed, product detail modal, Buy Now checkout, stock requests, nav buttons, modal CSS fix | *pending* |
 | 117 | Website Builder overhaul — system page registration, feature blocks, live editing, UI redesign | `1908512` |
 | 116 | Fix 500 on /study-corner/ — guard fileless CourseMaterial rows | `3fa4aa1` |
 | 115 | Signup — show/hide password toggle | `e4d6a25` |
@@ -6582,6 +6583,94 @@ it.` The demo rows seeded by `seed_demo_data` were created with only
   200 against the same fileless rows.
 - Seed verified against a throwaway DB: 5 fresh materials get real files on
   disk; re-run stays idempotent (no duplicates).
+
+## 118. Online Pharmacy Polish — BD Catalog Seed, Product Details, Buy Now, Stock Requests & Nav
+
+**Date:** 15 August 2026  
+**Branch:** main
+
+Follow-up to §114: the Online Pharmacy module now ships with a seeded
+Bangladeshi medicine catalog, a full product-detail modal (image / manufacturer /
+usage / dosage / precautions / side effects / live stock units / delivery ETA),
+a **Buy Now** shortcut into the existing multi-step checkout gateway, an
+**Out-of-Stock Medicine Request** pipeline (student modal → staff review tab),
+Online Pharmacy entry points on the hero + medical pages, and a modal
+overlay CSS fix (the `.modal-backdrop[hidden]` bug class from §98/§107).
+
+### 1. Medicine catalog fields + seed (`core/models.py`, migration `0044`)
+
+- **`MedicineItem`** gains: `manufacturer` (e.g. Square Pharmaceuticals),
+  `image_url` (store card + modal photo), `delivery_eta` (e.g. "30-45 mins on
+  campus"), and the detail-modal text fields `usage_info` / `dosage_info` /
+  `precautions` / `side_effects`. Admin list/search updated.
+- **New `seed_pharmacy_catalog` command** (idempotent `get_or_create` on
+  name+strength) seeds the 8 requested BD medicines — Napa Extra, Seclo,
+  Sergel, Ace Plus, Entacyd, Savlon Antiseptic Liquid, Ceevit, Monas — with
+  BDT prices, stock levels, expiry/batch, image URLs and full detail content.
+  **Monas 10mg** is seeded Rx-required and **out of stock** so the Request
+  Stock flow is demonstrable out of the box. `seed_demo_data` now invokes it
+  (re-run safe, admin-edited rows preserved).
+
+### 2. Product detail modal + Buy Now (`templates/pharmacy/store.html`)
+
+- Cards render an image (with an icon fallback on load failure), manufacturer
+  line, and — for out-of-stock items — a **Request** button instead of Add.
+- The detail modal now shows: image, full name, generic + manufacturer,
+  price, **live stock count** ("In Stock: 45 packs" / "Out of Stock"),
+  **delivery estimate** ("Delivered within …"), description, and structured
+  Usage / Dosage / Precautions / Side Effects sections, plus Generic
+  Substitutes.
+- Actions: **Add to Cart**, **Buy Now** (adds the item and opens the
+  multi-step checkout modal at Step 1 — shipping → payment gateway →
+  receipt), and **Request Stock** for out-of-stock items (opens the request
+  modal).
+
+### 3. Out-of-stock medicine requests
+
+- **New `MedicineRequest` model** (medicine, user, quantity, urgency_note,
+  phone, status pending/fulfilled/rejected, admin_note, timestamps).
+- **`POST /api/pharmacy/request-stock/`** (login required): validates the
+  medicine, quantity 1–999 and a contact phone; persists the pending request
+  and notifies the student in real time.
+- **`POST /api/pharmacy/admin/requests/<id>/status/`** (staff only): marks
+  fulfilled (or rejected with a reason) and pushes the outcome notification.
+- **Admin dashboard** (`/dashboard/medical/pharmacy/`) gains a fourth tab,
+  **Medicine Requests**, with a pending-count badge and per-card
+  Fulfil / Reject actions.
+
+### 4. Navigation entry points
+
+- **Hero (`templates/index.html`)** — a prominent **Online Pharmacy** button
+  (`.hero-btn-pharmacy`, emerald tint that reads on the permanently-dark
+  hero) linking to `/pharmacy/`.
+- **Medical page header (`templates/medical/booking.html`)** — an **Online
+  Pharmacy** pill button (`.med-pharmacy-btn`) under the intro.
+
+### 5. Layout & dark-mode fixes (`static/css/pharmacy.css`)
+
+- **Critical modal fix:** added `.modal-backdrop[hidden] { display: none; }`
+  — the `.modal-backdrop { display: flex }` rule overrode the `hidden`
+  attribute, so every modal (Rx / product / checkout) rendered stacked on
+  page load with dark glitches. Same defect class as §98/§107.
+- New styles for the card/modal images (+ fallbacks), stock-units chips,
+  delivery-ETA line, detail sections, and dark-mode contrast for all of them.
+
+### Tests
+
+- New suites: `PharmacyCatalogSeedCommandTest` (8 medicines, idempotency,
+  edit preservation, Monas Rx/out-of-stock), `PharmacyStockRequestApiTest`
+  (login gate, persistence + notification, unknown medicine, quantity/phone
+  validation), `PharmacyRequestStatusApiTest` (staff gate, fulfil/reject +
+  notification, already-reviewed 409, invalid action), `PharmacyNavButtonsTest`
+  (hero + medical page link to `/pharmacy/`), `PharmacyModalCssGuardTest`
+  (the `[hidden]` rule is present in the CSS).
+- `PharmacyStorePageTest` extended (manufacturer/image/delivery in catalog
+  JSON, request modal + Buy Now markup); `SecurityAuditTest` anonymous matrix
+  covers the two new endpoints.
+- Full suite — **973 tests OK** · `manage.py check` clean · migrations
+  consistent (`makemigrations --check` clean).
+
+---
 
 ## 117. Website Builder Overhaul — System Page Registration + Feature Blocks + Live Editing + UI
 

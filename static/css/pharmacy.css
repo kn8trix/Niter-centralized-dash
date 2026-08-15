@@ -225,6 +225,48 @@ body.pharmacy.modal-open {
     box-shadow: var(--shadow-hover, 0 14px 36px rgba(0, 0, 0, 0.10));
 }
 
+/* Medicine image — rounded thumbnail on the card, with an icon fallback */
+.med-img {
+    position: relative;
+    height: 130px;
+    border-radius: 0.7rem;
+    overflow: hidden;
+    margin: -0.15rem 0 0.85rem;
+    background: var(--bg-subtle, #f7f4ef);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.med-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.med-img-fallback,
+.pd-img-fallback {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--text-muted, #6b7280);
+    font-size: 2rem;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.med-img.no-img img,
+.pd-img.no-img img {
+    display: none;
+}
+
+.med-img.no-img .med-img-fallback,
+.pd-img.no-img .pd-img-fallback {
+    opacity: 1;
+}
+
 .med-card-head {
     display: flex;
     align-items: center;
@@ -343,6 +385,13 @@ body.pharmacy.modal-open {
     background: rgba(15, 15, 18, 0.62);
     overflow-y: auto;
     backdrop-filter: blur(2px);
+}
+
+/* The ``hidden`` attribute must beat the ``display: flex`` above — otherwise
+   every modal renders on top of the page on load (dark background glitches).
+   Same defect class as the §98 emergency modal / §107 builder modals. */
+.modal-backdrop[hidden] {
+    display: none;
 }
 
 .modal-card {
@@ -509,12 +558,89 @@ body.pharmacy.modal-open {
 /* ---------------------------------------------------------------------------
    6. Product detail + substitutes
 --------------------------------------------------------------------------- */
+.pd-img {
+    position: relative;
+    height: 190px;
+    border-radius: 0.8rem;
+    overflow: hidden;
+    margin-bottom: 0.9rem;
+    background: var(--bg-subtle, #f7f4ef);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pd-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
 .pd-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; }
 .pd-name { margin: 0 0 0.15rem; font-size: 1.3rem; font-weight: 800; }
 .pd-name span { color: var(--text-muted, #6b7280); font-size: 0.85em; font-weight: 600; }
 .pd-generic { margin: 0 0 0.6rem; color: var(--text-muted, #6b7280); font-size: 0.88rem; }
-.pd-price { display: flex; align-items: center; gap: 0.7rem; font-size: 1.05rem; font-weight: 700; margin-bottom: 0.6rem; }
+.pd-price { display: flex; align-items: center; gap: 0.7rem; font-size: 1.05rem; font-weight: 700; margin-bottom: 0.4rem; }
+
+/* Live stock count — units remaining or out-of-stock */
+.stock-units {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.6rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.stock-units-in {
+    color: #16a34a;
+    background: rgba(22, 163, 74, 0.12);
+}
+
+.stock-units-out {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.14);
+}
+
+/* Delivery time estimate */
+.pd-eta {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0 0 0.7rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--accent-dark, #27272a);
+}
+
 .pd-desc { margin: 0 0 0.8rem; font-size: 0.88rem; color: var(--text-primary, #1f2937); }
+
+/* Detail sections — usage / dosage / precautions / side effects */
+.pd-section {
+    padding: 0.6rem 0;
+    border-top: 1px solid var(--border-color, #f0ebe1);
+}
+
+.pd-section h4 {
+    margin: 0 0 0.25rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted, #6b7280);
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.pd-section p {
+    margin: 0;
+    font-size: 0.86rem;
+    color: var(--text-primary, #1f2937);
+}
 
 .pd-meta {
     display: flex;
@@ -1109,11 +1235,34 @@ html[data-theme='dark'] .admin-table-wrap {
 
 html[data-theme='dark'] .med-name { color: #ffffff; }
 
+html[data-theme='dark'] .med-img,
+html[data-theme='dark'] .pd-img {
+    background: #2e2e33;
+}
+
+html[data-theme='dark'] .med-img-fallback,
+html[data-theme='dark'] .pd-img-fallback {
+    color: #a1a1aa;
+}
+
 html[data-theme='dark'] .med-price,
 html[data-theme='dark'] .order-total,
 html[data-theme='dark'] .order-phone,
 html[data-theme='dark'] .rx-browse {
     color: #fbbf24;
+}
+
+html[data-theme='dark'] .pd-eta {
+    color: #fbbf24;
+}
+
+html[data-theme='dark'] .pd-section p,
+html[data-theme='dark'] .pd-desc {
+    color: #e4e4e7;
+}
+
+html[data-theme='dark'] .pd-section h4 {
+    color: #a1a1aa;
 }
 
 html[data-theme='dark'] .med-generic,
