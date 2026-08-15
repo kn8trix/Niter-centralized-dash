@@ -46,6 +46,33 @@
         <p class="news-empty">No articles right now — check back soon.</p>
         {% endfor %}
     </div>
+
+    <!-- ============================================================
+         Video News — playable YouTube cards (raw API items; only
+         populated when a YOUTUBE_API_KEY is configured).
+    ============================================================ -->
+    <div class="news-videos" id="news-videos-section">
+        <div class="news-videos-head">
+            <h4 class="news-videos-title"><i class="fa-brands fa-youtube"></i> Video News</h4>
+            <span class="news-source-note">Playable video cards from YouTube</span>
+        </div>
+        <div class="news-videos-grid" id="news-videos-grid">
+            {% for video in videos %}
+            <div class="video-news-card">
+                <div class="video-news-media">
+                    <iframe src="https://www.youtube.com/embed/{{ video.id.videoId }}" title="{{ video.snippet.title }}" allowfullscreen loading="lazy"></iframe>
+                </div>
+                <div class="video-news-body">
+                    <span class="video-news-badge">VIDEO NEWS</span>
+                    <h4 class="video-news-title">{{ video.snippet.title }}</h4>
+                    <p class="video-news-channel">{{ video.snippet.channelTitle }}</p>
+                </div>
+            </div>
+            {% empty %}
+            <p class="news-empty">No video news right now — check back soon.</p>
+            {% endfor %}
+        </div>
+    </div>
 </section>
 
 <script>
@@ -94,13 +121,42 @@
         }).join('');
     }
 
+    var videosGrid = document.getElementById('news-videos-grid');
+
+    function videoCard(v) {
+        var id = ((v && v.id) || {}).videoId || '';
+        var snippet = (v && v.snippet) || {};
+        if (!id) return '';
+        return '<div class="video-news-card">' +
+            '<div class="video-news-media"><iframe src="https://www.youtube.com/embed/' + esc(id) +
+            '" title="' + esc(snippet.title || '') + '" allowfullscreen loading="lazy"></iframe></div>' +
+            '<div class="video-news-body">' +
+            '<span class="video-news-badge">VIDEO NEWS</span>' +
+            '<h4 class="video-news-title">' + esc(snippet.title || '') + '</h4>' +
+            '<p class="video-news-channel">' + esc(snippet.channelTitle || '') + '</p>' +
+            '</div></div>';
+    }
+
+    function renderVideos(videos) {
+        if (!videosGrid) return;
+        videos = videos || [];
+        if (!videos.length) {
+            videosGrid.innerHTML = '<p class="news-empty">No video news right now — check back soon.</p>';
+            return;
+        }
+        videosGrid.innerHTML = videos.map(videoCard).join('');
+    }
+
     form.addEventListener('submit', function (ev) {
         ev.preventDefault();
         var q = input.value.trim();
         grid.innerHTML = '<p class="news-empty">Searching…</p>';
         fetch('/api/news/search/?q=' + encodeURIComponent(q))
             .then(function (res) { return res.json(); })
-            .then(function (json) { render((json && json.data) || []); })
+            .then(function (json) {
+                render((json && json.data) || []);
+                renderVideos((json && json.videos) || []);
+            })
             .catch(function () {
                 grid.innerHTML = '<p class="news-empty">Search failed — please try again.</p>';
             });

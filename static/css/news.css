@@ -189,6 +189,98 @@
     margin: 0.4rem 0;
 }
 
+/* ---- Video News section (playable YouTube cards) ---- */
+.news-videos {
+    margin-top: 1.3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color, rgb(var(--color-border, 235 230 223)));
+}
+
+.news-videos-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.8rem;
+    margin-bottom: 0.8rem;
+}
+
+.news-videos-title {
+    font-size: 0.98rem;
+    font-weight: 700;
+    color: var(--text-strong, rgb(var(--color-main, 43 41 39)));
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+}
+
+.news-videos-title i {
+    color: #ef4444;
+    font-size: 1.05rem;
+}
+
+.news-videos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 0.9rem;
+}
+
+.video-news-card {
+    display: flex;
+    flex-direction: column;
+    background: #1e1e24;
+    border: 1px solid #2d2d38;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.video-news-media {
+    position: relative;
+    padding-bottom: 56.25%;
+    height: 0;
+    overflow: hidden;
+    background: #000;
+}
+
+.video-news-media iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+.video-news-body {
+    padding: 12px;
+}
+
+.video-news-badge {
+    display: inline-block;
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.15);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.video-news-title {
+    color: #ffffff;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.35;
+    margin: 8px 0 0;
+}
+
+.video-news-channel {
+    color: #9ca3af;
+    font-size: 0.8rem;
+    margin: 4px 0 0;
+}
+
 @media (max-width: 640px) {
     .news-grid {
         grid-template-columns: 1fr;

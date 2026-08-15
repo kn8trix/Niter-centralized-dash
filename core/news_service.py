@@ -1,16 +1,17 @@
 """Global news feed for the student & admin dashboards.
 
-Fetches top headlines (or a keyword search) from NewsAPI.org, enriches keyword
-searches with YouTube video cards (when ``YOUTUBE_API_KEY`` is configured), and
-returns a normalized article list consumed by ``core.views.student_dashboard``,
+Fetches top headlines (or a keyword search) from NewsAPI.org and returns a
+normalized article list consumed by ``core.views.student_dashboard``,
 ``core.views.admin_dashboard`` and the ``/api/news/search/`` endpoint. Each
-article carries an optional ``image`` (photo) and/or ``video_url`` (embedded
-video) so the widget can render rich media cards.
+article carries an optional ``image`` (photo) so the widget can render rich
+media cards. Playable video news cards come from a separate YouTube Data API v3
+call (:func:`fetch_youtube_videos`), rendered in the widget's dedicated
+"Video News" section.
 
 The widget must never take a dashboard down over an external service, so every
 failure mode — unset/placeholder API key, network error, timeout, rate limit,
 non-200 response — degrades to deterministic sample headlines
-(:func:`get_fallback_news_data`). Under the test runner the fetch is skipped
+(:func:`get_fallback_news_data`). Under the test runner every fetch is skipped
 entirely so the suite stays fast and network-free.
 """
 import logging
@@ -26,31 +27,12 @@ YOUTUBE_API_KEY_ENV = 'YOUTUBE_API_KEY'
 DUMMY_KEY = 'dummy_key'
 DEFAULT_CATEGORY = 'technology'
 DEFAULT_PAGE_SIZE = 12
+YOUTUBE_MAX_RESULTS = 4
 TIMEOUT_SECONDS = 5
 
 TOP_HEADLINES_URL = 'https://newsapi.org/v2/top-headlines'
 EVERYTHING_URL = 'https://newsapi.org/v2/everything'
 YOUTUBE_SEARCH_URL = 'https://www.googleapis.com/youtube/v3/search'
-YOUTUBE_WATCH_URL = 'https://www.youtube.com/watch?v=%s'
-YOUTUBE_EMBED_URL = 'https://www.youtube.com/embed/%s'
-
-
-def _interleave(articles, videos):
-    """Merge two lists alternately (articles first), preserving both orders.
-
-    Used to sprinkle YouTube video cards through a keyword search feed instead
-    of dumping them all at the end.
-    """
-    merged = []
-    ai = vi = 0
-    while ai < len(articles) or vi < len(videos):
-        if ai < len(articles):
-            merged.append(articles[ai])
-            ai += 1
-        if vi < len(videos):
-            merged.append(videos[vi])
-            vi += 1
-    return merged
 
 
 def _is_test_run():
@@ -88,56 +70,38 @@ def _normalize_articles(raw_articles):
     return articles
 
 
-def _normalize_videos(raw_items):
-    """Map YouTube Data API v3 search items to the shared article shape.
+def fetch_youtube_videos(query=None, max_results=YOUTUBE_MAX_RESULTS):
+    """Query the YouTube Data API v3 for playable video news cards.
 
-    Video cards carry ``video_url`` (an embeddable watch URL) and no ``image``
-    — the template renders an iframe instead of a photo. ``url`` stays the
-    canonical watch page so the card still opens on YouTube.
+    Searches ``{query} news`` (or ``{DEFAULT_CATEGORY} news`` without a query)
+    with ``type=video`` and returns the **raw API items** (``id.videoId`` /
+    ``snippet.title`` / ``snippet.channelTitle`` / thumbnails) so the widget
+    template can build ``https://www.youtube.com/embed/<videoId>`` players
+    directly. Only runs when a real ``YOUTUBE_API_KEY`` is configured; without
+    one (or on any network/API error) it returns ``[]`` so the news feed is
+    never held hostage by a second external service.
     """
-    videos = []
-    for item in raw_items or []:
-        if not isinstance(item, dict):
-            continue
-        snippet = item.get('snippet') or {}
-        video_id = ((item.get('id') or {}).get('videoId') or '').strip()
-        title = (snippet.get('title') or '').strip()
-        if not video_id or not title:
-            continue
-        videos.append({
-            'title': title,
-            'description': (snippet.get('description') or '').strip(),
-            'url': YOUTUBE_WATCH_URL % video_id,
-            'image': '',
-            'video_url': YOUTUBE_EMBED_URL % video_id,
-            'source': (snippet.get('channelTitle') or 'Video').strip(),
-            'published_at': snippet.get('publishedAt') or '',
-        })
-    return videos
-
-
-def _fetch_youtube_videos(query, page_size):
-    """YouTube Data API v3 keyword search → video cards (or [] when unused).
-
-    Only runs when a real ``YOUTUBE_API_KEY`` is configured; without one (or on
-    any network/API error) it returns ``[]`` so the news feed is never held
-    hostage by a second external service.
-    """
+    if _is_test_run():
+        return []
     api_key = os.getenv(YOUTUBE_API_KEY_ENV, '').strip()
     if not api_key or api_key == DUMMY_KEY:
         return []
+    q = '%s news' % ((query or '').strip() or DEFAULT_CATEGORY)
     try:
         response = requests.get(YOUTUBE_SEARCH_URL, params={
             'part': 'snippet',
             'type': 'video',
-            'q': query,
-            'maxResults': page_size,
+            'q': q,
+            'maxResults': max_results,
             'key': api_key,
         }, timeout=TIMEOUT_SECONDS)
         if response.status_code == 200:
-            return _normalize_videos(response.json().get('items', []))
+            items = response.json().get('items') or []
+            # Keep only real videos (skip playlists/channels/malformed rows).
+            return [item for item in items
+                    if isinstance(item, dict) and (item.get('id') or {}).get('videoId')][:max_results]
         logger.warning(
-            'YouTube API returned status %s — skipping video cards.',
+            'YouTube API returned status %s — skipping video news.',
             response.status_code,
         )
     except Exception as exc:  # network errors, timeouts, bad JSON — degrade gracefully
@@ -274,12 +238,11 @@ def get_fallback_news_data(query=None):
 def fetch_global_news(query=None, category=DEFAULT_CATEGORY, page_size=DEFAULT_PAGE_SIZE):
     """Fetch top headlines or keyword search results from NewsAPI.org.
 
-    ``query`` uses the ``/everything`` endpoint (keyword search) and, when a
-    ``YOUTUBE_API_KEY`` is configured, enriches the feed with video cards from
-    the YouTube Data API v3 (interleaved through the result list). Otherwise
-    the ``/top-headlines`` endpoint is used with ``category``. Always returns a
-    list — real articles when the APIs cooperate, deterministic samples
-    otherwise (see module docstring for the fallback policy).
+    ``query`` uses the ``/everything`` endpoint (keyword search); otherwise the
+    ``/top-headlines`` endpoint is used with ``category``. Always returns a
+    list — real articles when the API cooperates, deterministic samples
+    otherwise (see module docstring for the fallback policy). Video news cards
+    are fetched separately via :func:`fetch_youtube_videos`.
     """
     if _is_test_run():
         return get_fallback_news_data(query)
@@ -305,27 +268,16 @@ def fetch_global_news(query=None, category=DEFAULT_CATEGORY, page_size=DEFAULT_P
             'category': category,
         }
 
-    articles = None
     try:
         response = requests.get(url, params=params, timeout=TIMEOUT_SECONDS)
         if response.status_code == 200:
-            articles = _normalize_articles(response.json().get('articles', []))
-        else:
-            logger.warning(
-                'News API returned status %s for %s — using fallback feed.',
-                response.status_code,
-                url,
-            )
+            return _normalize_articles(response.json().get('articles', []))
+        logger.warning(
+            'News API returned status %s for %s — using fallback feed.',
+            response.status_code,
+            url,
+        )
     except Exception as exc:  # network errors, timeouts, bad JSON — degrade gracefully
         logger.warning('News API fetch error: %s', exc)
 
-    if articles is None:
-        return get_fallback_news_data(query)
-
-    # Keyword searches get video cards from YouTube when a key is configured;
-    # without one (or on failure) the feed is just the NewsAPI articles.
-    if query:
-        videos = _fetch_youtube_videos(query, max(1, page_size // 2))
-        if videos:
-            articles = _interleave(articles, videos)
-    return articles
+    return get_fallback_news_data(query)

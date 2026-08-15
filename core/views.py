@@ -44,7 +44,7 @@ from .roles import get_user_role, role_home_path
 from .middleware import _client_ip, is_campus_wifi
 from .forms import SignUpForm
 from .block_sanitizer import sanitize_css, sanitize_html
-from .news_service import fetch_global_news
+from .news_service import fetch_global_news, fetch_youtube_videos
 from .templatetags.builder_tags import render_block_html
 from .google_service import (
     GoogleAccountNotConnected,
@@ -394,6 +394,7 @@ def student_dashboard(request):
         'course_links': course_links,
         # Global news widget — degrades to sample headlines, never blocks.
         'news_articles': fetch_global_news(),
+        'videos': fetch_youtube_videos(),
     })
 
 def tickets(request):
@@ -5937,6 +5938,7 @@ def admin_dashboard(request):
         'active_alert': active_alert,
         # Global news widget — degrades to sample headlines, never blocks.
         'news_articles': fetch_global_news(),
+        'videos': fetch_youtube_videos(),
     })
 
 
@@ -5951,7 +5953,8 @@ def api_news_search(request):
         return JsonResponse({'status': 'error', 'message': 'GET required'}, status=405)
     query = (request.GET.get('q') or '').strip()
     articles = fetch_global_news(query=query or None, page_size=12)
-    return JsonResponse({'status': 'success', 'data': articles})
+    videos = fetch_youtube_videos(query=query or None)
+    return JsonResponse({'status': 'success', 'data': articles, 'videos': videos})
 
 
 def news_page(request):
@@ -5963,6 +5966,7 @@ def news_page(request):
     """
     return render(request, 'news.html', {
         'news_articles': fetch_global_news(),
+        'videos': fetch_youtube_videos(),
     })
 
 

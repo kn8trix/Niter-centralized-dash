@@ -6338,3 +6338,46 @@ connection.
 
 - `python manage.py check` clean; signup tests green — registration no longer
   requires an email server connection.
+
+---
+
+## 112. Global News — Dedicated Video News Section (YouTube Data API v3)
+
+**Date:** 15 August 2026  
+**Branch:** main
+
+Builds on §104/§111: the Global News widget now shows a dedicated **Video News**
+section with playable YouTube cards alongside the text-article grid.
+
+### Changes
+
+- `core/news_service.py` — new `fetch_youtube_videos(query=None, max_results=4)`:
+  queries `GET https://www.googleapis.com/youtube/v3/search` with
+  `part=snippet&type=video&q={query} news&maxResults=4&key={YOUTUBE_API_KEY}`
+  (defaults to `{DEFAULT_CATEGORY} news` without a query) and returns the raw
+  API items (`id.videoId` / `snippet.title` / `snippet.description` /
+  `snippet.channelTitle` / thumbnails), filtered to real videos. No key or any
+  failure → `[]` (never blocks the widget); short-circuits under the test
+  runner. The previous interleaved-video enrichment of `fetch_global_news` was
+  removed in favour of this dedicated section.
+- `templates/partials/global_news.html` — new "Video News" block under the
+  article grid: each `.video-news-card` embeds
+  `https://www.youtube.com/embed/{{ video.id.videoId }}` in a 16:9 responsive
+  wrapper with a red VIDEO NEWS badge, white title and muted channel name; a
+  muted empty state renders when no key/videos. The client-side search now
+  re-renders both the article grid and the video grid from
+  `/api/news/search/` (which returns `data` + `videos`).
+- `core/views.py` — `student_dashboard`, `admin_dashboard`, `news_page` and
+  `api_news_search` pass `videos = fetch_youtube_videos(...)` into the widget
+  context / JSON response.
+- `static/css/news.css` — `.news-videos*` / `.video-news-card*` styles (dark
+  `#1e1e24` cards, `#2d2d38` border, `#ef4444` badge, 56.25% iframe wrapper).
+
+### Tests & verification
+
+- `python manage.py check` clean; news suites green (19 tests) — new coverage
+  for the YouTube query params (`q` gets ` news` appended), raw-item
+  pass-through, non-video filtering, no-key/test-run short-circuit, and the
+  API + dashboard video rendering. Live check with the configured
+  `YOUTUBE_API_KEY`: `fetch_youtube_videos('bangladesh')` returned 4 real
+  video cards (BD NEWS71 / Jamuna TV).
