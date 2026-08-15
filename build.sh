@@ -46,4 +46,10 @@ RENDER_BUILD=true "$PYTHON" manage.py migrate --noinput
 echo "==> Seeding demo users"
 RENDER_BUILD=true "$PYTHON" manage.py seed_demo_users
 
+# Seed the Online Pharmacy catalog with popular Bangladeshi medicines
+# (idempotent get_or_create on name+strength — re-runs never duplicate or
+# clobber admin edits, so this is safe on every build).
+echo "==> Seeding pharmacy catalog (BD medicines)"
+RENDER_BUILD=true "$PYTHON" manage.py seed_pharmacy_catalog
+
 echo "==> Build complete"

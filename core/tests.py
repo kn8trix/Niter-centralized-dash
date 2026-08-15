@@ -11192,7 +11192,7 @@ class PharmacyNavButtonsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Online Pharmacy')
         self.assertContains(response, reverse('pharmacy_store'))
-        self.assertContains(response, 'hero-btn-pharmacy')
+        self.assertContains(response, 'btn-pharmacy-hero')
 
     def test_medical_page_has_online_pharmacy_button(self):
         response = self.client.get(reverse('medical'))

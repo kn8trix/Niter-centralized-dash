@@ -373,22 +373,14 @@ body.landing .hero-btn-secondary i {
     color: #DC2626;           /* red-500 — medical accent, visible on white */
 }
 
-/* "Online Pharmacy" — pharmacy-green pill, high contrast on the dark hero */
-.hero-btn-pharmacy {
-    background: rgba(22, 163, 74, 0.16);   /* emerald-600 tint over the dark hero */
-    border: 1px solid rgba(34, 197, 94, 0.55);
-    color: #86efac;                         /* emerald-300 — bright on the dark glass */
-}
-
-.hero-btn-pharmacy:hover {
+/* "Online Pharmacy" — sky-blue hero CTA. The button carries its colors as
+   inline styles (element-level, so they beat any stylesheet token); this
+   rule adds the shared hover lift + glow using properties the inline style
+   does not set (transform / filter / box-shadow). */
+.btn-pharmacy-hero:hover {
     transform: translateY(-2px);
-    background: rgba(22, 163, 74, 0.28);
-    border-color: rgba(34, 197, 94, 0.8);
-    color: #bbf7d0;
-}
-
-.hero-btn-pharmacy i {
-    color: #4ade80;
+    filter: brightness(1.08);
+    box-shadow: 0 12px 30px rgba(2, 132, 199, 0.35);
 }
 
 /* Bottom floating quick-card deck */
@@ -946,7 +938,8 @@ body.landing .hero-btn-secondary i {
     }
 
     .hero-btn-primary,
-    .hero-btn-secondary {
+    .hero-btn-secondary,
+    .btn-pharmacy-hero {
         justify-content: center;
         width: 100%;
     }

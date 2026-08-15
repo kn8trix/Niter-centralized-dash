@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 121 | Public pharmacy storefront — guest browsing/cart, hero button contrast fix, auto-seeded BD catalog | *(pending)* |
 | 120 | Club dashboard sub-routes + event banner upload + event visibility sync to student portals | `5c90964` |
 | 119 | Fix visual builder empty canvas — default block HTML backfill, preview-mode canvas, template-cache flush on save/publish | `a164e8a` |
 | 118 | Online Pharmacy polish — BD medicine catalog seed, product detail modal, Buy Now checkout, stock requests, nav buttons, modal CSS fix | `6e5430b` |
@@ -6860,3 +6861,53 @@ the public /clubs/ page.
   migration drift. Rendered pages verified: all six sub-routes return 200
   with the club layout and valid inline JS; event banner upload persists and
   shows on both student surfaces.
+
+---
+
+## 121. Public Pharmacy Storefront — Guest Browsing + Hero Button Contrast + Auto-Seeded Catalog
+
+**Date:** 16 August 2026  
+**Branch:** main
+
+Made `/pharmacy/` a standalone public store: guests can now browse the full
+catalog, search medicines, open product details and build a cart without an
+account. Login is required only for the privileged actions (proceeding to
+checkout, out-of-stock requests, prescription uploads). The hero's **Online
+Pharmacy** button got a high-contrast sky-blue restyle, and the Bangladeshi
+medicine catalog now auto-seeds on every deploy.
+
+### Changes
+
+- **Public storefront (`templates/pharmacy/store.html`)** — removed the
+  client-side `requireAuth()` gate from the add-to-cart / substitute actions
+  so anonymous visitors can browse freely and build a cart (localStorage).
+  Login redirects remain on **Proceed to Checkout** (cart button / Buy Now /
+  Place Order), **Out-of-Stock Request** and **Prescription upload** — the
+  corresponding APIs (`api_pharmacy_checkout`, `api_pharmacy_stock_request`,
+  `api_pharmacy_prescription_upload`) were already `@login_required`
+  server-side, so the relaxation never weakens a protected action. A guest's
+  cart survives the login round-trip via `?next=/pharmacy/`.
+- **Hero button contrast (`templates/index.html` + `static/css/main.css`)** —
+  the Online Pharmacy button on the landing hero is restyled as
+  `.btn-pharmacy-hero` with inline sky-blue styling (`#0284c7` fill, white
+  text, `#38bdf8` border, 12px/24px padding, rounded 8px, 🛒 emoji). The dead
+  green `.hero-btn-pharmacy` CSS was replaced with a hover lift/glow
+  (transform / filter / box-shadow — the inline styles can't be overridden
+  for background), and the button joins the other hero CTAs in the mobile
+  full-width rule. The builder's `data-widget-id` / `data-editable-field`
+  hooks are preserved so the Website Builder can still live-edit it.
+- **Auto-populated BD catalog (`build.sh`)** — every deploy now runs the
+  idempotent `seed_pharmacy_catalog` command right after `seed_demo_users`,
+  so the storefront ships with the 8 popular Bangladeshi medicines
+  (Napa Extra, Seclo, Sergel, Ace Plus, Entacyd, Savlon Antiseptic Liquid,
+  Ceevit, Monas) without manual seeding. `get_or_create` on name+strength
+  means re-runs never duplicate rows or clobber admin edits.
+
+### Tests & verification
+
+- `PharmacyNavButtonsTest` updated for the new `btn-pharmacy-hero` class.
+- 30 pharmacy/nav tests (store page, checkout, stock request, prescription
+  upload) + 5 seed/modal tests OK · `manage.py check` clean.
+- Rendered pages verified: `/` returns 200 with the new button; `/pharmacy/`
+  returns 200 anonymous with `USER_AUTH=false`, add-to-cart ungated, and
+  checkout / stock request still login-gated.

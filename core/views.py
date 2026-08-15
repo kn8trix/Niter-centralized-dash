@@ -730,10 +730,16 @@ def _pharmacy_order_json(order):
 def pharmacy_store(request):
     """Pharmacy storefront — catalog, prescription upload, cart + checkout.
 
-    Public page: guests can browse and build a cart, but prescription upload
-    and checkout redirect to login. The medicine catalog is embedded as JSON
-    for client-side cart / generic-substitute lookups; the signed-in user's
-    prescriptions (approved ones are attachable to an order) are passed too."""
+    Public page (no login required): guests and students can browse the full
+    storefront, search medicines, view product details and build a cart
+    entirely client-side. Login is required only for the privileged actions —
+    proceeding to checkout (``api_pharmacy_checkout``), submitting an
+    out-of-stock request (``api_pharmacy_stock_request``) and uploading a
+    prescription (``api_pharmacy_prescription_upload``) — all of which are
+    ``@login_required`` on the API side. The medicine catalog is embedded as
+    JSON for client-side cart / generic-substitute lookups; the signed-in
+    user's prescriptions (approved ones are attachable to an order) are
+    passed too."""
     prescriptions = (
         Prescription.objects.filter(user=request.user)[:10]
         if request.user.is_authenticated
