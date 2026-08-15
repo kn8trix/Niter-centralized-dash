@@ -107,9 +107,12 @@
                 <div class="form-row">
                     <div class="field">
                         <label for="id_password" class="field-label">Password</label>
-                        <div class="field-input">
+                        <div class="field-input has-toggle">
                             <i class="fa-solid fa-lock"></i>
                             <input type="password" id="id_password" name="password" placeholder="At least 8 characters" minlength="8" required>
+                            <button type="button" class="password-toggle" data-target="id_password" aria-label="Show password" title="Show password">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
                         </div>
                     </div>
 
@@ -135,5 +138,21 @@
 
         </div>
     </main>
+
+    <script>
+        // Show / hide password toggle inside the password field.
+        document.querySelectorAll('.password-toggle').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var input = document.getElementById(btn.dataset.target);
+                if (!input) return;
+                var show = input.type === 'password';
+                input.type = show ? 'text' : 'password';
+                btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+                btn.title = show ? 'Hide password' : 'Show password';
+                btn.querySelector('i').className = show ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+                input.focus();
+            });
+        });
+    </script>
 </body>
 </html>
