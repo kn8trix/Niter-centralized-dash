@@ -42,7 +42,7 @@ from .decorators import (
 )
 from .roles import get_user_role, role_home_path
 from .middleware import _client_ip, is_campus_wifi
-from .forms import SignUpForm
+from .forms import ClubEventForm, SignUpForm
 from .block_sanitizer import sanitize_css, sanitize_html
 from .news_service import fetch_global_news, fetch_youtube_videos
 from .system_pages import SYSTEM_PAGES, register_system_pages
@@ -381,6 +381,15 @@ def student_dashboard(request):
         Course.objects.annotate(material_count=Count('materials'))
         .order_by('-material_count', 'code')[:4]
     )
+    # Upcoming published club events for the student home feed (banner, club,
+    # date, venue + a Register / Details button). Drafts stay invisible until
+    # the club manager publishes them from /dashboard/club/events/.
+    club_events = (
+        ClubEvent.objects
+        .filter(is_published=True, event_date__gte=today_dhaka)
+        .select_related('club')
+        .order_by('event_date')[:5]
+    )
 
     dash_data = {
         'routine': routine_schedule,
@@ -403,6 +412,7 @@ def student_dashboard(request):
         'quick_notice': quick_notice,
         'recent_notices': recent_notices,
         'course_links': course_links,
+        'club_events': club_events,
         # Global news widget — degrades to sample headlines, never blocks.
         'news_articles': fetch_global_news(),
         'videos': fetch_youtube_videos(),
@@ -1270,8 +1280,11 @@ def clubs_dashboard(request):
         }
         for club in clubs
     ]
+    # Only published events render on the public page — drafts created from
+    # the club dashboard stay hidden until the manager publishes them.
     events = ClubEvent.objects.filter(
-        event_date__gte=timezone.now().date()
+        is_published=True,
+        event_date__gte=timezone.now().date(),
     ).select_related('club').order_by('event_date')
 
     return render(request, 'clubs.html', {
@@ -4524,17 +4537,73 @@ def club_admin_view(request):
 
 @club_access_required
 def club_dashboard(request):
-    """Club Executive Dashboard — the role home for ``club`` accounts.
+    """Club Executive Dashboard — Overview (``/dashboard/club/``).
 
-    Renders the club workspace (Google Sheets, member approvals, role
-    assignments, event posts, payment verification) inside the distinct club
-    layout ``club/club_base.html`` — a completely separate shell and sidebar
-    from the student and admin areas. Only staff or active ``ClubAccount``
-    holders can open it; ``RoleAccessMiddleware`` bounces everyone else.
+    The role home for ``club`` accounts: a focused overview of the club
+    workspace with quick links to the dedicated section pages (Google Sheet,
+    member approvals, role assignments, events, transaction verifier), all
+    inside the distinct club layout ``club/club_base.html``. Only staff or
+    active ``ClubAccount`` holders can open it; ``RoleAccessMiddleware``
+    bounces everyone else.
     """
     context = _club_workspace_context(request)
     context['club_section'] = 'overview'
-    return render(request, 'club_admin.html', context)
+    return render(request, 'club/overview.html', context)
+
+
+@club_access_required
+def club_sheet_view(request):
+    """Club workspace — Live Google Sheet section (``/dashboard/club/google-sheet/``)."""
+    context = _club_workspace_context(request)
+    context['club_section'] = 'sheet'
+    return render(request, 'club/sheet.html', context)
+
+
+@club_access_required
+def club_members_view(request):
+    """Club workspace — Member Approvals section (``/dashboard/club/members/``)."""
+    context = _club_workspace_context(request)
+    context['club_section'] = 'members'
+    return render(request, 'club/members.html', context)
+
+
+@club_access_required
+def club_roles_view(request):
+    """Club workspace — Role Assignments section (``/dashboard/club/roles/``)."""
+    context = _club_workspace_context(request)
+    context['club_section'] = 'roles'
+    return render(request, 'club/roles.html', context)
+
+
+@club_access_required
+def club_events_view(request):
+    """Club workspace — Events Management (``/dashboard/club/events/``).
+
+    Lists the club's database events and hosts the event creation form (banner
+    image upload with a remote-URL fallback). On POST, validates and saves a
+    new ``ClubEvent`` through ``ClubEventForm`` and redirects back so the new
+    event appears immediately in the list (and, when published, on the student
+    dashboard and public /clubs/ page).
+    """
+    context = _club_workspace_context(request)
+    context['club_section'] = 'events'
+    context['events'] = ClubEvent.objects.select_related('club').order_by('event_date')
+    context['event_form'] = ClubEventForm()
+    if request.method == 'POST':
+        form = ClubEventForm(request.POST, request.FILES)
+        if form.is_valid():
+            form.save()
+            return redirect(reverse('club_dashboard_events') + '?created=1')
+        context['event_form'] = form
+    return render(request, 'club/events.html', context)
+
+
+@club_access_required
+def club_transactions_view(request):
+    """Club workspace — Transaction Verifier section (``/dashboard/club/transactions/``)."""
+    context = _club_workspace_context(request)
+    context['club_section'] = 'transactions'
+    return render(request, 'club/transactions.html', context)
 
 
 # ============================================================================

@@ -75,26 +75,27 @@
             </a>
         </div>
 
-        <!-- Navigation -->
+        <!-- Navigation — each item opens its own dedicated sub-route page;
+             the active section is highlighted via the view's club_section. -->
         <nav data-region="nav" class="flex-1 p-4 space-y-1">
             <p class="text-xs font-medium text-white/40 uppercase tracking-wider px-3 mb-3">Club Workspace</p>
 
-            <a href="{{ ENDPOINTS.club_dashboard }}#overview" data-route="club_dashboard" class="admin-nav-link">
+            <a href="{% url 'club_dashboard' %}" data-route="club_dashboard" class="admin-nav-link {% if club_section == 'overview' %}active{% endif %}">
                 <i class="fa-solid fa-gauge-high"></i> Overview
             </a>
-            <a href="{{ ENDPOINTS.club_dashboard }}#sheet-card" class="admin-nav-link">
+            <a href="{% url 'club_dashboard_sheet' %}" data-route="club_dashboard_sheet" class="admin-nav-link {% if club_section == 'sheet' %}active{% endif %}">
                 <i class="fa-brands fa-google"></i> Live Google Sheet
             </a>
-            <a href="{{ ENDPOINTS.club_dashboard }}#approvals-card" class="admin-nav-link">
+            <a href="{% url 'club_dashboard_members' %}" data-route="club_dashboard_members" class="admin-nav-link {% if club_section == 'members' %}active{% endif %}">
                 <i class="fa-solid fa-user-check"></i> Member Approvals
             </a>
-            <a href="{{ ENDPOINTS.club_dashboard }}#roles-card" class="admin-nav-link">
+            <a href="{% url 'club_dashboard_roles' %}" data-route="club_dashboard_roles" class="admin-nav-link {% if club_section == 'roles' %}active{% endif %}">
                 <i class="fa-solid fa-user-tag"></i> Role Assignments
             </a>
-            <a href="{{ ENDPOINTS.club_dashboard }}#events-card" class="admin-nav-link">
+            <a href="{% url 'club_dashboard_events' %}" data-route="club_dashboard_events" class="admin-nav-link {% if club_section == 'events' %}active{% endif %}">
                 <i class="fa-solid fa-calendar-plus"></i> Events
             </a>
-            <a href="{{ ENDPOINTS.club_dashboard }}#verify-card" class="admin-nav-link">
+            <a href="{% url 'club_dashboard_transactions' %}" data-route="club_dashboard_transactions" class="admin-nav-link {% if club_section == 'transactions' %}active{% endif %}">
                 <i class="fa-solid fa-money-check-dollar"></i> Transaction Verifier
             </a>
         </nav>

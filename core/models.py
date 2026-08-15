@@ -1227,7 +1227,14 @@ class Club(models.Model):
 
 class ClubEvent(models.Model):
     """An upcoming club event listed on the /clubs/ page (registration routes
-    through the existing payment-gateway checkout flow)."""
+    through the existing payment-gateway checkout flow).
+
+    ``banner`` (uploaded image) and ``banner_url`` (remote URL fallback) are
+    the event poster sources — templates prefer the uploaded file and fall
+    back to the URL, then to a plain icon chip. ``is_published`` gates event
+    visibility on the student dashboard and the public /clubs/ page, so club
+    managers can draft an event before it goes live.
+    """
 
     club = models.ForeignKey(
         Club,
@@ -1241,6 +1248,23 @@ class ClubEvent(models.Model):
     capacity = models.PositiveIntegerField(
         default=100,
         help_text='Maximum number of participants',
+    )
+    banner = models.ImageField(
+        upload_to='club_events/banners/',
+        null=True,
+        blank=True,
+        help_text='Event banner / poster image (served from MEDIA_ROOT)',
+    )
+    banner_url = models.CharField(
+        max_length=500,
+        blank=True,
+        default='',
+        help_text='Remote banner URL used when no image is uploaded',
+    )
+    is_published = models.BooleanField(
+        default=True,
+        db_index=True,
+        help_text='Show this event on the student dashboard and public /clubs/ page',
     )
 
     class Meta:

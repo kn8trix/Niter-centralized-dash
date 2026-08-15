@@ -1,0 +1,175 @@
+{% extends "club/club_base.html" %}
+{% load static %}
+
+{% block title %}Transaction Verifier — Niter Hub{% endblock %}
+{% block header %}Transaction Verifier{% endblock %}
+
+{% block content %}
+
+        <div class="card" id="verify-card">
+            <h2 class="section-title"><i class="fa-solid fa-money-check-dollar"></i> Transaction Verifier</h2>
+            <p class="section-subtitle">Verify bKash / Nagad / Rocket payments for event registrations.</p>
+
+            <form class="verify-form" id="verify-form">
+                {% csrf_token %}
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="vf-method" class="field-label">Payment Method</label>
+                        <select id="vf-method" name="method">
+                            <option>bKash</option>
+                            <option>Nagad</option>
+                            <option>Rocket</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="vf-wallet" class="field-label">Sender Wallet Number</label>
+                        <input type="text" id="vf-wallet" name="wallet" placeholder="01XXXXXXXXX" required>
+                    </div>
+                    <div class="field">
+                        <label for="vf-trx" class="field-label">TrxID</label>
+                        <input type="text" id="vf-trx" name="trx" placeholder="e.g. 9J32X8KL" required>
+                    </div>
+                    <div class="field">
+                        <label for="vf-amount" class="field-label">Amount</label>
+                        <input type="text" id="vf-amount" name="amount" placeholder="e.g. ৳200" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary"><i class="fa-solid fa-shield-halved"></i> Verify Payment</button>
+            </form>
+
+            <div class="alert" id="verify-result" role="status" hidden></div>
+
+            <div class="table-wrap">
+                <div class="overflow-x-auto"><table>
+                    <thead>
+                        <tr>
+                            <th>Student</th>
+                            <th>Method</th>
+                            <th>TrxID</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactions-body">
+                        {% for tx in transactions %}
+                        <tr>
+                            <td>{{ tx.student }}</td>
+                            <td>{{ tx.method }}</td>
+                            <td class="mono">{{ tx.trx_id }}</td>
+                            <td>{{ tx.amount }}</td>
+                            <td><span class="badge {{ tx.status|lower|cut:" " }}">{{ tx.status }}</span></td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="empty-sheet">No transactions recorded yet.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table></div>
+            </div>
+        </div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+    <script>
+        // ====================================================================
+        // Transaction verifier — POST to /api/clubs/verify-transaction/
+        // ====================================================================
+        (function () {
+            const verifyForm = document.getElementById('verify-form');
+            const result = document.getElementById('verify-result');
+            if (!verifyForm) return;
+
+            function getCookie(name) {
+                if (!document.cookie || document.cookie === '') return null;
+                for (const part of document.cookie.split(';')) {
+                    const pair = part.trim();
+                    if (pair.startsWith(name + '=')) {
+                        return decodeURIComponent(pair.slice(name.length + 1));
+                    }
+                }
+                return null;
+            }
+
+            function escapeHtml(value) {
+                const div = document.createElement('div');
+                div.textContent = value == null ? '' : String(value);
+                return div.innerHTML;
+            }
+
+            verifyForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const method = document.getElementById('vf-method').value;
+                const trx = document.getElementById('vf-trx').value.trim();
+                const amount = document.getElementById('vf-amount').value.trim();
+                const wallet = document.getElementById('vf-wallet').value.trim();
+
+                const validWallet = /^01\d{9}$/.test(wallet);
+                const validTrx = trx.length >= 6;
+
+                if (!validWallet || !validTrx) {
+                    result.className = 'alert error';
+                    result.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>Could not verify — check the wallet number (01XXXXXXXXX) and TrxID.</span>';
+                    result.hidden = false;
+                    return;
+                }
+
+                const sheetUrl = (document.getElementById('sheet-url') || {}).value || '';
+                if (!sheetUrl) {
+                    result.className = 'alert error';
+                    result.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>Connect a Google Sheet first (Club Workspace → Live Google Sheet) so the payment can be recorded.</span>';
+                    result.hidden = false;
+                    return;
+                }
+
+                try {
+                    const resp = await fetch('{% url "api_club_verify_transaction" %}', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                        body: new URLSearchParams({
+                            sheet_url: sheetUrl,
+                            trx: trx,
+                            method: method,
+                            amount: amount,
+                            wallet: wallet,
+                        }).toString(),
+                    });
+                    const data = await resp.json().catch(() => ({}));
+
+                    if (data.status === 'auth_required') {
+                        if (window.__showReauth) window.__showReauth();
+                        return;
+                    }
+
+                    if (resp.ok && data.status === 'success') {
+                        result.className = 'alert success';
+                        result.innerHTML = '<i class="fa-solid fa-circle-check"></i><span>' + escapeHtml(method) + ' payment of ' + escapeHtml(amount) + ' (TrxID ' + escapeHtml(trx) + ') verified — sheet updated' + (data.notified ? ' and student notified.' : '.') + '</span>';
+                        result.hidden = false;
+                        const tbody = document.getElementById('transactions-body');
+                        if (tbody) {
+                            const row = document.createElement('tr');
+                            row.innerHTML =
+                                '<td>' + escapeHtml(data.student || '—') + '</td>' +
+                                '<td>' + escapeHtml(method) + '</td>' +
+                                '<td class="mono">' + escapeHtml(trx) + '</td>' +
+                                '<td>' + escapeHtml(amount) + '</td>' +
+                                '<td><span class="badge verified">Verified</span></td>';
+                            tbody.prepend(row);
+                        }
+                        verifyForm.reset();
+                    } else {
+                        result.className = 'alert error';
+                        result.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>' + escapeHtml(data.message || 'Could not verify the payment.') + '</span>';
+                        result.hidden = false;
+                    }
+                } catch (err) {
+                    result.className = 'alert error';
+                    result.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>Could not reach the verification service.</span>';
+                    result.hidden = false;
+                }
+            });
+        })();
+    </script>
+{% endblock %}

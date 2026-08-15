@@ -1,0 +1,323 @@
+{% extends "club/club_base.html" %}
+{% load static %}
+
+{% block title %}Live Google Sheet — Niter Hub{% endblock %}
+{% block header %}Live Google Sheet{% endblock %}
+
+{% block content %}
+
+        <div class="card" id="sheet-card">
+            <h2 class="section-title"><i class="fa-brands fa-google"></i> Live Google Sheet</h2>
+            <p class="section-subtitle">Connect your club's Google Sheet to track registrations and payments in real time.</p>
+
+            <div class="sheet-connect">
+                <input type="url" id="sheet-url" class="sheet-url-input"
+                       value="{{ sheet_url }}"
+                       placeholder="https://docs.google.com/spreadsheets/d/…/edit"
+                       aria-label="Google Sheet URL">
+                <button type="button" class="btn-primary" id="connect-sheet-btn">
+                    <i class="fa-solid fa-link"></i> Connect Sheet
+                </button>
+                <button type="button" class="btn-small" id="verify-sheet-btn">
+                    <i class="fa-solid fa-circle-check"></i> Verify &amp; Connect
+                </button>
+                <button type="button" class="btn-small" id="refresh-sheet-btn">
+                    <i class="fa-solid fa-rotate"></i> Refresh
+                </button>
+            </div>
+
+            <div class="alert" id="verify-sheet-result" role="status" hidden></div>
+
+            <p class="sheet-status" id="sheet-status" role="status"></p>
+            {% if sheet_error %}
+            <p class="sheet-status error" role="status">{{ sheet_error }}</p>
+            {% endif %}
+
+            <div class="table-wrap sheet-table-wrap" id="sheet-table-wrap" hidden>
+                <div class="overflow-x-auto"><table id="sheet-table">
+                    <thead id="sheet-thead"></thead>
+                    <tbody id="sheet-tbody"></tbody>
+                </table></div>
+            </div>
+
+            <!-- Verify transaction / add member -->
+            <form class="sheet-form" id="sheet-add-form">
+                {% csrf_token %}
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="sf-name" class="field-label">Member Name</label>
+                        <input type="text" id="sf-name" name="name" placeholder="e.g. Fahim Chowdhury" required>
+                    </div>
+                    <div class="field">
+                        <label for="sf-id" class="field-label">Student ID</label>
+                        <input type="text" id="sf-id" name="student_id" placeholder="S1012" required>
+                    </div>
+                    <div class="field">
+                        <label for="sf-amount" class="field-label">Amount</label>
+                        <input type="text" id="sf-amount" name="amount" placeholder="e.g. ৳200">
+                    </div>
+                    <div class="field">
+                        <label for="sf-status" class="field-label">Status</label>
+                        <select id="sf-status" name="status">
+                            <option>Registered</option>
+                            <option>Paid</option>
+                            <option>Pending</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary" id="sheet-add-btn">
+                    <i class="fa-solid fa-user-plus"></i> Add Member / Record Transaction
+                </button>
+            </form>
+        </div>
+
+    <!-- Google re-auth modal (shown when a sheet API answers auth_required) -->
+    <div class="modal-overlay" id="reauth-modal" hidden role="dialog" aria-modal="true" aria-labelledby="reauth-title">
+        <div class="modal">
+            <div class="modal-head">
+                <span class="modal-icon"><i class="fa-brands fa-google"></i></span>
+                <button type="button" class="modal-close" id="reauth-close" aria-label="Close modal">&times;</button>
+            </div>
+            <h3 id="reauth-title">Google access required</h3>
+            <p>Google Drive/Sheets access required or session expired. Connect your Google account to continue.</p>
+            <div class="modal-actions">
+                <button type="button" class="btn-small" id="reauth-later">Later</button>
+                <a href="{% url 'google_login' %}" target="_blank" rel="noopener" class="btn-primary"><i class="fa-brands fa-google"></i> Connect Google Account</a>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+    <script>
+        // ====================================================================
+        // Live Google Sheet — connect, fetch, append (Phase 5)
+        // ====================================================================
+        (function () {
+            const SHEET_URL_KEY = 'campusdash_club_sheet_url';
+            const urlInput = document.getElementById('sheet-url');
+            const connectBtn = document.getElementById('connect-sheet-btn');
+            const refreshBtn = document.getElementById('refresh-sheet-btn');
+            const tableWrap = document.getElementById('sheet-table-wrap');
+            const thead = document.getElementById('sheet-thead');
+            const tbody = document.getElementById('sheet-tbody');
+            const statusEl = document.getElementById('sheet-status');
+            const addForm = document.getElementById('sheet-add-form');
+            const reauthModal = document.getElementById('reauth-modal');
+            const reauthClose = document.getElementById('reauth-close');
+            const reauthLater = document.getElementById('reauth-later');
+
+            function getCookie(name) {
+                let value = null;
+                if (document.cookie && document.cookie !== '') {
+                    for (const part of document.cookie.split(';')) {
+                        const cookie = part.trim();
+                        if (cookie.startsWith(name + '=')) {
+                            value = decodeURIComponent(cookie.slice(name.length + 1));
+                            break;
+                        }
+                    }
+                }
+                return value;
+            }
+
+            function showToast(msg) {
+                if (window.showToast) window.showToast(msg, 'success');
+            }
+
+            function setStatus(msg, isError) {
+                statusEl.textContent = msg || '';
+                statusEl.className = 'sheet-status' + (isError ? ' error' : '');
+            }
+
+            function showReauthModal() {
+                if (!reauthModal) return;
+                reauthModal.hidden = false;
+            }
+            window.__showReauth = showReauthModal;
+
+            function hideReauthModal() {
+                if (!reauthModal) return;
+                reauthModal.hidden = true;
+            }
+
+            function escapeHtml(value) {
+                return String(value).replace(/[&<>"']/g, (c) => ({
+                    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+                }[c]));
+            }
+
+            function renderSheet(records) {
+                const headers = records.length ? Object.keys(records[0]) : ['No data'];
+                thead.innerHTML = '<tr>' + headers.map((h) => '<th>' + escapeHtml(h) + '</th>').join('') + '</tr>';
+                tbody.innerHTML = records.map((row) =>
+                    '<tr>' + headers.map((h) => '<td>' + escapeHtml(row[h] ?? '') + '</td>').join('') + '</tr>'
+                ).join('') ||
+                    '<tr><td colspan="' + headers.length + '" class="empty-sheet">No rows in this sheet yet.</td></tr>';
+                tableWrap.hidden = false;
+            }
+
+            async function fetchClubSheetRecords() {
+                const sheetUrl = urlInput.value.trim();
+                if (!sheetUrl) {
+                    setStatus('Enter a Google Sheet URL first.', true);
+                    return;
+                }
+                localStorage.setItem(SHEET_URL_KEY, sheetUrl);
+                setStatus('Loading records…');
+                refreshBtn.disabled = true;
+                try {
+                    const response = await fetch(
+                        "{% url 'api_club_sheet_fetch' %}?sheet_url=" + encodeURIComponent(sheetUrl)
+                    );
+                    const data = await response.json().catch(() => ({}));
+                    if (data.status === 'auth_required') {
+                        showReauthModal();
+                        return;
+                    }
+                    if (!response.ok || data.status !== 'success') {
+                        throw new Error(data.message || 'Could not fetch the sheet (HTTP ' + response.status + ').');
+                    }
+                    const records = data.records || [];
+                    renderSheet(records);
+                    const params = new URLSearchParams(window.location.search);
+                    if (params.get('sheet_url') !== sheetUrl) {
+                        // Full-page sync: reload the dedicated sheet page with
+                        // ?sheet_url= so the server renders pending members /
+                        // rosters / transactions from the linked sheet.
+                        window.location.href = '{% url "club_dashboard_sheet" %}' + '?sheet_url=' + encodeURIComponent(sheetUrl);
+                        return;
+                    }
+                    setStatus('Loaded ' + records.length + ' record(s) from Google Sheets.');
+                } catch (err) {
+                    setStatus(err.message || 'Could not load the sheet — is Google connected?', true);
+                    showToast(err.message || 'Sheet load failed.');
+                } finally {
+                    refreshBtn.disabled = false;
+                }
+            }
+
+            async function appendMemberToSheet() {
+                const sheetUrl = urlInput.value.trim();
+                if (!sheetUrl) {
+                    setStatus('Connect a Google Sheet first.', true);
+                    return false;
+                }
+                const rowData = [
+                    document.getElementById('sf-name').value.trim(),
+                    document.getElementById('sf-id').value.trim(),
+                    document.getElementById('sf-amount').value.trim(),
+                    document.getElementById('sf-status').value,
+                ];
+                const btn = document.getElementById('sheet-add-btn');
+                btn.disabled = true;
+                try {
+                    const response = await fetch("{% url 'api_club_sheet_append' %}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCookie('csrftoken'),
+                        },
+                        body: JSON.stringify({ sheet_url: sheetUrl, row_data: rowData }),
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (data.status === 'auth_required') {
+                        showReauthModal();
+                        return false;
+                    }
+                    if (!response.ok || data.status !== 'success') {
+                        throw new Error(data.message || 'Could not append the row (HTTP ' + response.status + ').');
+                    }
+                    showToast('Member added to Google Sheet ✓');
+                    addForm.reset();
+                    fetchClubSheetRecords(); // re-fetch so the table shows the new row
+                    return true;
+                } catch (err) {
+                    setStatus(err.message || 'Append failed.', true);
+                    showToast(err.message || 'Append failed.');
+                    return false;
+                } finally {
+                    btn.disabled = false;
+                }
+            }
+
+            // Verify & Connect — setup default tabs/headers on the linked sheet.
+            const verifyBtn = document.getElementById('verify-sheet-btn');
+            const verifyResult = document.getElementById('verify-sheet-result');
+            async function verifyClubSheet() {
+                const sheetUrl = urlInput.value.trim();
+                if (!sheetUrl) {
+                    setStatus('Enter a Google Sheet URL first.', true);
+                    return;
+                }
+                verifyBtn.disabled = true;
+                verifyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying…';
+                try {
+                    const response = await fetch("{% url 'api_club_sheet_verify' %}", {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCookie('csrftoken'),
+                        },
+                        body: JSON.stringify({ sheet_ref: sheetUrl }),
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (data.status === 'auth_required') {
+                        showReauthModal();
+                        return;
+                    }
+                    if (response.ok && data.status === 'success') {
+                        verifyResult.className = 'alert success';
+                        verifyResult.innerHTML = '<i class="fa-solid fa-circle-check"></i><span>Connected — “' + escapeHtml(data.title || 'Spreadsheet') + '” verified' +
+                            (data.created && data.created.length ? ' · created tabs: ' + escapeHtml(data.created.join(', ')) : '') + '. Default column headers are ready.</span>';
+                        verifyResult.hidden = false;
+                        localStorage.setItem(SHEET_URL_KEY, sheetUrl);
+                        fetchClubSheetRecords();
+                    } else {
+                        verifyResult.className = 'alert error';
+                        verifyResult.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>' + escapeHtml(data.message || 'Could not verify the sheet.') + '</span>';
+                        verifyResult.hidden = false;
+                    }
+                } catch (err) {
+                    verifyResult.className = 'alert error';
+                    verifyResult.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i><span>Could not reach the verification service.</span>';
+                    verifyResult.hidden = false;
+                } finally {
+                    verifyBtn.disabled = false;
+                    verifyBtn.innerHTML = '<i class="fa-solid fa-circle-check"></i> Verify &amp; Connect';
+                }
+            }
+
+            connectBtn.addEventListener('click', fetchClubSheetRecords);
+            if (verifyBtn) verifyBtn.addEventListener('click', verifyClubSheet);
+            refreshBtn.addEventListener('click', fetchClubSheetRecords);
+            urlInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); fetchClubSheetRecords(); }
+            });
+            addForm.addEventListener('submit', (e) => { e.preventDefault(); appendMemberToSheet(); });
+
+            // Re-auth modal controls
+            if (reauthClose) reauthClose.addEventListener('click', hideReauthModal);
+            if (reauthLater) reauthLater.addEventListener('click', hideReauthModal);
+            if (reauthModal) {
+                reauthModal.addEventListener('click', (e) => {
+                    if (e.target === reauthModal) hideReauthModal();
+                });
+            }
+
+            // Restore the saved sheet URL and auto-load on refresh.
+            const saved = localStorage.getItem(SHEET_URL_KEY);
+            const serverPrefill = urlInput.value.trim();
+            const initial = serverPrefill || saved;
+            if (initial) {
+                urlInput.value = initial;
+                localStorage.setItem(SHEET_URL_KEY, initial);
+                if (initial !== saved) {
+                    fetchClubSheetRecords();
+                }
+            }
+        })();
+    </script>
+{% endblock %}

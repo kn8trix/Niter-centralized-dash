@@ -80,6 +80,11 @@
             <div class="events-grid" id="events-grid">
                 {% for event in events %}
                 <article class="event-card" data-widget="event-card">
+                    {% if event.banner %}
+                    <img class="event-card-banner" src="{{ event.banner.url }}" alt="{{ event.title }} banner" loading="lazy">
+                    {% elif event.banner_url %}
+                    <img class="event-card-banner" src="{{ event.banner_url }}" alt="{{ event.title }} banner" loading="lazy">
+                    {% endif %}
                     <div class="event-card-head">
                         <h3 class="event-title">{{ event.title }}</h3>
                         <span class="fee-badge fee-free">{{ event.capacity }} seats</span>

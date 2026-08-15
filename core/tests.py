@@ -132,6 +132,8 @@ class StudentPagesSmokeTest(TestCase):
             'settings', 'profile', 'sys_admin', 'cafeteria_admin', 'club_admin',
             'reports_student', 'reports_admin',
             'student_dashboard', 'club_dashboard', 'admin_dashboard', 'admin_users', 'admin_club_accounts',
+            'club_dashboard_sheet', 'club_dashboard_members', 'club_dashboard_roles',
+            'club_dashboard_events', 'club_dashboard_transactions',
             'admin_database', 'admin_content', 'admin_settings', 'admin_calendar', 'admin_teachers',
             'api_club_accounts', 'api_admin_academic_calendar', 'api_admin_teachers',
             'api_emergency_active', 'api_admin_emergency_trigger', 'api_admin_emergency_resolve',
@@ -4410,6 +4412,247 @@ class ClubsPageTest(TestCase):
         for club in Club.objects.all():
             self.assertIn('data-club-id="%s"' % club.pk, html)
 
+    def test_clubs_page_hides_unpublished_events(self):
+        """Draft events (is_published=False) never appear on the public page."""
+        club = Club.objects.get(slug='computer-club')
+        ClubEvent.objects.create(
+            club=club, title='Secret Draft', event_date=timezone.now().date() + timedelta(days=2),
+            is_published=False,
+        )
+        html = self.client.get(reverse('clubs_dashboard')).content.decode()
+        self.assertNotIn('Secret Draft', html)
+
+    def test_clubs_page_renders_event_banner(self):
+        """Published events with a banner show the poster image on /clubs/."""
+        club = Club.objects.get(slug='computer-club')
+        event = ClubEvent.objects.create(
+            club=club, title='Banner Night',
+            event_date=timezone.now().date() + timedelta(days=3),
+            banner_url='https://example.com/poster.jpg',
+        )
+        html = self.client.get(reverse('clubs_dashboard')).content.decode()
+        self.assertIn('Banner Night', html)
+        self.assertIn('https://example.com/poster.jpg', html)
+
+
+class ClubEventModelFieldsTest(TestCase):
+    """ClubEvent banner / banner_url / is_published fields."""
+
+    def setUp(self):
+        self.club = Club.objects.get(slug='computer-club')
+
+    def test_defaults(self):
+        event = ClubEvent.objects.create(
+            club=self.club, title='Defaults', event_date=timezone.now().date() + timedelta(days=1),
+        )
+        self.assertTrue(event.is_published)
+        self.assertFalse(event.banner)
+        self.assertEqual(event.banner_url, '')
+
+    def test_unpublished_flag_persisted(self):
+        event = ClubEvent.objects.create(
+            club=self.club, title='Draft Event',
+            event_date=timezone.now().date() + timedelta(days=1),
+            is_published=False,
+        )
+        self.assertFalse(event.is_published)
+
+
+class ClubDashboardSubRoutesTest(TestCase):
+    """Dedicated club dashboard sub-routes — each sidebar item opens its own
+    page with the club layout and an active nav state."""
+
+    def setUp(self):
+        self.club = Club.objects.get(slug='computer-club')
+        self.manager = User.objects.create_user(
+            username='club_mgr', password='x12345678',
+        )
+        ClubAccount.objects.create(user=self.manager, club=self.club, role='manager')
+        self.staff = User.objects.create_user(
+            username='club_staff', password='x12345678', is_staff=True,
+        )
+
+    SUB_ROUTES = [
+        ('club_dashboard', 'overview', 'Club Management'),
+        ('club_dashboard_sheet', 'sheet', 'Live Google Sheet'),
+        ('club_dashboard_members', 'members', 'Member Approvals'),
+        ('club_dashboard_roles', 'roles', 'Role Assignments'),
+        ('club_dashboard_events', 'events', 'Event Post Creator'),
+        ('club_dashboard_transactions', 'transactions', 'Transaction Verifier'),
+    ]
+
+    def test_sub_routes_render_for_club_manager(self):
+        self.client.force_login(self.manager)
+        for name, section, needle in self.SUB_ROUTES:
+            with self.subTest(route=name):
+                response = self.client.get(reverse(name))
+                self.assertEqual(response.status_code, 200)
+                html = response.content.decode()
+                # Distinct club layout + the section's own content.
+                self.assertIn('data-app="campusdash-club"', html)
+                self.assertIn(needle, html)
+                # The active sidebar link for this section is highlighted.
+                self.assertIn('admin-nav-link active', html)
+
+    def test_sub_routes_render_for_staff(self):
+        self.client.force_login(self.staff)
+        for name, _section, needle in self.SUB_ROUTES:
+            with self.subTest(route=name):
+                response = self.client.get(reverse(name))
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, needle)
+
+    def test_sub_routes_block_students(self):
+        student = User.objects.create_user(username='club_stu', password='x12345678')
+        self.client.force_login(student)
+        for name, _section, _needle in self.SUB_ROUTES:
+            with self.subTest(route=name):
+                response = self.client.get(reverse(name))
+                self.assertEqual(response.status_code, 302)
+                self.assertRedirects(response, reverse('student_dashboard'))
+
+    def test_sub_routes_redirect_anonymous_to_login(self):
+        for name, _section, _needle in self.SUB_ROUTES:
+            with self.subTest(route=name):
+                response = self.client.get(reverse(name))
+                self.assertEqual(response.status_code, 302)
+                self.assertIn(reverse('login'), response.url)
+
+    def test_overview_links_each_section(self):
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('club_dashboard'))
+        for name, _section, _needle in self.SUB_ROUTES:
+            with self.subTest(route=name):
+                self.assertContains(response, reverse(name))
+
+
+class ClubEventCreationTest(TestCase):
+    """Event creation with a banner — multipart POST from /dashboard/club/events/."""
+
+    def setUp(self):
+        self.club = Club.objects.get(slug='computer-club')
+        self.manager = User.objects.create_user(
+            username='club_ev_mgr', password='x12345678',
+        )
+        ClubAccount.objects.create(user=self.manager, club=self.club, role='manager')
+        self.client.force_login(self.manager)
+        self.url = reverse('club_dashboard_events')
+
+    def test_events_page_has_multipart_form(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('enctype="multipart/form-data"', html)
+        self.assertIn('id_banner', html)
+        self.assertIn('id_banner_url', html)
+        self.assertIn('id_is_published', html)
+        self.assertIn('banner-preview', html)
+
+    def test_create_event_with_banner_file(self):
+        import io
+        from PIL import Image
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        buffer = io.BytesIO()
+        Image.new('RGB', (40, 30), (30, 125, 90)).save(buffer, format='PNG')
+        banner = SimpleUploadedFile(
+            'poster.png', buffer.getvalue(), content_type='image/png',
+        )
+        response = self.client.post(self.url, {
+            'club': self.club.pk,
+            'title': 'Hackathon with Banner',
+            'event_date': (timezone.now().date() + timedelta(days=10)).isoformat(),
+            'location': 'Auditorium',
+            'capacity': '80',
+            'description': 'A big event.',
+            'banner': banner,
+            'is_published': 'on',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, self.url + '?created=1')
+        event = ClubEvent.objects.get(title='Hackathon with Banner')
+        self.assertTrue(event.banner)
+        self.assertTrue(event.is_published)
+        self.assertEqual(event.club, self.club)
+
+    def test_create_event_with_url_fallback(self):
+        response = self.client.post(self.url, {
+            'club': self.club.pk,
+            'title': 'URL Banner Event',
+            'event_date': (timezone.now().date() + timedelta(days=5)).isoformat(),
+            'location': 'Field',
+            'capacity': '50',
+            'banner_url': 'https://example.com/poster.jpg',
+            'is_published': 'on',
+        })
+        self.assertEqual(response.status_code, 302)
+        event = ClubEvent.objects.get(title='URL Banner Event')
+        self.assertEqual(event.banner_url, 'https://example.com/poster.jpg')
+        self.assertFalse(event.banner)
+
+    def test_create_draft_event_stays_hidden(self):
+        response = self.client.post(self.url, {
+            'club': self.club.pk,
+            'title': 'Unpublished Draft',
+            'event_date': (timezone.now().date() + timedelta(days=5)).isoformat(),
+            'location': 'Room 1',
+            'capacity': '30',
+        })
+        self.assertEqual(response.status_code, 302)
+        event = ClubEvent.objects.get(title='Unpublished Draft')
+        self.assertFalse(event.is_published)
+        # Hidden from the public page AND the student dashboard.
+        self.assertNotIn('Unpublished Draft', self.client.get(reverse('clubs_dashboard')).content.decode())
+        student = User.objects.create_user(username='ev_student', password='x12345678')
+        self.client.force_login(student)
+        self.assertNotIn('Unpublished Draft', self.client.get(reverse('student_dashboard')).content.decode())
+
+    def test_invalid_form_rerenders_with_errors(self):
+        response = self.client.post(self.url, {
+            'club': self.club.pk,
+            'title': '',  # missing required title
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'event-form')
+
+
+class StudentDashboardClubEventsTest(TestCase):
+    """Published club events with banners render on the student home feed."""
+
+    def setUp(self):
+        self.club = Club.objects.get(slug='computer-club')
+        self.student = User.objects.create_user(username='feed_student', password='x12345678')
+
+    def test_student_feed_shows_published_events(self):
+        ClubEvent.objects.create(
+            club=self.club, title='Feed Hackathon',
+            event_date=timezone.now().date() + timedelta(days=4),
+            location='Auditorium',
+            banner_url='https://example.com/feed-poster.jpg',
+        )
+        ClubEvent.objects.create(
+            club=self.club, title='Hidden Draft',
+            event_date=timezone.now().date() + timedelta(days=4),
+            is_published=False,
+        )
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('student_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('Upcoming Club Events', html)
+        self.assertIn('Feed Hackathon', html)
+        self.assertIn('https://example.com/feed-poster.jpg', html)
+        self.assertIn('Register / Details', html)
+        self.assertNotIn('Hidden Draft', html)
+
+    def test_feed_omits_past_events(self):
+        ClubEvent.objects.create(
+            club=self.club, title='Past Event',
+            event_date=timezone.now().date() - timedelta(days=1),
+        )
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('student_dashboard'))
+        self.assertNotIn('Past Event', response.content.decode())
+
 
 class JoinClubApiTest(TestCase):
     """POST /api/clubs/join/ — membership requests with lead notifications."""
@@ -7775,6 +8018,12 @@ class SecurityAuditTest(TestCase):
             (reverse('sys_admin'), 'GET'),
             (reverse('cafeteria_admin'), 'GET'),
             (reverse('club_admin'), 'GET'),
+            (reverse('club_dashboard'), 'GET'),
+            (reverse('club_dashboard_sheet'), 'GET'),
+            (reverse('club_dashboard_members'), 'GET'),
+            (reverse('club_dashboard_roles'), 'GET'),
+            (reverse('club_dashboard_events'), 'GET'),
+            (reverse('club_dashboard_transactions'), 'GET'),
             (reverse('medical_admin_dashboard'), 'GET'),
             (reverse('host:medical_host_dashboard'), 'GET'),
             (reverse('api_cafeteria_redeem'), 'POST'),

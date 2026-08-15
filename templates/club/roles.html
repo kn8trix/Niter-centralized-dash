@@ -1,0 +1,65 @@
+{% extends "club/club_base.html" %}
+{% load static %}
+
+{% block title %}Role Assignments — Niter Hub{% endblock %}
+{% block header %}Role Assignments{% endblock %}
+
+{% block content %}
+
+        <div class="card" id="roles-card">
+            <h2 class="section-title"><i class="fa-solid fa-user-tag"></i> Role Assignments</h2>
+            <p class="section-subtitle">Set or change roles for club executives and members.</p>
+            <div class="table-wrap">
+                <div class="overflow-x-auto"><table>
+                    <thead>
+                        <tr>
+                            <th>Member</th>
+                            <th>Student ID</th>
+                            <th>Club</th>
+                            <th>Role</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for member in members %}
+                        <tr>
+                            <td>{{ member.name }}</td>
+                            <td class="mono">{{ member.student_id }}</td>
+                            <td>{{ member.club }}</td>
+                            <td>
+                                <select class="role-select" data-member="{{ member.name }}">
+                                    <option {% if member.role == 'Member' %}selected{% endif %}>Member</option>
+                                    <option {% if member.role == 'Executive' %}selected{% endif %}>Executive</option>
+                                    <option {% if member.role == 'President' %}selected{% endif %}>President</option>
+                                </select>
+                            </td>
+                            <td><button type="button" class="btn-small save" data-save-role><i class="fa-solid fa-floppy-disk"></i> Save</button></td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="empty-sheet">No members assigned yet.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table></div>
+            </div>
+        </div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+    <script>
+        // Role assignment save (mock until sheet sync is connected).
+        (function () {
+            function show(msg) {
+                if (window.showToast) window.showToast(msg, 'success');
+            }
+            document.querySelectorAll('[data-save-role]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const select = btn.closest('tr').querySelector('.role-select');
+                    show('Role updated for ' + select.dataset.member + ' → ' + select.value);
+                });
+            });
+        })();
+    </script>
+{% endblock %}

@@ -266,6 +266,43 @@
         </div>
 
         <!-- ============================================================
+             Upcoming Club Events — published events with banner posters
+        ============================================================ -->
+        {% if club_events %}
+        <div class="panel-card" data-component="card" data-widget="club-events">
+            <div class="panel-head">
+                <h3 class="section-title"><i class="fa-solid fa-calendar-plus"></i> Upcoming Club Events</h3>
+                <a href="{% url 'clubs_dashboard' %}" class="panel-link">View All →</a>
+            </div>
+
+            <div class="club-events-feed">
+                {% for event in club_events %}
+                <article class="club-event-item" data-widget="club-event-card">
+                    {% if event.banner %}
+                    <img class="club-event-banner" src="{{ event.banner.url }}" alt="{{ event.title }} banner" loading="lazy">
+                    {% elif event.banner_url %}
+                    <img class="club-event-banner" src="{{ event.banner_url }}" alt="{{ event.title }} banner" loading="lazy">
+                    {% else %}
+                    <span class="club-event-banner placeholder"><i class="fa-solid fa-calendar-days"></i></span>
+                    {% endif %}
+                    <div class="club-event-body">
+                        <span class="club-event-club"><i class="fa-solid fa-flag"></i> {{ event.club.name }}</span>
+                        <h4 class="club-event-title">{{ event.title }}</h4>
+                        <p class="club-event-meta">
+                            <span><i class="fa-regular fa-calendar"></i> {{ event.event_date|date:"M d, Y" }}</span>
+                            <span><i class="fa-solid fa-location-dot"></i> {{ event.location|default:"Campus" }}</span>
+                        </p>
+                        <a href="{% url 'clubs_dashboard' %}" class="btn-accent club-event-btn">
+                            <i class="fa-solid fa-ticket"></i> Register / Details
+                        </a>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- ============================================================
              Global News & Search — shared widget (also on admin overview)
         ============================================================ -->
         {% include 'partials/global_news.html' %}

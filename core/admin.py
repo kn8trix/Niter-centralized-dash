@@ -384,8 +384,8 @@ class ClubAdmin(admin.ModelAdmin):
 class ClubEventAdmin(admin.ModelAdmin):
     """Upcoming club events shown on the /clubs/ page."""
 
-    list_display = ('title', 'club', 'event_date', 'location', 'capacity')
-    list_filter = ('event_date', 'club')
+    list_display = ('title', 'club', 'event_date', 'location', 'capacity', 'is_published')
+    list_filter = ('event_date', 'club', 'is_published')
     search_fields = ('title', 'club__name', 'location')
     list_select_related = ('club',)
     date_hierarchy = 'event_date'

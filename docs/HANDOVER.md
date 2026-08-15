@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 120 | Club dashboard sub-routes + event banner upload + event visibility sync to student portals | *(pending)* |
 | 119 | Fix visual builder empty canvas — default block HTML backfill, preview-mode canvas, template-cache flush on save/publish | `a164e8a` |
 | 118 | Online Pharmacy polish — BD medicine catalog seed, product detail modal, Buy Now checkout, stock requests, nav buttons, modal CSS fix | `6e5430b` |
 | 117 | Website Builder overhaul — system page registration, feature blocks, live editing, UI redesign | `1908512` |
@@ -6788,3 +6789,74 @@ canvas preview shows every block.
   editor page contains no empty-state text; `/page/{home,study-corner,news,
   pharmacy}/?preview=1` each render their full component set; anonymous
   visitors on the same URL see no hidden blocks.
+
+---
+
+## 120. Club Dashboard Sub-Routes + Event Banner Upload + Event Visibility Sync
+
+**Date:** 15 August 2026  
+**Branch:** main
+
+Restructured the Club Management dashboard into dedicated sub-routes (each
+sidebar item opens its own focused page instead of scrolling to a hash anchor
+on one long page), added event banner / poster uploads with a remote-URL
+fallback, and synced published event visibility to the student dashboard and
+the public /clubs/ page.
+
+### Changes
+
+- **Dedicated sub-routes (`core/urls.py`, `core/views.py`, `templates/club/*`)**
+  — the club sidebar now links to six separate pages, each extending
+  `club/club_base.html` with the active nav state driven by a `club_section`
+  context value:
+  - `/dashboard/club/` — Overview (`club/overview.html`, quick-link cards +
+    at-a-glance stats)
+  - `/dashboard/club/google-sheet/` — Live Google Sheet (`club/sheet.html`)
+  - `/dashboard/club/members/` — Member Approvals (`club/members.html`)
+  - `/dashboard/club/roles/` — Role Assignments (`club/roles.html`)
+  - `/dashboard/club/events/` — Events Management (`club/events.html`)
+  - `/dashboard/club/transactions/` — Transaction Verifier
+    (`club/transactions.html`)
+  The legacy single-page `club_admin.html` at `/clubs/manage/` is untouched
+  (existing links/tests keep working); the RoleAccessMiddleware's
+  `/dashboard/club/*` guard covers the new routes automatically.
+- **Event banner support (`core/models.py`, migration **0045**, admin)** —
+  `ClubEvent.banner` (ImageField, `upload_to='club_events/banners/'`),
+  `banner_url` (CharField fallback for a remote poster URL) and
+  `is_published` (default True, indexed). Admin list/filter shows the publish
+  state.
+- **Event creation form (`core/forms.py`, `club/events.html`)** — new
+  `ClubEventForm` (ModelForm over the six event fields + banner + banner_url +
+  is_published). The events page POSTs with `enctype="multipart/form-data"`,
+  shows a live image preview (file picker **or** pasted URL), validates
+  inline field errors, saves the row, and redirects with `?created=1` so the
+  new event appears immediately in the list below the form.
+- **Event visibility sync** —
+  - `student_dashboard` fetches the 5 nearest upcoming published events
+    (`is_published=True, event_date>=today`, select_related club) and
+    `dashboard/home.html` renders an **Upcoming Club Events** feed with the
+    banner poster, club name, date, venue and a Register / Details button.
+  - `clubs_dashboard` (public `/clubs/`) now filters `is_published=True` and
+    `clubs.html` event cards show the banner image when present.
+  - Draft events stay invisible on both student surfaces until published.
+- **Styling** — club overview cards/stat pills, banner preview + event list
+  thumbnails, publish/draft badges and field errors added to
+  `club_dashboard.css`; event card banners in `clubs.css`; the student feed
+  cards in `dashboard.css` (all with dark-mode overrides).
+
+### Tests & verification
+
+- 16 new tests: `ClubEventModelFieldsTest` (banner/URL/publish defaults),
+  `ClubDashboardSubRoutesTest` (each sub-route renders for club managers and
+  staff with active nav, blocks students with the role redirect, redirects
+  anonymous to login, overview links every section), `ClubEventCreationTest`
+  (multipart form markup, banner-file save, URL-fallback save, draft stays
+  hidden on /clubs/ + student dashboard, invalid form rerenders with errors),
+  `StudentDashboardClubEventsTest` (published events + banners render on the
+  home feed, drafts/past events omitted), plus clubs-page banner + draft
+  filtering tests. Security audit matrix and endpoint registry extended with
+  the five new sub-routes.
+- Full suite — **995 tests OK** (979 before) · `manage.py check` clean · no
+  migration drift. Rendered pages verified: all six sub-routes return 200
+  with the club layout and valid inline JS; event banner upload persists and
+  shows on both student surfaces.

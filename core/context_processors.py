@@ -207,5 +207,11 @@ def endpoints(request):
 
             # Website Builder console
             'builder_dashboard': reverse('builder_dashboard'),
+            # Club workspace — dedicated sub-route sections
+            'club_dashboard_sheet': reverse('club_dashboard_sheet'),
+            'club_dashboard_members': reverse('club_dashboard_members'),
+            'club_dashboard_roles': reverse('club_dashboard_roles'),
+            'club_dashboard_events': reverse('club_dashboard_events'),
+            'club_dashboard_transactions': reverse('club_dashboard_transactions'),
         }
     }

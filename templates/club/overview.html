@@ -1,0 +1,82 @@
+{% extends "club/club_base.html" %}
+{% load static %}
+
+{% block title %}Club Overview — Niter Hub{% endblock %}
+{% block header %}Club Overview{% endblock %}
+
+{% block content %}
+
+        <!-- ============================================================
+             Overview intro
+        ============================================================ -->
+        <div class="club-section-anchor intro">
+            <h1>Club Management</h1>
+            <p>Approve members, assign roles, publish events, and verify payments — each tool lives on its own page.</p>
+        </div>
+
+        <!-- ============================================================
+             Section quick links
+        ============================================================ -->
+        <div class="overview-grid">
+            <a href="{% url 'club_dashboard_sheet' %}" class="card overview-card" data-widget="overview-sheet">
+                <span class="overview-icon"><i class="fa-brands fa-google"></i></span>
+                <h2 class="section-title">Live Google Sheet</h2>
+                <p class="section-subtitle">Connect your club's spreadsheet to track registrations and payments in real time.</p>
+                <span class="overview-link">Open <i class="fa-solid fa-arrow-right"></i></span>
+            </a>
+
+            <a href="{% url 'club_dashboard_members' %}" class="card overview-card" data-widget="overview-members">
+                <span class="overview-icon"><i class="fa-solid fa-user-check"></i></span>
+                <h2 class="section-title">Member Approvals</h2>
+                <p class="section-subtitle">Approve or reject students waiting for club membership.</p>
+                <span class="overview-link">Open <i class="fa-solid fa-arrow-right"></i></span>
+            </a>
+
+            <a href="{% url 'club_dashboard_roles' %}" class="card overview-card" data-widget="overview-roles">
+                <span class="overview-icon"><i class="fa-solid fa-user-tag"></i></span>
+                <h2 class="section-title">Role Assignments</h2>
+                <p class="section-subtitle">Set or change roles for club executives and members.</p>
+                <span class="overview-link">Open <i class="fa-solid fa-arrow-right"></i></span>
+            </a>
+
+            <a href="{% url 'club_dashboard_events' %}" class="card overview-card" data-widget="overview-events">
+                <span class="overview-icon"><i class="fa-solid fa-calendar-plus"></i></span>
+                <h2 class="section-title">Events Management</h2>
+                <p class="section-subtitle">Publish club events with banner posters to the student dashboard and /clubs/.</p>
+                <span class="overview-link">Open <i class="fa-solid fa-arrow-right"></i></span>
+            </a>
+
+            <a href="{% url 'club_dashboard_transactions' %}" class="card overview-card" data-widget="overview-transactions">
+                <span class="overview-icon"><i class="fa-solid fa-money-check-dollar"></i></span>
+                <h2 class="section-title">Transaction Verifier</h2>
+                <p class="section-subtitle">Verify bKash / Nagad / Rocket payments for event registrations.</p>
+                <span class="overview-link">Open <i class="fa-solid fa-arrow-right"></i></span>
+            </a>
+        </div>
+
+        <!-- ============================================================
+             Quick stats (live database)
+        ============================================================ -->
+        <div class="card">
+            <h2 class="section-title"><i class="fa-solid fa-chart-simple"></i> At a glance</h2>
+            <div class="overview-stats">
+                <div class="stat-pill">
+                    <span class="stat-value">{{ pending_members|length }}</span>
+                    <span class="stat-label">Pending approvals</span>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-value">{{ members|length }}</span>
+                    <span class="stat-label">Members</span>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-value">{{ events|length }}</span>
+                    <span class="stat-label">Events</span>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-value">{{ transactions|length }}</span>
+                    <span class="stat-label">Transactions</span>
+                </div>
+            </div>
+        </div>
+
+{% endblock %}

@@ -15,6 +15,13 @@ urlpatterns = [
     # admins under /dashboard/admin/* (see core.roles + RoleAccessMiddleware).
     path('dashboard/student/', views.student_dashboard, name='student_dashboard'),
     path('dashboard/club/', views.club_dashboard, name='club_dashboard'),
+    # Club workspace — dedicated sub-routes (Overview / Google Sheet / Member
+    # Approvals / Roles / Events / Transactions).
+    path('dashboard/club/google-sheet/', views.club_sheet_view, name='club_dashboard_sheet'),
+    path('dashboard/club/members/', views.club_members_view, name='club_dashboard_members'),
+    path('dashboard/club/roles/', views.club_roles_view, name='club_dashboard_roles'),
+    path('dashboard/club/events/', views.club_events_view, name='club_dashboard_events'),
+    path('dashboard/club/transactions/', views.club_transactions_view, name='club_dashboard_transactions'),
     path('dashboard/admin/', views.admin_dashboard, name='admin_dashboard'),
     path('dashboard/admin/users/', views.admin_users_view, name='admin_users'),
     path('dashboard/admin/users/clubs/', views.admin_club_accounts_view, name='admin_club_accounts'),

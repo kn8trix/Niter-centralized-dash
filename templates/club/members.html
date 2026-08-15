@@ -1,0 +1,67 @@
+{% extends "club/club_base.html" %}
+{% load static %}
+
+{% block title %}Member Approvals — Niter Hub{% endblock %}
+{% block header %}Member Approvals{% endblock %}
+
+{% block content %}
+
+        <div class="card" id="approvals-card">
+            <h2 class="section-title"><i class="fa-solid fa-user-check"></i> Member Approvals</h2>
+            <p class="section-subtitle">Students waiting for club membership approval.</p>
+            <div class="table-wrap">
+                <div class="overflow-x-auto"><table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Student ID</th>
+                            <th>Club</th>
+                            <th>Applied</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="approvals-body">
+                        {% for member in pending_members %}
+                        <tr data-approval>
+                            <td>{{ member.name }}</td>
+                            <td class="mono">{{ member.student_id }}</td>
+                            <td>{{ member.club }}</td>
+                            <td class="mono">{{ member.applied }}</td>
+                            <td>
+                                <div class="action-btns">
+                                    <button type="button" class="btn-small approve" data-action="approve"><i class="fa-solid fa-check"></i> Approve</button>
+                                    <button type="button" class="btn-small reject" data-action="reject"><i class="fa-solid fa-xmark"></i> Reject</button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="empty-sheet">No pending membership requests.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table></div>
+            </div>
+        </div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+    <script>
+        // Member approvals — approve/reject removes the row (mock until the
+        // Google Sheet sync is connected).
+        (function () {
+            function show(msg) {
+                if (window.showToast) window.showToast(msg, 'success');
+            }
+            document.querySelectorAll('[data-action]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const row = btn.closest('tr[data-approval]');
+                    const name = row ? row.children[0].textContent : 'Member';
+                    show(btn.dataset.action === 'approve' ? name + ' approved.' : name + ' rejected.');
+                    if (row) row.remove();
+                });
+            });
+        })();
+    </script>
+{% endblock %}

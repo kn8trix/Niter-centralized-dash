@@ -1,0 +1,195 @@
+{% extends "club/club_base.html" %}
+{% load static %}
+
+{% block title %}Events Management — Niter Hub{% endblock %}
+{% block header %}Events Management{% endblock %}
+
+{% block content %}
+
+        {% if request.GET.created %}
+        <div class="alert success" role="status" id="event-created-banner">
+            <i class="fa-solid fa-circle-check"></i>
+            <span>Event published successfully — it now appears on the student dashboard and the public /clubs/ page (when published).</span>
+        </div>
+        {% endif %}
+
+        <!-- ============================================================
+             Event post creator (real DB-backed form, multipart for banners)
+        ============================================================ -->
+        <div class="card" id="events-card">
+            <h2 class="section-title"><i class="fa-solid fa-calendar-plus"></i> Event Post Creator</h2>
+            <p class="section-subtitle">Publish a new club event — upload a banner poster (or paste an image URL) and it shows up on the student dashboard and /clubs/ immediately.</p>
+
+            <form class="event-form" id="event-form" method="post" action="{% url 'club_dashboard_events' %}" enctype="multipart/form-data" novalidate>
+                {% csrf_token %}
+                {% if event_form.non_field_errors %}
+                <div class="alert error" role="alert">
+                    <i class="fa-solid fa-circle-exclamation"></i>
+                    <span>{% for error in event_form.non_field_errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</span>
+                </div>
+                {% endif %}
+
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="id_club" class="field-label">Club</label>
+                        {{ event_form.club }}
+                        {% for error in event_form.club.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+                    </div>
+                    <div class="field">
+                        <label for="id_title" class="field-label">Event Title</label>
+                        {{ event_form.title }}
+                        {% for error in event_form.title.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+                    </div>
+                    <div class="field">
+                        <label for="id_event_date" class="field-label">Date</label>
+                        {{ event_form.event_date }}
+                        {% for error in event_form.event_date.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+                    </div>
+                    <div class="field">
+                        <label for="id_location" class="field-label">Location</label>
+                        {{ event_form.location }}
+                        {% for error in event_form.location.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+                    </div>
+                    <div class="field">
+                        <label for="id_capacity" class="field-label">Capacity (seats)</label>
+                        {{ event_form.capacity }}
+                        {% for error in event_form.capacity.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label for="id_description" class="field-label">Description</label>
+                    {{ event_form.description }}
+                    {% for error in event_form.description.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+                </div>
+
+                <!-- Banner / poster upload with live preview -->
+                <div class="field">
+                    <label for="id_banner" class="field-label">Event Banner / Poster</label>
+                    {{ event_form.banner }}
+                    {% for error in event_form.banner.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+                    <div class="banner-preview" id="banner-preview" hidden>
+                        <img id="banner-preview-img" src="" alt="Event banner preview">
+                        <button type="button" class="btn-small" id="banner-clear">Clear preview</button>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label for="id_banner_url" class="field-label">…or paste an image URL <small>(used when no file is uploaded)</small></label>
+                    {{ event_form.banner_url }}
+                    {% for error in event_form.banner_url.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+                </div>
+
+                <div class="field">
+                    <label class="field-label inline-label">
+                        {{ event_form.is_published }}
+                        <span>Publish now — visible on the student dashboard and /clubs/ page</span>
+                    </label>
+                    {% for error in event_form.is_published.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+                </div>
+
+                <button type="submit" class="btn-primary" id="event-submit-btn"><i class="fa-solid fa-paper-plane"></i> Publish Event</button>
+            </form>
+
+            <div class="table-wrap events-table">
+                <div class="overflow-x-auto"><table>
+                    <thead>
+                        <tr>
+                            <th>Banner</th>
+                            <th>Event</th>
+                            <th>Club</th>
+                            <th>Date</th>
+                            <th>Location</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for event in events %}
+                        <tr>
+                            <td>
+                                {% if event.banner %}
+                                <img class="event-banner-thumb" src="{{ event.banner.url }}" alt="{{ event.title }} banner">
+                                {% elif event.banner_url %}
+                                <img class="event-banner-thumb" src="{{ event.banner_url }}" alt="{{ event.title }} banner" loading="lazy">
+                                {% else %}
+                                <span class="event-banner-thumb placeholder"><i class="fa-solid fa-image"></i></span>
+                                {% endif %}
+                            </td>
+                            <td>{{ event.title }}</td>
+                            <td>{{ event.club.name }}</td>
+                            <td class="mono">{{ event.event_date|date:"M d, Y" }}</td>
+                            <td>{{ event.location|default:"—" }}</td>
+                            <td>
+                                {% if event.is_published %}
+                                <span class="badge published">Published</span>
+                                {% else %}
+                                <span class="badge draft">Draft</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="empty-sheet">No events yet — create your first one above.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table></div>
+            </div>
+        </div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+    <script>
+        // ====================================================================
+        // Event banner live preview — file picker or pasted URL
+        // ====================================================================
+        (function () {
+            const fileInput = document.getElementById('id_banner');
+            const urlInput = document.getElementById('id_banner_url');
+            const preview = document.getElementById('banner-preview');
+            const previewImg = document.getElementById('banner-preview-img');
+            const clearBtn = document.getElementById('banner-clear');
+
+            function showPreview(src) {
+                if (!src) {
+                    preview.hidden = true;
+                    previewImg.src = '';
+                    return;
+                }
+                previewImg.src = src;
+                preview.hidden = false;
+            }
+
+            if (fileInput) {
+                fileInput.addEventListener('change', () => {
+                    const file = fileInput.files && fileInput.files[0];
+                    if (file) {
+                        showPreview(URL.createObjectURL(file));
+                    } else {
+                        showPreview(urlInput && urlInput.value.trim());
+                    }
+                });
+            }
+            if (urlInput) {
+                urlInput.addEventListener('input', () => {
+                    // A pasted URL previews live; a picked file takes priority.
+                    const file = fileInput && fileInput.files && fileInput.files[0];
+                    if (!file) showPreview(urlInput.value.trim());
+                });
+            }
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => {
+                    if (fileInput) fileInput.value = '';
+                    if (urlInput) urlInput.value = '';
+                    showPreview('');
+                });
+            }
+
+            // Toast for the created banner (if the page redirected with ?created=1).
+            if (window.showToast && new URLSearchParams(window.location.search).get('created') === '1') {
+                window.showToast('Event published successfully ✓', 'success');
+            }
+        })();
+    </script>
+{% endblock %}

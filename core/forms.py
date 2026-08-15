@@ -3,12 +3,16 @@
 ``SignUpForm`` validates self-registration input — Student ID, full name,
 department, email, password + confirmation — and persists the ``User`` and
 ``StudentProfile`` rows using Django's standard auth hashing.
+
+``ClubEventForm`` creates club events from the Club Management dashboard
+(``/dashboard/club/events/``) — banner image upload with a remote-URL
+fallback, published/draft flag, and the standard event fields.
 """
 
 from django import forms
 from django.contrib.auth.models import User
 
-from .models import StudentProfile
+from .models import ClubEvent, StudentProfile
 
 
 class SignUpForm(forms.Form):
@@ -91,3 +95,27 @@ class SignUpForm(forms.Form):
             department=data['department'],
         )
         return user
+
+
+class ClubEventForm(forms.ModelForm):
+    """Create / edit a ``ClubEvent`` from the club dashboard.
+
+    Supports both a banner image upload (``banner``, served from MEDIA_ROOT)
+    and a remote ``banner_url`` fallback, plus the published/draft toggle so
+    club managers can prepare an event before it shows on the student
+    dashboard and the public /clubs/ page.
+    """
+
+    class Meta:
+        model = ClubEvent
+        fields = [
+            'club', 'title', 'description', 'event_date', 'location',
+            'capacity', 'banner', 'banner_url', 'is_published',
+        ]
+        widgets = {
+            'event_date': forms.DateInput(attrs={'type': 'date', 'required': True}),
+            'description': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Describe the event…'}),
+            'location': forms.TextInput(attrs={'placeholder': 'e.g. Auditorium'}),
+            'capacity': forms.NumberInput(attrs={'min': 1, 'placeholder': 'e.g. 100'}),
+            'banner_url': forms.URLInput(attrs={'placeholder': 'https://…/poster.jpg (optional)'}),
+        }
