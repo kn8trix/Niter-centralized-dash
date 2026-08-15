@@ -4,7 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 113 | Study Corner — Academic Notes + YouTube lectures + AI Study Assistant | *(this change)* |
+| 113 | Study Corner — Academic Notes + YouTube lectures + AI Study Assistant | `76a9d50` |
 | 112 | Global News — dedicated Video News section (YouTube Data API v3) | `965064e` |
 | 111 | Remove email OTP verification from signup — direct registration | `1447f87` |
 | 110 | Global News nav tab + /news/ page; emergency resolve verified; student-page mobile pass | `0e37bd6` |
