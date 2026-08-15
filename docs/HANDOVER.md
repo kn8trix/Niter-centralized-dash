@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 115 | Signup — show/hide password toggle | `e4d6a25` |
 | 114 | Online Pharmacy module — Rx verification, checkout, order tracking, batch/expiry alerts, generic substitutes | `ddbc86a` |
 | 113 | Study Corner — Academic Notes + YouTube lectures + AI Study Assistant | `76a9d50` |
 | 112 | Global News — dedicated Video News section (YouTube Data API v3) | `965064e` |
@@ -6502,3 +6503,31 @@ scratch per the operations spec. Analytical tools are out of scope.
   regression tests green.
 - End-to-end flows verified: Rx upload → staff approve → Rx order placed →
   tracker advance → delivered, plus COD and bKash/TrxID payment paths.
+
+## 115. Signup — Show / Hide Password Toggle
+
+**Date:** 15 August 2026  
+**Branch:** main
+
+The signup form's **Password** field now has an in-field **show/hide toggle**
+(eye / eye-slash button) so users can check what they typed while creating an
+account.
+
+### Changes
+
+- **`templates/signup.html`** — a `.password-toggle` button (FontAwesome
+  `fa-eye` icon) sits inside the Password `.field-input`, with
+  `data-target="id_password"`; a small inline script flips the input between
+  `type="password"` and `type="text"`, swaps the icon to `fa-eye-slash`,
+  updates the `aria-label`/`title`, and returns focus to the field.
+- **`static/css/signup.css`** — toggle button styled as a right-aligned
+  transparent chip inside the field (hover chip in both light and dark
+  themes); inputs in `.field-input.has-toggle` gain right padding so typed
+  text never runs under the button. Overrides `auth.css`'s global
+  `.field-input i` left-icon rule for the toggle's icon only.
+
+### Tests & verification
+
+- `python manage.py check` clean; signup suites green (22 tests).
+- Rendered `/signup/` page verified to include the toggle button, the
+  `data-target` wiring, and the eye icon.
