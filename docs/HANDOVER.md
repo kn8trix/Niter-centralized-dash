@@ -4,6 +4,8 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 112 | Global News — dedicated Video News section (YouTube Data API v3) | `965064e` |
+| 111 | Remove email OTP verification from signup — direct registration | `1447f87` |
 | 110 | Global News nav tab + /news/ page; emergency resolve verified; student-page mobile pass | `0e37bd6` |
 | 109 | Visual builder — inline canvas editing + active-block sidebar sync + publish flow | `ce61dba` |
 | 108 | Builder routes locked to Admin Console layout — no student nav on admin pages | `ace3441` |
