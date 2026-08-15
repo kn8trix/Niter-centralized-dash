@@ -14,12 +14,18 @@ Behaviour contract (all idempotent):
   duplicate rows.
 * Admin edits are never clobbered: block content / visibility / order are
   written only when the block is first created. Re-runs only ensure the row
-  exists.
+  exists. The only exception is the default ``content_html`` backfill: a block
+  whose ``content_html`` is empty (e.g. registered before this behaviour
+  shipped) gets the rendered default layout written into it, so the visual
+  editor canvas never shows "This page has no content yet". A non-empty
+  ``content_html`` (admin-authored) is never touched.
 * Seeded blocks start ``visible=False`` so the public route keeps rendering
   its default template until an admin edits a section and reveals it from the
   Block Manager.
 * The three starter blueprints (PageTemplate) are seeded if missing.
 """
+
+from types import SimpleNamespace
 
 from core.models import ContentBlock, EditablePage, PageTemplate
 
@@ -286,6 +292,34 @@ BLUEPRINT_TEMPLATES = [
 SYSTEM_ROUTE_KEYS = {page['view_name']: page['key'] for page in SYSTEM_PAGES}
 
 
+def _default_block_html(block_spec):
+    """Render the default HTML layout for a block spec.
+
+    Structured system blocks carry their content in ``content_json``; this
+    renders the matching partial (``templates/builder/blocks/*.html``) with
+    that seeded data so the block's ``content_html`` is never empty — the
+    visual editor canvas and the sidebar's "Content (HTML)" textarea then show
+    real markup instead of "This page has no content yet". Uses the same
+    ``render_block_html`` helper the live page uses, so the default always
+    matches what a revealed block renders on the public route.
+    """
+    try:
+        from core.templatetags.builder_tags import render_block_html
+    except ImportError:  # pragma: no cover — import ordering guard
+        return ''
+    stub = SimpleNamespace(
+        block_type=block_spec['block_type'],
+        content_html='',
+        content_json=block_spec.get('content_json') or {},
+        element_id=block_spec['element_id'],
+    )
+    try:
+        return render_block_html(stub)
+    except Exception:
+        # A broken partial must never block registration.
+        return ''
+
+
 def register_system_pages():
     """Idempotently register core system pages, their feature blocks and the
     starter blueprints. Safe to call on every /builder/ visit."""
@@ -308,16 +342,24 @@ def register_system_pages():
             page.save(update_fields=['title', 'updated_at'])
 
         for index, block_spec in enumerate(spec['blocks']):
-            ContentBlock.objects.get_or_create(
+            default_html = _default_block_html(block_spec)
+            block, block_created = ContentBlock.objects.get_or_create(
                 page=page,
                 element_id=block_spec['element_id'],
                 defaults={
                     'block_type': block_spec['block_type'],
                     'content_json': block_spec['content_json'],
+                    'content_html': default_html,
                     'visible': False,  # revealed by the admin from Block Manager
                     'order': index,
                 },
             )
+            # Backfill the default HTML for rows created before this behaviour
+            # shipped (they only carry content_json). A non-empty content_html
+            # — i.e. an admin-authored edit — is never overwritten.
+            if not block_created and not (block.content_html or '').strip() and default_html:
+                block.content_html = default_html
+                block.save(update_fields=['content_html', 'updated_at'])
 
     for blueprint in BLUEPRINT_TEMPLATES:
         PageTemplate.objects.get_or_create(

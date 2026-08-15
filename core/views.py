@@ -5448,6 +5448,18 @@ def editable_page_view(request, slug):
     if not request.user.has_perm('core.change_editablepage'):
         qs = qs.filter(is_published=True)
     page = get_object_or_404(qs)
+
+    # The visual editor canvas loads this route with ``?preview=1``: preview
+    # mode renders EVERY block — including visibility-toggled-off sections —
+    # so the builder shows the full page layout instead of "This page has no
+    # content yet" (system-page blocks start hidden until revealed). Only
+    # users with the builder permission can request the preview; anonymous and
+    # regular visitors always get the published, visible-only page.
+    block_qs = page.content_blocks.order_by('order', 'id')
+    if not (request.GET.get('preview') == '1' and request.user.has_perm('core.change_editablepage')):
+        # Hidden blocks (visibility toggled off in the Block Manager) never
+        # render on the live page.
+        block_qs = block_qs.filter(visible=True)
     blocks = [
         {
             'element_id': block.element_id,
@@ -5457,9 +5469,7 @@ def editable_page_view(request, slug):
             'rendered_html': render_block_html(block),
             'style_attr': _style_attr(block.style_json),
         }
-        # Hidden blocks (visibility toggled off in the Block Manager) never
-        # render on the live page.
-        for block in page.content_blocks.filter(visible=True).order_by('order', 'id')
+        for block in block_qs
     ]
     # custom_css is injected with ``|safe`` inside a <style> tag — re-run the
     # save-time break-out guard at render time so an admin-edited row can never
@@ -5762,6 +5772,9 @@ def _save_content_block_data(page, data):
         element_id=element_id,
         defaults=defaults,
     )
+    # A block just changed — drop compiled-template caches so the live page
+    # renders the new HTML immediately.
+    _flush_template_caches()
     return JsonResponse({'status': 'success'})
 
 
@@ -5921,6 +5934,10 @@ def builder_page_wysiwyg_save(request, page_id):
         update_fields.append('is_published')
     page.save(update_fields=update_fields)
 
+    # Save Changes / Publish Page — make sure no compiled-template cache keeps
+    # serving stale block markup on the live routes.
+    _flush_template_caches()
+
     return JsonResponse({
         'status': 'success',
         'page_slug': page.slug,
@@ -5979,6 +5996,25 @@ def builder_page_save(request):
         'is_published': page.is_published,
         'show_in_nav': page.show_in_nav,
     })
+
+
+def _flush_template_caches():
+    """Clear Django's in-memory template caches after a builder save/publish.
+
+    Block HTML is stored in the DB and read per-request, so live routes pick
+    up edits immediately; this reset also clears any compiled-template cache
+    (e.g. if a cached template loader is ever enabled) so freshly saved block
+    markup never serves a stale compiled copy. Safe no-op today.
+    """
+    try:
+        from django.template import engines
+        for backend in engines.all():
+            # DjangoTemplates backends expose the underlying Engine, whose
+            # ``reset()`` drops its compiled-template cache.
+            if hasattr(backend, 'engine'):
+                backend.engine.reset()
+    except Exception:
+        pass
 
 
 def _as_bool(value):
@@ -6160,6 +6196,7 @@ def save_page_css(request):
 
     page.custom_css = sanitize_css(data.get('custom_css', ''))
     page.save(update_fields=['custom_css', 'updated_at'])
+    _flush_template_caches()
     return JsonResponse({'status': 'success'})
 
 

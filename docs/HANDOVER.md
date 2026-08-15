@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 119 | Fix visual builder empty canvas — default block HTML backfill, preview-mode canvas, template-cache flush on save/publish | *(pending)* |
 | 118 | Online Pharmacy polish — BD medicine catalog seed, product detail modal, Buy Now checkout, stock requests, nav buttons, modal CSS fix | `6e5430b` |
 | 117 | Website Builder overhaul — system page registration, feature blocks, live editing, UI redesign | `1908512` |
 | 116 | Fix 500 on /study-corner/ — guard fileless CourseMaterial rows | `3fa4aa1` |
@@ -6727,3 +6728,63 @@ UI redesign.
 - Verified live: system routes return 200 with no zone before edits; revealing
   a block renders it on the route; hiding restores defaults; `/builder/`
   lists all system pages with metrics and blueprints.
+
+---
+
+## 119. Fix Visual Builder Empty Canvas — Default Block HTML + Preview Mode + Cache Flush
+
+**Date:** 15 August 2026  
+**Branch:** main
+
+Fixes the "This page has no content yet" canvas in the visual Website Builder
+(`/builder/visual/<slug>/`) for the auto-registered system pages (Home, Study
+Corner, Pharmacy, Global News, Clubs): system blocks were seeded with empty
+`content_html` **and** `visible=False`, and the editor canvas (an iframe of
+`editable_page_view`) only rendered `visible=True` blocks — so the canvas
+rendered zero blocks. Now blocks carry their real default layout and the
+canvas preview shows every block.
+
+### Changes
+
+- **Default block HTML backfill (`core/system_pages.py`)** — `register_system_pages()`
+  now renders each block's matching partial (`templates/builder/blocks/*.html`)
+  with its seeded `content_json` via the shared `render_block_html` helper and
+  stores the result in `content_html` — the same markup a revealed block
+  renders on the public route. New registrations seed it directly; existing
+  rows with empty `content_html` are backfilled on the next `/builder/` visit.
+  A non-empty (admin-authored) `content_html` is never overwritten, so the
+  "never clobber admin edits" contract holds.
+- **Preview-mode canvas (`core/views.py`, `templates/builder/editor.html`)** —
+  `editable_page_view` accepts `?preview=1`, which renders EVERY block
+  (including visibility-toggled-off sections) but only for users with the
+  builder's `change_editablepage` permission. The visual editor's canvas
+  iframe now loads `/page/<slug>/?preview=1`, so it shows the full page
+  layout — hero banner, notes grid, YouTube section, news search/cards,
+  pharmacy category nav + product grid — instead of the empty state.
+  Anonymous / regular visitors keep seeing only published, visible blocks
+  (the public routes and the CMS system zone are unchanged).
+- **Template-cache flush on save/publish (`core/views.py`)** — new
+  `_flush_template_caches()` helper (resets the Django template engines'
+  compiled-template caches) wired into `_save_content_block_data`,
+  `builder_page_wysiwyg_save` (Save Changes + Publish Page) and
+  `save_page_css`, so live routes never serve a stale compiled copy after an
+  edit. Block HTML is DB-backed and read per-request, so edits were already
+  immediate — this is a defensive reset for a future cached loader.
+- **Sidebar ↔ canvas live editing** — the existing `editor.js`
+  `data-edit="html"` binding (typing in the sidebar's "Content (HTML)"
+  textarea updates the matching canvas element in real time) now has content
+  to sync, since blocks render in the canvas.
+
+### Tests & verification
+
+- 6 new tests: registered blocks carry rendered default HTML (marker per block
+  type across all 4 system pages); empty-`content_html` backfill + admin HTML
+  preservation; `?preview=1` renders hidden blocks for editors; preview is
+  gated for anonymous users and non-editor staff; the editor canvas iframe
+  uses the preview URL; a WYSIWYG save + publish of an edited block renders
+  live on `/study-corner/`.
+- Full suite — **979 tests OK** (973 before) · `manage.py check` clean.
+- Verified via rendered DOM: all 14 system blocks carry default HTML; the
+  editor page contains no empty-state text; `/page/{home,study-corner,news,
+  pharmacy}/?preview=1` each render their full component set; anonymous
+  visitors on the same URL see no hidden blocks.

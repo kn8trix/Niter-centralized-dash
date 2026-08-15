@@ -6751,6 +6751,34 @@ class BuilderWysiwygSaveApiTest(TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_save_and_publish_render_live_on_system_route(self):
+        """Save/Publish persists edited block HTML and the live system route
+        reflects it immediately (template caches are flushed on save)."""
+        from core.system_pages import register_system_pages
+        register_system_pages()
+        page = EditablePage.objects.get(system_key='study-corner')
+        block = page.content_blocks.get(element_id='notes-listing')
+        # Reveal the block so the live route renders it, then publish an edit.
+        block.visible = True
+        block.save(update_fields=['visible'])
+        response = self.client.post(
+            reverse('builder_page_wysiwyg_save', args=[page.pk]),
+            data=json.dumps({
+                'is_published': True,
+                'blocks': [{
+                    'element_id': 'notes-listing',
+                    'content_json': dict(block.content_json, title='Published Notes Title'),
+                }],
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'success')
+        # Live route renders the published change.
+        response = self.client.get('/study-corner/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Published Notes Title')
+
     def test_visual_editor_renders_wysiwyg_chrome(self):
         response = self.client.get(reverse('visual_editor', args=[self.page.slug]))
         self.assertEqual(response.status_code, 200)
@@ -6760,6 +6788,16 @@ class BuilderWysiwygSaveApiTest(TestCase):
         self.assertContains(response, 'data-wysiwyg-save-url')
         self.assertContains(response, 'wysiwyg-blocks')
         self.assertContains(response, 'id="wysiwyg-edit-text"')
+
+    def test_visual_editor_canvas_uses_preview_url(self):
+        """The canvas iframe requests the permission-gated preview URL so the
+        builder renders every block instead of the empty state."""
+        response = self.client.get(reverse('visual_editor', args=[self.page.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            reverse('editable_page', args=[self.page.slug]) + '?preview=1',
+        )
 
     def test_admin_content_edit_links_to_wysiwyg_editor(self):
         response = self.client.get(reverse('admin_content'))
@@ -11007,6 +11045,49 @@ class RegisterSystemPagesTest(TestCase):
         call_command('register_system_pages', verbosity=0)
         self.assertEqual(EditablePage.objects.filter(system_key='home').count(), 1)
 
+    def test_registered_blocks_carry_default_html(self):
+        """System blocks are registered with their rendered default layout in
+        ``content_html`` — the visual editor canvas and the sidebar's "Content
+        (HTML)" textarea show real markup instead of an empty state."""
+        from core.system_pages import register_system_pages
+        register_system_pages()
+        expected = {
+            'home': {'hero-banner': 'hero-block', 'quick-announcements': 'announcements-block'},
+            'study-corner': {'notes-listing': 'notes-block', 'youtube-section': 'youtube-block'},
+            'pharmacy': {'category-nav': 'category-nav-block', 'product-grid': 'products-block'},
+            'news': {'news-search': 'news-search-block', 'image-card-grid': 'card-grid-block'},
+        }
+        for key, blocks in expected.items():
+            page = EditablePage.objects.get(system_key=key)
+            for element_id, marker in blocks.items():
+                block = page.content_blocks.get(element_id=element_id)
+                self.assertTrue(
+                    block.content_html.strip(),
+                    '%s/%s should carry default HTML' % (key, element_id),
+                )
+                self.assertIn(marker, block.content_html)
+
+    def test_default_html_backfill_never_clobbers_admin_html(self):
+        """A re-register backfills ``content_html`` only when it is empty; an
+        admin-authored (non-empty) ``content_html`` is preserved."""
+        from core.system_pages import register_system_pages
+        register_system_pages()
+        page = EditablePage.objects.get(system_key='home')
+        block = page.content_blocks.get(element_id='hero-banner')
+        # Simulate a pre-backfill row: content_json only, empty content_html.
+        block.content_html = ''
+        block.save(update_fields=['content_html'])
+        register_system_pages()
+        block.refresh_from_db()
+        self.assertTrue(block.content_html.strip())
+        self.assertIn('hero-block', block.content_html)
+        # An admin-authored HTML edit must survive a re-register untouched.
+        block.content_html = '<h2>Custom hero</h2>'
+        block.save(update_fields=['content_html'])
+        register_system_pages()
+        block.refresh_from_db()
+        self.assertEqual(block.content_html, '<h2>Custom hero</h2>')
+
 
 class SystemCmsZoneTest(TestCase):
     """Live route rendering — CMS blocks appear only after an admin reveals them."""
@@ -11121,6 +11202,40 @@ class ContentBlockVisibilityTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, 'cms-hero-banner')
         # The rendered block (partial output) must be absent too.
+        self.assertNotContains(response, 'hero-block')
+
+    def test_preview_mode_renders_hidden_blocks_for_editors(self):
+        """The visual editor canvas (?preview=1) shows visibility-toggled-off
+        blocks so the builder never sees "This page has no content yet"."""
+        self.block.visible = False
+        self.block.save()
+        response = self.client.get(
+            reverse('editable_page', args=[self.page.slug]) + '?preview=1',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'hero-block')
+
+    def test_preview_mode_gated_for_non_editors(self):
+        """?preview=1 is permission-gated: anonymous / regular visitors keep
+        seeing only visible blocks even when the param is present."""
+        self.block.visible = False
+        self.block.save()
+        # Anonymous user — no builder permission.
+        self.client.logout()
+        response = self.client.get(
+            reverse('editable_page', args=[self.page.slug]) + '?preview=1',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'hero-block')
+        # A staff user without the builder permission is also gated.
+        staff = User.objects.create_user(
+            username='preview_staff', password='staffpass123', is_staff=True,
+        )
+        self.client.force_login(staff)
+        response = self.client.get(
+            reverse('editable_page', args=[self.page.slug]) + '?preview=1',
+        )
+        self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, 'hero-block')
 
     def test_visible_blocks_render_on_editable_page(self):

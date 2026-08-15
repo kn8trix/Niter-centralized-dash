@@ -193,7 +193,11 @@
         <!-- Main canvas -->
         <main class="canvas-wrap">
             <div class="canvas-frame" id="canvas-frame" data-viewport="desktop">
-                <iframe id="page-preview" src="{% url 'editable_page' page.slug %}" title="Live page preview"></iframe>
+                <!-- Preview mode (?preview=1) renders every block — including
+                     visibility-toggled-off system sections — so the canvas shows
+                     the full page layout instead of the empty state. Only users
+                     with the builder permission can request it. -->
+                <iframe id="page-preview" src="{% url 'editable_page' page.slug %}?preview=1" title="Live page preview"></iframe>
             </div>
 
             <!-- ============================================================
