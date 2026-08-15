@@ -4,7 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
-| 122 | Student Edition Android app — branded splash + launcher icons, persistent sessions, direct dashboard landing, native permissions, FCM push with picture banners, emergency siren | `25789af` |
+| 122 | Student Edition Android app — branded splash + launcher icons, persistent sessions, direct dashboard landing, native permissions, FCM push with picture banners, emergency siren (+ Gradle wrapper jar/scripts) | `25789af`, `9478115` |
 | 121 | Public pharmacy storefront — guest browsing/cart, hero button contrast fix, auto-seeded BD catalog | `29688ff` |
 | 120 | Club dashboard sub-routes + event banner upload + event visibility sync to student portals | `5c90964` |
 | 119 | Fix visual builder empty canvas — default block HTML backfill, preview-mode canvas, template-cache flush on save/publish | `a164e8a` |
@@ -6994,3 +6994,14 @@ unchanged until `google-services.json` is dropped in.
    backend already broadcasts to the `emergency_alerts` topic.
 3. Rebuild the APK; emergency broadcasts then push with picture banner +
    siren. Without these steps push is inert and the app is unaffected.
+
+### Follow-up: Gradle wrapper committed (`9478115`)
+
+The wrapper directory originally shipped only `gradle-wrapper.properties`, so
+terminal builds (`./gradlew`) failed instantly with "Could not find or load
+main class org.gradle.wrapper.GradleWrapperMain" and no `app/build/outputs`
+was ever produced. The official Gradle 8.11.1 wrapper JAR + `gradlew` /
+`gradlew.bat` scripts are now committed, and the README documents the
+`./gradlew assembleDebug` path (`app/build/outputs/apk/debug/app-debug.apk`).
+Building still requires the Android SDK (`platforms;android-36` +
+`build-tools;35.0.0`) on the machine that runs the build.
