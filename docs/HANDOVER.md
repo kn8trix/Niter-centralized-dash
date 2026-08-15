@@ -6438,3 +6438,66 @@ Study Assistant chat box in a responsive two-column layout.
 - Live check with the configured `YOUTUBE_API_KEY`:
   `search_lecture_videos('circuit analysis')` returned 6 real lecture videos
   (e.g. Engineering Circuit Analysis playlists).
+
+## 114. Online Pharmacy Module — Rx Verification, Checkout, Order Tracking, Inventory
+
+**Date:** 15 August 2026  
+**Branch:** main
+
+New end-to-end **Online Pharmacy** module (storefront → prescription
+verification → checkout → tracked delivery → inventory management), built from
+scratch per the operations spec. Analytical tools are out of scope.
+
+### Changes
+
+- **Models (`core/models.py`)** — `MedicineItem` (brand + generic name for
+  substitutes, strength, category, price, `is_prescription` Rx flag, and the
+  new `batch_number` / `expiry_date` / `reorder_level` fields), `Prescription`
+  (student upload, `pending` → `approved` / `rejected` + rejection reason +
+  reviewer audit), `PharmacyOrder` (status tracker `placed → rx_verified →
+  packaging → out_for_delivery → delivered` / `cancelled`, shipping details,
+  bKash / Nagad / SSLCommerz / COD payment, wallet TrxID), `PharmacyOrderItem`
+  (line items with snapshot price). `PaymentTransaction` gains the
+  `pharmacy` purpose + `sslcommerz` method. Migrations `0041` + `0042`.
+- **`core/views.py` + `core/urls.py`** — public storefront `/pharmacy/`;
+  customer tracking `/pharmacy/orders/`; medical admin
+  `/dashboard/medical/pharmacy/`; and APIs: prescription upload (PDF/JPG/PNG,
+  ≤5 MB), checkout (Rx gate: prescription-only items need an *approved,
+  user-owned* prescription; stock validation; wallet-TrxID or COD; digital
+  receipt with `PO-…` reference; stock decremented atomically), owner-scoped
+  order detail (live poll for the tracker), prescription approve/reject,
+  order advance/cancel, and bulk stock restock / expiry update. Every state
+  change pushes an in-app notification (shared `_broadcast_notification`).
+- **`templates/pharmacy/store.html`** — catalog grid (Rx Required badge,
+  In/Low/Out stock badges, search), drag-and-drop prescription upload modal,
+  product detail modal with an automatic **Generic Substitutes** section
+  (same-generic in-stock alternatives, emphasised when the brand is out of
+  stock), and a multi-step checkout modal (shipping → payment method → digital
+  receipt with reference ID + Track Order link).
+- **`templates/pharmacy/orders.html`** — 5-step visual tracker bar
+  [Order Placed ➔ Rx Verified ➔ Packaging ➔ Out for Delivery ➔ Delivered]
+  with live client-side polling of the order API; cancelled state shown.
+- **`templates/pharmacy/admin.html`** — tabbed dashboard: Rx Verification
+  Queue (view file, Approve / Reject with reason), Order Management
+  (Advance / Cancel with live notifications), and Inventory with color-coded
+  badges — red **Out of Stock** / **Expiring Soon** (≤30 days), yellow
+  **Low Stock Alert** (≤ reorder level) — plus bulk restock and expiry-date
+  actions.
+- **`static/css/pharmacy.css`** (new) — modals, cart, tracker bar, badges,
+  admin tables, receipt; mobile breakpoints (≤768px) and dark-mode contrast
+  overrides.
+- **Nav** — Pharmacy pill in the topbar; Pharmacy tile on the student
+  dashboard home.
+- **`core/tests.py`** — 41 new tests: inventory status logic, public
+  storefront, prescription upload gating, checkout (Rx gate incl. owner-scope
+  and pending-block, COD vs wallet TrxID, SSLCommerz purpose, stock
+  decrement, notifications), tracking page + owner-scoped API, and admin
+  (staff gating, Rx approve/reject, order advance/cancel, bulk restock /
+  expiry).
+
+### Tests & verification
+
+- `python manage.py check` clean; 41 pharmacy tests + 27 nav/dashboard
+  regression tests green.
+- End-to-end flows verified: Rx upload → staff approve → Rx order placed →
+  tracker advance → delivered, plus COD and bKash/TrxID payment paths.

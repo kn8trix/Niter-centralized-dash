@@ -1,0 +1,350 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pharmacy Admin — Niter Hub</title>
+    <meta name="description" content="Pharmacy operations — prescription verification, order management, and inventory.">
+
+    {% include 'partials/pwa_head.html' %}
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Global display preferences (theme / timezone / density) -- no-flash driver -->
+    {% include 'partials/display_prefs.html' %}
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Pharmacy styles -->
+    <link rel="stylesheet" href="{% static 'css/pharmacy.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="pharmacy pharmacy-admin" data-app="campusdash-public">
+
+    <div class="shell">
+
+        {% include 'partials/topbar.html' with active='admin' %}
+        {% csrf_token %}
+
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <div class="intro">
+            <h1>Pharmacy Admin</h1>
+            <p>Prescription verification, order fulfilment, and inventory management.</p>
+        </div>
+
+        <!-- Tab navigation -->
+        <div class="admin-tabs" role="tablist">
+            <button type="button" class="admin-tab active" data-tab="rx" role="tab" aria-selected="true">
+                <i class="fa-solid fa-file-prescription"></i> Rx Verification Queue <span class="tab-count">{{ rx_queue.count }}</span>
+            </button>
+            <button type="button" class="admin-tab" data-tab="orders" role="tab" aria-selected="false">
+                <i class="fa-solid fa-box-open"></i> Orders
+            </button>
+            <button type="button" class="admin-tab" data-tab="stock" role="tab" aria-selected="false">
+                <i class="fa-solid fa-boxes-stacked"></i> Inventory
+            </button>
+        </div>
+
+        <!-- ============================================================
+             Tab 1: Rx Verification Queue
+        ============================================================ -->
+        <section class="admin-pane" id="tab-rx">
+            <div class="admin-pane-head">
+                <h2 class="section-title">Prescription Verification Queue</h2>
+                <p class="section-subtitle">Approve or reject uploaded prescriptions — the student is notified instantly.</p>
+            </div>
+
+            {% if rx_queue %}
+            <div class="rx-queue">
+                {% for rx in rx_queue %}
+                <article class="rx-review-card" data-rx-id="{{ rx.id }}">
+                    <div class="rx-review-head">
+                        <span class="rx-review-user"><i class="fa-solid fa-user"></i> {{ rx.user.get_full_name|default:rx.user.username }}</span>
+                        <span class="rx-review-date">{{ rx.created_at|date:"M d, Y · h:i A" }}</span>
+                    </div>
+                    {% if rx.notes %}<p class="rx-review-notes"><i class="fa-solid fa-note-sticky"></i> {{ rx.notes }}</p>{% endif %}
+                    <div class="rx-review-actions">
+                        <a href="{{ rx.file.url }}" target="_blank" rel="noopener" class="btn-ghost"><i class="fa-solid fa-eye"></i> View File</a>
+                        <button type="button" class="btn-approve" data-action="approve"><i class="fa-solid fa-check"></i> Approve Rx</button>
+                        <button type="button" class="btn-reject" data-action="reject"><i class="fa-solid fa-xmark"></i> Reject Rx</button>
+                    </div>
+                    <p class="rx-review-reason" hidden><input type="text" class="field-input" id="reason-{{ rx.id }}" placeholder="Rejection reason (shown to the student)" maxlength="300"></p>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="empty-docs">No prescriptions waiting for review.</p>
+            {% endif %}
+        </section>
+
+        <!-- ============================================================
+             Tab 2: Order Management
+        ============================================================ -->
+        <section class="admin-pane" id="tab-orders" hidden>
+            <div class="admin-pane-head">
+                <h2 class="section-title">Order Management</h2>
+                <p class="section-subtitle">Advance orders through the fulfilment flow — customers get live notifications.</p>
+            </div>
+
+            <div class="admin-table-wrap">
+                <table class="admin-table" id="orders-table">
+                    <thead>
+                        <tr>
+                            <th>Reference</th>
+                            <th>Customer</th>
+                            <th>Items</th>
+                            <th>Amount</th>
+                            <th>Payment</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in orders %}
+                        <tr id="order-row-{{ order.id }}" data-id="{{ order.id }}">
+                            <td class="mono">{{ order.reference }}</td>
+                            <td>{{ order.user.get_full_name|default:order.user.username }}</td>
+                            <td class="order-items-cell">
+                                {% for item in order.items.all %}<span class="order-item-chip">{{ item.medicine.name }} × {{ item.quantity }}</span>{% endfor %}
+                            </td>
+                            <td>৳{{ order.amount }}</td>
+                            <td>{{ order.get_payment_method_display }}{% if order.wallet_trx %}<span class="mono block">Trx {{ order.wallet_trx }}</span>{% endif %}</td>
+                            <td><span class="order-status status-{{ order.status }}" data-status="{{ order.status }}">{{ order.get_status_display }}</span></td>
+                            <td class="order-actions">
+                                {% if order.status != 'delivered' and order.status != 'cancelled' %}
+                                <button type="button" class="btn-primary btn-sm" data-order-action="advance" data-id="{{ order.id }}">Advance</button>
+                                <button type="button" class="btn-reject btn-sm" data-order-action="cancel" data-id="{{ order.id }}">Cancel</button>
+                                {% else %}
+                                <span class="muted">—</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="7" class="empty-docs">No orders yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ============================================================
+             Tab 3: Inventory (stock / batch / expiry)
+        ============================================================ -->
+        <section class="admin-pane" id="tab-stock" hidden>
+            <div class="admin-pane-head">
+                <h2 class="section-title">Inventory</h2>
+                <p class="section-subtitle">Color-coded stock status — red for out-of-stock / expiring within 30 days, yellow for low stock.</p>
+            </div>
+
+            <div class="stock-actions">
+                <button type="button" class="btn-primary btn-sm" id="stock-restock-btn"><i class="fa-solid fa-boxes-stacked"></i> Restock Selected (+N)</button>
+                <input type="number" id="stock-restock-amount" class="field-input stock-amount" min="1" value="10" aria-label="Restock amount">
+                <button type="button" class="btn-primary btn-sm" id="stock-expiry-btn"><i class="fa-regular fa-calendar"></i> Set Expiry on Selected</button>
+                <input type="date" id="stock-expiry-date" class="field-input stock-amount" aria-label="Expiry date">
+            </div>
+
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="stock-select-all" aria-label="Select all"></th>
+                            <th>Medicine</th>
+                            <th>Stock</th>
+                            <th>Batch</th>
+                            <th>Expiry</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in medicines %}
+                        <tr data-id="{{ m.id }}">
+                            <td><input type="checkbox" class="stock-check" value="{{ m.id }}" aria-label="Select {{ m.name }}"></td>
+                            <td><strong>{{ m.name }}</strong>{% if m.strength %} <span class="muted">{{ m.strength }}</span>{% endif %}{% if m.generic %}<span class="block muted">{{ m.generic }}</span>{% endif %}</td>
+                            <td>{{ m.stock_quantity }}</td>
+                            <td class="mono">{{ m.batch_number|default:"—" }}</td>
+                            <td>{{ m.expiry_date|date:"M d, Y"|default:"—" }}</td>
+                            <td><span class="stock-badge stock-{{ m.stock_status }}">
+                                {% if m.stock_status == 'out' %}Out of Stock{% elif m.stock_status == 'expiring' %}Expiring Soon{% elif m.stock_status == 'low' %}Low Stock Alert{% else %}OK{% endif %}
+                            </span></td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="6" class="empty-docs">No medicines in the catalog yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script>
+        // ====================================================================
+        // Tab switching
+        // ====================================================================
+        document.querySelectorAll('.admin-tab').forEach(function (tab) {
+            tab.addEventListener('click', function () {
+                document.querySelectorAll('.admin-tab').forEach((t) => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
+                tab.classList.add('active');
+                tab.setAttribute('aria-selected', 'true');
+                document.querySelectorAll('.admin-pane').forEach((p) => { p.hidden = true; });
+                document.getElementById('tab-' + tab.dataset.tab).hidden = false;
+            });
+        });
+
+        // ====================================================================
+        // Toast + CSRF helpers
+        // ====================================================================
+        function showToast(message) {
+            const el = document.getElementById('toast');
+            el.textContent = message;
+            el.classList.add('show');
+            clearTimeout(window.__toastTimer);
+            window.__toastTimer = setTimeout(() => el.classList.remove('show'), 3800);
+        }
+
+        function getCookie(name) {
+            if (!document.cookie || document.cookie === '') return null;
+            for (const part of document.cookie.split(';')) {
+                const pair = part.trim();
+                if (pair.startsWith(name + '=')) return decodeURIComponent(pair.slice(name.length + 1));
+            }
+            return null;
+        }
+
+        function post(url, data) {
+            return fetch(url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                body: data,
+            }).then((r) => r.json());
+        }
+
+        // ====================================================================
+        // Rx verification queue
+        // ====================================================================
+        document.querySelectorAll('.rx-review-card').forEach(function (card) {
+            const id = card.dataset.rxId;
+            card.querySelectorAll('[data-action]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    const action = btn.dataset.action;
+                    const reasonEl = card.querySelector('.rx-review-reason');
+                    const reasonInput = document.getElementById('reason-' + id);
+                    if (action === 'reject' && reasonEl.hidden) {
+                        reasonEl.hidden = false;
+                        reasonInput.focus();
+                        return;
+                    }
+                    post('{% url "api_pharmacy_prescription_review" 0 %}'.replace('/0/', '/' + id + '/'), new URLSearchParams({
+                        action: action,
+                        reason: reasonInput ? reasonInput.value.trim() : '',
+                    })).then(function (json) {
+                        showToast(json.message || (action === 'approve' ? 'Prescription approved.' : 'Prescription rejected.'));
+                        if (json.status === 'success') {
+                            card.remove();
+                            const countEl = document.querySelector('.admin-tab[data-tab="rx"] .tab-count');
+                            if (countEl) {
+                                const n = Math.max(0, (parseInt(countEl.textContent, 10) || 1) - 1);
+                                countEl.textContent = n;
+                            }
+                        }
+                    }).catch(() => showToast('Action failed — please try again.'));
+                });
+            });
+        });
+
+        // ====================================================================
+        // Order management
+        // ====================================================================
+        var ORDERS = {{ orders_json|safe }};
+
+        function renderOrderRow(json) {
+            const order = json.order;
+            const row = document.getElementById('order-row-' + order.id);
+            if (!row) return;
+            const statusEl = row.querySelector('.order-status');
+            statusEl.className = 'order-status status-' + order.status;
+            statusEl.textContent = order.status_label;
+            const actionsCell = row.querySelector('.order-actions');
+            if (order.status === 'delivered' || order.status === 'cancelled') {
+                actionsCell.innerHTML = '<span class="muted">—</span>';
+            } else {
+                actionsCell.innerHTML =
+                    '<button type="button" class="btn-primary btn-sm" data-order-action="advance" data-id="' + order.id + '">Advance</button>' +
+                    '<button type="button" class="btn-reject btn-sm" data-order-action="cancel" data-id="' + order.id + '">Cancel</button>';
+            }
+        }
+
+        document.getElementById('orders-table').addEventListener('click', function (e) {
+            const btn = e.target.closest('[data-order-action]');
+            if (!btn) return;
+            const id = btn.dataset.id;
+            const action = btn.dataset.orderAction;
+            post('{% url "api_pharmacy_order_status" 0 %}'.replace('/0/', '/' + id + '/'), new URLSearchParams({ action: action }))
+                .then(function (json) {
+                    showToast(json.message || 'Order updated.');
+                    if (json.status === 'success') renderOrderRow(json);
+                })
+                .catch(() => showToast('Action failed — please try again.'));
+        });
+
+        // ====================================================================
+        // Inventory — bulk restock / expiry
+        // ====================================================================
+        function selectedStockIds() {
+            return Array.prototype.map.call(
+                document.querySelectorAll('.stock-check:checked'),
+                (c) => c.value,
+            );
+        }
+
+        document.getElementById('stock-select-all').addEventListener('change', function () {
+            document.querySelectorAll('.stock-check').forEach((c) => { c.checked = this.checked; });
+        });
+
+        document.getElementById('stock-restock-btn').addEventListener('click', function () {
+            const ids = selectedStockIds();
+            if (!ids.length) { showToast('Select at least one medicine.'); return; }
+            const amount = document.getElementById('stock-restock-amount').value.trim();
+            post('{% url "api_pharmacy_stock_update" %}', new URLSearchParams({
+                action: 'restock',
+                amount: amount,
+                ids: ids,
+            })).then(function (json) {
+                showToast(json.message || 'Inventory updated.');
+                if (json.status === 'success') setTimeout(() => window.location.reload(), 700);
+            }).catch(() => showToast('Update failed — please try again.'));
+        });
+
+        document.getElementById('stock-expiry-btn').addEventListener('click', function () {
+            const ids = selectedStockIds();
+            if (!ids.length) { showToast('Select at least one medicine.'); return; }
+            const expiryDate = document.getElementById('stock-expiry-date').value.trim();
+            if (!expiryDate) { showToast('Pick an expiry date.'); return; }
+            post('{% url "api_pharmacy_stock_update" %}', new URLSearchParams({
+                action: 'set_expiry',
+                expiry_date: expiryDate,
+                ids: ids,
+            })).then(function (json) {
+                showToast(json.message || 'Inventory updated.');
+                if (json.status === 'success') setTimeout(() => window.location.reload(), 700);
+            }).catch(() => showToast('Update failed — please try again.'));
+        });
+    </script>
+
+    <!-- PWA service worker registration (offline caching) -->
+    <script src="{% static 'js/pwa-register.js' %}" defer></script>
+</body>
+</html>

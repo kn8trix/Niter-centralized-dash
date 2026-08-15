@@ -104,11 +104,15 @@ from .models import (
     MedicalChatThread,
     MealSubscription,
     MealTicket,
+    MedicineItem,
     NoteAnalysis,
     Notice,
     Notification,
     PageTemplate,
     PaymentTransaction,
+    PharmacyOrder,
+    PharmacyOrderItem,
+    Prescription,
     ResearchMessage,
     ResearchThread,
     Report,
@@ -600,6 +604,491 @@ def study_chat(request):
             else 'Answered by the built-in study engine.'
         ),
     })
+
+# --- Pharmacy (Online Pharmacy module) ---------------------------------------
+# Storefront + prescription upload + checkout + order tracking for students,
+# and the Rx verification queue / order management / inventory dashboard for
+# medical staff. Payment reuses the existing sandbox wallet + TrxID pattern
+# (bKash / Nagad / SSLCommerz) plus a Cash on Delivery toggle.
+
+_PHARMACY_ORDER_NEXT = {
+    'placed': 'rx_verified',
+    'rx_verified': 'packaging',
+    'packaging': 'out_for_delivery',
+    'out_for_delivery': 'delivered',
+}
+_PHARMACY_TRACKER = [
+    ('placed', 'Order Placed'),
+    ('rx_verified', 'Rx Verified'),
+    ('packaging', 'Packaging'),
+    ('out_for_delivery', 'Out for Delivery'),
+    ('delivered', 'Delivered'),
+]
+
+
+def _pharmacy_order_reference():
+    """Return an unused pharmacy order reference, e.g. ``PO-A1B2C3``."""
+    for _ in range(50):
+        ref = 'PO-' + secrets.token_hex(3).upper()
+        if not PharmacyOrder.objects.filter(reference=ref).exists():
+            return ref
+    raise RuntimeError('Could not allocate a unique pharmacy order reference')
+
+
+def _pharmacy_medicine_catalog():
+    """Serialize active medicines for the storefront catalog JSON."""
+    return [
+        {
+            'id': item.pk,
+            'name': item.name,
+            'generic': item.generic_name,
+            'strength': item.strength,
+            'category': item.get_category_display(),
+            'price': str(item.price),
+            'rx': item.is_prescription,
+            'stock': item.stock_quantity,
+            'reorder': item.reorder_level,
+            'expiry': item.expiry_date.isoformat() if item.expiry_date else None,
+            'batch': item.batch_number,
+            'description': item.description,
+        }
+        for item in MedicineItem.objects.filter(is_active=True)
+    ]
+
+
+def _pharmacy_order_json(order):
+    """Serialize an order for the admin table / tracking page / JSON API."""
+    return {
+        'id': order.pk,
+        'reference': order.reference,
+        'status': order.status,
+        'status_label': order.get_status_display(),
+        'step_index': order.step_index,
+        'amount': str(order.amount),
+        'payment_method': order.get_payment_method_display(),
+        'payment_status': order.get_payment_status_display(),
+        'wallet_trx': order.wallet_trx,
+        'hall_name': order.hall_name,
+        'room_no': order.room_no,
+        'department': order.department,
+        'delivery_instructions': order.delivery_instructions,
+        'emergency_phone': order.emergency_phone,
+        'created_at': order.created_at.isoformat(),
+        'prescription_id': order.prescription_id,
+        'user': order.user.username,
+        'user_name': order.user.get_full_name() or order.user.username,
+        'items': [
+            {
+                'name': item.medicine.name,
+                'strength': item.medicine.strength,
+                'quantity': item.quantity,
+                'unit_price': str(item.unit_price),
+                'line_total': str(item.unit_price * item.quantity),
+                'rx': item.medicine.is_prescription,
+            }
+            for item in order.items.all()
+        ],
+        'next_status': _PHARMACY_ORDER_NEXT.get(order.status),
+    }
+
+
+def pharmacy_store(request):
+    """Pharmacy storefront — catalog, prescription upload, cart + checkout.
+
+    Public page: guests can browse and build a cart, but prescription upload
+    and checkout redirect to login. The medicine catalog is embedded as JSON
+    for client-side cart / generic-substitute lookups; the signed-in user's
+    prescriptions (approved ones are attachable to an order) are passed too."""
+    prescriptions = (
+        Prescription.objects.filter(user=request.user)[:10]
+        if request.user.is_authenticated
+        else Prescription.objects.none()
+    )
+    return render(request, 'pharmacy/store.html', {
+        'medicines_json': json.dumps(_pharmacy_medicine_catalog()),
+        'prescriptions': prescriptions,
+        'prescriptions_json': json.dumps([
+            {
+                'id': p.pk,
+                'status': p.status,
+                'notes': p.notes,
+                'created_at': p.created_at.isoformat(),
+            }
+            for p in prescriptions
+        ]),
+        'user_authenticated': request.user.is_authenticated,
+    })
+
+
+@login_required
+def pharmacy_orders(request):
+    """Customer order tracking — ``/pharmacy/orders/``.
+
+    Server-renders the signed-in user's orders with the 5-step tracker; the
+    page polls ``api_pharmacy_order_detail`` to re-render status live."""
+    orders = PharmacyOrder.objects.filter(user=request.user).prefetch_related('items')
+    return render(request, 'pharmacy/orders.html', {
+        'orders': orders,
+        'tracker_steps': _PHARMACY_TRACKER,
+        'orders_json': json.dumps([_pharmacy_order_json(o) for o in orders]),
+    })
+
+
+@admin_required
+def medical_pharmacy(request):
+    """Pharmacy admin dashboard — ``/dashboard/medical/pharmacy/``.
+
+    Three tabs: the Rx verification queue (pending prescriptions), order
+    management (advance / cancel with live user notifications), and inventory
+    (stock status badges + bulk restock / expiry update)."""
+    rx_queue = Prescription.objects.filter(status='pending').select_related('user')
+    orders = PharmacyOrder.objects.select_related('user', 'prescription').prefetch_related('items')
+    medicines = MedicineItem.objects.all()
+    return render(request, 'pharmacy/admin.html', {
+        'rx_queue': rx_queue,
+        'orders': orders,
+        'medicines': medicines,
+        'orders_json': json.dumps([_pharmacy_order_json(o) for o in orders]),
+    })
+
+
+@login_required
+def api_pharmacy_prescription_upload(request):
+    """POST /api/pharmacy/prescription/upload/ — upload a prescription file.
+
+    Accepts PDF / JPG / PNG up to 5 MB; creates a ``pending`` Prescription
+    that a medical staff member must approve before it can gate an Rx order."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    upload = request.FILES.get('file')
+    if upload is None:
+        return JsonResponse({'status': 'error', 'message': 'No file uploaded.'}, status=400)
+    name = (getattr(upload, 'name', '') or '').lower()
+    if not name.endswith(('.pdf', '.jpg', '.jpeg', '.png')):
+        return JsonResponse(
+            {'status': 'error', 'message': 'Supported formats: PDF, JPG or PNG.'},
+            status=400,
+        )
+    if upload.size and upload.size > 5 * 1024 * 1024:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Prescription files must be 5 MB or smaller.'},
+            status=400,
+        )
+    prescription = Prescription.objects.create(
+        user=request.user,
+        file=upload,
+        notes=(request.POST.get('notes') or '').strip()[:300],
+    )
+    return JsonResponse({
+        'status': 'success',
+        'prescription_id': prescription.pk,
+        'message': 'Prescription uploaded — it will be verified by the medical center shortly.',
+    })
+
+
+@login_required
+def api_pharmacy_checkout(request):
+    """POST /api/pharmacy/checkout/ — place a pharmacy order (multi-step).
+
+    Validates cart items against stock, enforces the Rx gate (prescription-only
+    medicines need an approved, user-owned prescription), records shipping +
+    payment (sandbox wallet + TrxID for gateways, or Cash on Delivery),
+    decrements stock, persists a ``PaymentTransaction`` for paid orders, and
+    returns the digital receipt (reference id + summary)."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+
+    try:
+        payload = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'status': 'error', 'message': 'Invalid JSON payload.'}, status=400)
+
+    items_raw = payload.get('items') or []
+    if not isinstance(items_raw, list) or not items_raw:
+        return JsonResponse({'status': 'error', 'message': 'Your cart is empty.'}, status=400)
+
+    payment_method = (payload.get('payment_method') or '').strip()
+    valid_methods = {code for code, _label in PharmacyOrder.PAYMENT_METHOD_CHOICES}
+    if payment_method not in valid_methods:
+        return JsonResponse({'status': 'error', 'message': 'Select a payment method.'}, status=400)
+
+    is_cod = payment_method == 'cod'
+    wallet_trx = ''
+    if not is_cod:
+        wallet_trx = (payload.get('wallet_trx') or '').strip()
+        if not _TRX_RE.fullmatch(wallet_trx):
+            return JsonResponse(
+                {'status': 'error', 'message': 'Please enter the TrxID shown in your payment confirmation.'},
+                status=400,
+            )
+
+    # Resolve medicines + quantities, validating ids and stock.
+    medicines = []
+    for entry in items_raw:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            medicine_id = int(entry.get('id'))
+            quantity = int(entry.get('qty') or 0)
+        except (TypeError, ValueError):
+            return JsonResponse({'status': 'error', 'message': 'Invalid cart item.'}, status=400)
+        if quantity < 1:
+            return JsonResponse({'status': 'error', 'message': 'Invalid cart item.'}, status=400)
+        try:
+            medicine = MedicineItem.objects.get(pk=medicine_id, is_active=True)
+        except MedicineItem.DoesNotExist:
+            return JsonResponse({'status': 'error', 'message': 'A medicine in your cart is no longer available.'}, status=400)
+        if medicine.stock_quantity < quantity:
+            return JsonResponse(
+                {'status': 'error', 'message': '%s only has %d in stock.' % (medicine.name, medicine.stock_quantity)},
+                status=409,
+            )
+        medicines.append((medicine, quantity))
+
+    # Rx gate: any prescription-only item needs an approved prescription.
+    needs_rx = any(medicine.is_prescription for medicine, _q in medicines)
+    prescription = None
+    if needs_rx:
+        prescription_id = payload.get('prescription_id')
+        try:
+            prescription = Prescription.objects.get(
+                pk=int(prescription_id), user=request.user, status='approved',
+            )
+        except (TypeError, ValueError, Prescription.DoesNotExist):
+            return JsonResponse(
+                {'status': 'error', 'message': 'This order needs an approved prescription. Upload one and wait for verification.'},
+                status=400,
+            )
+
+    # Shipping details.
+    hall_name = (payload.get('hall_name') or '').strip()[:100]
+    room_no = (payload.get('room_no') or '').strip()[:40]
+    department = (payload.get('department') or '').strip()[:10]
+    delivery_instructions = (payload.get('delivery_instructions') or '').strip()[:300]
+    emergency_phone = (payload.get('emergency_phone') or '').strip()[:20]
+    if not (hall_name or room_no):
+        return JsonResponse({'status': 'error', 'message': 'Add a delivery location (hall or room).'}, status=400)
+    if not emergency_phone:
+        return JsonResponse({'status': 'error', 'message': 'Add an emergency contact phone number.'}, status=400)
+
+    amount = sum(medicine.price * quantity for medicine, quantity in medicines)
+
+    try:
+        with transaction.atomic():
+            order = PharmacyOrder.objects.create(
+                user=request.user,
+                reference=_pharmacy_order_reference(),
+                status='placed',
+                prescription=prescription,
+                hall_name=hall_name,
+                room_no=room_no,
+                department=department,
+                delivery_instructions=delivery_instructions,
+                emergency_phone=emergency_phone,
+                payment_method=payment_method,
+                payment_status='cod' if is_cod else 'pending',
+                wallet_trx=wallet_trx,
+                amount=amount,
+            )
+            for medicine, quantity in medicines:
+                PharmacyOrderItem.objects.create(
+                    order=order,
+                    medicine=medicine,
+                    quantity=quantity,
+                    unit_price=medicine.price,
+                )
+                medicine.stock_quantity -= quantity
+                medicine.save(update_fields=['stock_quantity'])
+            if not is_cod:
+                PaymentTransaction.objects.create(
+                    user=request.user,
+                    amount=amount,
+                    payment_method='sslcommerz' if payment_method == 'sslcommerz' else payment_method,
+                    transaction_id=_generate_transaction_id(),
+                    purpose='pharmacy',
+                    status='pending',
+                    description='Pharmacy order %s' % order.reference,
+                    wallet_trx=wallet_trx,
+                )
+    except RuntimeError:
+        return JsonResponse({'status': 'error', 'message': 'Could not place the order. Please try again.'}, status=500)
+
+    notification = Notification.objects.create(
+        user=request.user,
+        title='Pharmacy order placed',
+        message='Your pharmacy order %s (%s) is confirmed.' % (order.reference, order.get_payment_method_display()),
+        category='medical',
+    )
+    _broadcast_notification(notification)
+
+    return JsonResponse({
+        'status': 'success',
+        'reference': order.reference,
+        'amount': str(amount),
+        'payment_method': order.get_payment_method_display(),
+        'payment_status': order.get_payment_status_display(),
+        'order': _pharmacy_order_json(order),
+        'message': 'Order placed — reference %s.' % order.reference,
+    })
+
+
+@login_required
+def api_pharmacy_order_detail(request, reference):
+    """GET /api/pharmacy/orders/<reference>/ — one order (owner-scoped) for the
+    tracking page's live poll."""
+    order = get_object_or_404(
+        PharmacyOrder.objects.filter(user=request.user).prefetch_related('items'),
+        reference=reference,
+    )
+    return JsonResponse({'status': 'success', 'data': _pharmacy_order_json(order)})
+
+
+@admin_required
+def api_pharmacy_prescription_review(request, prescription_id):
+    """POST /api/pharmacy/admin/prescriptions/<id>/review/ — approve or reject.
+
+    ``action`` is ``approve`` or ``reject`` (with an optional ``reason``). The
+    student is notified of the outcome in real time."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    action = (request.POST.get('action') or '').strip()
+    if action not in ('approve', 'reject'):
+        return JsonResponse({'status': 'error', 'message': 'Invalid action.'}, status=400)
+    prescription = get_object_or_404(Prescription.objects.select_related('user'), pk=prescription_id)
+    if prescription.status != 'pending':
+        return JsonResponse(
+            {'status': 'error', 'message': 'This prescription was already reviewed.'},
+            status=409,
+        )
+
+    if action == 'approve':
+        prescription.status = 'approved'
+        prescription.reason = ''
+        title, message = 'Prescription approved', 'Your uploaded prescription is approved — you can order Rx medicines now.'
+    else:
+        prescription.status = 'rejected'
+        prescription.reason = (request.POST.get('reason') or '').strip()[:300]
+        title = 'Prescription rejected'
+        message = 'Your prescription was rejected.%s' % (
+            ' Reason: %s' % prescription.reason if prescription.reason else ''
+        )
+    prescription.reviewed_by = request.user
+    prescription.reviewed_at = timezone.now()
+    prescription.save()
+
+    notification = Notification.objects.create(
+        user=prescription.user,
+        title=title,
+        message=message,
+        category='medical',
+    )
+    _broadcast_notification(notification)
+    return JsonResponse({
+        'status': 'success',
+        'prescription_id': prescription.pk,
+        'new_status': prescription.status,
+        'message': 'Prescription %s.' % ('approved' if action == 'approve' else 'rejected'),
+    })
+
+
+@admin_required
+def api_pharmacy_order_status(request, order_id):
+    """POST /api/pharmacy/admin/orders/<id>/status/ — advance or cancel an order.
+
+    ``action`` is ``advance`` (to the next tracker step) or ``cancel``. Every
+    change sends the customer an in-app / real-time notification."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    action = (request.POST.get('action') or '').strip()
+    order = get_object_or_404(PharmacyOrder.objects.select_related('user'), pk=order_id)
+
+    if action == 'advance':
+        next_status = _PHARMACY_ORDER_NEXT.get(order.status)
+        if next_status is None:
+            return JsonResponse(
+                {'status': 'error', 'message': 'This order cannot be advanced further.'},
+                status=409,
+            )
+        order.status = next_status
+        title = 'Order %s' % dict(PharmacyOrder.STATUS_CHOICES)[next_status]
+        message = 'Your pharmacy order %s is now %s.' % (order.reference, dict(PharmacyOrder.STATUS_CHOICES)[next_status])
+    elif action == 'cancel':
+        if order.status in ('delivered', 'cancelled'):
+            return JsonResponse(
+                {'status': 'error', 'message': 'This order can no longer be cancelled.'},
+                status=409,
+            )
+        order.status = 'cancelled'
+        title = 'Order cancelled'
+        message = 'Your pharmacy order %s was cancelled.' % order.reference
+    else:
+        return JsonResponse({'status': 'error', 'message': 'Invalid action.'}, status=400)
+
+    order.save(update_fields=['status', 'updated_at'])
+    notification = Notification.objects.create(
+        user=order.user,
+        title=title,
+        message=message,
+        category='medical',
+    )
+    _broadcast_notification(notification)
+    return JsonResponse({
+        'status': 'success',
+        'order': _pharmacy_order_json(order),
+        'message': 'Order %s updated.' % order.reference,
+    })
+
+
+@admin_required
+def api_pharmacy_stock_update(request):
+    """POST /api/pharmacy/admin/stock/update/ — bulk inventory maintenance.
+
+    ``action`` is ``restock`` (add ``amount`` to selected ids) or
+    ``set_expiry`` (stamp ``expiry_date`` on selected ids). Returns how many
+    items were updated."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    action = (request.POST.get('action') or '').strip()
+    raw_ids = request.POST.getlist('ids')
+    ids = []
+    for raw in raw_ids:
+        try:
+            ids.append(int(raw))
+        except (TypeError, ValueError):
+            pass
+    if not ids:
+        return JsonResponse({'status': 'error', 'message': 'Select at least one medicine.'}, status=400)
+
+    queryset = MedicineItem.objects.filter(pk__in=ids)
+    updated = 0
+    if action == 'restock':
+        try:
+            amount = int(request.POST.get('amount') or 0)
+        except (TypeError, ValueError):
+            amount = 0
+        if amount < 1:
+            return JsonResponse({'status': 'error', 'message': 'Enter a positive restock amount.'}, status=400)
+        for item in queryset:
+            item.stock_quantity += amount
+            item.save(update_fields=['stock_quantity'])
+            updated += 1
+        message = 'Restocked %d item(s) (+%d units).' % (updated, amount)
+    elif action == 'set_expiry':
+        raw_date = (request.POST.get('expiry_date') or '').strip()
+        try:
+            expiry_date = datetime.strptime(raw_date, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return JsonResponse({'status': 'error', 'message': 'Enter a valid expiry date.'}, status=400)
+        for item in queryset:
+            item.expiry_date = expiry_date
+            item.save(update_fields=['expiry_date'])
+            updated += 1
+        message = 'Updated expiry date on %d item(s).' % updated
+    else:
+        return JsonResponse({'status': 'error', 'message': 'Invalid action.'}, status=400)
+
+    return JsonResponse({'status': 'success', 'updated': updated, 'message': message})
+
 
 def notices(request):
     """Official Notices — published ``Notice`` rows, filtered by category.

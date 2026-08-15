@@ -1,5 +1,6 @@
 import secrets as _secrets
 import uuid
+from datetime import date, timedelta
 
 from django.contrib.auth.models import User
 from django.db import models
@@ -1410,6 +1411,237 @@ class MedicalChatMessage(models.Model):
         return '%s: %s…' % (self.sender.username, self.content[:40])
 
 
+# --- Pharmacy (Online Pharmacy module) ----------------------------------------
+# Medicine catalog + prescriptions + orders for the campus pharmacy. The store
+# is browsable by anyone; checkout / prescriptions / tracking are
+# login-required, and the operational admin dashboard lives at
+# /dashboard/medical/pharmacy/ (staff-only).
+
+
+class MedicineItem(models.Model):
+    """A medicine stocked by the campus pharmacy.
+
+    ``is_prescription`` (Rx-required) items can only be purchased with an
+    approved :class:`Prescription` attached to the order. Batch / expiry /
+    reorder fields drive the admin inventory alerts (``stock_status``): red
+    for out-of-stock or expiring within 30 days, yellow for low stock, and
+    the admin dashboard offers bulk restock + expiry update actions.
+    """
+
+    CATEGORY_CHOICES = [
+        ('tablet', 'Tablet'),
+        ('capsule', 'Capsule'),
+        ('syrup', 'Syrup'),
+        ('ointment', 'Ointment'),
+        ('injection', 'Injection'),
+        ('other', 'Other'),
+    ]
+
+    name = models.CharField(max_length=120, db_index=True, help_text='Brand name, e.g. Napa')
+    generic_name = models.CharField(
+        max_length=120,
+        blank=True,
+        default='',
+        db_index=True,
+        help_text='Generic name, e.g. Paracetamol — drives substitute suggestions',
+    )
+    strength = models.CharField(max_length=60, blank=True, default='', help_text='e.g. 500mg')
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='tablet')
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    is_prescription = models.BooleanField(
+        default=False,
+        help_text='Rx Required — needs an approved prescription to purchase',
+    )
+    stock_quantity = models.PositiveIntegerField(default=0)
+    batch_number = models.CharField(max_length=50, blank=True, default='')
+    expiry_date = models.DateField(null=True, blank=True)
+    reorder_level = models.PositiveIntegerField(
+        default=10,
+        help_text='Restock warning threshold — stock at or below this is low',
+    )
+    description = models.TextField(blank=True, default='')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+
+    @property
+    def stock_status(self):
+        """Inventory alert key for the admin dashboard: out | expiring | low | ok.
+
+        Red takes precedence: an item that is both out of stock and expiring
+        reports ``out``. Expiring means the expiry date is within 30 days.
+        """
+        if self.stock_quantity <= 0:
+            return 'out'
+        if self.expiry_date is not None and self.expiry_date <= date.today() + timedelta(days=30):
+            return 'expiring'
+        if self.stock_quantity <= self.reorder_level:
+            return 'low'
+        return 'ok'
+
+    def __str__(self):
+        label = self.name
+        if self.strength:
+            label += ' %s' % self.strength
+        return label
+
+
+class Prescription(models.Model):
+    """A student-uploaded prescription (PDF / JPG / PNG) awaiting staff review.
+
+    Uploads start ``pending``; a medical staff member approves or rejects them
+    from the pharmacy admin dashboard. Only ``approved`` prescriptions can be
+    attached to orders containing Rx-required medicines.
+    """
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='prescriptions',
+        db_index=True,
+    )
+    file = models.FileField(upload_to='prescriptions/', help_text='PDF, JPG or PNG of the prescription')
+    notes = models.CharField(max_length=300, blank=True, default='')
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        db_index=True,
+    )
+    reason = models.CharField(max_length=300, blank=True, default='', help_text='Rejection reason')
+    reviewed_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='reviewed_prescriptions',
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return 'Rx #%s — %s' % (self.pk, self.user.username)
+
+
+class PharmacyOrder(models.Model):
+    """A pharmacy purchase with shipping, payment and fulfilment state.
+
+    ``status`` follows the customer tracker: placed → rx_verified → packaging
+    → out_for_delivery → delivered (or cancelled). Orders carrying Rx-required
+    items must attach an approved :class:`Prescription`. Paid (non-COD) orders
+    carry the wallet TrxID and are also recorded as a ``PaymentTransaction``
+    with the ``pharmacy`` purpose.
+    """
+
+    STATUS_CHOICES = [
+        ('placed', 'Order Placed'),
+        ('rx_verified', 'Rx Verified'),
+        ('packaging', 'Packaging'),
+        ('out_for_delivery', 'Out for Delivery'),
+        ('delivered', 'Delivered'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    PAYMENT_METHOD_CHOICES = [
+        ('bkash', 'bKash'),
+        ('nagad', 'Nagad'),
+        ('sslcommerz', 'SSLCommerz'),
+        ('cod', 'Cash on Delivery / Pay at Medical Center'),
+    ]
+
+    PAYMENT_STATUS_CHOICES = [
+        ('paid', 'Paid'),
+        ('pending', 'Pending'),
+        ('cod', 'Pay on Delivery'),
+    ]
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='pharmacy_orders',
+        db_index=True,
+    )
+    reference = models.CharField(max_length=32, unique=True, help_text='Customer-facing order id, e.g. PO-A1B2C3')
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='placed',
+        db_index=True,
+    )
+    prescription = models.ForeignKey(
+        Prescription,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='orders',
+    )
+
+    # Shipping / delivery details.
+    hall_name = models.CharField(max_length=100, blank=True, default='')
+    room_no = models.CharField(max_length=40, blank=True, default='')
+    department = models.CharField(max_length=10, blank=True, default='')
+    delivery_instructions = models.CharField(max_length=300, blank=True, default='')
+    emergency_phone = models.CharField(max_length=20, blank=True, default='')
+
+    # Payment.
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES)
+    payment_status = models.CharField(
+        max_length=20,
+        choices=PAYMENT_STATUS_CHOICES,
+        default='pending',
+    )
+    wallet_trx = models.CharField(max_length=64, blank=True, default='')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    @property
+    def step_index(self):
+        """Tracker position 0-4 (placed=0 … delivered=4); cancelled → -1."""
+        if self.status == 'cancelled':
+            return -1
+        steps = [code for code, _label in self.STATUS_CHOICES if code != 'cancelled']
+        return steps.index(self.status)
+
+    def __str__(self):
+        return '%s — %s' % (self.reference, self.user.username)
+
+
+class PharmacyOrderItem(models.Model):
+    """One medicine line on a pharmacy order (quantity + snapshot unit price)."""
+
+    order = models.ForeignKey(
+        PharmacyOrder,
+        on_delete=models.CASCADE,
+        related_name='items',
+    )
+    medicine = models.ForeignKey(
+        MedicineItem,
+        on_delete=models.PROTECT,
+        related_name='order_items',
+    )
+    quantity = models.PositiveIntegerField(default=1)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def __str__(self):
+        return '%s x%d' % (self.medicine.name, self.quantity)
+
+
 class PaymentTransaction(models.Model):
     """A server-recorded payment for a checkout order (bKash / Nagad / Card).
 
@@ -1425,6 +1657,7 @@ class PaymentTransaction(models.Model):
         ('tuition', 'Tuition'),
         ('event', 'Event'),
         ('transport', 'Transport'),
+        ('pharmacy', 'Pharmacy'),
     ]
 
     METHOD_CHOICES = [
@@ -1432,6 +1665,7 @@ class PaymentTransaction(models.Model):
         ('nagad', 'Nagad'),
         ('card', 'Card'),
         ('rocket', 'Rocket'),
+        ('sslcommerz', 'SSLCommerz'),
     ]
 
     STATUS_CHOICES = [

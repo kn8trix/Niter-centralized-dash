@@ -12,7 +12,7 @@ holds user info, page links, and account actions — including Settings and
 Sign Out.
 
 Usage:  {% include 'partials/topbar.html' with active='transport' %}
-active: dashboard | study | notes | departments | research | notices | news | transport | meals | medical | clubs
+active: dashboard | study | notes | departments | research | notices | news | transport | meals | medical | pharmacy | clubs
 ============================================================================
 {% endcomment %}
 <header class="topbar" data-component="topbar">
@@ -78,6 +78,7 @@ active: dashboard | study | notes | departments | research | notices | news | tr
                         <a href="{% url 'transport_dashboard' %}" class="{% if active == 'transport' %}active{% endif %}"><i class="fa-solid fa-bus"></i> Transport</a>
                         <a href="{% url 'meal_dashboard' %}" class="{% if active == 'meals' %}active{% endif %}"><i class="fa-solid fa-utensils"></i> Meals</a>
                         <a href="{% url 'medical' %}" class="{% if active == 'medical' %}active{% endif %}"><i class="fa-solid fa-stethoscope"></i> Medical</a>
+                        <a href="{% url 'pharmacy_store' %}" class="{% if active == 'pharmacy' %}active{% endif %}"><i class="fa-solid fa-prescription-bottle-medical"></i> Pharmacy</a>
                         <a href="{% url 'attendance' %}" class="{% if active == 'attendance' %}active{% endif %}"><i class="fa-solid fa-clipboard-check"></i> Attendance</a>
                         <a href="{% url 'clubs_dashboard' %}" class="{% if active == 'clubs' %}active{% endif %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
                         <a href="{% url 'news' %}" class="{% if active == 'news' %}active{% endif %}"><i class="fa-solid fa-newspaper"></i> Global News</a>
@@ -123,6 +124,7 @@ active: dashboard | study | notes | departments | research | notices | news | tr
         <a href="{% url 'transport_dashboard' %}" class="{% if active == 'transport' %}active{% endif %}"><i class="fa-solid fa-bus"></i> Transport</a>
         <a href="{% url 'meal_dashboard' %}" class="{% if active == 'meals' %}active{% endif %}"><i class="fa-solid fa-utensils"></i> Meals</a>
         <a href="{% url 'medical' %}" class="{% if active == 'medical' %}active{% endif %}"><i class="fa-solid fa-stethoscope"></i> Medical</a>
+        <a href="{% url 'pharmacy_store' %}" class="{% if active == 'pharmacy' %}active{% endif %}"><i class="fa-solid fa-prescription-bottle-medical"></i> Pharmacy</a>
         <a href="{% url 'attendance' %}" class="{% if active == 'attendance' %}active{% endif %}"><i class="fa-solid fa-clipboard-check"></i> Attendance</a>
         <a href="{% url 'clubs_dashboard' %}" class="{% if active == 'clubs' %}active{% endif %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
         <a href="{% url 'news' %}" class="{% if active == 'news' %}active{% endif %}"><i class="fa-solid fa-newspaper"></i> Global News</a>

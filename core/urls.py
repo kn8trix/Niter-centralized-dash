@@ -25,6 +25,17 @@ urlpatterns = [
     path('dashboard/admin/attendance/', views.admin_attendance_view, name='admin_attendance'),
     path('tickets/', views.tickets, name='tickets'),
     path('medical/', views.medical, name='medical'),
+    # Pharmacy (Online Pharmacy module) — storefront, Rx upload, orders, admin
+    path('pharmacy/', views.pharmacy_store, name='pharmacy_store'),
+    path('pharmacy/orders/', views.pharmacy_orders, name='pharmacy_orders'),
+    path('api/pharmacy/prescription/upload/', views.api_pharmacy_prescription_upload, name='api_pharmacy_prescription_upload'),
+    path('api/pharmacy/checkout/', views.api_pharmacy_checkout, name='api_pharmacy_checkout'),
+    path('api/pharmacy/orders/<str:reference>/', views.api_pharmacy_order_detail, name='api_pharmacy_order_detail'),
+    # Pharmacy admin — Rx verification queue + order management + inventory
+    path('dashboard/medical/pharmacy/', views.medical_pharmacy, name='medical_pharmacy'),
+    path('api/pharmacy/admin/prescriptions/<int:prescription_id>/review/', views.api_pharmacy_prescription_review, name='api_pharmacy_prescription_review'),
+    path('api/pharmacy/admin/orders/<int:order_id>/status/', views.api_pharmacy_order_status, name='api_pharmacy_order_status'),
+    path('api/pharmacy/admin/stock/update/', views.api_pharmacy_stock_update, name='api_pharmacy_stock_update'),
     path('notes/', views.notes, name='notes'),
     
     # Additional routes for sidebar links

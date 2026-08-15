@@ -1,0 +1,688 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Online Pharmacy — Niter Hub</title>
+    <meta name="description" content="Order medicines from the campus medical center — upload your prescription for Rx items and track delivery.">
+
+    {% include 'partials/pwa_head.html' %}
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Global display preferences (theme / timezone / density) -- no-flash driver -->
+    {% include 'partials/display_prefs.html' %}
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Pharmacy styles -->
+    <link rel="stylesheet" href="{% static 'css/pharmacy.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="pharmacy" data-app="campusdash-public">
+
+    <div class="shell">
+
+        {% include 'partials/topbar.html' with active='pharmacy' %}
+        {% csrf_token %}
+
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <div class="intro">
+            <h1>Online Pharmacy</h1>
+            <p>Order medicines from the campus medical center — upload a prescription for Rx items and track your delivery.</p>
+        </div>
+
+        <!-- ============================================================
+             Toolbar: search + cart + Rx upload shortcut
+        ============================================================ -->
+        <div class="pharm-toolbar">
+            <div class="search-box">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" id="pharm-search" placeholder="Search medicines, generics, or categories..." aria-label="Search medicines">
+            </div>
+            <button type="button" class="pharm-rx-btn" id="rx-open-btn">
+                <i class="fa-solid fa-file-prescription"></i> Upload Prescription
+            </button>
+            <button type="button" class="pharm-cart-btn" id="cart-btn" aria-label="Open cart">
+                <i class="fa-solid fa-cart-shopping"></i> Cart <span class="cart-count" id="cart-count">0</span>
+            </button>
+        </div>
+
+        <!-- ============================================================
+             Catalog grid (rendered from the embedded catalog JSON)
+        ============================================================ -->
+        <div class="pharm-grid" id="pharm-grid"></div>
+        <p class="empty-docs" id="pharm-empty" hidden>No medicines match your search.</p>
+    </div>
+
+    <!-- ============================================================
+         Prescription upload modal (drag & drop, PDF / JPG / PNG)
+    ============================================================ -->
+    <div class="modal-backdrop" id="rx-modal" hidden>
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="rx-modal-title">
+            <button type="button" class="modal-close" data-close="rx-modal" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+            <h3 id="rx-modal-title"><i class="fa-solid fa-file-prescription"></i> Upload Prescription</h3>
+            <p class="modal-note">Upload a doctor's prescription (PDF, JPG or PNG, up to 5 MB). A medical staff member will verify it before you can order Rx medicines.</p>
+
+            <div class="rx-drop" id="rx-drop" tabindex="0" role="button" aria-label="Upload a prescription file">
+                <i class="fa-solid fa-cloud-arrow-up"></i>
+                <p><strong>Drag &amp; drop</strong> your prescription here, or <span class="rx-browse">browse files</span></p>
+                <input type="file" id="rx-file" accept=".pdf,.jpg,.jpeg,.png" hidden>
+            </div>
+            <p class="rx-file-name" id="rx-file-name" hidden></p>
+
+            <div class="field">
+                <label for="rx-notes" class="field-label">Notes (optional)</label>
+                <input type="text" id="rx-notes" class="field-input" placeholder="e.g. Doctor, clinic, or medicines described" maxlength="300">
+            </div>
+
+            <p class="rx-alert" id="rx-alert" hidden></p>
+
+            <div class="modal-actions">
+                <button type="button" class="btn-ghost" data-close="rx-modal">Cancel</button>
+                <button type="button" class="btn-primary" id="rx-submit-btn"><i class="fa-solid fa-upload"></i> Upload</button>
+            </div>
+
+            {% if user.is_authenticated %}
+            <div class="rx-list" id="rx-list">
+                <h4>My Prescriptions</h4>
+                {% for p in prescriptions %}
+                <div class="rx-item" data-rx-id="{{ p.id }}">
+                    <span class="rx-status status-{{ p.status }}">{{ p.get_status_display }}</span>
+                    <span class="rx-date">{{ p.created_at|date:"M d, Y" }}</span>
+                    {% if p.status == 'rejected' and p.reason %}<span class="rx-reason">— {{ p.reason }}</span>{% endif %}
+                </div>
+                {% empty %}
+                <p class="rx-empty">No prescriptions uploaded yet.</p>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="modal-note">Please <a href="{% url 'login' %}?next={% url 'pharmacy_store' %}">sign in</a> to upload a prescription.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ============================================================
+         Product detail modal (details + generic substitutes)
+    ============================================================ -->
+    <div class="modal-backdrop" id="product-modal" hidden>
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="product-title">
+            <button type="button" class="modal-close" data-close="product-modal" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+            <div class="product-detail" id="product-detail"></div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         Cart + multi-step checkout modal
+    ============================================================ -->
+    <div class="modal-backdrop" id="checkout-modal" hidden>
+        <div class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-labelledby="checkout-title">
+            <button type="button" class="modal-close" data-close="checkout-modal" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+            <h3 id="checkout-title"><i class="fa-solid fa-cart-shopping"></i> Checkout</h3>
+
+            <!-- Step indicator -->
+            <div class="checkout-steps">
+                <span class="checkout-step active" data-step="1">1. Shipping</span>
+                <span class="checkout-step" data-step="2">2. Payment</span>
+                <span class="checkout-step" data-step="3">3. Receipt</span>
+            </div>
+
+            <!-- Step 1: shipping -->
+            <div class="checkout-pane" id="pane-1">
+                <p class="modal-note">Where should we deliver your medicines?</p>
+                <div class="form-row">
+                    <div class="field">
+                        <label for="co-hall" class="field-label">Hall Name</label>
+                        <input type="text" id="co-hall" class="field-input" placeholder="e.g. Shaheed Minar Hall">
+                    </div>
+                    <div class="field">
+                        <label for="co-room" class="field-label">Room No</label>
+                        <input type="text" id="co-room" class="field-input" placeholder="e.g. 214">
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="co-dept" class="field-label">Department</label>
+                    <select id="co-dept" class="field-input">
+                        <option value="">Select department…</option>
+                        <option value="CSE">Computer Science &amp; Engineering</option>
+                        <option value="TEX">Textile Engineering</option>
+                        <option value="IPE">Industrial &amp; Production Engineering</option>
+                        <option value="FDAE">Fashion Design &amp; Technology</option>
+                        <option value="EEE">Electrical &amp; Electronic Engineering</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="co-instructions" class="field-label">Delivery Instructions</label>
+                    <input type="text" id="co-instructions" class="field-input" placeholder="e.g. Leave at the hall office after 5 PM" maxlength="300">
+                </div>
+                <div class="field">
+                    <label for="co-phone" class="field-label">Emergency Contact Phone</label>
+                    <input type="tel" id="co-phone" class="field-input" placeholder="01XXXXXXXXX" maxlength="20">
+                </div>
+                <p class="rx-alert" id="co-alert-1" hidden></p>
+                <div class="modal-actions">
+                    <button type="button" class="btn-ghost" data-close="checkout-modal">Cancel</button>
+                    <button type="button" class="btn-primary" id="co-next-1">Continue to Payment <i class="fa-solid fa-arrow-right"></i></button>
+                </div>
+            </div>
+
+            <!-- Step 2: payment + Rx attach -->
+            <div class="checkout-pane" id="pane-2" hidden>
+                <p class="modal-note">Choose how you'd like to pay.</p>
+
+                <div class="pay-methods" id="pay-methods">
+                    <button type="button" class="pay-method" data-method="bkash"><span class="pm-icon"><i class="fa-brands fa-bkash"></i></span> bKash</button>
+                    <button type="button" class="pay-method" data-method="nagad"><span class="pm-icon"><i class="fa-solid fa-mobile-screen-button"></i></span> Nagad</button>
+                    <button type="button" class="pay-method" data-method="sslcommerz"><span class="pm-icon"><i class="fa-solid fa-credit-card"></i></span> SSLCommerz</button>
+                    <button type="button" class="pay-method" data-method="cod"><span class="pm-icon"><i class="fa-solid fa-hand-holding-dollar"></i></span> Cash on Delivery</button>
+                </div>
+
+                <div class="field" id="pay-wallet-fields" hidden>
+                    <div class="form-row">
+                        <div class="field">
+                            <label for="co-wallet" class="field-label">Wallet Number</label>
+                            <input type="text" id="co-wallet" class="field-input" placeholder="01XXXXXXXXX" maxlength="11">
+                        </div>
+                        <div class="field">
+                            <label for="co-trx" class="field-label">Transaction ID (TrxID)</label>
+                            <input type="text" id="co-trx" class="field-input" autocomplete="off" placeholder="e.g. 9J32X8KL">
+                        </div>
+                    </div>
+                    <p class="modal-note"><i class="fa-solid fa-circle-info"></i> Sandbox gateway — send the total to the medical center merchant number, then enter your wallet number and TrxID.</p>
+                </div>
+
+                <div class="field" id="rx-attach" hidden>
+                    <label for="co-rx" class="field-label">Attach Approved Prescription (required for Rx items)</label>
+                    <select id="co-rx" class="field-input">
+                        <option value="">Select an approved prescription…</option>
+                    </select>
+                    <p class="modal-note" id="rx-attach-note"></p>
+                </div>
+
+                <p class="rx-alert" id="co-alert-2" hidden></p>
+                <div class="modal-actions">
+                    <button type="button" class="btn-ghost" id="co-back-2">Back</button>
+                    <button type="button" class="btn-primary" id="co-place-btn"><i class="fa-solid fa-check"></i> Place Order</button>
+                </div>
+            </div>
+
+            <!-- Step 3: receipt -->
+            <div class="checkout-pane" id="pane-3" hidden>
+                <div class="receipt" id="receipt"></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-ghost" data-close="checkout-modal">Close</button>
+                    <a class="btn-primary" id="receipt-track-btn" href="{% url 'pharmacy_orders' %}">Track Order <i class="fa-solid fa-arrow-right"></i></a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script>
+        // ====================================================================
+        // Data + helpers
+        // ====================================================================
+        var CATALOG = {{ medicines_json|safe }};
+        var PRESCRIPTIONS = {{ prescriptions_json|safe }};
+        var USER_AUTH = {{ user_authenticated|yesno:'true,false' }};
+        var LOGIN_URL = '{% url "login" %}?next={% url "pharmacy_store" %}';
+
+        function getCookie(name) {
+            if (!document.cookie || document.cookie === '') return null;
+            for (const part of document.cookie.split(';')) {
+                const pair = part.trim();
+                if (pair.startsWith(name + '=')) return decodeURIComponent(pair.slice(name.length + 1));
+            }
+            return null;
+        }
+
+        function esc(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function showToast(message) {
+            const el = document.getElementById('toast');
+            el.textContent = message;
+            el.classList.add('show');
+            clearTimeout(window.__toastTimer);
+            window.__toastTimer = setTimeout(() => el.classList.remove('show'), 3800);
+        }
+
+        function requireAuth() {
+            if (USER_AUTH) return true;
+            window.location.href = LOGIN_URL;
+            return false;
+        }
+
+        // Modal helpers
+        function openModal(id) { document.getElementById(id).hidden = false; document.body.classList.add('modal-open'); }
+        function closeModal(id) { document.getElementById(id).hidden = true; if (!document.querySelector('.modal-backdrop:not([hidden])')) document.body.classList.remove('modal-open'); }
+        document.querySelectorAll('[data-close]').forEach((btn) => {
+            btn.addEventListener('click', () => closeModal(btn.dataset.close));
+        });
+        document.querySelectorAll('.modal-backdrop').forEach((backdrop) => {
+            backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(backdrop.id); });
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') document.querySelectorAll('.modal-backdrop:not([hidden])').forEach((m) => closeModal(m.id));
+        });
+
+        // ====================================================================
+        // Catalog rendering
+        // ====================================================================
+        var grid = document.getElementById('pharm-grid');
+        var searchInput = document.getElementById('pharm-search');
+
+        function stockLabel(item) {
+            if (item.stock <= 0) return '<span class="stock-badge stock-out">Out of Stock</span>';
+            if (item.stock <= item.reorder) return '<span class="stock-badge stock-low">Low Stock</span>';
+            return '<span class="stock-badge stock-in">In Stock</span>';
+        }
+
+        function renderCatalog(filter) {
+            const q = (filter || '').trim().toLowerCase();
+            const items = CATALOG.filter((m) => {
+                if (!q) return true;
+                return (m.name + ' ' + m.generic + ' ' + m.category + ' ' + m.strength).toLowerCase().includes(q);
+            });
+            grid.innerHTML = items.map(function (m) {
+                const rx = m.rx ? '<span class="rx-badge">Rx Required</span>' : '';
+                const disabled = m.stock <= 0 ? ' disabled' : '';
+                return '<article class="med-card" data-id="' + m.id + '">' +
+                    '<div class="med-card-head">' +
+                        '<span class="med-category">' + esc(m.category) + '</span>' +
+                        rx +
+                    '</div>' +
+                    '<h3 class="med-name">' + esc(m.name) + (m.strength ? ' <span class="med-strength">' + esc(m.strength) + '</span>' : '') + '</h3>' +
+                    (m.generic ? '<p class="med-generic">' + esc(m.generic) + '</p>' : '') +
+                    '<div class="med-foot">' +
+                        '<span class="med-price">৳' + esc(m.price) + '</span>' +
+                        stockLabel(m) +
+                    '</div>' +
+                    '<div class="med-actions">' +
+                        '<button type="button" class="btn-ghost med-detail" data-id="' + m.id + '">Details</button>' +
+                        '<button type="button" class="btn-primary med-add" data-id="' + m.id + '"' + disabled + '><i class="fa-solid fa-cart-plus"></i> Add</button>' +
+                    '</div>' +
+                '</article>';
+            }).join('');
+            document.getElementById('pharm-empty').hidden = items.length > 0;
+        }
+
+        searchInput.addEventListener('input', () => renderCatalog(searchInput.value));
+        renderCatalog('');
+
+        // ====================================================================
+        // Cart (localStorage)
+        // ====================================================================
+        function getCart() {
+            try { return JSON.parse(localStorage.getItem('pharmacy_cart') || '{}'); } catch (e) { return {}; }
+        }
+        function saveCart(cart) {
+            localStorage.setItem('pharmacy_cart', JSON.stringify(cart));
+            renderCartCount();
+        }
+        function renderCartCount() {
+            const cart = getCart();
+            document.getElementById('cart-count').textContent = Object.values(cart).reduce((a, b) => a + b, 0);
+        }
+        renderCartCount();
+
+        function cartHasRx() {
+            const cart = getCart();
+            return Object.keys(cart).some((id) => {
+                const item = CATALOG.find((m) => m.id === Number(id));
+                return item && item.rx;
+            });
+        }
+
+        grid.addEventListener('click', (e) => {
+            const addBtn = e.target.closest('.med-add');
+            if (addBtn) {
+                if (!requireAuth()) return;
+                const id = Number(addBtn.dataset.id);
+                const cart = getCart();
+                cart[id] = (cart[id] || 0) + 1;
+                saveCart(cart);
+                showToast('Added to cart.');
+                return;
+            }
+            const detailBtn = e.target.closest('.med-detail');
+            if (detailBtn) openProduct(Number(detailBtn.dataset.id));
+        });
+
+        // ====================================================================
+        // Product detail + generic substitutes
+        // ====================================================================
+        function openProduct(id) {
+            const item = CATALOG.find((m) => m.id === id);
+            if (!item) return;
+            // Same-generic alternatives in stock (excluding this item).
+            const substitutes = CATALOG.filter((m) => m.id !== id && m.generic && m.generic.toLowerCase() === (item.generic || '').toLowerCase() && m.stock > 0);
+            const outOfStock = item.stock <= 0;
+            let subsHtml = '';
+            if (item.generic && substitutes.length) {
+                subsHtml = '<div class="substitutes' + (outOfStock ? ' substitutes-emphasis' : '') + '">' +
+                    '<h4><i class="fa-solid fa-arrows-rotate"></i> Generic Substitutes</h4>' +
+                    '<p class="modal-note">' + (outOfStock ? item.name + ' is out of stock — these ' + esc(item.generic) + ' alternatives are available:' : 'Available ' + esc(item.generic) + ' alternatives:') + '</p>' +
+                    substitutes.map(function (s) {
+                        return '<div class="sub-item">' +
+                            '<div><strong>' + esc(s.name) + '</strong>' + (s.strength ? ' <span>' + esc(s.strength) + '</span>' : '') +
+                            '<span class="sub-generic">' + esc(s.generic) + '</span></div>' +
+                            '<span class="med-price">৳' + esc(s.price) + '</span>' +
+                            '<button type="button" class="btn-primary sub-add" data-id="' + s.id + '"><i class="fa-solid fa-cart-plus"></i></button>' +
+                        '</div>';
+                    }).join('') + '</div>';
+            } else if (outOfStock && item.generic) {
+                subsHtml = '<div class="substitutes"><h4><i class="fa-solid fa-arrows-rotate"></i> Generic Substitutes</h4>' +
+                    '<p class="modal-note">No in-stock ' + esc(item.generic) + ' alternatives right now — check back soon.</p></div>';
+            }
+            document.getElementById('product-detail').innerHTML =
+                '<div class="pd-head">' +
+                    '<span class="med-category">' + esc(item.category) + '</span>' +
+                    (item.rx ? '<span class="rx-badge">Rx Required</span>' : '') +
+                '</div>' +
+                '<h2 class="pd-name">' + esc(item.name) + (item.strength ? ' <span>' + esc(item.strength) + '</span>' : '') + '</h2>' +
+                (item.generic ? '<p class="pd-generic">' + esc(item.generic) + '</p>' : '') +
+                '<div class="pd-price">৳' + esc(item.price) + ' ' + stockLabel(item) + '</div>' +
+                (item.description ? '<p class="pd-desc">' + esc(item.description) + '</p>' : '') +
+                '<div class="pd-meta">' +
+                    (item.batch ? '<span><i class="fa-solid fa-box"></i> Batch ' + esc(item.batch) + '</span>' : '') +
+                    (item.expiry ? '<span><i class="fa-regular fa-calendar"></i> Exp ' + esc(item.expiry) + '</span>' : '') +
+                '</div>' +
+                subsHtml +
+                '<div class="modal-actions">' +
+                    '<button type="button" class="btn-ghost" data-close="product-modal">Close</button>' +
+                    '<button type="button" class="btn-primary pd-add" data-id="' + item.id + '"' + (item.stock <= 0 ? ' disabled' : '') + '><i class="fa-solid fa-cart-plus"></i> Add to Cart</button>' +
+                '</div>';
+            openModal('product-modal');
+        }
+
+        document.getElementById('product-detail').addEventListener('click', (e) => {
+            const addBtn = e.target.closest('.pd-add');
+            if (addBtn) {
+                if (!requireAuth()) return;
+                const id = Number(addBtn.dataset.id);
+                const cart = getCart();
+                cart[id] = (cart[id] || 0) + 1;
+                saveCart(cart);
+                showToast('Added to cart.');
+                return;
+            }
+            const subBtn = e.target.closest('.sub-add');
+            if (subBtn) {
+                if (!requireAuth()) return;
+                const id = Number(subBtn.dataset.id);
+                const cart = getCart();
+                cart[id] = (cart[id] || 0) + 1;
+                saveCart(cart);
+                showToast('Added substitute to cart.');
+            }
+        });
+
+        // ====================================================================
+        // Prescription upload (drag & drop)
+        // ====================================================================
+        var rxDrop = document.getElementById('rx-drop');
+        var rxFileInput = document.getElementById('rx-file');
+        var rxFileName = document.getElementById('rx-file-name');
+        var rxAlert = document.getElementById('rx-alert');
+        var selectedRxFile = null;
+
+        document.getElementById('rx-open-btn').addEventListener('click', () => {
+            if (!requireAuth()) return;
+            openModal('rx-modal');
+        });
+
+        rxDrop.addEventListener('click', () => rxFileInput.click());
+        rxDrop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); rxFileInput.click(); } });
+        ['dragenter', 'dragover'].forEach((ev) => rxDrop.addEventListener(ev, (e) => { e.preventDefault(); rxDrop.classList.add('dragging'); }));
+        ['dragleave', 'drop'].forEach((ev) => rxDrop.addEventListener(ev, (e) => { e.preventDefault(); rxDrop.classList.remove('dragging'); }));
+        rxDrop.addEventListener('drop', (e) => { if (e.dataTransfer.files.length) setRxFile(e.dataTransfer.files[0]); });
+        rxFileInput.addEventListener('change', () => { if (rxFileInput.files.length) setRxFile(rxFileInput.files[0]); });
+
+        function setRxFile(file) {
+            const name = (file.name || '').toLowerCase();
+            if (!/\.(pdf|jpe?g|png)$/.test(name)) {
+                rxAlert.textContent = 'Supported formats: PDF, JPG or PNG.';
+                rxAlert.hidden = false;
+                return;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+                rxAlert.textContent = 'Prescription files must be 5 MB or smaller.';
+                rxAlert.hidden = false;
+                return;
+            }
+            selectedRxFile = file;
+            rxFileName.textContent = file.name + ' (' + Math.round(file.size / 1024) + ' KB)';
+            rxFileName.hidden = false;
+            rxAlert.hidden = true;
+        }
+
+        document.getElementById('rx-submit-btn').addEventListener('click', () => {
+            if (!requireAuth()) return;
+            if (!selectedRxFile) {
+                rxAlert.textContent = 'Choose a prescription file first.';
+                rxAlert.hidden = false;
+                return;
+            }
+            const formData = new FormData();
+            formData.append('file', selectedRxFile);
+            formData.append('notes', document.getElementById('rx-notes').value.trim());
+            document.getElementById('rx-submit-btn').disabled = true;
+            fetch('{% url "api_pharmacy_prescription_upload" %}', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                body: formData,
+            })
+                .then((r) => r.json())
+                .then((json) => {
+                    document.getElementById('rx-submit-btn').disabled = false;
+                    if (json.status === 'success') {
+                        closeModal('rx-modal');
+                        showToast(json.message);
+                        setTimeout(() => window.location.reload(), 900);
+                    } else {
+                        rxAlert.textContent = json.message || 'Upload failed — please try again.';
+                        rxAlert.hidden = false;
+                    }
+                })
+                .catch(() => {
+                    document.getElementById('rx-submit-btn').disabled = false;
+                    rxAlert.textContent = 'Upload failed — please try again.';
+                    rxAlert.hidden = false;
+                });
+        });
+
+        // ====================================================================
+        // Checkout — multi-step modal
+        // ====================================================================
+        var checkoutModal = document.getElementById('checkout-modal');
+        var selectedMethod = null;
+
+        function cartLines() {
+            const cart = getCart();
+            return Object.keys(cart).map(function (id) {
+                const item = CATALOG.find((m) => m.id === Number(id));
+                return item ? { item: item, qty: cart[id] } : null;
+            }).filter(Boolean);
+        }
+
+        function cartTotal() {
+            return cartLines().reduce((sum, line) => sum + line.item.price * line.qty, 0);
+        }
+
+        document.getElementById('cart-btn').addEventListener('click', () => {
+            if (!requireAuth()) return;
+            const lines = cartLines();
+            if (!lines.length) {
+                showToast('Your cart is empty.');
+                return;
+            }
+            resetCheckout();
+            openModal('checkout-modal');
+        });
+
+        function resetCheckout() {
+            document.querySelectorAll('.checkout-pane').forEach((p, i) => { p.hidden = i !== 0; });
+            document.querySelectorAll('.checkout-step').forEach((s, i) => s.classList.toggle('active', i === 0));
+            selectedMethod = null;
+            document.querySelectorAll('.pay-method').forEach((m) => m.classList.remove('selected'));
+            document.getElementById('pay-wallet-fields').hidden = true;
+            document.getElementById('rx-attach').hidden = !cartHasRx();
+            populateRxOptions();
+            // Prefill department from the profile when available.
+            const dept = document.getElementById('co-dept');
+            if (!dept.value) {
+                const profileDept = (document.body.dataset.profileDept || '');
+                if (profileDept) dept.value = profileDept;
+            }
+        }
+
+        function populateRxOptions() {
+            const select = document.getElementById('co-rx');
+            const approved = PRESCRIPTIONS.filter((p) => p.status === 'approved');
+            select.innerHTML = '<option value="">Select an approved prescription…</option>' +
+                approved.map((p) => '<option value="' + p.id + '">Rx #' + p.id + ' — ' + (p.created_at || '').slice(0, 10) + '</option>').join('');
+            const note = document.getElementById('rx-attach-note');
+            if (!approved.length) {
+                note.textContent = 'No approved prescription yet — upload one and wait for verification, or remove Rx items from your cart.';
+            } else {
+                note.textContent = 'Your cart contains Rx-required medicines.';
+            }
+            select.disabled = !approved.length;
+        }
+
+        function showPane(n) {
+            document.querySelectorAll('.checkout-pane').forEach((p, i) => { p.hidden = i !== n - 1; });
+            document.querySelectorAll('.checkout-step').forEach((s, i) => s.classList.toggle('active', i < n));
+        }
+
+        document.getElementById('co-next-1').addEventListener('click', () => {
+            const hall = document.getElementById('co-hall').value.trim();
+            const room = document.getElementById('co-room').value.trim();
+            const phone = document.getElementById('co-phone').value.trim();
+            const alertEl = document.getElementById('co-alert-1');
+            if (!hall && !room) {
+                alertEl.textContent = 'Add a delivery location (hall or room).';
+                alertEl.hidden = false;
+                return;
+            }
+            if (!phone) {
+                alertEl.textContent = 'Add an emergency contact phone number.';
+                alertEl.hidden = false;
+                return;
+            }
+            alertEl.hidden = true;
+            showPane(2);
+        });
+
+        document.getElementById('co-back-2').addEventListener('click', () => showPane(1));
+
+        document.getElementById('pay-methods').addEventListener('click', (e) => {
+            const btn = e.target.closest('.pay-method');
+            if (!btn) return;
+            selectedMethod = btn.dataset.method;
+            document.querySelectorAll('.pay-method').forEach((m) => m.classList.toggle('selected', m === btn));
+            document.getElementById('pay-wallet-fields').hidden = selectedMethod === 'cod';
+        });
+
+        function showReceipt(order) {
+            const lines = order.items.map((it) =>
+                '<div class="receipt-row"><span>' + esc(it.name) + (it.rx ? ' <span class="rx-badge">Rx</span>' : '') + ' × ' + it.quantity + '</span><b>৳' + esc(it.line_total) + '</b></div>'
+            ).join('');
+            document.getElementById('receipt').innerHTML =
+                '<div class="receipt-head">' +
+                    '<span class="receipt-check"><i class="fa-solid fa-circle-check"></i></span>' +
+                    '<h4>Order Confirmed</h4>' +
+                    '<p>Reference <b class="receipt-ref">' + esc(order.reference) + '</b></p>' +
+                '</div>' +
+                '<div class="receipt-body">' + lines +
+                '<div class="receipt-row receipt-total"><span>Total</span><b>৳' + esc(order.amount) + '</b></div>' +
+                '<div class="receipt-row"><span>Payment</span><b>' + esc(order.payment_method) + (order.payment_status ? ' — ' + esc(order.payment_status) : '') + '</b></div>' +
+                '<div class="receipt-row"><span>Deliver to</span><b>' + esc([order.hall_name, order.room_no, order.department].filter(Boolean).join(', ') || 'Medical Center') + '</b></div>' +
+                '</div>';
+            showPane(3);
+        }
+
+        document.getElementById('co-place-btn').addEventListener('click', () => {
+            if (!requireAuth()) return;
+            if (!selectedMethod) {
+                const alertEl = document.getElementById('co-alert-2');
+                alertEl.textContent = 'Select a payment method.';
+                alertEl.hidden = false;
+                return;
+            }
+            const walletTrx = selectedMethod === 'cod' ? '' : document.getElementById('co-trx').value.trim();
+            if (selectedMethod !== 'cod' && !/^[A-Za-z0-9-]{6,}$/.test(walletTrx)) {
+                const alertEl = document.getElementById('co-alert-2');
+                alertEl.textContent = 'Enter the TrxID shown in your payment confirmation.';
+                alertEl.hidden = false;
+                return;
+            }
+            const needsRx = cartHasRx();
+            if (needsRx && !document.getElementById('co-rx').value) {
+                const alertEl = document.getElementById('co-alert-2');
+                alertEl.textContent = 'This order needs an approved prescription — attach one above.';
+                alertEl.hidden = false;
+                return;
+            }
+            const alertEl = document.getElementById('co-alert-2');
+            alertEl.hidden = true;
+            const payload = {
+                items: cartLines().map((line) => ({ id: line.item.id, qty: line.qty })),
+                payment_method: selectedMethod,
+                wallet_trx: walletTrx,
+                prescription_id: needsRx ? document.getElementById('co-rx').value : null,
+                hall_name: document.getElementById('co-hall').value.trim(),
+                room_no: document.getElementById('co-room').value.trim(),
+                department: document.getElementById('co-dept').value,
+                delivery_instructions: document.getElementById('co-instructions').value.trim(),
+                emergency_phone: document.getElementById('co-phone').value.trim(),
+            };
+            document.getElementById('co-place-btn').disabled = true;
+            fetch('{% url "api_pharmacy_checkout" %}', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: JSON.stringify(payload),
+            })
+                .then((r) => r.json())
+                .then((json) => {
+                    document.getElementById('co-place-btn').disabled = false;
+                    if (json.status === 'success') {
+                        saveCart({});
+                        showReceipt(json.order);
+                    } else {
+                        alertEl.textContent = json.message || 'Could not place the order.';
+                        alertEl.hidden = false;
+                    }
+                })
+                .catch(() => {
+                    document.getElementById('co-place-btn').disabled = false;
+                    alertEl.textContent = 'Could not place the order — please try again.';
+                    alertEl.hidden = false;
+                });
+        });
+    </script>
+
+    <!-- PWA service worker registration (offline caching) -->
+    <script src="{% static 'js/pwa-register.js' %}" defer></script>
+</body>
+</html>

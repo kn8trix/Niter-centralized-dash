@@ -22,11 +22,15 @@ from .models import (
     MedicalChatThread,
     MealSubscription,
     MealTicket,
+    MedicineItem,
     NoteAnalysis,
     Notice,
     Notification,
     PageTemplate,
     PaymentTransaction,
+    PharmacyOrder,
+    PharmacyOrderItem,
+    Prescription,
     ResearchMessage,
     ResearchThread,
     Report,
@@ -138,6 +142,44 @@ class CourseMaterialAdmin(admin.ModelAdmin):
     list_select_related = ('course',)
     date_hierarchy = 'uploaded_at'
     readonly_fields = ('uploaded_at',)
+
+
+@admin.register(MedicineItem)
+class MedicineItemAdmin(admin.ModelAdmin):
+    """Pharmacy medicine catalog — stock, batch, expiry and Rx flag."""
+
+    list_display = ('name', 'strength', 'generic_name', 'price', 'stock_quantity',
+                    'expiry_date', 'reorder_level', 'is_prescription', 'is_active')
+    list_filter = ('is_prescription', 'is_active', 'category')
+    search_fields = ('name', 'generic_name', 'batch_number')
+    list_editable = ('stock_quantity', 'is_active')
+
+
+@admin.register(Prescription)
+class PrescriptionAdmin(admin.ModelAdmin):
+    """Student-uploaded prescriptions and their review state."""
+
+    list_display = ('id', 'user', 'status', 'reviewed_by', 'created_at')
+    list_filter = ('status', 'created_at')
+    search_fields = ('user__username', 'user__email')
+    readonly_fields = ('created_at', 'reviewed_at')
+
+
+class PharmacyOrderItemInline(admin.TabularInline):
+    model = PharmacyOrderItem
+    extra = 0
+    readonly_fields = ('medicine', 'quantity', 'unit_price')
+
+
+@admin.register(PharmacyOrder)
+class PharmacyOrderAdmin(admin.ModelAdmin):
+    """Pharmacy orders — status, shipping, payment and line items."""
+
+    list_display = ('reference', 'user', 'status', 'payment_method', 'payment_status', 'amount', 'created_at')
+    list_filter = ('status', 'payment_method', 'payment_status', 'created_at')
+    search_fields = ('reference', 'user__username', 'wallet_trx')
+    inlines = [PharmacyOrderItemInline]
+    readonly_fields = ('reference', 'created_at', 'updated_at')
 
 
 @admin.register(Notification)

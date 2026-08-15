@@ -58,10 +58,14 @@ from core.models import (
     MealMenu,
     MealSubscription,
     MealTicket,
+    MedicineItem,
     Notice,
     Notification,
     PageTemplate,
     PaymentTransaction,
+    PharmacyOrder,
+    PharmacyOrderItem,
+    Prescription,
     ResearchMessage,
     ResearchThread,
     Report,
@@ -10170,3 +10174,491 @@ class ReportsModuleTest(TestCase):
         notification = Notification.objects.get(user=self.student_a, category='report')
         self.assertIn('added a response', notification.message)
         self.assertNotIn('now pending', notification.message)
+
+
+# --- Pharmacy (Online Pharmacy module) ----------------------------------------
+# Storefront + prescription upload / Rx verification + checkout / order tracking
+# + inventory (batch / expiry / reorder) + generic substitutes. Payment reuses
+# the sandbox wallet + TrxID pattern; notifications use the shared engine.
+
+
+def _make_medicine(**overrides):
+    """Create a MedicineItem with sane defaults for pharmacy tests."""
+    data = {
+        'name': 'Napa',
+        'generic_name': 'Paracetamol',
+        'strength': '500mg',
+        'price': '10.00',
+        'stock_quantity': 50,
+        'reorder_level': 10,
+        'expiry_date': date(2099, 12, 31),
+        'batch_number': 'B-001',
+    }
+    data.update(overrides)
+    return MedicineItem.objects.create(**data)
+
+
+class PharmacyInventoryModelTest(TestCase):
+    """MedicineItem stock_status — red out/expiring, yellow low, green ok."""
+
+    def test_out_of_stock_takes_precedence_over_expiry(self):
+        item = _make_medicine(stock_quantity=0, expiry_date=date.today() + timedelta(days=3))
+        self.assertEqual(item.stock_status, 'out')
+
+    def test_expiring_soon_within_30_days(self):
+        item = _make_medicine(stock_quantity=10, expiry_date=date.today() + timedelta(days=29))
+        self.assertEqual(item.stock_status, 'expiring')
+
+    def test_low_stock_at_or_below_reorder_level(self):
+        item = _make_medicine(stock_quantity=10, expiry_date=date.today() + timedelta(days=400))
+        self.assertEqual(item.stock_status, 'low')
+        item.stock_quantity = 5
+        self.assertEqual(item.stock_status, 'low')
+
+    def test_healthy_stock(self):
+        item = _make_medicine(stock_quantity=50, expiry_date=date.today() + timedelta(days=400))
+        self.assertEqual(item.stock_status, 'ok')
+
+
+class PharmacyStorePageTest(TestCase):
+    """Public storefront — catalog JSON, Rx flag, anonymous handling."""
+
+    def test_public_storefront_renders_catalog(self):
+        _make_medicine(name='Napa', is_prescription=True)
+        _make_medicine(name='Ace', is_prescription=False)
+        response = self.client.get(reverse('pharmacy_store'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Online Pharmacy')
+        self.assertContains(response, 'Upload Prescription')
+        # The embedded catalog marks Rx items so the card renders the badge.
+        self.assertContains(response, '"rx": true')
+        self.assertContains(response, '"rx": false')
+        self.assertContains(response, '"name": "Napa"')
+
+    def test_anonymous_sees_sign_in_prompt_in_rx_modal(self):
+        response = self.client.get(reverse('pharmacy_store'))
+        self.assertContains(response, 'sign in')
+        self.assertContains(response, reverse('login'))
+
+
+class PharmacyPrescriptionUploadTest(TestCase):
+    """POST /api/pharmacy/prescription/upload/ — login + format gating."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='rx_student', password='x12345678')
+        self.client.login(username='rx_student', password='x12345678')
+
+    def test_anonymous_upload_redirects_to_login(self):
+        self.client.logout()
+        response = self.client.post(
+            reverse('api_pharmacy_prescription_upload'),
+            {'file': SimpleUploadedFile('rx.pdf', b'%PDF-1.4', content_type='application/pdf')},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_valid_pdf_creates_pending_prescription(self):
+        response = self.client.post(
+            reverse('api_pharmacy_prescription_upload'),
+            {
+                'file': SimpleUploadedFile('rx.pdf', b'%PDF-1.4', content_type='application/pdf'),
+                'notes': 'Fever + headache',
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'success')
+        prescription = Prescription.objects.get(pk=payload['prescription_id'])
+        self.assertEqual(prescription.user, self.user)
+        self.assertEqual(prescription.status, 'pending')
+        self.assertEqual(prescription.notes, 'Fever + headache')
+
+    def test_jpg_and_png_accepted(self):
+        for name, ctype in (('rx.jpg', 'image/jpeg'), ('rx.png', 'image/png')):
+            with self.subTest(name=name):
+                response = self.client.post(
+                    reverse('api_pharmacy_prescription_upload'),
+                    {'file': SimpleUploadedFile(name, b'fake-image', content_type=ctype)},
+                )
+                self.assertEqual(response.status_code, 200)
+
+    def test_unsupported_extension_rejected(self):
+        response = self.client.post(
+            reverse('api_pharmacy_prescription_upload'),
+            {'file': SimpleUploadedFile('rx.txt', b'hello', content_type='text/plain')},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('PDF, JPG or PNG', response.json()['message'])
+        self.assertFalse(Prescription.objects.exists())
+
+    def test_oversized_file_rejected(self):
+        big = SimpleUploadedFile('rx.pdf', b'x' * (5 * 1024 * 1024 + 1), content_type='application/pdf')
+        response = self.client.post(reverse('api_pharmacy_prescription_upload'), {'file': big})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('5 MB', response.json()['message'])
+
+
+class PharmacyCheckoutApiTest(TestCase):
+    """POST /api/pharmacy/checkout/ — Rx gate, payment, stock, receipt."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='buyer', password='x12345678')
+        self.client.login(username='buyer', password='x12345678')
+        self.napa = _make_medicine(name='Napa', is_prescription=True, stock_quantity=20)
+        self.ace = _make_medicine(name='Ace', generic_name='Paracetamol', strength='500mg',
+                                  is_prescription=False, stock_quantity=15, price='6.00')
+        self.script = Prescription.objects.create(
+            user=self.user, file='prescriptions/test.pdf', status='approved',
+        )
+
+    def _checkout(self, **overrides):
+        payload = {
+            'items': [{'id': self.ace.id, 'qty': 2}],
+            'payment_method': 'cod',
+            'wallet_trx': '',
+            'prescription_id': None,
+            'hall_name': 'Shaheed Minar Hall',
+            'room_no': '214',
+            'department': 'CSE',
+            'delivery_instructions': 'Leave at the hall office',
+            'emergency_phone': '01712345678',
+        }
+        payload.update(overrides)
+        return self.client.post(
+            reverse('api_pharmacy_checkout'),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+    def test_anonymous_checkout_redirects_to_login(self):
+        self.client.logout()
+        response = self._checkout()
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_empty_cart_rejected(self):
+        response = self._checkout(items=[])
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('cart is empty', response.json()['message'])
+
+    def test_cod_order_placed_with_receipt(self):
+        response = self._checkout()
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'success')
+        self.assertTrue(payload['reference'].startswith('PO-'))
+        order = PharmacyOrder.objects.get(reference=payload['reference'])
+        self.assertEqual(order.user, self.user)
+        self.assertEqual(order.status, 'placed')
+        self.assertEqual(order.payment_method, 'cod')
+        self.assertEqual(order.payment_status, 'cod')
+        self.assertEqual(order.amount, 12)  # 2 × 6.00
+        self.assertEqual(order.hall_name, 'Shaheed Minar Hall')
+        self.assertEqual(order.emergency_phone, '01712345678')
+        # No PaymentTransaction for cash-on-delivery.
+        self.assertFalse(PaymentTransaction.objects.filter(purpose='pharmacy').exists())
+        # Stock decremented.
+        self.ace.refresh_from_db()
+        self.assertEqual(self.ace.stock_quantity, 13)
+
+    def test_wallet_payment_records_transaction_with_trx(self):
+        response = self._checkout(payment_method='bkash', wallet_trx='9J32X8KL')
+        self.assertEqual(response.status_code, 200)
+        order = PharmacyOrder.objects.get(reference=response.json()['reference'])
+        self.assertEqual(order.payment_method, 'bkash')
+        self.assertEqual(order.wallet_trx, '9J32X8KL')
+        transaction = PaymentTransaction.objects.get(user=self.user, purpose='pharmacy')
+        self.assertEqual(transaction.amount, 12)
+        self.assertEqual(transaction.wallet_trx, '9J32X8KL')
+        self.assertEqual(transaction.payment_method, 'bkash')
+        self.assertIn(order.reference, transaction.description)
+
+    def test_sslcommerz_recorded_with_own_method(self):
+        response = self._checkout(payment_method='sslcommerz', wallet_trx='SSL-9J32X8KL')
+        self.assertEqual(response.status_code, 200)
+        transaction = PaymentTransaction.objects.get(purpose='pharmacy')
+        self.assertEqual(transaction.payment_method, 'sslcommerz')
+
+    def test_invalid_trx_rejected(self):
+        response = self._checkout(payment_method='bkash', wallet_trx='ab')
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(PharmacyOrder.objects.exists())
+        self.assertFalse(PaymentTransaction.objects.exists())
+
+    def test_invalid_payment_method_rejected(self):
+        response = self._checkout(payment_method='cheque')
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(PharmacyOrder.objects.exists())
+
+    def test_rx_item_without_approved_prescription_blocked(self):
+        response = self._checkout(items=[{'id': self.napa.id, 'qty': 1}], prescription_id=None)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('approved prescription', response.json()['message'])
+        self.assertFalse(PharmacyOrder.objects.exists())
+        # Stock untouched.
+        self.napa.refresh_from_db()
+        self.assertEqual(self.napa.stock_quantity, 20)
+
+    def test_rx_item_with_approved_prescription_allowed(self):
+        response = self._checkout(
+            items=[{'id': self.napa.id, 'qty': 1}],
+            prescription_id=self.script.id,
+        )
+        self.assertEqual(response.status_code, 200)
+        order = PharmacyOrder.objects.get(reference=response.json()['reference'])
+        self.assertEqual(order.prescription, self.script)
+        self.napa.refresh_from_db()
+        self.assertEqual(self.napa.stock_quantity, 19)
+
+    def test_rx_item_with_pending_prescription_blocked(self):
+        pending = Prescription.objects.create(user=self.user, file='prescriptions/p.pdf', status='pending')
+        response = self._checkout(
+            items=[{'id': self.napa.id, 'qty': 1}],
+            prescription_id=pending.id,
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_rx_item_with_other_users_prescription_blocked(self):
+        other = User.objects.create_user(username='other_user', password='x12345678')
+        other_script = Prescription.objects.create(user=other, file='prescriptions/o.pdf', status='approved')
+        response = self._checkout(
+            items=[{'id': self.napa.id, 'qty': 1}],
+            prescription_id=other_script.id,
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_insufficient_stock_rejected(self):
+        response = self._checkout(items=[{'id': self.ace.id, 'qty': 999}])
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(PharmacyOrder.objects.exists())
+
+    def test_missing_delivery_location_rejected(self):
+        response = self._checkout(hall_name='', room_no='')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('delivery location', response.json()['message'])
+
+    def test_missing_emergency_phone_rejected(self):
+        response = self._checkout(emergency_phone='')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('emergency contact', response.json()['message'])
+
+    def test_order_creates_notification(self):
+        response = self._checkout()
+        self.assertEqual(response.status_code, 200)
+        notification = Notification.objects.get(user=self.user, category='medical')
+        self.assertIn('pharmacy order', notification.message.lower())
+        self.assertIn(response.json()['reference'], notification.message)
+
+
+class PharmacyOrderTrackingTest(TestCase):
+    """Customer tracking page + owner-scoped order detail API."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='tracker', password='x12345678')
+        self.other = User.objects.create_user(username='other_tracker', password='x12345678')
+        self.medicine = _make_medicine(stock_quantity=10)
+        self.order = PharmacyOrder.objects.create(
+            user=self.user,
+            reference='PO-TRACK1',
+            status='placed',
+            hall_name='Main Hall',
+            room_no='101',
+            emergency_phone='01712345678',
+            payment_method='cod',
+            payment_status='cod',
+            amount=10,
+        )
+        PharmacyOrderItem.objects.create(
+            order=self.order, medicine=self.medicine, quantity=1, unit_price=10,
+        )
+        self.client.login(username='tracker', password='x12345678')
+
+    def test_tracking_page_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse('pharmacy_orders'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+
+    def test_tracking_page_renders_steps_and_order(self):
+        response = self.client.get(reverse('pharmacy_orders'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'My Pharmacy Orders')
+        self.assertContains(response, 'PO-TRACK1')
+        for label in ('Order Placed', 'Rx Verified', 'Packaging', 'Out for Delivery', 'Delivered'):
+            self.assertContains(response, label)
+
+    def test_order_detail_owner_scoped(self):
+        response = self.client.get(reverse('api_pharmacy_order_detail', args=['PO-TRACK1']))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data']['reference'], 'PO-TRACK1')
+        self.assertEqual(response.json()['data']['step_index'], 0)
+        # Another user cannot read the order.
+        self.client.logout()
+        self.client.login(username='other_tracker', password='x12345678')
+        response = self.client.get(reverse('api_pharmacy_order_detail', args=['PO-TRACK1']))
+        self.assertEqual(response.status_code, 404)
+
+
+class PharmacyAdminTest(TestCase):
+    """Medical staff dashboard — Rx queue, order fulfilment, inventory."""
+
+    def setUp(self):
+        self.student = User.objects.create_user(username='rx_student2', password='x12345678')
+        self.staff = User.objects.create_user(username='pharm_admin', password='x12345678', is_staff=True)
+        self.student_user = User.objects.create_user(username='plain_student', password='x12345678')
+        self.medicine = _make_medicine(stock_quantity=5, reorder_level=10)  # low stock
+        self.rx = Prescription.objects.create(
+            user=self.student, file='prescriptions/rx.pdf', status='pending', notes='Please approve',
+        )
+        self.order = PharmacyOrder.objects.create(
+            user=self.student,
+            reference='PO-ADMIN1',
+            status='placed',
+            hall_name='Hall',
+            room_no='5',
+            emergency_phone='01712345678',
+            payment_method='bkash',
+            payment_status='pending',
+            wallet_trx='9J32X8KL',
+            amount=10,
+        )
+        PharmacyOrderItem.objects.create(
+            order=self.order, medicine=self.medicine, quantity=1, unit_price=10,
+        )
+
+    def _login_staff(self):
+        self.client.login(username='pharm_admin', password='x12345678')
+
+    def test_admin_dashboard_requires_staff(self):
+        response = self.client.get(reverse('medical_pharmacy'))
+        self.assertEqual(response.status_code, 302)  # anonymous → login
+        self.client.login(username='plain_student', password='x12345678')
+        response = self.client.get(reverse('medical_pharmacy'))
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_dashboard_renders_tabs(self):
+        self._login_staff()
+        response = self.client.get(reverse('medical_pharmacy'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Rx Verification Queue')
+        self.assertContains(response, 'Order Management')
+        self.assertContains(response, 'Inventory')
+        self.assertContains(response, 'PO-ADMIN1')
+        # Low-stock badge on the inventory table.
+        self.assertContains(response, 'Low Stock Alert')
+
+    def test_approve_prescription(self):
+        self._login_staff()
+        response = self.client.post(
+            reverse('api_pharmacy_prescription_review', args=[self.rx.id]),
+            {'action': 'approve'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.rx.refresh_from_db()
+        self.assertEqual(self.rx.status, 'approved')
+        self.assertEqual(self.rx.reviewed_by, self.staff)
+        notification = Notification.objects.get(user=self.student, category='medical')
+        self.assertIn('approved', notification.message.lower())
+
+    def test_reject_prescription_with_reason(self):
+        self._login_staff()
+        response = self.client.post(
+            reverse('api_pharmacy_prescription_review', args=[self.rx.id]),
+            {'action': 'reject', 'reason': 'Illegible scan'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.rx.refresh_from_db()
+        self.assertEqual(self.rx.status, 'rejected')
+        self.assertEqual(self.rx.reason, 'Illegible scan')
+        notification = Notification.objects.get(user=self.student, category='medical')
+        self.assertIn('Illegible scan', notification.message)
+
+    def test_review_rejects_already_reviewed(self):
+        self._login_staff()
+        self.rx.status = 'approved'
+        self.rx.save()
+        response = self.client.post(
+            reverse('api_pharmacy_prescription_review', args=[self.rx.id]),
+            {'action': 'approve'},
+        )
+        self.assertEqual(response.status_code, 409)
+
+    def test_review_requires_staff(self):
+        self.client.login(username='plain_student', password='x12345678')
+        response = self.client.post(
+            reverse('api_pharmacy_prescription_review', args=[self.rx.id]),
+            {'action': 'approve'},
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_advance_order_sends_notification(self):
+        self._login_staff()
+        response = self.client.post(
+            reverse('api_pharmacy_order_status', args=[self.order.id]),
+            {'action': 'advance'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, 'rx_verified')
+        self.assertEqual(self.order.step_index, 1)
+        notification = Notification.objects.get(user=self.student, category='medical')
+        self.assertIn('Rx Verified', notification.message)
+
+    def test_advance_beyond_delivered_rejected(self):
+        self._login_staff()
+        self.order.status = 'delivered'
+        self.order.save()
+        response = self.client.post(
+            reverse('api_pharmacy_order_status', args=[self.order.id]),
+            {'action': 'advance'},
+        )
+        self.assertEqual(response.status_code, 409)
+
+    def test_cancel_order(self):
+        self._login_staff()
+        response = self.client.post(
+            reverse('api_pharmacy_order_status', args=[self.order.id]),
+            {'action': 'cancel'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, 'cancelled')
+        self.assertEqual(self.order.step_index, -1)
+        notification = Notification.objects.get(user=self.student, category='medical')
+        self.assertIn('cancelled', notification.message.lower())
+
+    def test_restock_inventory(self):
+        self._login_staff()
+        response = self.client.post(
+            reverse('api_pharmacy_stock_update'),
+            {'action': 'restock', 'amount': '25', 'ids': [str(self.medicine.id)]},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['updated'], 1)
+        self.medicine.refresh_from_db()
+        self.assertEqual(self.medicine.stock_quantity, 30)
+
+    def test_set_expiry_inventory(self):
+        self._login_staff()
+        response = self.client.post(
+            reverse('api_pharmacy_stock_update'),
+            {'action': 'set_expiry', 'expiry_date': '2027-06-30', 'ids': [str(self.medicine.id)]},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.medicine.refresh_from_db()
+        self.assertEqual(self.medicine.expiry_date.isoformat(), '2027-06-30')
+
+    def test_stock_update_requires_selection_and_amount(self):
+        self._login_staff()
+        response = self.client.post(reverse('api_pharmacy_stock_update'), {'action': 'restock', 'amount': '5'})
+        self.assertEqual(response.status_code, 400)
+        response = self.client.post(
+            reverse('api_pharmacy_stock_update'),
+            {'action': 'restock', 'amount': '0', 'ids': [str(self.medicine.id)]},
+        )
+        self.assertEqual(response.status_code, 400)
+        response = self.client.post(
+            reverse('api_pharmacy_stock_update'),
+            {'action': 'bogus', 'ids': [str(self.medicine.id)]},
+        )
+        self.assertEqual(response.status_code, 400)

@@ -1,0 +1,165 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Pharmacy Orders — Niter Hub</title>
+    <meta name="description" content="Track your pharmacy orders from placement to delivery.">
+
+    {% include 'partials/pwa_head.html' %}
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Global display preferences (theme / timezone / density) -- no-flash driver -->
+    {% include 'partials/display_prefs.html' %}
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Pharmacy styles -->
+    <link rel="stylesheet" href="{% static 'css/pharmacy.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="pharmacy" data-app="campusdash-public">
+
+    <div class="shell">
+
+        {% include 'partials/topbar.html' with active='pharmacy' %}
+
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <div class="intro">
+            <h1>My Pharmacy Orders</h1>
+            <p>Track every order from placement to your doorstep.</p>
+        </div>
+
+        <div class="orders-toolbar">
+            <a href="{% url 'pharmacy_store' %}" class="btn-ghost"><i class="fa-solid fa-arrow-left"></i> Back to Pharmacy</a>
+            <button type="button" class="btn-primary" id="orders-refresh"><i class="fa-solid fa-rotate"></i> Refresh</button>
+        </div>
+
+        <div class="orders-list" id="orders-list">
+            {% for order in orders %}
+            <article class="order-card" id="order-{{ order.reference }}" data-ref="{{ order.reference }}">
+                <div class="order-head">
+                    <div>
+                        <h3 class="order-ref">Order <b>{{ order.reference }}</b></h3>
+                        <p class="order-meta">{{ order.created_at|date:"M d, Y · h:i A" }} · {{ order.get_payment_method_display }}</p>
+                    </div>
+                    <span class="order-status status-{{ order.status }}" data-status="{{ order.status }}">{{ order.get_status_display }}</span>
+                </div>
+
+                <div class="order-tracker">
+                    {% for code, label in tracker_steps %}
+                    <div class="tracker-step {% if forloop.counter0 <= order.step_index %}done{% elif order.status != 'cancelled' and forloop.counter0 == order.step_index|add:1 %}current{% endif %}"
+                         data-step="{{ forloop.counter0 }}">
+                        <span class="tracker-dot"><i class="fa-solid fa-check"></i></span>
+                        <span class="tracker-label">{{ label }}</span>
+                    </div>
+                    {% endfor %}
+                    {% if order.status == 'cancelled' %}
+                    <div class="tracker-cancelled"><i class="fa-solid fa-ban"></i> Order cancelled</div>
+                    {% endif %}
+                </div>
+
+                <div class="order-items">
+                    {% for item in order.items.all %}
+                    <span class="order-item-chip">{{ item.medicine.name }}{% if item.medicine.strength %} {{ item.medicine.strength }}{% endif %} × {{ item.quantity }}</span>
+                    {% endfor %}
+                    <span class="order-total">৳{{ order.amount }}</span>
+                </div>
+
+                <div class="order-delivery">
+                    <i class="fa-solid fa-location-dot"></i>
+                    {% if order.hall_name or order.room_no %}{{ order.hall_name }}{% if order.room_no %}, Room {{ order.room_no }}{% endif %}{% if order.department %} · {{ order.department }}{% endif %}{% else %}Medical Center{% endif %}
+                    {% if order.emergency_phone %} · <span class="order-phone">{{ order.emergency_phone }}</span>{% endif %}
+                </div>
+            </article>
+            {% empty %}
+            <p class="empty-docs">No pharmacy orders yet — <a href="{% url 'pharmacy_store' %}">visit the pharmacy</a> to place one.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script>
+        // ====================================================================
+        // Live order tracking — poll each order's status and re-render the
+        // tracker + status pill without a full page reload.
+        // ====================================================================
+        (function () {
+            var ORDERS = {{ orders_json|safe }};
+            var TRACKER_LABELS = [{% for code, label in tracker_steps %}'{{ label }}',{% endfor %}];
+            var cards = Array.prototype.slice.call(document.querySelectorAll('.order-card'));
+            var timer = null;
+
+            function esc(value) {
+                return String(value == null ? '' : value)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            }
+
+            function renderOrder(order) {
+                var card = document.getElementById('order-' + order.reference);
+                if (!card) return;
+                var statusEl = card.querySelector('.order-status');
+                statusEl.className = 'order-status status-' + order.status;
+                statusEl.dataset.status = order.status;
+                statusEl.textContent = order.status_label;
+
+                var tracker = card.querySelector('.order-tracker');
+                if (order.status === 'cancelled') {
+                    var cancelled = tracker.querySelector('.tracker-cancelled');
+                    if (!cancelled) {
+                        tracker.insertAdjacentHTML('beforeend', '<div class="tracker-cancelled"><i class="fa-solid fa-ban"></i> Order cancelled</div>');
+                    }
+                } else {
+                    var cancelledEl = tracker.querySelector('.tracker-cancelled');
+                    if (cancelledEl) cancelledEl.remove();
+                }
+                tracker.querySelectorAll('.tracker-step').forEach(function (step, i) {
+                    step.classList.toggle('done', i <= order.step_index);
+                    step.classList.toggle('current', order.status !== 'cancelled' && i === order.step_index + 1);
+                });
+            }
+
+            function refresh() {
+                ORDERS.forEach(function (order) {
+                    fetch('{% url "api_pharmacy_order_detail" "PLACEHOLDER" %}'.replace('PLACEHOLDER', order.reference), {
+                        credentials: 'same-origin',
+                    })
+                        .then(function (r) { return r.json(); })
+                        .then(function (json) {
+                            if (json.status === 'success') {
+                                renderOrder(json.data);
+                                order.status = json.data.status;
+                                order.step_index = json.data.step_index;
+                                order.status_label = json.data.status_label;
+                            }
+                        })
+                        .catch(function () {});
+                });
+            }
+
+            document.getElementById('orders-refresh').addEventListener('click', refresh);
+            // Poll every 20 seconds while the tab is visible.
+            timer = setInterval(function () {
+                if (!document.hidden) refresh();
+            }, 20000);
+        })();
+    </script>
+
+    <!-- PWA service worker registration (offline caching) -->
+    <script src="{% static 'js/pwa-register.js' %}" defer></script>
+</body>
+</html>
