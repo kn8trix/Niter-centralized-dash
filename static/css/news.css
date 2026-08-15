@@ -128,6 +128,29 @@
     display: block;
 }
 
+/* Video cards — embedded player fills the 16:9 media area. */
+.news-card-media-video iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+}
+
+/* No image/video supplied — sleek gradient placeholder instead of empty space. */
+.news-card-media-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #1e293b 0%, #334155 55%, #475569 100%);
+    color: rgba(226, 232, 240, 0.6);
+}
+
+.news-card-media-placeholder svg {
+    width: 40px;
+    height: 40px;
+    opacity: 0.75;
+}
+
 .news-card-body {
     padding: 0.75rem 0.85rem 0.9rem;
 }
@@ -170,4 +193,80 @@
     .news-grid {
         grid-template-columns: 1fr;
     }
+}
+
+/* ============================================================
+   Dark mode — high-contrast typography + bright accent badges.
+   The shared tokens resolve to dark-on-dark here (e.g.
+   --accent-primary becomes a near-black gold), so pin explicit
+   readable colors under html[data-theme='dark'].
+============================================================ */
+html[data-theme='dark'] .news-title-heading {
+    color: #ffffff;
+}
+
+html[data-theme='dark'] .news-title-heading i {
+    color: #fbbf24;
+}
+
+html[data-theme='dark'] .news-source-note {
+    color: #d1d5db;
+    opacity: 1;
+}
+
+/* Category/source tags (e.g. SAMPLE WIRE) — bright gold badge. */
+html[data-theme='dark'] .news-source {
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.1);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-weight: 600;
+}
+
+/* Article headings — pure white, blue hover highlight. */
+html[data-theme='dark'] .news-title {
+    color: #ffffff;
+}
+
+html[data-theme='dark'] .news-card:hover .news-title {
+    color: #60a5fa;
+}
+
+/* Body text — off-white instead of muted grey. */
+html[data-theme='dark'] .news-text {
+    color: #d1d5db;
+    opacity: 1;
+}
+
+html[data-theme='dark'] .news-empty {
+    color: #d1d5db;
+    opacity: 1;
+}
+
+/* Search bar — bright input text, readable placeholder, blue button. */
+html[data-theme='dark'] .news-search-icon {
+    color: #9ca3af;
+    opacity: 1;
+}
+
+html[data-theme='dark'] .news-search input[type="search"] {
+    color: #ffffff;
+}
+
+html[data-theme='dark'] .news-search input[type="search"]::placeholder {
+    color: #9ca3af;
+    opacity: 1;
+}
+
+html[data-theme='dark'] .news-search-btn {
+    background: #3b82f6;
+    color: #ffffff;
+}
+
+html[data-theme='dark'] .news-search-btn:hover {
+    background: #2563eb;
+}
+
+html[data-theme='dark'] .news-card:hover {
+    border-color: #3b82f6;
 }

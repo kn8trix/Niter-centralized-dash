@@ -23,7 +23,17 @@
         <a class="news-card" href="{{ article.url }}" target="_blank" rel="noopener">
             {% if article.image %}
             <div class="news-card-media">
-                <img src="{{ article.image }}" alt="" loading="lazy">
+                <img src="{{ article.image }}" alt="{{ article.title }}" loading="lazy">
+            </div>
+            {% elif article.video_url %}
+            <div class="news-card-media news-card-media-video">
+                <iframe src="{{ article.video_url }}" title="{{ article.title }}" allowfullscreen loading="lazy"></iframe>
+            </div>
+            {% else %}
+            <div class="news-card-media news-card-media-placeholder" aria-hidden="true">
+                <svg viewBox="0 0 512 512" fill="currentColor" focusable="false">
+                    <path d="M0 96C0 60.7 28.7 32 64 32H448c35.3 0 64 28.7 64 64V416c0 35.3-28.7 64-64 64H64c-35.3 0-64-28.7-64-64V96zM323.8 202.5c-4.5-6.6-11.9-10.5-19.8-10.5s-15.4 3.9-19.8 10.5l-87 127.7L170.7 297c-4.6-5.7-11.5-9-18.7-9s-14.2 3.3-18.7 9l-64 80c-5.8 7.2-6.9 17.1-2.9 25.4S78.8 416 88 416H424c9.2 0 17.6-5.3 21.6-13.6s3-18.2-2.9-25.4l-118.9-148.5zM288 176c0-17.7-14.3-32-32-32s-32 14.3-32 32s14.3 32 32 32s32-14.3 32-32z"/>
+                </svg>
             </div>
             {% endif %}
             <div class="news-card-body">
@@ -55,17 +65,30 @@
             .replace(/'/g, '&#39;');
     }
 
+    var PLACEHOLDER_SVG = '<svg viewBox="0 0 512 512" fill="currentColor" focusable="false">' +
+        '<path d="M0 96C0 60.7 28.7 32 64 32H448c35.3 0 64 28.7 64 64V416c0 35.3-28.7 64-64 64H64c-35.3 0-64-28.7-64-64V96zM323.8 202.5c-4.5-6.6-11.9-10.5-19.8-10.5s-15.4 3.9-19.8 10.5l-87 127.7L170.7 297c-4.6-5.7-11.5-9-18.7-9s-14.2 3.3-18.7 9l-64 80c-5.8 7.2-6.9 17.1-2.9 25.4S78.8 416 88 416H424c9.2 0 17.6-5.3 21.6-13.6s3-18.2-2.9-25.4l-118.9-148.5zM288 176c0-17.7-14.3-32-32-32s-32 14.3-32 32s14.3 32 32 32s32-14.3 32-32z"/></svg>';
+
+    function mediaHtml(a) {
+        if (a.image) {
+            return '<div class="news-card-media"><img src="' + esc(a.image) + '" alt="" loading="lazy"></div>';
+        }
+        if (a.video_url) {
+            return '<div class="news-card-media news-card-media-video"><iframe src="' + esc(a.video_url) +
+                '" title="" allowfullscreen loading="lazy"></iframe></div>';
+        }
+        return '<div class="news-card-media news-card-media-placeholder" aria-hidden="true">' + PLACEHOLDER_SVG + '</div>';
+    }
+
     function render(articles) {
         if (!articles.length) {
             grid.innerHTML = '<p class="news-empty">No articles found. Try a different search.</p>';
             return;
         }
         grid.innerHTML = articles.map(function (a) {
-            var media = a.image ? '<div class="news-card-media"><img src="' + esc(a.image) + '" alt="" loading="lazy"></div>' : '';
             var source = a.source ? '<span class="news-source">' + esc(a.source) + '</span>' : '';
             var text = a.description ? '<p class="news-text">' + esc(a.description) + '</p>' : '';
             var url = (/^https?:\/\//i.test(a.url || '')) ? a.url : '#';
-            return '<a class="news-card" href="' + esc(url) + '" target="_blank" rel="noopener">' + media +
+            return '<a class="news-card" href="' + esc(url) + '" target="_blank" rel="noopener">' + mediaHtml(a) +
                 '<div class="news-card-body">' + source + '<h4 class="news-title">' + esc(a.title) + '</h4>' +
                 text + '</div></a>';
         }).join('');

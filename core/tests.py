@@ -28,7 +28,7 @@ from services.openrouter import call_openrouter
 from services.parser import extract_document_text
 
 from core.forms import SignUpForm
-from core.news_service import fetch_global_news
+from core.news_service import _normalize_videos, fetch_global_news
 
 from core.models import (
     AcademicEvent,
@@ -8927,7 +8927,8 @@ class GlobalNewsServiceTest(TestCase):
         resp.json.return_value = {'articles': []}
         with mock.patch('core.news_service._is_test_run', return_value=False), \
                 mock.patch('core.news_service.os.getenv', return_value='abc123'), \
-                mock.patch('core.news_service.requests.get', return_value=resp) as fake_get:
+                mock.patch('core.news_service.requests.get', return_value=resp) as fake_get, \
+                mock.patch('core.news_service._fetch_youtube_videos', return_value=[]):
             fetch_global_news(query='climate')
         fake_get.assert_called_once()
         url = fake_get.call_args.args[0]
@@ -8936,6 +8937,53 @@ class GlobalNewsServiceTest(TestCase):
         self.assertEqual(params['q'], 'climate')
         self.assertEqual(params['pageSize'], 12)
         self.assertEqual(params['language'], 'en')
+
+    def test_search_interleaves_youtube_video_cards(self):
+        resp = mock.Mock(status_code=200)
+        resp.json.return_value = {'articles': [
+            {'title': 'Bangladesh headline', 'description': 'd', 'url': 'https://a.com',
+             'urlToImage': 'https://a.com/i.jpg', 'source': {'name': 'Wire'}, 'publishedAt': ''},
+            {'title': 'Second story', 'description': 'd', 'url': 'https://b.com',
+             'urlToImage': '', 'source': {'name': 'Wire'}, 'publishedAt': ''},
+        ]}
+        video = {
+            'title': 'Dhaka today video', 'description': 'vd',
+            'url': 'https://www.youtube.com/watch?v=abc123',
+            'image': '',
+            'video_url': 'https://www.youtube.com/embed/abc123',
+            'source': 'Campus TV',
+            'published_at': '',
+        }
+        with mock.patch('core.news_service._is_test_run', return_value=False), \
+                mock.patch('core.news_service.os.getenv', return_value='abc123'), \
+                mock.patch('core.news_service.requests.get', return_value=resp), \
+                mock.patch('core.news_service._fetch_youtube_videos', return_value=[video]):
+            articles = fetch_global_news(query='bangladesh')
+        # NewsAPI articles + the video card interleaved (article, video, article).
+        self.assertEqual([a['title'] for a in articles], [
+            'Bangladesh headline', 'Dhaka today video', 'Second story',
+        ])
+        self.assertEqual(articles[1]['video_url'], 'https://www.youtube.com/embed/abc123')
+
+    def test_normalizes_youtube_search_items(self):
+        items = [{
+            'id': {'videoId': 'abc123'},
+            'snippet': {
+                'title': 'How Dhaka is changing',
+                'description': 'A short documentary.',
+                'channelTitle': 'Campus TV',
+                'publishedAt': '2026-01-01T00:00:00Z',
+                'thumbnails': {'high': {'url': 'https://i.ytimg.com/vi/abc123/hqdefault.jpg'}},
+            },
+        }, {'id': {'playlistId': 'pl'}, 'snippet': {'title': 'Not a video'}}]
+        videos = _normalize_videos(items)
+        self.assertEqual(len(videos), 1)
+        video = videos[0]
+        self.assertEqual(video['title'], 'How Dhaka is changing')
+        self.assertEqual(video['video_url'], 'https://www.youtube.com/embed/abc123')
+        self.assertEqual(video['url'], 'https://www.youtube.com/watch?v=abc123')
+        self.assertEqual(video['source'], 'Campus TV')
+        self.assertEqual(video['image'], '')
 
 
 class GlobalNewsApiTest(TestCase):
