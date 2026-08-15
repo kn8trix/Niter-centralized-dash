@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 117 | Website Builder overhaul — system page registration, feature blocks, live editing, UI redesign | `1908512` |
 | 116 | Fix 500 on /study-corner/ — guard fileless CourseMaterial rows | `3fa4aa1` |
 | 115 | Signup — show/hide password toggle | `e4d6a25` |
 | 114 | Online Pharmacy module — Rx verification, checkout, order tracking, batch/expiry alerts, generic substitutes | `ddbc86a` |
