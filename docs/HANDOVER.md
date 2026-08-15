@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 114 | Online Pharmacy module — Rx verification, checkout, order tracking, batch/expiry alerts, generic substitutes | `ddbc86a` |
 | 113 | Study Corner — Academic Notes + YouTube lectures + AI Study Assistant | `76a9d50` |
 | 112 | Global News — dedicated Video News section (YouTube Data API v3) | `965064e` |
 | 111 | Remove email OTP verification from signup — direct registration | `1447f87` |
