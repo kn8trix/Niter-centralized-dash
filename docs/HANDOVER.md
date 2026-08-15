@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 116 | Fix 500 on /study-corner/ — guard fileless CourseMaterial rows | `3fa4aa1` |
 | 115 | Signup — show/hide password toggle | `e4d6a25` |
 | 114 | Online Pharmacy module — Rx verification, checkout, order tracking, batch/expiry alerts, generic substitutes | `ddbc86a` |
 | 113 | Study Corner — Academic Notes + YouTube lectures + AI Study Assistant | `76a9d50` |
@@ -6531,3 +6532,52 @@ account.
 - `python manage.py check` clean; signup suites green (22 tests).
 - Rendered `/signup/` page verified to include the toggle button, the
   `data-target` wiring, and the eye icon.
+
+## 116. Fix 500 on /study-corner/ — Fileless CourseMaterial Crash
+
+**Date:** 15 August 2026  
+**Branch:** main
+
+`/study-corner/` (and `/notes/`) returned **500** whenever a `CourseMaterial`
+row had an empty `file` field — the templates called `material.file.url`,
+which raises `ValueError: The 'file' attribute has no file associated with
+it.` The demo rows seeded by `seed_demo_data` were created with only
+`file_type` and no actual file, so a fresh environment crashed immediately.
+
+### Changes
+
+- **`templates/academic/study_corner.html`** — the document card's "Open"
+  action is now guarded: real file → `material.file.url`, else Drive link →
+  `drive_view_link`, else a muted "—" chip (`.doc-view-muted`). Never
+  evaluates `.file.url` on an empty file.
+- **`templates/notes/notes_engine.html`** — the Recent PDFs row builds its
+  `href` conditionally (file → Drive link → `#` with `pointer-events-none
+  opacity-60` for fileless rows).
+- **`static/css/notes.css`** — `.doc-view-muted` dashed-chip style.
+- **`core/views.py`** — `study_corner` view hardened: the notes/materials
+  catalog queries and the YouTube fetch each run under their own try-except
+  with `logger.error`, degrading to empty lists so a transient DB/API failure
+  never 500s the page.
+- **`core/management/commands/seed_demo_data.py`** — seeded `CourseMaterial`
+  rows now get a real placeholder PDF (`_placeholder_pdf`, a small valid
+  single-page PDF) attached to `file`. The check is `if not material.file`
+  (not just `created`), so re-running the seed also **backfills files onto
+  existing fileless demo rows**; real uploads are never touched.
+- **`core/tests.py`** — regression tests: fileless materials render
+  `/study-corner/` (muted chip) and `/notes/` at 200.
+
+### Notes
+
+- `requirements.txt` verified: `requests>=2.31` already present.
+- The root cause is the template contract, not the view — the try-except
+  guard alone would not have fixed this crash, which is why the templates
+  were hardened at the source.
+
+### Tests & verification
+
+- `python manage.py check` clean; 20 study-corner / notes-engine tests green.
+- Original crash reproduced with `raise_request_exception` (ValueError on
+  `.file.url`), then confirmed fixed: `/study-corner/` and `/notes/` both
+  200 against the same fileless rows.
+- Seed verified against a throwaway DB: 5 fresh materials get real files on
+  disk; re-run stays idempotent (no duplicates).
