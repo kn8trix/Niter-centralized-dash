@@ -67,7 +67,13 @@ Managing daily operations, academic activities, research, and communication acro
 
 ## 💡 The Solution
 
-We developed **NITER Centralized Dash** — a modular centralized digital hub delivering essential services through **web and mobile interfaces**, with a centralized **Admin Console** for authorized management.
+**NITER Centralized Dash** is a modular central hub paired with a dedicated mobile application, designed to seamlessly connect administrators with students, employees, and staff while streamlining daily life in a **secure ecosystem**. The platform equips users with essential productivity tools right from their phones or browsers — view shift/class routines, track attendance, reserve shuttle bus seats, generate digital meal tokens, book medical center visits, order medicine through an integrated **Online Pharmacy**, manage club activities, pay event fees via an embedded **Payment Gateway**, access live news on the **Global News Hub**, and interact with personalized, **role-restricted Google Drive files and Google Sheets** mapped securely to their authenticated user profile.
+
+For management, it serves as an **all-in-one command center**:
+
+- 🏥 Specialized **sub-dashboards** — Medical/Pharmacy, Cafeteria, Club Workspace, System Admin
+- 🧱 A custom **drag-and-drop Website Builder & CMS** with live visual canvas editing
+- 🚨 A real-time **Emergency Siren & Broadcast system** that pushes visual and audio alerts directly to every active mobile app and web dashboard during critical situations
 
 **Students can:**
 
@@ -86,7 +92,7 @@ We developed **NITER Centralized Dash** — a modular centralized digital hub de
 - Reports & feedback · Database statistics
 - **Website Builder / CMS** · Academic Calendar · Attendance & QR
 - Teacher management · Role-specific service dashboards
-- **Dedicated dashboards**: System Admin · Cafe Admin · Medical Admin · Host Portal · Club Workshop
+- **Dedicated dashboards**: System Admin · Cafe Admin · Medical Admin · Club Workspace
 
 ---
 
@@ -285,8 +291,8 @@ The **NITER Campus Hub Android app** (`mobile-webview/`) is a native WebView wra
 - 💾 Persistent sessions (stay logged in until explicit logout)
 - 📷 Camera/gallery file chooser for pharmacy Rx uploads
 - 💳 Payment intents — `bkash://`, `nagad://`, `upay://`
-- 🔔 FCM push notifications with picture banners
-- 🚨 **Emergency siren** — native alarm-volume `MediaPlayer` + Stop Siren control
+- 🔔 Push notifications with picture banners — FCM, **plus a Firebase-free background watcher** that polls the live emergency state so alerts arrive even before `google-services.json` is added
+- 🚨 **Emergency siren** — native alarm-volume `MediaPlayer` + Stop Siren control, wired to the dashboard banner through a JS bridge (`NiterHub.playSiren()/stopSiren()`)
 
 ### Build the APK
 

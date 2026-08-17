@@ -4,6 +4,8 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 128 | README solution section — official project description (modular hub + mobile app, sub-dashboards, Website Builder, Emergency Siren & Broadcast) | *(see §128)* |
+| 127 | App notifications + sound without Firebase — EmergencyPollWorker (30s poll of `/api/emergency/active/`), native siren JS bridge in the dashboard banner, silence persistence | *(see §127)* |
 | 126 | Repo branding & README — banner asset, feature/comprehensive README from the hackathon doc | *(see §126)* |
 | 125 | Android Studio Gradle sync fix — remove open-app-as-root artifacts, align root project name, README troubleshooting | *(see §125)* |
 | 124 | Dedicated Medical Staff role & portal — separate medical dashboards, medical/medical123 account, medical links removed from admin sidebar | *(see §124)* |
@@ -7245,3 +7247,52 @@ repository presentable ("make the repo beautiful").
   `mobile-webview/README.md`, `docs/HANDOVER.md`, `UNFINISHED.md`).
 - Seed commands referenced (`seed_demo_users`, `seed_pharmacy_catalog`)
   exist in `core/management/commands/`.
+
+## 127. App Notifications & Sound Without Firebase — Background Emergency Watcher + Native Siren Bridge
+
+The Android app already had full FCM plumbing, but without `google-services.json`
+the push channel is inert — so no notification and no siren ever fired. This
+section makes native notifications + alarm sound work **immediately, with zero
+Firebase setup**, and wires the dashboard banner to the native alarm channel.
+
+### Changes
+- **`mobile-webview/.../EmergencyPollWorker.kt`** *(new)* — a WorkManager
+  worker that polls `GET /api/emergency/active/` every ~30s using the WebView's
+  session cookie (same-origin), and self-re-schedules so the loop survives
+  process death:
+  - new active alert → `NotificationHelper.notifyEmergency` (BigPicture
+    notification + looping alarm-channel siren, bypasses silent mode);
+  - `alert: null` → siren stopped, notification cleared, state re-armed;
+  - network/auth failure → state untouched (never silence a live emergency on
+    a transient error).
+- **`MainActivity.kt`** — schedules the worker on launch; exposes the
+  `NiterHub` JS bridge (`playSiren()` / `stopSiren()`) to the WebView.
+- **`templates/partials/emergency_banner.html`** — the banner's `startSiren` /
+  `stopSiren` now drive the native alarm siren when `window.NiterHub` exists
+  (browser `Audio` remains the fallback on desktop/web).
+- **`SirenControlReceiver.kt`** — the notification's Stop Siren action also
+  persists the silenced alert id, so the poller never re-triggers the same
+  alert (a new alert id re-arms automatically).
+- **`app/build.gradle.kts`** — added `androidx.work:work-runtime-ktx:2.9.1`.
+
+FCM (once configured) remains the instant-delivery channel; both paths key off
+the alert id so they never double-alert.
+
+### Verified
+- `./gradlew assembleDebug assembleRelease` → **BUILD SUCCESSFUL** (only
+  pre-existing deprecation warnings).
+- Fresh signed APKs copied to the project root (`NiterCampusHub-v2.0-*.apk`).
+
+## 128. README Solution Section — Official Project Description
+
+Replaced the hand-written "The Solution" lead with the official project
+description: a modular central hub paired with a dedicated mobile app for
+students/employees/staff (routines, attendance, shuttle, meal tokens, medical,
+Online Pharmacy, clubs, payment gateway, Global News Hub, role-restricted
+Google Drive/Sheets), plus the all-in-one management command center
+(Medical/Pharmacy · Cafeteria · Club Workspace · System Admin sub-dashboards,
+drag-and-drop Website Builder & CMS, and the real-time Emergency Siren &
+Broadcast system pushing visual + audio alerts to every active mobile app and
+web dashboard). The structured Students/Admins breakdown is retained below the
+new prose, and the Mobile App feature list now documents the Firebase-free
+background emergency watcher + native siren bridge.
