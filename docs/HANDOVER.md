@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 130 | Navbar underline fix, modal button contrast (Rx Upload / Checkout), mobile WebView responsiveness for /news/ /attendance/ /pharmacy/ | *(see §130)* |
 | 129 | NCC club-manager demo account — `NCC`/`ncc@gmail.com` linked to the NITER Computer Club (active ClubAccount, full manager capabilities) + README/handover updates | *(see §129)* |
 | 128 | README solution section — official project description (modular hub + mobile app, sub-dashboards, Website Builder, Emergency Siren & Broadcast) | *(see §128)* |
 | 127 | App notifications + sound without Firebase — EmergencyPollWorker (30s poll of `/api/emergency/active/`), native siren JS bridge in the dashboard banner, silence persistence | *(see §127)* |
@@ -7322,3 +7323,42 @@ Added a dedicated club-manager demo account so the club workspace
   resolves to `club`, `GET /dashboard/` → 302 → `/dashboard/club/`, and
   `/dashboard/student/` bounces back to the club dashboard.
 - `SeedDemoUsersCommandTest` + `RoleRoutingTest` → 25 tests **OK**.
+
+## 130. Navbar Underline Fix + Modal Button Contrast + Mobile WebView Polish
+
+Fixes the top navigation across every shared-topbar page and the new
+`/news/` / `/attendance/` / `/pharmacy/` pages at mobile WebView sizes.
+
+### Changes
+- **`static/css/topbar.css`** — nav pills (`brand`, `.navlinks a`,
+  `.nav-dropdown-btn`, dropdown + profile links, profile actions) now force
+  `text-decoration: none !important`, so pages whose body class does not
+  blanket-reset link underlines (news/attendance/pharmacy) never show
+  browser-default underlines. All pills share `border-radius: 9999px` and a
+  uniform `0.875rem` font; the **active pill is a solid `#374151` fill with
+  `#ffffff` text** (hover `#4b5563`) instead of an underline/font-weight shift.
+- **`static/css/pharmacy.css`** — Rx Upload (`#rx-submit-btn`) and Checkout
+  Continue (`#co-next-1`) buttons: solid `#0284c7`/white primary; disabled
+  state `#1f2937`/`#6b7280` at 0.6 opacity with `cursor: not-allowed`.
+  `body.pharmacy .shell` gets `width/box-sizing/overflow-x` and 12px mobile
+  padding. (The store does not load dashboard.css, so its shell needed its own
+  rule.)
+- **`templates/pharmacy/store.html`** — Upload button starts `disabled` and
+  unlocks only when a valid file is selected (matching the muted disabled
+  style).
+- **`static/css/dashboard.css`** — `.shell` gets `width: 100%`,
+  `box-sizing: border-box`, `overflow-x: hidden`, and `padding: 0.75rem` on
+  mobile.
+- **`static/css/news.css`** — article + video grids stack to 1 column at
+  `<= 768px` (was 640px, article grid only).
+- **`static/css/attendance.css`** — shell container rules + 12px mobile
+  padding (layout was already mobile-first single column; camera video is
+  100% width).
+
+### Verified
+- Headless-Chrome at 390px + 1280px on `/news/`, `/attendance/`,
+  `/pharmacy/`: no nav underlines, active pills solid `#374151`/white,
+  14px pill font, shell padding 12px on mobile, news grid 1-col at 390px /
+  4-col at 1280px, attendance 1-col at 390px / 2-col at 1280px, pharmacy
+  Rx/checkout buttons at the specified colors (disabled state confirmed).
+- Full suite: **1013 tests OK**.

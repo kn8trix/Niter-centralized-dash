@@ -53,6 +53,10 @@
     font-weight: 700;
     font-size: 1.1rem;
     color: var(--text-primary);
+    /* Some page bodies (news/attendance/pharmacy) do not blanket-reset link
+       underlines — force none here so the header never shows browser-default
+       underlines regardless of which page includes the topbar. */
+    text-decoration: none !important;
 }
 
 .brand-icon {
@@ -79,13 +83,15 @@
     align-items: center;
     gap: 0.45rem;
     padding: 0.5rem 1rem;
-    border-radius: 999px;
-    font-size: 0.9rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
     font-weight: 600;
+    font-family: inherit;
     color: var(--text-primary);
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     box-shadow: var(--shadow-card);
+    text-decoration: none !important;
     transition: background 0.2s ease, transform 0.2s ease;
 }
 
@@ -94,11 +100,17 @@
     transform: translateY(-1px);
 }
 
-/* Current page pill — warm accent #e8e2d8 */
+/* Current page pill — solid dark slate fill with crisp white text (active is
+   a fill, never an underline or a font-weight change). */
 .navlinks a.active {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-    color: var(--text-primary);
+    background: #374151;
+    border-color: #374151;
+    color: #ffffff;
+}
+
+.navlinks a.active:hover {
+    background: #4b5563;
+    transform: translateY(-1px);
 }
 
 /* "Pages" dropdown — published builder pages flagged with show_in_nav */
@@ -111,8 +123,8 @@
     align-items: center;
     gap: 0.45rem;
     padding: 0.5rem 1rem;
-    border-radius: 999px;
-    font-size: 0.9rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
     font-weight: 600;
     font-family: inherit;
     color: var(--text-primary);
@@ -120,6 +132,7 @@
     border: 1px solid var(--border-color);
     box-shadow: var(--shadow-card);
     cursor: pointer;
+    text-decoration: none !important;
     transition: background 0.2s ease, transform 0.2s ease;
 }
 
@@ -177,6 +190,7 @@
     background: transparent;
     border: 0;
     box-shadow: none;
+    text-decoration: none !important;
     transition: background 0.15s ease;
 }
 
@@ -186,7 +200,8 @@
 }
 
 .nav-dropdown-menu a.active {
-    background: var(--accent-primary);
+    background: #374151;
+    color: #ffffff;
 }
 
 /* Mobile profile menu label for the custom pages group */
@@ -305,6 +320,7 @@
     font-size: 0.88rem;
     font-weight: 600;
     color: var(--text-primary);
+    text-decoration: none !important;
     transition: background 0.15s ease;
 }
 
@@ -313,7 +329,8 @@
 }
 
 .profile-links a.active {
-    background: var(--accent-primary);
+    background: #374151;
+    color: #ffffff;
 }
 
 .profile-actions {
@@ -339,6 +356,7 @@
     text-align: left;
     font-family: inherit;
     cursor: pointer;
+    text-decoration: none !important;
     transition: background 0.15s ease;
 }
 

@@ -42,9 +42,19 @@ body.pharmacy *::after {
 }
 
 body.pharmacy .shell {
+    width: 100%;
     max-width: 1280px;
     margin: 0 auto;
     padding: 1.5rem clamp(1.1rem, 4vw, 2.5rem) 4rem;
+    box-sizing: border-box;
+    overflow-x: hidden;
+}
+
+@media (max-width: 640px) {
+    /* Mobile WebView container — full-bleed with a compact gutter. */
+    body.pharmacy .shell {
+        padding: 0.75rem;
+    }
 }
 
 body.pharmacy.modal-open {
@@ -92,6 +102,30 @@ body.pharmacy.modal-open {
 }
 .btn-primary:hover { background: #3f3f46; transform: translateY(-1px); }
 .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+/* Modal primary actions — Rx Upload + Checkout "Continue to Payment".
+   Solid cyan with crisp white text for maximum contrast on the light modal
+   cards; the disabled state is a muted slate (no pale/off-white fills). */
+#rx-submit-btn,
+#co-next-1 {
+    background: #0284c7;
+    color: #ffffff;
+    font-weight: 600;
+    border: none;
+}
+
+#rx-submit-btn:hover,
+#co-next-1:hover {
+    background: #0369a1;
+}
+
+#rx-submit-btn:disabled,
+#co-next-1:disabled {
+    background: #1f2937;
+    color: #6b7280;
+    opacity: 0.6;
+    cursor: not-allowed;
+}
 
 /* High-contrast action buttons (solid fills with crisp white/grey text) —
    the shared ``.btn-primary`` dark grey stays as the fallback, while the

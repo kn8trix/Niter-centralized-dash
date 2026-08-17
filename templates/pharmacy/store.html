@@ -97,7 +97,7 @@
 
             <div class="modal-actions">
                 <button type="button" class="btn-ghost" data-close="rx-modal">Cancel</button>
-                <button type="button" class="btn-primary" id="rx-submit-btn"><i class="fa-solid fa-upload"></i> Upload</button>
+                <button type="button" class="btn-primary" id="rx-submit-btn" disabled><i class="fa-solid fa-upload"></i> Upload</button>
             </div>
 
             {% if user.is_authenticated %}
@@ -571,6 +571,9 @@
             rxFileName.textContent = file.name + ' (' + Math.round(file.size / 1024) + ' KB)';
             rxFileName.hidden = false;
             rxAlert.hidden = true;
+            // A valid file unlocks the Upload button (disabled = muted state
+            // until something is actually selected).
+            document.getElementById('rx-submit-btn').disabled = false;
         }
 
         document.getElementById('rx-submit-btn').addEventListener('click', () => {

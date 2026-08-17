@@ -281,8 +281,11 @@
     margin: 4px 0 0;
 }
 
-@media (max-width: 640px) {
-    .news-grid {
+@media (max-width: 768px) {
+    /* Mobile: articles + video cards stack into one column so nothing
+       clips inside the WebView viewport. */
+    .news-grid,
+    .news-videos-grid {
         grid-template-columns: 1fr;
     }
 }
