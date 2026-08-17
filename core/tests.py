@@ -9065,6 +9065,24 @@ class SeedDemoUsersCommandTest(TestCase):
         self.assertTrue(admin.check_password('changed-pass-1'))
         self.assertEqual(User.objects.filter(username='admin').count(), 1)
 
+    def test_creates_ncc_club_manager(self):
+        self._run()
+        ncc = User.objects.get(username='NCC')
+        self.assertTrue(ncc.check_password('ncc@gmail.com'))
+        self.assertFalse(ncc.is_staff or ncc.is_superuser)
+        account = ncc.club_account
+        self.assertTrue(account.is_active)
+        self.assertEqual(account.role, 'manager')
+        self.assertEqual(account.club.slug, 'niter-computer-club')
+        self.assertEqual(account.club.name, 'NITER Computer Club (NCC)')
+        self.assertTrue(account.can_post_events)
+        self.assertTrue(account.can_manage_members)
+        self.assertTrue(account.can_manage_finances)
+        # Idempotent: a second run keeps the single account + club.
+        self._run()
+        self.assertEqual(User.objects.filter(username='NCC').count(), 1)
+        self.assertEqual(ClubAccount.objects.filter(user=ncc).count(), 1)
+
     def test_extra_staff(self):
         self._run(extra_staff=2)
         for i in (1, 2):

@@ -245,6 +245,7 @@ python manage.py seed_demo_users
 | :--- | :--- | :--- | :--- |
 | `admin` | `admin123` | Superuser + staff | Every dashboard — `/dashboard/admin/`, Django `/admin/`, Website Builder |
 | `medical` | `medical123` | Medical staff | `/medical/admin/`, `/host/medical/`, pharmacy admin — **not** the main admin area |
+| `NCC` | `ncc@gmail.com` | Club manager | NITER Computer Club workspace — `/dashboard/club/` (events, members, roles, transactions) |
 | `student` | `student123` | Regular student | `/dashboard/`, `/medical/`, `/notes/`, `/study-corner/`, `/research-ai/`, `/pharmacy/` |
 
 **Options:**

@@ -13,6 +13,9 @@ Creates, when missing:
 - ``medical`` / ``medical123`` — dedicated medical staff (the separate
   medical dashboards at /medical/admin/ and /host/medical/ only — NOT the
   main admin area).
+- ``NCC`` / ``ncc@gmail.com`` — club manager of the NITER Computer Club
+  (active ClubAccount with full manager capabilities → the club workspace at
+  /dashboard/club/).
 - ``student`` / ``student123`` — regular student (all student-facing pages).
 
 Idempotent: existing users are never touched (passwords are NOT reset), so
@@ -33,11 +36,12 @@ from django.contrib.auth.models import Group
 
 from django.core.management.base import BaseCommand
 
+from core.models import Club, ClubAccount
 from core.roles import MEDICAL_STAFF_GROUP
 
 
 class Command(BaseCommand):
-    help = 'Create the demo users (admin/admin123, student/student123) if missing.'
+    help = 'Create the demo users (admin/admin123, NCC/ncc@gmail.com, student/student123) if missing.'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -90,6 +94,46 @@ class Command(BaseCommand):
 
         ensure('student', 'student123', is_staff=False, is_superuser=False,
                first_name='Demo', last_name='Student')
+
+        # Club manager demo — ``NCC`` (NITER Computer Club). The account links
+        # to the NCC club through an active ClubAccount, so RBAC routes the
+        # user to the club workspace (/dashboard/club/) after login. All
+        # manager capabilities are enabled so the demo can explore the full
+        # workspace (events, members, finances/transactions).
+        ncc_user = ensure('NCC', 'ncc@gmail.com', is_staff=False, is_superuser=False,
+                          first_name='NCC', last_name='Club Manager')
+        if ncc_user is None:
+            ncc_user = User.objects.get(username='NCC')
+        club, club_created = Club.objects.get_or_create(
+            slug='niter-computer-club',
+            defaults={
+                'name': 'NITER Computer Club (NCC)',
+                'description': 'The official programming & tech community of NITER — '
+                               'hackathons, competitive programming practice, and '
+                               'industry workshops.',
+                'lead_user': ncc_user,
+            },
+        )
+        self.stdout.write(
+            self.style.SUCCESS('created: club %s' % club.name)
+            if club_created
+            else self.style.WARNING('exists (skipped): club %s' % club.name)
+        )
+        account, account_created = ClubAccount.objects.get_or_create(
+            user=ncc_user,
+            defaults={
+                'club': club,
+                'role': 'manager',
+                'can_post_events': True,
+                'can_manage_members': True,
+                'can_manage_finances': True,
+            },
+        )
+        self.stdout.write(
+            self.style.SUCCESS('created: club account %s -> %s (manager)' % (ncc_user.username, club.name))
+            if account_created
+            else self.style.WARNING('exists (skipped): club account %s' % ncc_user.username)
+        )
 
         for i in range(1, options['extra_staff'] + 1):
             ensure('staff%d' % i, password, is_staff=True, is_superuser=False,

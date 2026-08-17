@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 129 | NCC club-manager demo account — `NCC`/`ncc@gmail.com` linked to the NITER Computer Club (active ClubAccount, full manager capabilities) + README/handover updates | *(see §129)* |
 | 128 | README solution section — official project description (modular hub + mobile app, sub-dashboards, Website Builder, Emergency Siren & Broadcast) | *(see §128)* |
 | 127 | App notifications + sound without Firebase — EmergencyPollWorker (30s poll of `/api/emergency/active/`), native siren JS bridge in the dashboard banner, silence persistence | *(see §127)* |
 | 126 | Repo branding & README — banner asset, feature/comprehensive README from the hackathon doc | *(see §126)* |
@@ -7296,3 +7297,28 @@ Broadcast system pushing visual + audio alerts to every active mobile app and
 web dashboard). The structured Students/Admins breakdown is retained below the
 new prose, and the Mobile App feature list now documents the Firebase-free
 background emergency watcher + native siren bridge.
+
+## 129. NCC Club-Manager Demo Account
+
+Added a dedicated club-manager demo account so the club workspace
+(`/dashboard/club/`) can be demoed with one login.
+
+### Changes
+- **`core/management/commands/seed_demo_users.py`** — now also creates:
+  - User **`NCC`** / **`ncc@gmail.com`** (regular user, not staff);
+  - the **NITER Computer Club (NCC)** (`slug=niter-computer-club`) if missing;
+  - an **active `ClubAccount`** linking `NCC` to that club as **manager** with
+    all capabilities enabled (`can_post_events`, `can_manage_members`,
+    `can_manage_finances`) — RBAC routes the account to the club workspace
+    after login and the middleware bounces it out of student/admin areas.
+  - Idempotent like the rest of the command — existing users/accounts/clubs
+    are never reset.
+- **`core/tests.py`** — `test_creates_ncc_club_manager` covers the account,
+  club link, capabilities and idempotency.
+- **`README.md`** — demo-accounts table now lists `NCC` / `ncc@gmail.com`.
+
+### Verified
+- Seeded into the local dev DB (`db.sqlite3`); `NCC` login works, role
+  resolves to `club`, `GET /dashboard/` → 302 → `/dashboard/club/`, and
+  `/dashboard/student/` bounces back to the club dashboard.
+- `SeedDemoUsersCommandTest` + `RoleRoutingTest` → 25 tests **OK**.
