@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.ValueCallback
@@ -74,9 +75,33 @@ class MainActivity : AppCompatActivity() {
     /** Held while the system file picker is open; cleared when the result lands. */
     private var pendingFileCallback: ValueCallback<Array<Uri>>? = null
 
+    /** The picker intent waiting on a runtime-permission grant (camera). */
+    private var pendingFileIntent: Intent? = null
+
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* Result is non-blocking — the OS shows the channel settings. */ }
+
+    /**
+     * CAMERA runtime permission (Android 6+): the WebView's file chooser may
+     * ask for a camera capture (an image input with the capture attribute in
+     * the pharmacy / profile upload pages), and launching ACTION_IMAGE_CAPTURE
+     * without the CAMERA permission makes the camera app fail with "permission
+     * denied". When granted we re-launch the pending picker; when denied we
+     * resolve the callback with null so the page's file input doesn't hang.
+     */
+    private val cameraPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val intent = pendingFileIntent
+        pendingFileIntent = null
+        if (granted && intent != null) {
+            launchFilePicker(intent)
+        } else {
+            pendingFileCallback?.onReceiveValue(null)
+            pendingFileCallback = null
+        }
+    }
 
     private val filePicker = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -125,8 +150,12 @@ class MainActivity : AppCompatActivity() {
         })
 
         // Native push: channels + topic subscription + notification permission.
+        // The emergency poll worker is the Firebase-free fallback that turns
+        // the backend's live emergency state into native notifications + the
+        // alarm-channel siren even when the app is backgrounded.
         NotificationHelper.ensureChannels(this)
         EmergencyMessagingService.subscribe(this)
+        EmergencyPollWorker.schedule(this)
         requestNotificationPermissionIfNeeded()
 
         if (savedInstanceState == null) {
@@ -176,6 +205,12 @@ class MainActivity : AppCompatActivity() {
         // Google OAuth blocks embedded WebViews that advertise "Version/4.0".
         // Rebuild the UA into a standard mobile-Chrome-looking string instead.
         settings.userAgentString = chromeLikeUserAgent(settings.userAgentString)
+
+        // Native siren bridge: the dashboard's emergency banner calls
+        // NiterHub.playSiren()/stopSiren() so the alarm plays on the STREAM
+        // ALARM channel — it rings even in silent mode and keeps sounding
+        // when the screen is off (browser Audio cannot do either).
+        webView.addJavascriptInterface(EmergencyBridge(), "NiterHub")
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(
@@ -229,17 +264,59 @@ class MainActivity : AppCompatActivity() {
                         addCategory(Intent.CATEGORY_OPENABLE)
                         type = "*/*"
                     }
-                return try {
-                    filePicker.launch(intent)
-                    true
-                } catch (e: Exception) {
-                    // No picker app available — resolve with null so the page's
-                    // file input doesn't stay stuck "picking" forever.
-                    pendingFileCallback?.onReceiveValue(null)
-                    pendingFileCallback = null
-                    true
+
+                // Camera capture (e.g. pharmacy prescription photo) needs the
+                // CAMERA runtime permission on Android 6+. Ask first and only
+                // open the picker once the user grants it.
+                val wantsCamera = intent.action == MediaStore.ACTION_IMAGE_CAPTURE
+                    || intent.action == MediaStore.ACTION_VIDEO_CAPTURE
+                    || fileChooserParams?.isCaptureEnabled == true
+                if (wantsCamera && ContextCompat.checkSelfPermission(
+                        this@MainActivity, Manifest.permission.CAMERA,
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    pendingFileIntent = intent
+                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    return true
                 }
+
+                return launchFilePicker(intent)
             }
+        }
+    }
+
+    /** Launch the system picker, resolving the pending callback on failure. */
+    private fun launchFilePicker(intent: Intent): Boolean {
+        return try {
+            filePicker.launch(intent)
+            true
+        } catch (e: Exception) {
+            // No picker app available — resolve with null so the page's
+            // file input doesn't stay stuck "picking" forever.
+            pendingFileCallback?.onReceiveValue(null)
+            pendingFileCallback = null
+            true
+        }
+    }
+
+    /**
+     * Bridge the dashboard's emergency banner to the native alarm siren.
+     *
+     * The WebView page calls ``NiterHub.playSiren()`` when an emergency with
+     * ``play_alarm_sound`` renders and ``NiterHub.stopSiren()`` when it is
+     * silenced / resolved. Using the native MediaPlayer (STREAM_ALARM) means
+     * the siren breaks through silent mode / DND and keeps ringing even when
+     * the screen is off — something the in-browser Audio element cannot do.
+     */
+    private inner class EmergencyBridge {
+        @android.webkit.JavascriptInterface
+        fun playSiren() {
+            NotificationHelper.startSirenLoop(this@MainActivity)
+        }
+
+        @android.webkit.JavascriptInterface
+        fun stopSiren() {
+            NotificationHelper.stopSiren(this@MainActivity)
         }
     }
 

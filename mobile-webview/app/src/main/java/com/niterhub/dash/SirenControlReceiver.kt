@@ -17,6 +17,10 @@ class SirenControlReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == EmergencyMessagingService.ACTION_STOP_SIREN) {
+            // Remember this alert id so the background poll worker does not
+            // re-trigger the same alert on its next tick. A brand-new alert
+            // (new id) re-arms the alarm automatically.
+            EmergencyPollWorker.silenceCurrent(context)
             NotificationHelper.stopSiren(context)
         }
     }

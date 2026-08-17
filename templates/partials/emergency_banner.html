@@ -69,6 +69,11 @@ Anonymous visitors get nothing (emergency state is for signed-in users).
     var WS_MAX_RETRIES = 5;
     var SILENCE_KEY = 'emergency_alarm_silenced';
     var siren = null;
+    // Inside the native NITER Campus Hub wrapper the siren plays through the
+    // app's alarm channel (NiterHub.playSiren) — it rings in silent mode and
+    // keeps sounding with the screen off, which browser Audio cannot do. In a
+    // normal browser the in-page Audio element below is used instead.
+    var nativeBridge = (typeof window.NiterHub !== 'undefined' && window.NiterHub && window.NiterHub.playSiren) ? window.NiterHub : null;
     var currentAlertId = null;
     var lastAlert = null;
     var silencedAlertId = null;
@@ -113,6 +118,7 @@ Anonymous visitors get nothing (emergency state is for signed-in users).
     function startSiren(alert) {
         if (!alert || !alert.play_alarm_sound) return;
         if (silencedAlertId === alert.id) return;   // student silenced this one
+        if (nativeBridge) { nativeBridge.playSiren(); return; }
         if (!siren) {
             try {
                 siren = new Audio(SIREN_URL);
@@ -137,6 +143,7 @@ Anonymous visitors get nothing (emergency state is for signed-in users).
     }
 
     function stopSiren() {
+        if (nativeBridge) { nativeBridge.stopSiren(); return; }
         if (siren) {
             try { siren.pause(); siren.currentTime = 0; } catch (err) { /* noop */ }
         }

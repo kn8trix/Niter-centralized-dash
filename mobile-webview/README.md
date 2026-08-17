@@ -74,6 +74,24 @@ push on:
 4. Rebuild the APK. Emergency broadcasts now push with a picture banner, siren
    sound, and vibration.
 
+### Emergency alerts work even without Firebase
+
+`EmergencyPollWorker` polls `GET /api/emergency/active/` every ~30s using the
+WebView's session cookie, so **native notifications + the alarm-channel siren
+work out of the box** — no Firebase project needed:
+
+- a new active alert → high-priority notification + looping siren (plays in
+  silent mode, even with the screen off / app backgrounded);
+- the alert resolved → siren stops, notification clears;
+- the notification's **Stop Siren** action silences that alert permanently;
+- while the app is open, the dashboard banner drives the same native siren
+  through the `NiterHub.playSiren()/stopSiren()` JS bridge instead of browser
+  audio.
+
+FCM (above) remains the *instant* delivery channel once `google-services.json`
+is added — the poller and FCM coexist without double-alerting (both key off
+the alert id).
+
 ## Requirements
 
 - **Android Studio** — Meerkat (2024.3.1) or newer recommended (it bundles

@@ -74,6 +74,11 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.activity:activity-ktx:1.9.3")
 
+    // Background emergency watcher — polls /api/emergency/active/ so native
+    // notifications + the siren work even without Firebase configured (FCM
+    // remains the instant-delivery path once google-services.json is added).
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+
     // Firebase Cloud Messaging — emergency + campus push notifications.
     // Inert without google-services.json; everything FCM-related is guarded.
     implementation("com.google.firebase:firebase-messaging:24.1.0")
