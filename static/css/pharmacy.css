@@ -97,18 +97,15 @@ body.pharmacy.modal-open {
    the shared ``.btn-primary`` dark grey stays as the fallback, while the
    catalog's primary actions get explicit, readable colors. */
 .med-add,
-.pharm-cart-btn,
-.pharm-rx-btn,
 .pd-add,
 .sub-add {
     background: #0284c7;
     color: #ffffff;
     border: none;
+    border-radius: 8px;
     font-weight: 600;
 }
 .med-add:hover,
-.pharm-cart-btn:hover,
-.pharm-rx-btn:hover,
 .pd-add:hover,
 .sub-add:hover {
     background: #0369a1;
@@ -117,24 +114,29 @@ body.pharmacy.modal-open {
 
 .med-request,
 .pd-request {
-    background: #b91c1c;
+    background: #dc2626;
     color: #ffffff;
     border: none;
+    border-radius: 8px;
     font-weight: 600;
 }
 .med-request:hover,
 .pd-request:hover {
-    background: #991b1b;
+    background: #b91c1c;
     transform: translateY(-1px);
 }
 
-.med-detail {
-    background: #374151;
-    color: #f3f4f6;
-    border: 1px solid #4b5563;
+/* Scoped under ``.med-actions`` so it beats the later ``.btn-ghost`` rule
+   (the Details button also carries the btn-ghost class). */
+.med-actions .med-detail {
+    background: #1f2937;
+    color: #e5e7eb;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    font-weight: 500;
 }
-.med-detail:hover {
-    background: #4b5563;
+.med-actions .med-detail:hover {
+    background: #374151;
     color: #ffffff;
 }
 
@@ -199,15 +201,15 @@ body.pharmacy.modal-open {
     outline: none;
 }
 
-.pharm-rx-btn,
+/* "Request a Medicine" — distinct teal primary pill. */
 .pharm-request-btn {
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
-    padding: 0.7rem 1.1rem;
+    padding: 8px 16px;
     border: none;
-    border-radius: 999px;
-    background: #0284c7;
+    border-radius: 9999px;
+    background: #0d9488;
     color: #ffffff;
     font-family: inherit;
     font-size: 0.88rem;
@@ -217,21 +219,40 @@ body.pharmacy.modal-open {
     text-decoration: none;
     transition: background 0.15s ease;
 }
-.pharm-rx-btn:hover,
-.pharm-request-btn:hover { background: #0369a1; }
+.pharm-request-btn:hover { background: #0f766e; }
 
-.pharm-cart-btn {
+/* "Upload Prescription" — clean solid dark slate pill (no dotted border). */
+.pharm-rx-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.7rem 1.2rem;
-    border: none;
-    border-radius: 999px;
-    background: #0284c7;
+    gap: 0.45rem;
+    padding: 8px 16px;
+    border: 1px solid #4b5563;
+    border-radius: 9999px;
+    background: #374151;
     color: #ffffff;
     font-family: inherit;
     font-size: 0.88rem;
     font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease;
+}
+.pharm-rx-btn:hover { background: #4b5563; }
+
+/* "Cart" pill — crisp blue, bold weight. */
+.pharm-cart-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 9999px;
+    background: #0284c7;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 700;
     cursor: pointer;
     white-space: nowrap;
 }
@@ -1431,6 +1452,27 @@ html[data-theme='dark'] .admin-tab {
     background: #2e2e33;
     border-color: #3f3f46;
     color: #f4f4f5;
+}
+
+/* The card buttons keep their spec colors in dark mode too — the generic
+   dark ``.btn-ghost`` override above would otherwise repaint ``Details``. */
+html[data-theme='dark'] .med-add,
+html[data-theme='dark'] .pd-add,
+html[data-theme='dark'] .sub-add {
+    background: #0284c7;
+    color: #ffffff;
+    border: none;
+}
+html[data-theme='dark'] .med-request,
+html[data-theme='dark'] .pd-request {
+    background: #dc2626;
+    color: #ffffff;
+    border: none;
+}
+html[data-theme='dark'] .med-actions .med-detail {
+    background: #1f2937;
+    color: #e5e7eb;
+    border: 1px solid #374151;
 }
 
 html[data-theme='dark'] .field-input,
