@@ -93,6 +93,51 @@ body.pharmacy.modal-open {
 .btn-primary:hover { background: #3f3f46; transform: translateY(-1px); }
 .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 
+/* High-contrast action buttons (solid fills with crisp white/grey text) —
+   the shared ``.btn-primary`` dark grey stays as the fallback, while the
+   catalog's primary actions get explicit, readable colors. */
+.med-add,
+.pharm-cart-btn,
+.pharm-rx-btn,
+.pd-add,
+.sub-add {
+    background: #0284c7;
+    color: #ffffff;
+    border: none;
+    font-weight: 600;
+}
+.med-add:hover,
+.pharm-cart-btn:hover,
+.pharm-rx-btn:hover,
+.pd-add:hover,
+.sub-add:hover {
+    background: #0369a1;
+    transform: translateY(-1px);
+}
+
+.med-request,
+.pd-request {
+    background: #b91c1c;
+    color: #ffffff;
+    border: none;
+    font-weight: 600;
+}
+.med-request:hover,
+.pd-request:hover {
+    background: #991b1b;
+    transform: translateY(-1px);
+}
+
+.med-detail {
+    background: #374151;
+    color: #f3f4f6;
+    border: 1px solid #4b5563;
+}
+.med-detail:hover {
+    background: #4b5563;
+    color: #ffffff;
+}
+
 .btn-ghost {
     background: var(--bg-card, #ffffff);
     border: 1px solid var(--border-color, #f0ebe1);
@@ -154,23 +199,26 @@ body.pharmacy.modal-open {
     outline: none;
 }
 
-.pharm-rx-btn {
+.pharm-rx-btn,
+.pharm-request-btn {
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
     padding: 0.7rem 1.1rem;
-    border: 1px dashed var(--accent-dark, #27272a);
+    border: none;
     border-radius: 999px;
-    background: transparent;
-    color: var(--accent-dark, #27272a);
+    background: #0284c7;
+    color: #ffffff;
     font-family: inherit;
     font-size: 0.88rem;
     font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
+    text-decoration: none;
     transition: background 0.15s ease;
 }
-.pharm-rx-btn:hover { background: var(--bg-subtle, #f7f4ef); }
+.pharm-rx-btn:hover,
+.pharm-request-btn:hover { background: #0369a1; }
 
 .pharm-cart-btn {
     display: inline-flex;
@@ -179,7 +227,7 @@ body.pharmacy.modal-open {
     padding: 0.7rem 1.2rem;
     border: none;
     border-radius: 999px;
-    background: var(--accent-dark, #27272a);
+    background: #0284c7;
     color: #ffffff;
     font-family: inherit;
     font-size: 0.88rem;
@@ -187,6 +235,7 @@ body.pharmacy.modal-open {
     cursor: pointer;
     white-space: nowrap;
 }
+.pharm-cart-btn:hover { background: #0369a1; }
 
 .cart-count {
     display: inline-grid;
@@ -198,6 +247,67 @@ body.pharmacy.modal-open {
     background: #ef4444;
     font-size: 0.72rem;
     font-weight: 700;
+}
+
+/* Standalone "Request any medicine" form */
+.req-card {
+    max-width: 620px;
+    margin: 1.2rem auto 0;
+    background: var(--bg-card, #ffffff);
+    border: 1px solid var(--border-color, #f0ebe1);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card, 0 4px 12px rgba(0, 0, 0, 0.03));
+    padding: 1.4rem 1.5rem 1.5rem;
+}
+
+.req-card .field-input {
+    min-height: 44px;
+}
+
+.req-card textarea.field-input {
+    min-height: 96px;
+}
+
+.req-alerts {
+    max-width: 620px;
+    margin: 1.2rem auto 0;
+}
+
+.req-alerts p {
+    margin: 0 0 0.5rem;
+    padding: 0.7rem 0.9rem;
+    border-radius: 0.6rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.req-success {
+    background: rgba(22, 163, 74, 0.12);
+    border: 1px solid rgba(22, 163, 74, 0.35);
+    color: #15803d;
+}
+
+.req-error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #dc2626;
+}
+
+.req-required {
+    color: #dc2626;
+    font-weight: 700;
+}
+
+.req-optional {
+    color: var(--text-muted, #6b7280);
+    font-weight: 500;
+}
+
+.req-note {
+    max-width: 620px;
+    margin: 1rem auto 0;
+    font-size: 0.82rem;
+    text-align: center;
 }
 
 /* ---------------------------------------------------------------------------
@@ -225,14 +335,16 @@ body.pharmacy.modal-open {
     box-shadow: var(--shadow-hover, 0 14px 36px rgba(0, 0, 0, 0.10));
 }
 
-/* Medicine image — rounded thumbnail on the card, with an icon fallback */
+/* Medicine image — rounded thumbnail on the card, with an icon fallback.
+   The placeholder container is dark slate so a broken/missing image never
+   renders as a washed-out white box; the fallback icon is light and crisp. */
 .med-img {
     position: relative;
     height: 130px;
     border-radius: 0.7rem;
     overflow: hidden;
     margin: -0.15rem 0 0.85rem;
-    background: var(--bg-subtle, #f7f4ef);
+    background: #1f2937;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -251,7 +363,7 @@ body.pharmacy.modal-open {
     inset: 0;
     display: grid;
     place-items: center;
-    color: var(--text-muted, #6b7280);
+    color: #f3f4f6;
     font-size: 2rem;
     opacity: 0;
     pointer-events: none;
@@ -564,7 +676,7 @@ body.pharmacy.modal-open {
     border-radius: 0.8rem;
     overflow: hidden;
     margin-bottom: 0.9rem;
-    background: var(--bg-subtle, #f7f4ef);
+    background: #1f2937;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1205,6 +1317,42 @@ body.pharmacy.modal-open {
 
     .stock-amount {
         width: 100%;
+    }
+}
+
+/* Small-phone modals + touch targets (<= 640px) — dialogs fill the width,
+   stay scrollable, and every interactive control keeps a 44px tap target. */
+@media (max-width: 640px) {
+    .modal-card,
+    .modal-card-wide {
+        width: 95vw;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .btn-primary,
+    .btn-ghost,
+    .btn-approve,
+    .btn-reject,
+    .pharm-rx-btn,
+    .pharm-request-btn,
+    .pharm-cart-btn,
+    .pay-method,
+    .admin-tab,
+    .med-actions button {
+        min-height: 44px;
+    }
+
+    .field-input {
+        min-height: 44px;
+    }
+
+    /* Header nav pills scroll horizontally instead of wrapping/cramming */
+    .navlinks {
+        overflow-x: auto;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 0.2rem;
     }
 }
 

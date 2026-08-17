@@ -155,13 +155,20 @@ from services.emergency_push import send_emergency_push  # noqa: E402
 def public_home(request):
     """Public homepage (landing page) served at the root URL.
 
-    Signed-in users are bounced straight to their role dashboard (student →
+    Desktop/mobile **browsers always keep the hero landing page**, even when
+    signed in — the public site is browsable normally. The only exception is
+    the native Mobile App wrapper (WebView), which sends a ``niterapp``
+    User-Agent (or the ``X-Native-App: true`` header): those requests are
+    bounced straight to the user's role dashboard (student →
     ``/dashboard/student/``, admin → ``/dashboard/admin/``, club →
-    ``/dashboard/club/``) instead of the hero landing page, so the Android
-    WebView wrapper and every returning session land directly on the portal
-    with one tap. Guests keep the public landing page (hero + Login)."""
+    ``/dashboard/club/``) so the app lands on the portal with one tap. Guests
+    always keep the public landing page (hero + Login)."""
     if request.user.is_authenticated:
-        return redirect(role_home_path(get_user_role(request.user)))
+        # Native app wrapper only — browsers must be able to view the hero.
+        user_agent = request.META.get('HTTP_USER_AGENT', '').lower()
+        is_mobile_app = 'niterapp' in user_agent or request.META.get('HTTP_X_NATIVE_APP') == 'true'
+        if is_mobile_app and request.path == '/':
+            return redirect(role_home_path(get_user_role(request.user)))
     return render(request, 'index.html')
 
 
@@ -769,6 +776,114 @@ def pharmacy_store(request):
     })
 
 
+def pharmacy_request(request):
+    """Standalone "Request any medicine" form — ``/pharmacy/request/``.
+
+    Public page (login optional): anyone can ask the medical center for a
+    medicine that is not in the catalog (or is out of stock) via free-text
+    fields. Signed-in students get their name / student ID / phone prefilled
+    from the profile; guests type them in. Every request lands in the same
+    ``MedicineRequest`` queue the storefront's out-of-stock modal uses, so
+    staff review both from one tab."""
+    profile = getattr(request.user, 'student_profile', None) if request.user.is_authenticated else None
+
+    if request.method == 'POST':
+        medicine_name = (request.POST.get('medicine_name') or '').strip()[:200]
+        generic_name = (request.POST.get('generic_name') or '').strip()[:200]
+        student_name = (request.POST.get('student_name') or '').strip()[:100]
+        student_id = (request.POST.get('student_id') or '').strip()[:50]
+        urgency = request.POST.get('urgency') or 'normal'
+        if urgency not in dict(MedicineRequest.URGENCY_CHOICES):
+            urgency = 'normal'
+        try:
+            quantity = int(request.POST.get('quantity') or 0)
+        except (TypeError, ValueError):
+            quantity = 0
+        phone = (request.POST.get('phone') or '').strip()[:20]
+        notes = (request.POST.get('notes') or '').strip()[:500]
+
+        errors = []
+        if not medicine_name:
+            errors.append('Tell us which medicine you need.')
+        if quantity < 1 or quantity > 999:
+            errors.append('Enter how many packs you need (1-999).')
+        if not phone:
+            errors.append('Add a contact phone number so the pharmacy can reach you.')
+
+        # Signed-in students: use their profile instead of (or on top of) the
+        # typed name/ID so staff can verify the requestor.
+        if request.user.is_authenticated:
+            student_name = student_name or request.user.get_full_name() or request.user.username
+            student_id = student_id or (profile.student_id if profile else '')
+
+        if errors:
+            return render(request, 'pharmacy/request.html', {
+                'errors': errors,
+                'form_data': {
+                    'medicine_name': medicine_name,
+                    'generic_name': generic_name,
+                    'student_name': student_name,
+                    'student_id': student_id,
+                    'quantity': quantity or 1,
+                    'urgency': urgency,
+                    'phone': phone,
+                    'notes': notes,
+                },
+                'prefill': {
+                    'student_name': student_name,
+                    'student_id': student_id,
+                    'phone': '',
+                },
+            })
+
+        # Best-effort catalog match (optional — free-text works without one).
+        medicine = MedicineItem.objects.filter(
+            is_active=True,
+        ).filter(Q(name__iexact=medicine_name) | Q(generic_name__iexact=medicine_name)).first()
+
+        medicine_request = MedicineRequest.objects.create(
+            medicine=medicine,
+            medicine_name=medicine_name,
+            generic_name=generic_name,
+            user=request.user if request.user.is_authenticated else None,
+            student_name=student_name,
+            student_id=student_id,
+            quantity=quantity,
+            urgency=urgency,
+            urgency_note=notes,
+            phone=phone,
+        )
+        if request.user.is_authenticated:
+            notification = Notification.objects.create(
+                user=request.user,
+                title='Medicine request received',
+                message='Your request for %s (%d pack%s) was sent to the medical center.' % (
+                    medicine_name, quantity, '' if quantity == 1 else 's',
+                ),
+                category='medical',
+            )
+            _broadcast_notification(notification)
+        messages.success(
+            request,
+            'Request sent! The pharmacy will review it and get back to you — reference #%d.' % medicine_request.pk,
+        )
+        return redirect('pharmacy_request')
+
+    prefill = {'student_name': '', 'student_id': '', 'phone': ''}
+    if profile:
+        prefill = {
+            'student_name': request.user.get_full_name() or request.user.username,
+            'student_id': profile.student_id,
+            'phone': '',
+        }
+
+    return render(request, 'pharmacy/request.html', {
+        'errors': [],
+        'form_data': None,
+        'prefill': prefill,
+    })
+
+
 @login_required
 def pharmacy_orders(request):
     """Customer order tracking — ``/pharmacy/orders/``.
@@ -1124,11 +1239,20 @@ def api_pharmacy_stock_request(request):
         return JsonResponse({'status': 'error', 'message': 'Add a contact phone number.'}, status=400)
 
     urgency_note = (payload.get('urgency_note') or '').strip()[:500]
+    urgency = payload.get('urgency') or 'normal'
+    if urgency not in dict(MedicineRequest.URGENCY_CHOICES):
+        urgency = 'normal'
+    profile = getattr(request.user, 'student_profile', None)
 
     medicine_request = MedicineRequest.objects.create(
         medicine=medicine,
+        medicine_name=medicine.name,
+        generic_name=medicine.generic_name,
         user=request.user,
+        student_name=request.user.get_full_name() or request.user.username,
+        student_id=getattr(profile, 'student_id', '') or request.user.username,
         quantity=quantity,
+        urgency=urgency,
         urgency_note=urgency_note,
         phone=phone,
     )
@@ -1169,26 +1293,30 @@ def api_pharmacy_request_status(request, request_id):
         medicine_request.status = 'fulfilled'
         medicine_request.admin_note = (request.POST.get('admin_note') or '').strip()[:300]
         title = 'Medicine request fulfilled'
-        message = 'Good news — %s is now available at the campus pharmacy.' % medicine_request.medicine.name
+        message = 'Good news — %s is now available at the campus pharmacy.' % medicine_request.display_name
     elif action == 'reject':
         medicine_request.status = 'rejected'
         medicine_request.admin_note = (request.POST.get('admin_note') or '').strip()[:300]
         title = 'Medicine request declined'
         message = 'Your request for %s could not be fulfilled.%s' % (
-            medicine_request.medicine.name,
+            medicine_request.display_name,
             ' Reason: %s' % medicine_request.admin_note if medicine_request.admin_note else '',
         )
     else:
         return JsonResponse({'status': 'error', 'message': 'Invalid action.'}, status=400)
     medicine_request.save()
 
-    notification = Notification.objects.create(
-        user=medicine_request.user,
-        title=title,
-        message=message,
-        category='medical',
-    )
-    _broadcast_notification(notification)
+    # Free-text (guest) requests have no linked user — the notification is
+    # only sent when there is an account to notify.
+    notification = None
+    if medicine_request.user:
+        notification = Notification.objects.create(
+            user=medicine_request.user,
+            title=title,
+            message=message,
+            category='medical',
+        )
+        _broadcast_notification(notification)
     return JsonResponse({
         'status': 'success',
         'request_id': medicine_request.pk,

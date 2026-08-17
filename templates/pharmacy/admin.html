@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Pharmacy Admin — Niter Hub</title>
     <meta name="description" content="Pharmacy operations — prescription verification, order management, and inventory.">
 
@@ -154,15 +154,20 @@
                 {% for req in requests %}
                 <article class="rx-review-card" data-request-id="{{ req.id }}">
                     <div class="rx-review-head">
-                        <span class="rx-review-user"><i class="fa-solid fa-pills"></i> {{ req.medicine.name }}{% if req.medicine.strength %} {{ req.medicine.strength }}{% endif %}</span>
+                        <span class="rx-review-user"><i class="fa-solid fa-pills"></i> {{ req.display_name }}</span>
                         <span class="rx-review-date">{{ req.created_at|date:"M d, Y · h:i A" }}</span>
                     </div>
+                    {% if req.generic_name %}<p class="rx-review-notes muted"><i class="fa-solid fa-vial"></i> {{ req.generic_name }}</p>{% endif %}
                     <p class="rx-review-notes">
-                        <strong>{{ req.user.get_full_name|default:req.user.username }}</strong> ({{ req.user.username }}) · {{ req.quantity }} pack{{ req.quantity|pluralize }}
+                        <strong>{{ req.requester_label }}</strong>{% if req.requester_id %} ({{ req.requester_id }}){% endif %} · {{ req.quantity }} pack{{ req.quantity|pluralize }}
                         {% if req.phone %} · <a href="tel:{{ req.phone }}" class="order-phone">{{ req.phone }}</a>{% endif %}
                     </p>
                     {% if req.urgency_note %}<p class="rx-review-notes"><i class="fa-solid fa-note-sticky"></i> {{ req.urgency_note }}</p>{% endif %}
-                    <p class="rx-review-notes muted">Stock: {{ req.medicine.stock_quantity }} · Status: {{ req.get_status_display }}</p>
+                    <p class="rx-review-notes muted">
+                        {% if req.medicine %}Stock: {{ req.medicine.stock_quantity }} ·{% endif %}
+                        Urgency: {% if req.urgency == 'urgent' %}<span class="stock-badge stock-out">Urgent Emergency</span>{% else %}Normal{% endif %}
+                        · Status: {{ req.get_status_display }}
+                    </p>
                     <div class="rx-review-actions">
                         {% if req.status == 'pending' %}
                         <button type="button" class="btn-approve" data-request-action="fulfill"><i class="fa-solid fa-check"></i> Mark Fulfilled</button>

@@ -34,6 +34,7 @@ urlpatterns = [
     path('medical/', views.medical, name='medical'),
     # Pharmacy (Online Pharmacy module) — storefront, Rx upload, orders, admin
     path('pharmacy/', views.pharmacy_store, name='pharmacy_store'),
+    path('pharmacy/request/', views.pharmacy_request, name='pharmacy_request'),
     path('pharmacy/orders/', views.pharmacy_orders, name='pharmacy_orders'),
     path('api/pharmacy/prescription/upload/', views.api_pharmacy_prescription_upload, name='api_pharmacy_prescription_upload'),
     path('api/pharmacy/checkout/', views.api_pharmacy_checkout, name='api_pharmacy_checkout'),

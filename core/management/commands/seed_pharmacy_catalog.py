@@ -121,6 +121,20 @@ MEDICINES = [
 class Command(BaseCommand):
     help = 'Seed the pharmacy catalog with popular Bangladeshi medicines (idempotent).'
 
+    # Local, self-hosted product photos (static/images/pharmacy/) — always
+    # reachable, no external hotlink flakiness. The storefront falls back to
+    # default_medicine.png if an image ever fails to load.
+    IMAGE_URLS = {
+        ('Napa Extra', '500mg/65mg'): '/static/images/pharmacy/napa_extra.png',
+        ('Seclo', '20mg'): '/static/images/pharmacy/seclo.png',
+        ('Sergel', '20mg'): '/static/images/pharmacy/sergel.png',
+        ('Ace Plus', '500mg'): '/static/images/pharmacy/ace_plus.png',
+        ('Entacyd', '—'): '/static/images/pharmacy/entacyd.png',
+        ('Savlon Antiseptic Liquid', '100ml'): '/static/images/pharmacy/savlon.png',
+        ('Ceevit', '250mg'): '/static/images/pharmacy/ceevit.png',
+        ('Monas', '10mg'): '/static/images/pharmacy/monas.png',
+    }
+
     def handle(self, *args, **options):
         created = 0
         for (name, generic, strength, category, manufacturer, price, stock,
@@ -136,7 +150,10 @@ class Command(BaseCommand):
                     'price': price,
                     'stock_quantity': int(stock),
                     'is_prescription': rx,
-                    'image_url': 'https://placehold.co/400x300/EADCC9/2B2927?text=%s' % image_text,
+                    'image_url': self.IMAGE_URLS.get(
+                        (name, strength),
+                        '/static/images/pharmacy/default_medicine.png',
+                    ),
                     'delivery_eta': delivery_eta,
                     'description': description,
                     'usage_info': usage,
@@ -152,7 +169,20 @@ class Command(BaseCommand):
                 created += 1
                 self.stdout.write('Created %s %s (%s)' % (name, strength, manufacturer))
             else:
-                self.stdout.write('Exists (skipped): %s %s' % (name, strength))
+                # Backfill rows seeded before this change: replace legacy
+                # placehold.co placeholder URLs with the local product photo
+                # (and keep the idempotent "don't clobber admin edits" rule —
+                # only placeholder-looking URLs are touched).
+                new_image = self.IMAGE_URLS.get(
+                    (name, strength),
+                    '/static/images/pharmacy/default_medicine.png',
+                )
+                if item.image_url and 'placehold.co' in item.image_url and item.image_url != new_image:
+                    item.image_url = new_image
+                    item.save(update_fields=['image_url'])
+                    self.stdout.write('Backfilled image: %s %s' % (name, strength))
+                else:
+                    self.stdout.write('Exists (skipped): %s %s' % (name, strength))
 
         self.stdout.write(self.style.SUCCESS(
             'Pharmacy catalog seeded — %d new medicine(s), re-run safe.' % created

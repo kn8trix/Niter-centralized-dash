@@ -1,0 +1,135 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Request a Medicine — Niter Hub</title>
+    <meta name="description" content="Ask the campus medical center for any medicine — even ones not in the online pharmacy catalog.">
+
+    {% include 'partials/pwa_head.html' %}
+
+    <!-- Global design tokens -->
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <!-- Global display preferences (theme / timezone / density) -- no-flash driver -->
+    {% include 'partials/display_prefs.html' %}
+    <!-- Shared top navigation -->
+    <link rel="stylesheet" href="{% static 'css/topbar.css' %}">
+    <!-- Pharmacy styles -->
+    <link rel="stylesheet" href="{% static 'css/pharmacy.css' %}">
+
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+
+<body class="pharmacy" data-app="campusdash-public">
+
+    <div class="shell">
+
+        {% include 'partials/topbar.html' with active='pharmacy' %}
+
+        <!-- ============================================================
+             Intro
+        ============================================================ -->
+        <div class="intro">
+            <h1>Request a Medicine</h1>
+            <p>Can't find it in the catalog? Tell the campus medical center which medicine you need — they will procure or restock it for you.</p>
+        </div>
+
+        <div class="orders-toolbar">
+            <a href="{% url 'pharmacy_store' %}" class="btn-ghost"><i class="fa-solid fa-arrow-left"></i> Back to Pharmacy</a>
+        </div>
+
+        {% if messages %}
+        <div class="req-alerts">
+            {% for message in messages %}
+            <p class="req-success"><i class="fa-solid fa-circle-check"></i> {{ message }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if errors %}
+        <div class="req-alerts">
+            {% for error in errors %}
+            <p class="req-error"><i class="fa-solid fa-circle-exclamation"></i> {{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="req-card">
+            <form method="post" action="{% url 'pharmacy_request' %}">
+                {% csrf_token %}
+
+                <div class="field">
+                    <label for="req-medicine-name" class="field-label">Medicine Name <span class="req-required">*</span></label>
+                    <input type="text" id="req-medicine-name" name="medicine_name" class="field-input"
+                           placeholder="e.g. Napa Extra, Seclo, any medicine you need…"
+                           value="{{ form_data.medicine_name|default:'' }}" maxlength="200" required>
+                </div>
+
+                <div class="field">
+                    <label for="req-generic-name" class="field-label">Generic Name <span class="req-optional">(optional)</span></label>
+                    <input type="text" id="req-generic-name" name="generic_name" class="field-input"
+                           placeholder="e.g. Paracetamol, Omeprazole…" value="{{ form_data.generic_name|default:'' }}" maxlength="200">
+                </div>
+
+                <div class="form-row">
+                    <div class="field">
+                        <label for="req-qty" class="field-label">Quantity (packs)</label>
+                        <input type="number" id="req-qty" name="quantity" class="field-input" min="1" max="999"
+                               value="{{ form_data.quantity|default:1 }}" aria-label="Required quantity">
+                    </div>
+                    <div class="field">
+                        <label for="req-urgency" class="field-label">Urgency</label>
+                        <select id="req-urgency" name="urgency" class="field-input">
+                            <option value="normal" {% if form_data.urgency == 'normal' %}selected{% endif %}>Normal</option>
+                            <option value="urgent" {% if form_data.urgency == 'urgent' %}selected{% endif %}>Urgent Emergency</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="field">
+                        <label for="req-name" class="field-label">Your Name {% if not user.is_authenticated %}<span class="req-required">*</span>{% endif %}</label>
+                        <input type="text" id="req-name" name="student_name" class="field-input"
+                               placeholder="Full name" value="{{ form_data.student_name|default:prefill.student_name }}" maxlength="100"
+                               {% if not user.is_authenticated %}required{% endif %}>
+                    </div>
+                    <div class="field">
+                        <label for="req-student-id" class="field-label">Student ID {% if not user.is_authenticated %}<span class="req-optional">(optional)</span>{% endif %}</label>
+                        <input type="text" id="req-student-id" name="student_id" class="field-input"
+                               placeholder="e.g. 2102019" value="{{ form_data.student_id|default:prefill.student_id }}" maxlength="50">
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label for="req-phone" class="field-label">Contact Phone <span class="req-required">*</span></label>
+                    <input type="tel" id="req-phone" name="phone" class="field-input" placeholder="01XXXXXXXXX"
+                           value="{{ form_data.phone|default:'' }}" maxlength="20" required>
+                </div>
+
+                <div class="field">
+                    <label for="req-notes" class="field-label">Notes <span class="req-optional">(optional)</span></label>
+                    <textarea id="req-notes" name="notes" class="field-input" rows="4" maxlength="500"
+                              placeholder="e.g. Needed for a chronic condition, preferred brand, any dosage notes…">{{ form_data.notes|default:'' }}</textarea>
+                </div>
+
+                <div class="modal-actions">
+                    <a href="{% url 'pharmacy_store' %}" class="btn-ghost">Cancel</a>
+                    <button type="submit" class="btn-primary"><i class="fa-solid fa-paper-plane"></i> Send Request</button>
+                </div>
+            </form>
+        </div>
+
+        <p class="req-note muted">Requests are reviewed by the campus medical staff — you'll get an update when the medicine is available. Signed-in students can track their request in the Pharmacy Admin's Medicine Requests queue.</p>
+    </div>
+
+    <!-- PWA service worker registration (offline caching) -->
+    <script src="{% static 'js/pwa-register.js' %}" defer></script>
+</body>
+</html>

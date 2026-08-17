@@ -1783,11 +1783,19 @@ class PharmacyOrderItem(models.Model):
 
 
 class MedicineRequest(models.Model):
-    """A student request for an out-of-stock (or hard-to-find) medicine.
+    """A request for an out-of-stock (or hard-to-find) medicine.
 
-    Raised from the storefront's "Request Stock" modal when an item is out of
-    stock; staff review it from the pharmacy admin dashboard's Medicine
-    Requests tab and mark it fulfilled (restocked / procured) or rejected.
+    Two ways a request is raised:
+
+    - From the storefront's "Request Stock" modal when a catalog item is out
+      of stock (``medicine`` FK + logged-in ``user`` are set).
+    - From the standalone "Request any medicine" form at
+      ``/pharmacy/request/`` (free-text ``medicine_name`` / ``generic_name``;
+      ``medicine`` FK stays empty when there is no catalog match and
+      ``user``/``student_name`` capture who asked).
+
+    Staff review both kinds from the pharmacy admin dashboard's Medicine
+    Requests tab and mark each fulfilled (restocked / procured) or rejected.
     """
 
     STATUS_CHOICES = [
@@ -1796,18 +1804,47 @@ class MedicineRequest(models.Model):
         ('rejected', 'Rejected'),
     ]
 
+    URGENCY_CHOICES = [
+        ('normal', 'Normal'),
+        ('urgent', 'Urgent Emergency'),
+    ]
+
     medicine = models.ForeignKey(
         MedicineItem,
+        null=True,
+        blank=True,
         on_delete=models.CASCADE,
         related_name='stock_requests',
+        help_text='Catalog match (empty for free-text requests without a match)',
+    )
+    medicine_name = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text='Free-text medicine name for requests outside the catalog',
+    )
+    generic_name = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text='Free-text generic name (e.g. Paracetamol)',
     )
     user = models.ForeignKey(
         User,
+        null=True,
+        blank=True,
         on_delete=models.CASCADE,
         related_name='medicine_requests',
         db_index=True,
     )
+    student_name = models.CharField(max_length=100, blank=True, default='')
+    student_id = models.CharField(max_length=50, blank=True, default='')
     quantity = models.PositiveIntegerField(default=1)
+    urgency = models.CharField(
+        max_length=20,
+        choices=URGENCY_CHOICES,
+        default='normal',
+    )
     urgency_note = models.TextField(blank=True, default='', help_text='Why it is needed urgently')
     phone = models.CharField(max_length=20, blank=True, default='')
     status = models.CharField(
@@ -1823,8 +1860,33 @@ class MedicineRequest(models.Model):
     class Meta:
         ordering = ['-created_at']
 
+    @property
+    def display_name(self):
+        """Catalog name (with strength) or the free-text medicine name."""
+        if self.medicine:
+            label = self.medicine.name
+            if self.medicine.strength:
+                label += ' %s' % self.medicine.strength
+            return label
+        return self.medicine_name or 'Medicine'
+
+    @property
+    def requester_label(self):
+        """Who asked: catalog requests show the account; free-text requests
+        show the typed student name/ID (falling back to the account)."""
+        if self.user:
+            return self.user.get_full_name() or self.user.username
+        return self.student_name or 'Guest'
+
+    @property
+    def requester_id(self):
+        if self.user:
+            profile = getattr(self.user, 'student_profile', None)
+            return getattr(profile, 'student_id', '') or self.user.username
+        return self.student_id or ''
+
     def __str__(self):
-        return '%s — %s x%d' % (self.medicine.name, self.user.username, self.quantity)
+        return '%s — %s x%d' % (self.display_name, self.requester_label, self.quantity)
 
 
 class PaymentTransaction(models.Model):

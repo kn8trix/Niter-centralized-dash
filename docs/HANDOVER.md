@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 123 | Pharmacy contrast + product images, native-app-only hero redirect, "Request any medicine" page, topbar Pharmacy pill removal, Android compile fixes, mobile WebView polish | *(see §123)* |
 | 122 | Student Edition Android app — branded splash + launcher icons, persistent sessions, direct dashboard landing, native permissions, FCM push with picture banners, emergency siren (+ Gradle wrapper jar/scripts) | `25789af`, `9478115` |
 | 121 | Public pharmacy storefront — guest browsing/cart, hero button contrast fix, auto-seeded BD catalog | `29688ff` |
 | 120 | Club dashboard sub-routes + event banner upload + event visibility sync to student portals | `5c90964` |
@@ -7005,3 +7006,119 @@ was ever produced. The official Gradle 8.11.1 wrapper JAR + `gradlew` /
 `./gradlew assembleDebug` path (`app/build/outputs/apk/debug/app-debug.apk`).
 Building still requires the Android SDK (`platforms;android-36` +
 `build-tools;35.0.0`) on the machine that runs the build.
+
+---
+
+## 123. Pharmacy Polish, Native-App-Only Hero Redirect, Request-Any-Medicine Page & Android Compile Fixes
+
+**Date:** 17 August 2026
+**Branch:** main
+
+Closed out the remaining pharmacy UX items, restricted the hero-page
+auto-redirect to the native app wrapper, removed the global Pharmacy nav pill,
+added a standalone "Request any medicine" page, made the Android wrapper
+compile against firebase-messaging 24.1.0, and added mobile WebView polish.
+
+### Pharmacy contrast + product images (`static/css/pharmacy.css`, `templates/pharmacy/store.html`, `core/management/commands/seed_pharmacy_catalog.py`)
+
+- **Button contrast** — the catalog's primary actions are now explicit solid
+  fills instead of the shared dark-grey `.btn-primary`:
+  - `+ Add` / Add to Cart / substitute add / Cart pill / Upload Prescription:
+    `background:#0284c7; color:#fff; font-weight:600` (hover `#0369a1`).
+  - Out-of-stock `Request` / `Request Stock`: `background:#b91c1c; color:#fff`
+    (hover `#991b1b`).
+  - `Details`: `background:#374151; color:#f3f4f6; border:1px solid #4b5563`.
+- **Image placeholders** — `.med-img` / `.pd-img` containers are now dark
+  slate `#1f2937` with light `#f3f4f6` fallback icons (no more washed-out
+  white boxes).
+- **Local product photos** — `seed_pharmacy_catalog` no longer uses
+  placehold.co. Each of the 8 seeded medicines now points at a self-hosted
+  generated photo in `static/images/pharmacy/` (`napa_extra.png`, `seclo.png`,
+  `sergel.png`, `ace_plus.png`, `entacyd.png`, `savlon.png`, `ceevit.png`,
+  `monas.png`), with `default_medicine.png` as the universal fallback. The
+  command backfills existing rows whose `image_url` still contains
+  `placehold.co` (idempotent — admin edits elsewhere are never clobbered).
+- **`onerror` fallback** — `cardImage()` and the product-detail renderer now
+  swap a broken image to `/static/images/pharmacy/default_medicine.png` via
+  `onerror="this.onerror=null; this.src=…"`.
+
+### Hero auto-redirect restricted to the native app (`core/views.py` `public_home`)
+
+- Desktop/mobile **browsers keep the public hero landing page even when
+  signed in**. Only the native Mobile App wrapper (`niterapp` in the
+  User-Agent, or `X-Native-App: true`) is redirected past `/` to the role
+  dashboard (student → `/dashboard/student/`, admin → `/dashboard/admin/`,
+  club → `/dashboard/club/`).
+- `LandingRedirectTest` rewritten: browser requests (logged-in student /
+  staff) return 200 with the hero; `niterapp` UA and `X-Native-App` header
+  requests redirect to the right role dashboard.
+
+### Global navigation (`templates/partials/topbar.html`)
+
+- Removed the **Pharmacy pill** from both the desktop nav pills and the
+  mobile profile-popover page links. The dedicated "Online Pharmacy" action
+  button inside `/medical/` (`templates/medical/booking.html`) is unchanged.
+
+### Standalone "Request any medicine" page (`/pharmacy/request/`)
+
+- **Model (`core/models.py` → migration `0046`)** — `MedicineRequest` gained
+  `medicine_name`, `generic_name`, `student_name`, `student_id` and
+  `urgency` (`normal` / `urgent`); `medicine` and `user` FKs are now
+  **nullable** so free-text requests work without a catalog match. Helpers:
+  `display_name`, `requester_label`, `requester_id` (used by the admin tab
+  for both request kinds).
+- **View (`core/views.py` `pharmacy_request`)** — public form (login
+  optional): free-text medicine/generic name, quantity, urgency, name/ID,
+  phone, notes. Signed-in students get name/ID prefilled from their profile;
+  a best-effort catalog match links the request when the name matches an
+  `is_active` `MedicineItem`; authenticated submitters get a notification.
+  Guests post without an account.
+- **Template (`templates/pharmacy/request.html`)** — matches the pharmacy
+  shell (topbar + pharmacy.css), 44px touch targets, success/error banners.
+  The storefront toolbar gains a **"Request a Medicine"** button
+  (`pharm-request-btn`) linking to it.
+- **Admin tab (`templates/pharmacy/admin.html`)** — the Medicine Requests
+  tab renders both kinds: catalog requests (stock shown) and free-text
+  requests (generic name, typed student name/ID, urgency badge). Guest
+  (user-less) requests skip the notification on fulfil/reject
+  (`api_pharmacy_request_status` now uses `display_name`).
+
+### Android wrapper compiles (`mobile-webview/`)
+
+- `settings.gradle.kts` gained `jitpack.io` (commit `4253795`); `local.properties`
+  points at the local SDK (gitignored).
+- firebase-messaging 24.1.0 makes `onStartCommand` **final** on
+  `EnhancedIntentService`, so `EmergencyMessagingService.kt` no longer
+  overrides it; the notification's **Stop Siren** action now routes through a
+  new `SirenControlReceiver` (BroadcastReceiver, registered in the manifest).
+- `NotificationHelper.kt` fixed `bannerUrl?.trim()?.takeIf { … }` (safe call
+  on the nullable string).
+- `./gradlew assembleDebug` **passes** — `app-debug.apk` produced. Remaining
+  output is 3 harmless WebSettings deprecation warnings.
+
+### Mobile WebView responsiveness
+
+- Pharmacy pages (`store`, `orders`, `admin`, `request`) now ship the full
+  viewport: `width=device-width, initial-scale=1.0, maximum-scale=1.0,
+  user-scalable=no`.
+- New `@media (max-width: 640px)` block in `pharmacy.css`: modals get
+  `width:95vw; max-height:90vh; overflow-y:auto`, all buttons/inputs get a
+  44px min-height touch target, and `.navlinks` scrolls horizontally instead
+  of wrapping.
+- Admin tables were already wrapped in `.admin-table-wrap` (overflow-x).
+
+### Tests & verification
+
+- 64 pharmacy tests (inventory, store page, request page, prescription
+  upload, checkout, order tracking, admin, seed command, stock request +
+  status APIs, nav buttons, modal CSS guard) + landing redirect, smoke +
+  unified header tests all pass (21 targeted, 64 pharmacy) · `manage.py
+  check` clean.
+- `PharmacyRequestPageTest` (new, 5 tests): public GET, free-text POST
+  without catalog match, catalog-match POST, validation errors, profile
+  prefill for authenticated users.
+- `StudentPagesSmokeTest` / `UnifiedHeaderTest` PAGES and the ENDPOINTS
+  registry now include `pharmacy_store` + `pharmacy_request`.
+- Tests run with `DATABASE_URL=sqlite:///db.sqlite3` overrides — the dev
+  `.env` carries a `SUPABASE_DB_URL` that would otherwise route the test
+  runner at the remote Postgres.

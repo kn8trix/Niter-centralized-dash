@@ -155,6 +155,8 @@ def endpoints(request):
             'notices': reverse('notices'),
             'tickets': reverse('tickets'),
             'medical': reverse('medical'),
+            'pharmacy_store': reverse('pharmacy_store'),
+            'pharmacy_request': reverse('pharmacy_request'),
             'notes': reverse('notes'),
             'clubs_dashboard': reverse('clubs_dashboard'),
             'transport_dashboard': reverse('transport_dashboard'),

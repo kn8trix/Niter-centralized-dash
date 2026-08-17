@@ -115,6 +115,8 @@ class StudentPagesSmokeTest(TestCase):
         'research_ai',
         'departments',
         'signup',
+        'pharmacy_store',
+        'pharmacy_request',
     ]
 
     def test_all_student_pages_render(self):
@@ -162,6 +164,8 @@ class UnifiedHeaderTest(TestCase):
         'study_corner',
         'research_ai',
         'departments',
+        'pharmacy_store',
+        'pharmacy_request',
     ]
 
     NAV_LINKS = ['Dashboard', 'Study Corner', 'Departments', 'Research AI', 'Notices', 'Transport', 'Meals', 'Medical', 'Clubs', 'Global News', 'Tickets']
@@ -588,9 +592,12 @@ class RoleRoutingTest(TestCase):
 
 
 class LandingRedirectTest(TestCase):
-    """Authenticated users skip the hero landing page — the root URL
-    redirects straight to their role dashboard (the Android WebView wrapper
-    relies on this for one-tap dashboard landing). Guests keep the hero."""
+    """The hero landing page (root URL) is public for everyone.
+
+    Desktop/mobile browsers keep the hero even when signed in; ONLY the
+    native Mobile App wrapper (``niterapp`` User-Agent or ``X-Native-App:
+    true`` header) is redirected past the hero to the role dashboard.
+    """
 
     def setUp(self):
         self.student = User.objects.create_user(username='landing_stu', password='x12345678')
@@ -603,20 +610,47 @@ class LandingRedirectTest(TestCase):
         self.assertContains(response, 'Welcome to CampusDash')
         self.assertContains(response, 'btn-pharmacy-hero')
 
-    def test_student_redirected_past_hero_to_student_dashboard(self):
+    def test_browser_keeps_hero_even_when_logged_in(self):
+        # Desktop/mobile browsers must be able to view the public hero page.
         self.client.force_login(self.student)
         response = self.client.get(reverse('home'))
-        self.assertRedirects(response, reverse('student_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Welcome to CampusDash')
 
-    def test_staff_redirected_past_hero_to_admin_dashboard(self):
+    def test_staff_browser_keeps_hero_even_when_logged_in(self):
         self.client.force_login(self.staff)
         response = self.client.get(reverse('home'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Welcome to CampusDash')
+
+    def test_native_app_student_redirected_to_student_dashboard(self):
+        self.client.force_login(self.student)
+        response = self.client.get(
+            reverse('home'),
+            HTTP_USER_AGENT='Mozilla/5.0 (Linux; Android 14) niterapp/2.0',
+        )
+        self.assertRedirects(response, reverse('student_dashboard'))
+
+    def test_native_app_header_redirects_to_student_dashboard(self):
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('home'), HTTP_X_NATIVE_APP='true')
+        self.assertRedirects(response, reverse('student_dashboard'))
+
+    def test_native_app_staff_redirected_to_admin_dashboard(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(
+            reverse('home'),
+            HTTP_USER_AGENT='Mozilla/5.0 (Linux; Android 14) niterapp/2.0',
+        )
         self.assertRedirects(response, reverse('admin_dashboard'))
 
-    def test_club_manager_redirected_past_hero_to_club_workspace(self):
+    def test_native_app_club_manager_redirected_to_club_workspace(self):
         ClubAccount.objects.create(user=self.student, club=self.club, role='manager')
         self.client.force_login(self.student)
-        response = self.client.get(reverse('home'))
+        response = self.client.get(
+            reverse('home'),
+            HTTP_USER_AGENT='Mozilla/5.0 (Linux; Android 14) niterapp/2.0',
+        )
         self.assertRedirects(response, reverse('club_dashboard'))
 
 
@@ -10602,6 +10636,82 @@ class PharmacyStorePageTest(TestCase):
         response = self.client.get(reverse('pharmacy_store'))
         self.assertContains(response, 'sign in')
         self.assertContains(response, reverse('login'))
+
+
+class PharmacyRequestPageTest(TestCase):
+    """Standalone "Request any medicine" form (/pharmacy/request/)."""
+
+    def test_get_renders_public_form(self):
+        response = self.client.get(reverse('pharmacy_request'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Request a Medicine')
+        self.assertContains(response, 'name="medicine_name"')
+        self.assertContains(response, 'name="student_name"')
+        self.assertContains(response, 'name="phone"')
+        self.assertContains(response, reverse('pharmacy_store'))
+
+    def test_post_creates_free_text_request_without_catalog_match(self):
+        response = self.client.post(reverse('pharmacy_request'), {
+            'medicine_name': 'Some Rare Syrup',
+            'generic_name': 'Dextromethorphan',
+            'student_name': 'Alice',
+            'student_id': '2102001',
+            'quantity': '2',
+            'urgency': 'urgent',
+            'phone': '01700000000',
+            'notes': 'Needed this week',
+        })
+        self.assertRedirects(response, reverse('pharmacy_request'))
+        req = MedicineRequest.objects.get()
+        self.assertIsNone(req.medicine)
+        self.assertEqual(req.medicine_name, 'Some Rare Syrup')
+        self.assertEqual(req.generic_name, 'Dextromethorphan')
+        self.assertEqual(req.student_name, 'Alice')
+        self.assertEqual(req.student_id, '2102001')
+        self.assertEqual(req.quantity, 2)
+        self.assertEqual(req.urgency, 'urgent')
+        self.assertEqual(req.phone, '01700000000')
+        self.assertIsNone(req.user)
+        self.assertEqual(req.status, 'pending')
+
+    def test_post_matches_catalog_medicine_when_name_exists(self):
+        medicine = _make_medicine(name='Napa', strength='500mg', is_prescription=False)
+        response = self.client.post(reverse('pharmacy_request'), {
+            'medicine_name': 'napa',
+            'student_name': 'Bob',
+            'quantity': '1',
+            'phone': '01711111111',
+        })
+        self.assertRedirects(response, reverse('pharmacy_request'))
+        req = MedicineRequest.objects.get()
+        self.assertEqual(req.medicine, medicine)
+        self.assertEqual(req.medicine_name, 'napa')
+
+    def test_post_validates_required_fields(self):
+        response = self.client.post(reverse('pharmacy_request'), {
+            'medicine_name': '',
+            'quantity': '0',
+            'phone': '',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'which medicine you need')
+        self.assertContains(response, 'contact phone')
+        self.assertEqual(MedicineRequest.objects.count(), 0)
+
+    def test_authenticated_request_prefills_profile(self):
+        user = User.objects.create_user(username='req_user', password='x12345678')
+        StudentProfile.objects.create(user=user, student_id='2102999', department='CSE')
+        self.client.force_login(user)
+        response = self.client.post(reverse('pharmacy_request'), {
+            'medicine_name': 'Napa Extra',
+            'quantity': '1',
+            'phone': '01722222222',
+        })
+        self.assertRedirects(response, reverse('pharmacy_request'))
+        req = MedicineRequest.objects.get()
+        self.assertEqual(req.user, user)
+        self.assertEqual(req.student_id, '2102999')
+        self.assertEqual(req.student_name, 'req_user')
 
 
 class PharmacyPrescriptionUploadTest(TestCase):

@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Online Pharmacy — Niter Hub</title>
     <meta name="description" content="Order medicines from the campus medical center — upload your prescription for Rx items and track delivery.">
 
@@ -54,6 +54,9 @@
                 <i class="fa-solid fa-magnifying-glass"></i>
                 <input type="text" id="pharm-search" placeholder="Search medicines, generics, or categories..." aria-label="Search medicines">
             </div>
+            <a href="{% url 'pharmacy_request' %}" class="pharm-request-btn" aria-label="Request any medicine">
+                <i class="fa-solid fa-truck-medical"></i> Request a Medicine
+            </a>
             <button type="button" class="pharm-rx-btn" id="rx-open-btn">
                 <i class="fa-solid fa-file-prescription"></i> Upload Prescription
             </button>
@@ -328,10 +331,12 @@
             return '<span class="stock-badge stock-in">In Stock</span>';
         }
 
+        var DEFAULT_MED_IMG = '/static/images/pharmacy/default_medicine.png';
+
         function cardImage(m) {
             if (!m.image) return '';
             return '<div class="med-img">' +
-                '<img src="' + esc(m.image) + '" alt="' + esc(m.name) + '" loading="lazy" onerror="this.closest(\'.med-img\').classList.add(\'no-img\')">' +
+                '<img src="' + esc(m.image) + '" alt="' + esc(m.name) + '" loading="lazy" onerror="this.onerror=null; this.src=\'' + DEFAULT_MED_IMG + '\';">' +
                 '<span class="med-img-fallback"><i class="fa-solid fa-pills"></i></span>' +
             '</div>';
         }
@@ -456,7 +461,7 @@
                     '<p class="modal-note">No in-stock ' + esc(item.generic) + ' alternatives right now — check back soon.</p></div>';
             }
             const imgHtml = item.image
-                ? '<div class="pd-img"><img src="' + esc(item.image) + '" alt="' + esc(item.name) + '" onerror="this.closest(\'.pd-img\').classList.add(\'no-img\')"><span class="pd-img-fallback"><i class="fa-solid fa-pills"></i></span></div>'
+                ? '<div class="pd-img"><img src="' + esc(item.image) + '" alt="' + esc(item.name) + '" onerror="this.onerror=null; this.src=\'' + DEFAULT_MED_IMG + '\';"><span class="pd-img-fallback"><i class="fa-solid fa-pills"></i></span></div>'
                 : '';
             const actionBtns = outOfStock
                 ? '<button type="button" class="btn-primary pd-request" data-id="' + item.id + '"><i class="fa-solid fa-truck-medical"></i> Request Stock</button>'
