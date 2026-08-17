@@ -57,6 +57,13 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <!-- Stop Siren action on the emergency notification — a plain
+             receiver (no UI), registered so the notification action can
+             stop the looping siren without opening the app. -->
+        <receiver
+            android:name=".SirenControlReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

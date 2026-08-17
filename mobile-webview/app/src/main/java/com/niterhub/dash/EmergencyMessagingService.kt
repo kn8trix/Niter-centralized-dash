@@ -1,7 +1,6 @@
 package com.niterhub.dash
 
 import android.content.Context
-import android.content.Intent
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 
@@ -98,11 +97,7 @@ class EmergencyMessagingService : FirebaseMessagingService() {
         }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP_SIREN) {
-            NotificationHelper.stopSiren(this)
-            return START_NOT_STICKY
-        }
-        return super.onStartCommand(intent, flags, startId)
-    }
+    // NOTE: ``onStartCommand`` is NOT overridden here — firebase-messaging
+    // 24.x makes it final on ``EnhancedIntentService``. The notification's
+    // Stop Siren action routes through ``SirenControlReceiver`` instead.
 }

@@ -111,9 +111,9 @@ object NotificationHelper {
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val stopSirenIntent = PendingIntent.getService(
+        val stopSirenIntent = PendingIntent.getBroadcast(
             context, 1,
-            Intent(context, EmergencyMessagingService::class.java)
+            Intent(context, SirenControlReceiver::class.java)
                 .setAction(EmergencyMessagingService.ACTION_STOP_SIREN),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -133,7 +133,7 @@ object NotificationHelper {
             )
 
         val fallback = (context.getDrawable(R.drawable.emergency_banner) as? BitmapDrawable)?.bitmap
-        val url = bannerUrl?.trim().takeIf { it.isNotEmpty() }
+        val url = bannerUrl?.trim()?.takeIf { it.isNotEmpty() }
 
         val notify: (Bitmap?) -> Unit = { picture ->
             builder.setStyle(
