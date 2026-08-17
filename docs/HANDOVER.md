@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 126 | Repo branding & README — banner asset, feature/comprehensive README from the hackathon doc | *(see §126)* |
 | 125 | Android Studio Gradle sync fix — remove open-app-as-root artifacts, align root project name, README troubleshooting | *(see §125)* |
 | 124 | Dedicated Medical Staff role & portal — separate medical dashboards, medical/medical123 account, medical links removed from admin sidebar | *(see §124)* |
 | 123 | Pharmacy contrast + product images, native-app-only hero redirect, "Request any medicine" page, topbar Pharmacy pill removal, Android compile fixes, mobile WebView polish | *(see §123)* |
@@ -7216,3 +7217,31 @@ model on the wrong project.
 - `./gradlew :prepareKotlinBuildScriptModel --dry-run` → BUILD SUCCESSFUL —
   the IDE-sync task resolves on the root project, confirming the sync path
   Android Studio uses is intact.
+
+## 126. Repo Branding & README — Banner Asset + Comprehensive README
+
+### Why
+The repo had a minimal 3-line README (just demo accounts). The request:
+build the README from the project's hackathon documentation PDF and make the
+repository presentable ("make the repo beautiful").
+
+### What changed
+- **`docs/assets/banner.png`** — generated 1280×420 branded banner using the
+  app's palette (charcoal `#27272a` gradient, warm beige `#e8e2d8` title,
+  cyan `#0284c7` accents), built with Pillow from the same branding as the
+  PWA icon.
+- **`README.md`** — full rewrite from the hackathon doc: hero header with
+  badges (Python/Django/PostgreSQL/Channels/Android/MIT), table of contents,
+  What-is / Problem / Solution sections, all 10 core feature groups, the
+  role-based access table (incl. the new `medical` role), accurate tech-stack
+  table, getting-started steps (clone → env → migrate → seed → run → test),
+  demo accounts table (now with `medical`/`medical123`), project tree,
+  mobile-app section pointing at `mobile-webview/`, API/realtime overview,
+  security list, roadmap, and documentation links.
+- **`docs/HANDOVER.md`** — changelog row §126.
+
+### Verified
+- All README links resolve (`docs/assets/banner.png`, `LICENSE`,
+  `mobile-webview/README.md`, `docs/HANDOVER.md`, `UNFINISHED.md`).
+- Seed commands referenced (`seed_demo_users`, `seed_pharmacy_catalog`)
+  exist in `core/management/commands/`.
