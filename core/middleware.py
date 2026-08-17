@@ -115,6 +115,17 @@ class RoleAccessMiddleware:
         if path.startswith('/dashboard/admin/'):
             if role != 'admin':
                 return redirect(role_home_path(role))
+        # Medical staff area (/medical/admin/*, /host/medical/* and the
+        # /dashboard/medical/* pharmacy admin) — medical staff + admins.
+        # Kept separate from the main admin area so the dedicated medical
+        # staff account (``medical`` role) never lands on /dashboard/admin/*.
+        # NOTE: the public/student ``/medical/`` booking page is NOT guarded
+        # here — only the staff-only sub-paths below.
+        elif (path.startswith('/medical/admin/')
+              or path.startswith('/host/')
+              or path.startswith('/dashboard/medical/')):
+            if role not in ('medical', 'admin'):
+                return redirect(role_home_path(role))
         # Club area (/dashboard/club/*) — club accounts (staff may preview as
         # club leads); students are bounced to their own dashboard.
         elif path.startswith('/dashboard/club/'):

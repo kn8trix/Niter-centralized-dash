@@ -577,6 +577,61 @@ class RoleRoutingTest(TestCase):
                 response = self.client.get(url)
                 self.assertEqual(response.status_code, 200)
 
+    def test_medical_staff_role_lands_on_medical_admin(self):
+        from django.contrib.auth.models import Group
+        from core.roles import MEDICAL_STAFF_GROUP, get_user_role
+
+        group, _ = Group.objects.get_or_create(name=MEDICAL_STAFF_GROUP)
+        self.medical = User.objects.create_user(
+            username='med_r', password='x12345678', is_staff=True,
+            first_name='Med', last_name='Doc',
+        )
+        self.medical.groups.add(group)
+        self.assertEqual(get_user_role(self.medical), 'medical')
+        self.client.force_login(self.medical)
+        response = self.client.get(reverse('dashboard'))
+        self.assertRedirects(response, reverse('medical_admin_dashboard'))
+
+    def test_medical_staff_can_open_medical_area(self):
+        from django.contrib.auth.models import Group
+        from core.roles import MEDICAL_STAFF_GROUP
+
+        group, _ = Group.objects.get_or_create(name=MEDICAL_STAFF_GROUP)
+        self.medical = User.objects.create_user(
+            username='med_r2', password='x12345678', is_staff=True,
+        )
+        self.medical.groups.add(group)
+        self.client.force_login(self.medical)
+        for url in (reverse('medical_admin_dashboard'), reverse('host:medical_host_dashboard'), reverse('medical_pharmacy')):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+
+    def test_medical_staff_blocked_from_main_admin_area(self):
+        from django.contrib.auth.models import Group
+        from core.roles import MEDICAL_STAFF_GROUP
+
+        group, _ = Group.objects.get_or_create(name=MEDICAL_STAFF_GROUP)
+        self.medical = User.objects.create_user(
+            username='med_r3', password='x12345678', is_staff=True,
+        )
+        self.medical.groups.add(group)
+        self.client.force_login(self.medical)
+        response = self.client.get(reverse('admin_dashboard'))
+        self.assertRedirects(response, reverse('medical_admin_dashboard'))
+
+    def test_student_blocked_from_medical_area(self):
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('medical_admin_dashboard'))
+        self.assertRedirects(response, reverse('student_dashboard'))
+
+    def test_superuser_can_still_open_medical_area(self):
+        # The main admin keeps full access to the medical area (no nav links
+        # in the admin sidebar, but the URL stays reachable for the admin).
+        self.client.force_login(self.superuser)
+        response = self.client.get(reverse('medical_admin_dashboard'))
+        self.assertEqual(response.status_code, 200)
+
     def test_club_manager_can_open_club_workspace(self):
         ClubAccount.objects.create(user=self.student, club=self.club, role='president')
         self.client.force_login(self.student)
@@ -11005,9 +11060,12 @@ class PharmacyAdminTest(TestCase):
     def test_admin_dashboard_requires_staff(self):
         response = self.client.get(reverse('medical_pharmacy'))
         self.assertEqual(response.status_code, 302)  # anonymous → login
+        # Authenticated students are bounced to their own dashboard by
+        # RoleAccessMiddleware (never a 403, never the admin area).
         self.client.login(username='plain_student', password='x12345678')
         response = self.client.get(reverse('medical_pharmacy'))
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('student_dashboard'), response.url)
 
     def test_admin_dashboard_renders_tabs(self):
         self._login_staff()

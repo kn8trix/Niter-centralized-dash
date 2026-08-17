@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 124 | Dedicated Medical Staff role & portal — separate medical dashboards, medical/medical123 account, medical links removed from admin sidebar | *(see §124)* |
 | 123 | Pharmacy contrast + product images, native-app-only hero redirect, "Request any medicine" page, topbar Pharmacy pill removal, Android compile fixes, mobile WebView polish | *(see §123)* |
 | 122 | Student Edition Android app — branded splash + launcher icons, persistent sessions, direct dashboard landing, native permissions, FCM push with picture banners, emergency siren (+ Gradle wrapper jar/scripts) | `25789af`, `9478115` |
 | 121 | Public pharmacy storefront — guest browsing/cart, hero button contrast fix, auto-seeded BD catalog | `29688ff` |
@@ -7119,6 +7120,66 @@ compile against firebase-messaging 24.1.0, and added mobile WebView polish.
   prefill for authenticated users.
 - `StudentPagesSmokeTest` / `UnifiedHeaderTest` PAGES and the ENDPOINTS
   registry now include `pharmacy_store` + `pharmacy_request`.
+- Tests run with `DATABASE_URL=sqlite:///db.sqlite3` overrides — the dev
+  `.env` carries a `SUPABASE_DB_URL` that would otherwise route the test
+  runner at the remote Postgres.
+
+## 124. Dedicated Medical Staff Role & Portal — Separate From the Main Admin
+
+### Why
+The medical dashboards (`/medical/admin/`, `/host/medical/`) were previously
+reached only through the main admin sidebar and gated by the generic staff
+flag, so the superuser `admin` was the de-facto "medical admin". The request:
+a **separate medical dashboard** with a **dedicated medical staff account**,
+and **no medical links in the main admin dashboard**.
+
+### What changed
+- **New `medical` role** (`core/roles.py`): a staff member holding the
+  `Medical Staff` Django group resolves to the `medical` role, which lands on
+  `/medical/admin/` (login redirect, `/dashboard/` dispatcher, native-app
+  hero redirect) and is **kept out of `/dashboard/admin/*`** by
+  `RoleAccessMiddleware`. Superusers always stay `admin` (full platform
+  access, including the medical URL if typed directly — just no nav link).
+- **Middleware guard** (`core/middleware.py`): `/medical/admin/*`, `/host/*`
+  and `/dashboard/medical/*` now require the `medical` or `admin` role —
+  students/club managers are bounced to their own dashboard instead of
+  reaching the staff views. The public `/medical/` student booking page is
+  **not** guarded (only `/medical/admin/` is).
+- **Dedicated account**: `seed_demo_users` now creates
+  `medical` / `medical123` (staff, not superuser) and adds it to the
+  `Medical Staff` group (idempotent, group backfilled for pre-existing
+  accounts).
+- **Admin sidebar cleanup** (`templates/admin/admin_base.html`): removed the
+  "Medical Admin" and "Host Portal" links from the Service Dashboards section.
+- **Medical portal shell** (`templates/host/host_base.html`): rebranded
+  "Host Portal" → "Medical Staff Portal", sidebar now lists the three real
+  destinations (Medical Admin Dashboard, Medical Dashboard, Pharmacy Admin)
+  and the profile card shows the signed-in user's name instead of a hardcoded
+  placeholder. Dead `#` links removed.
+
+### Demo credentials
+- Medical staff: **`medical` / `medical123`** → lands on `/medical/admin/`
+- Main admin (unchanged): **`admin` / `admin123`** → `/dashboard/admin/`
+- Student (unchanged): **`student` / `student123`**
+
+### Files touched
+- `core/roles.py` — `ROLE_MEDICAL`, `MEDICAL_STAFF_GROUP`, `is_medical_staff()`,
+  role resolution precedence (superuser → admin, medical group staff → medical)
+- `core/middleware.py` — medical-area guard
+- `core/context_processors.py` — `medical_pharmacy` endpoint for the sidebar
+- `core/management/commands/seed_demo_users.py` — medical account + group
+- `templates/admin/admin_base.html` — medical links removed
+- `templates/host/host_base.html` — Medical Staff Portal branding/sidebar
+- `core/tests.py`, `host/tests.py` — medical-role tests; student access
+  expectations updated (middleware bounces instead of 403/login-loop)
+
+### Verified
+- Full suite: **1012 tests pass** (RoleRoutingTest medical-role cases, host
+  dashboard tests, pharmacy admin, toast/profile/medical booking pages).
+- Headless-Chrome check: `medical` login lands on `/medical/admin/`, the
+  portal sidebar renders "Medical Staff Portal" + the three links, medical
+  user is bounced from `/dashboard/admin/`, and the admin sidebar no longer
+  contains "Medical Admin" / "Host Portal" links.
 - Tests run with `DATABASE_URL=sqlite:///db.sqlite3` overrides — the dev
   `.env` carries a `SUPABASE_DB_URL` that would otherwise route the test
   runner at the remote Postgres.

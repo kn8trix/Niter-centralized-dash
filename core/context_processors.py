@@ -204,6 +204,7 @@ def endpoints(request):
 
             # Host portal pages
             'medical_admin_dashboard': reverse('medical_admin_dashboard'),
+            'medical_pharmacy': reverse('medical_pharmacy'),
             'host_index': reverse('host:index'),
             'host_medical_dashboard': reverse('host:medical_host_dashboard'),
 

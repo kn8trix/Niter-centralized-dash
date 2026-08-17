@@ -38,10 +38,13 @@ class MedicalAdminDashboardTests(TestCase):
         self.assertIn(reverse('login'), response.url)
 
     def test_medical_admin_dashboard_requires_staff(self):
+        # Students are bounced to their own dashboard by RoleAccessMiddleware
+        # (rather than the login page) so they never loop between login and
+        # the protected page.
         self.client.login(username='S1001', password='student123')
         response = self.client.get(reverse('medical_admin_dashboard'))
         self.assertEqual(response.status_code, 302)
-        self.assertIn(reverse('login'), response.url)
+        self.assertIn(reverse('student_dashboard'), response.url)
 
     def test_medical_host_dashboard_requires_staff(self):
         response = self.client.get(reverse('host:medical_host_dashboard'))
