@@ -9,6 +9,11 @@
          uploads, reports attachments), notifications (FCM push), and the
          emergency siren (VIBRATE + WAKE_LOCK for a high-priority alert). -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- CAMERA implies the android.hardware.camera feature — declare it as
+         NOT required so devices without a camera can still install the app. -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"

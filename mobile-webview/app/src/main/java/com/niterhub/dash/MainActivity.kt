@@ -159,6 +159,8 @@ class MainActivity : AppCompatActivity() {
         settings.javaScriptCanOpenWindowsAutomatically = true
         settings.loadWithOverviewMode = true
         settings.useWideViewPort = true
+        // Inline media (e.g. embedded YouTube lectures) plays without a tap.
+        settings.mediaPlaybackRequiresUserGesture = false
         // The site is served entirely over HTTPS — never allow http subresources.
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         // Defense in depth: file:// pages must never reach other origins/APIs.
@@ -250,12 +252,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Rewrites the embedded-WebView User-Agent into a normal mobile-Chrome UA.
+     * Rewrites the embedded-WebView User-Agent into a normal mobile-Chrome UA
+     * tagged with the app's own marker.
      *
      * Google's OAuth consent page refuses sign-in from WebViews whose UA
      * contains the "Version/4.0" token. We strip that token and normalise the
      * Chrome token so the request looks like stock Chrome for Android — the
      * device-specific OS/model tokens from the original UA are preserved.
+     *
+     * The trailing ``NiterApp/<version>`` token is how the server recognises
+     * this request as coming from the native wrapper (``public_home`` bounces
+     * authenticated native-app requests straight to the role dashboard, while
+     * ordinary browsers keep the public hero page).
      */
     private fun chromeLikeUserAgent(defaultUa: String): String {
         var ua = defaultUa.replace("Version/4.0 ", "").replace("Version/4.0", "")
@@ -266,8 +274,13 @@ class MainActivity : AppCompatActivity() {
         } else {
             "$ua Chrome/125.0.0.0 Mobile Safari/537.36"
         }
-        return ua
+        return "$ua NiterApp/$APP_VERSION"
     }
+
+    /** App version used to tag the User-Agent for server-side native-app detection. */
+    private val APP_VERSION: String
+        get() = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }
+            .getOrNull() ?: "2.0"
 
     /**
      * Decides where a navigation goes.

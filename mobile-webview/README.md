@@ -14,14 +14,14 @@ siren** that breaks through silent mode.
 | Branded splash | `SplashActivity` — charcoal screen with the campus-hub logo + "NITER Campus Hub — Student Edition", then a hand-off to the WebView shell |
 | Custom app icon | PNG `ic_launcher` / `ic_launcher_round` at every mipmap density (mdpi→xxxhdpi) — charcoal rounded square/circle with a beige "N" monogram (regenerate with `scripts/generate_assets.py`) |
 | Persistent login | The 1-year Django session cookie (`SESSION_COOKIE_AGE = 31536000`) is stored by `CookieManager`, so students stay signed in between launches until they tap **Log Out** |
-| Direct dashboard landing | `/` redirects authenticated sessions straight to `/dashboard/student/`; guests get the hero + Login |
+| Direct dashboard landing | The app's UA carries a `NiterApp/<version>` marker; the server (`public_home`) bounces **native-app-only** authenticated sessions straight to the role dashboard, while desktop/mobile browsers keep the public hero page |
 | Student-only shell | Staff/admin URLs (`/builder/`, `/admin/`, `/dashboard/admin/`, `/dashboard/club/`, `/dashboard/medical/`, `/medical/admin/`, `/host/`) are blocked inside the wrapper and bounced to the student dashboard — defense in depth on top of the server-side RBAC |
 | Native permissions | INTERNET, ACCESS_NETWORK_STATE, CAMERA, READ_MEDIA_IMAGES, READ/WRITE_EXTERNAL_STORAGE (legacy caps), POST_NOTIFICATIONS (runtime-requested on Android 13+), VIBRATE, WAKE_LOCK |
 | FCM push w/ picture banners | `EmergencyMessagingService` subscribes to the `emergency_alerts` topic; pushes render as BigPicture notifications (push `banner` URL, or the bundled `emergency_banner.png`) |
 | Emergency siren controls | High-importance `emergency_alerts` channel plays `res/raw/emergency_siren.wav` + vibrates; `play_alarm_sound` data loops the siren until dismissed via the **Stop Siren** notification action or by opening the app |
 | Full-screen web experience | `Theme.AppCompat.NoActionBar` + `android:windowFullscreen` + `WindowInsetsControllerCompat` hides the ActionBar, status bar and navigation bar |
 | JavaScript + storage | `setJavaScriptEnabled(true)`, `setDomStorageEnabled(true)`, `setDatabaseEnabled(true)`, `setAllowFileAccess(true)` (see `configureWebView()`) |
-| Google OAuth works | `chromeLikeUserAgent()` strips the `Version/4.0` marker and normalises the Chrome token, so Google's "disallowed_useragent" block never triggers |
+| Google OAuth works | `chromeLikeUserAgent()` strips the `Version/4.0` marker, normalises the Chrome token (so Google's "disallowed_useragent" block never triggers) and appends `NiterApp/<version>` so the server can detect the native wrapper |
 | External links | `shouldOverrideUrlLoading` keeps `http`/`https` inside the WebView and hands `mailto:`/`tel:`/`intent:`/`whatsapp://` to external apps |
 | Hardware BACK | `OnBackPressedCallback` walks `WebView` history first, exits only at the root page |
 | File uploads | `WebChromeClient.onShowFileChooser` → system picker (Notes Engine, Reports attachments, profile photos) |
