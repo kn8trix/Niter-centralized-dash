@@ -125,6 +125,25 @@ cd mobile-webview
      create a keystore, then choose `release`. The signed APK is written to
      `app/build/outputs/apk/release/app-release.apk`.
 
+## Release signing (keystore)
+
+The `release` build type is pre-wired to sign with a keystore when the
+`keystore.properties` file exists at the project root (`mobile-webview/`):
+
+```properties
+storeFile=keystore/release.jks
+storePassword=…
+keyAlias=…
+keyPassword=…
+```
+
+Both `keystore/` and `keystore.properties` are **gitignored** — they hold the
+app's identity and must never be committed or lost. Keep a backup: losing the
+keystore means existing installs can no longer be updated in place.
+
+Without the file, `assembleRelease` still succeeds but produces an **unsigned**
+APK that can't be installed.
+
 ## Changing the target URL
 
 Edit the `startUrl` constant at the top of `MainActivity.kt`:

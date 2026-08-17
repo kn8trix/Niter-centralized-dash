@@ -14,3 +14,6 @@ media/
 # Collected static assets (output of `manage.py collectstatic`)
 staticfiles/
 !staticfiles/.gitkeep
+
+# Android APK build artifacts (mobile-webview/)
+*.apk
