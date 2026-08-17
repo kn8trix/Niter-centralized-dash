@@ -21,5 +21,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "NiterDash"
+rootProject.name = "NiterCentralizedDash"
 include(":app")

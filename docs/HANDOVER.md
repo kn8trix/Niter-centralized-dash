@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 125 | Android Studio Gradle sync fix — remove open-app-as-root artifacts, align root project name, README troubleshooting | *(see §125)* |
 | 124 | Dedicated Medical Staff role & portal — separate medical dashboards, medical/medical123 account, medical links removed from admin sidebar | *(see §124)* |
 | 123 | Pharmacy contrast + product images, native-app-only hero redirect, "Request any medicine" page, topbar Pharmacy pill removal, Android compile fixes, mobile WebView polish | *(see §123)* |
 | 122 | Student Edition Android app — branded splash + launcher icons, persistent sessions, direct dashboard landing, native permissions, FCM push with picture banners, emergency siren (+ Gradle wrapper jar/scripts) | `25789af`, `9478115` |
@@ -7183,3 +7184,35 @@ and **no medical links in the main admin dashboard**.
 - Tests run with `DATABASE_URL=sqlite:///db.sqlite3` overrides — the dev
   `.env` carries a `SUPABASE_DB_URL` that would otherwise route the test
   runner at the remote Postgres.
+
+## 125. Android Studio Gradle Sync Fix — `prepareKotlinBuildScriptModel` Not Found
+
+### Why
+Android Studio failed Gradle sync with
+`Task 'prepareKotlinBuildScriptModel' not found in project ':app'`. The
+Gradle root structure itself was already correct (`mobile-webview/` has
+`settings.gradle.kts` declaring `include(":app")`); the real cause was a
+**stray `.idea` folder inside `mobile-webview/app/`** (plus a stray
+`app/local.properties`), left over from opening the `app/` sub-module as a
+project. Android Studio detects a project root by the `.idea` directory, so
+it treated `app/` as the root and its sync asked for the Kotlin build-script
+model on the wrong project.
+
+### What changed
+- **Removed the open-app-as-root artifacts** — `app/.idea/` and
+  `app/local.properties` deleted (both gitignored, nothing tracked touched).
+- **Aligned `rootProject.name`** in `mobile-webview/settings.gradle.kts` from
+  `NiterDash` → `NiterCentralizedDash` (matches the requested spec). The
+  file already had the required `pluginManagement` (google/mavenCentral/
+  gradlePluginPortal) + `dependencyResolutionManagement`
+  (google/mavenCentral/jitpack.io) + `include(":app")` structure.
+- **README troubleshooting section** (`mobile-webview/README.md`) under
+  "Open & build the APK": always open the `mobile-webview` root folder, never
+  `app/`; recovery steps = close project → delete any `app/.idea` →
+  Invalidate Caches & Restart → re-sync from the root.
+
+### Verified
+- `./gradlew assembleDebug` → BUILD SUCCESSFUL (APK builds).
+- `./gradlew :prepareKotlinBuildScriptModel --dry-run` → BUILD SUCCESSFUL —
+  the IDE-sync task resolves on the root project, confirming the sync path
+  Android Studio uses is intact.

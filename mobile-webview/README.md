@@ -87,12 +87,26 @@ push on:
 1. **Open the project**
    - Android Studio → **File → Open…** → select the `mobile-webview` folder
      (the one containing `settings.gradle.kts`) → **OK**.
+   - ⚠️ **Always open the `mobile-webview` root folder — never `app/`.**
+     Opening `app/` directly makes Android Studio treat it as its own project
+     root (it looks for a `.idea` folder), which breaks Gradle sync with
+     ``Task 'prepareKotlinBuildScriptModel' not found in project ':app'``.
    - If asked whether to trust the project, choose **Trust Project**.
 2. **Let Gradle sync** — Android Studio downloads the Gradle 8.11.1 wrapper and
    all dependencies automatically (the wrapper JAR and `gradlew` scripts are
    committed, so this works out of the box).
    - If the SDK isn't found, set the SDK path via
      **File → Project Structure → SDK Location**.
+
+> **Troubleshooting: ``Task 'prepareKotlinBuildScriptModel' not found``**
+> This happens when the project was opened at `app/` instead of the root.
+> Fix it by:
+> 1. **File → Close Project**, then re-open the `mobile-webview` root folder.
+> 2. If a stale `.idea` was created inside `app/`, delete it first
+>    (`rm -rf app/.idea app/local.properties`) — it makes Android Studio
+>    mistake the module for a standalone project.
+> 3. **File → Invalidate Caches… → Invalidate and Restart**, then let Gradle
+>    re-sync from the root.
 
 **Command-line build** (JDK 17+ required):
 
