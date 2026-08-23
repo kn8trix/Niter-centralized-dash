@@ -62,7 +62,7 @@
                         </svg>
                         <div class="ring-center">
                             <div class="ring-claimed"><span id="ring-claimed">{{ total_claimed_today }}</span><small> / <span id="ring-total">{{ total_capacity }}</span></small></div>
-                            <span class="ring-remaining" id="ring-remaining">{{ total_capacity|add:"-"|add:total_claimed_today }} remaining</span>
+                            <span class="ring-remaining" id="ring-remaining">{{ total_remaining }} remaining</span>
                         </div>
                     </div>
                     <p class="ring-caption">Slots claimed today. Claim early — once all slots are gone, the kitchen closes for the day.</p>
@@ -202,14 +202,14 @@
             <div class="stat-card">
                 <span class="stat-icon"><i class="fa-solid fa-utensils"></i></span>
                 <div>
-                    <div class="stat-value" id="stat-supply">{{ total_capacity|add:"-"|add:total_claimed_today }}</div>
+                    <div class="stat-value" id="stat-supply">{{ total_remaining }}</div>
                     <div class="stat-label">Remaining Supply</div>
                 </div>
             </div>
             <div class="stat-card">
                 <span class="stat-icon"><i class="fa-solid fa-hourglass-half"></i></span>
                 <div>
-                    <div class="stat-value warning" id="stat-slots">{{ total_capacity|add:"-"|add:total_claimed_today }}</div>
+                    <div class="stat-value warning" id="stat-slots">{{ total_remaining }}</div>
                     <div class="stat-label">Slots Remaining</div>
                 </div>
             </div>

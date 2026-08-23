@@ -46,6 +46,14 @@ bleach>=6.0,<7.0
 pypdf>=4.0,<6.0
 python-docx>=1.1,<2.0
 
+# Vector DB for the RAG pipeline (Study Corner + Research AI only). Embedded
+# ChromaDB persistent store — see services/vector_store.py. Optional: the
+# adapter lazily imports chromadb and no-ops when it is missing, so the app
+# still runs without it (indexing/retrieval simply do nothing). chromadb pulls
+# numpy. Embeddings use a hosted model when EMBEDDINGS_API_KEY is set, else the
+# dependency-free offline fallback in services/embeddings.py.
+chromadb>=0.5,<0.6
+
 # QR Code Email Dispatch — server-side class-QR PNG generation (qrcode +
 # its Pillow image backend) for the Attendance module's "email the QR code to
 # the course teacher" and attendance-report emails.

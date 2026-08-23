@@ -28,7 +28,10 @@ DUMMY_KEY = 'dummy_key'
 DEFAULT_CATEGORY = 'technology'
 DEFAULT_PAGE_SIZE = 12
 YOUTUBE_MAX_RESULTS = 4
-TIMEOUT_SECONDS = 5
+# Per-request HTTP timeout for the live NewsAPI / YouTube calls. Kept low (3s)
+# so a slow or unreachable upstream falls back to sample data quickly instead of
+# stalling the page; the results are cached for 15 min in the views layer.
+TIMEOUT_SECONDS = 3
 
 TOP_HEADLINES_URL = 'https://newsapi.org/v2/top-headlines'
 EVERYTHING_URL = 'https://newsapi.org/v2/everything'

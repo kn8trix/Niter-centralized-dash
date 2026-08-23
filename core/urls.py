@@ -53,6 +53,10 @@ urlpatterns = [
     # Study Assistant. The old /academic-notes/ URL stays as a permanent
     # redirect so bookmarks/service-worker caches keep working.
     path('study-corner/', views.study_corner, name='study_corner'),
+    path('study-corner/upload/', views.study_material_upload, name='study_material_upload'),
+    # Same-origin inline file server for the PDF preview box (overrides the
+    # global X-Frame-Options: DENY for this response only — see the view).
+    path('study-corner/file/<int:material_id>/', views.study_material_file, name='study_material_file'),
     path('academic-notes/', RedirectView.as_view(pattern_name='study_corner', permanent=True), name='academic_notes'),
     path('notices/', views.notices, name='notices'),
     path('news/', views.news_page, name='news'),

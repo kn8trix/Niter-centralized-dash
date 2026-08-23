@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 131 | Meals remaining-count fix + news response caching; Study Corner PDF preview box, Google Drive removal, direct local/DB uploads; embedded ChromaDB vector store + RAG retrieval wired into Study Corner & Research AI | *(see §131)* |
 | 130 | Navbar underline fix, modal button contrast (Rx Upload / Checkout), mobile WebView responsiveness for /news/ /attendance/ /pharmacy/ | *(see §130)* |
 | 129 | NCC club-manager demo account — `NCC`/`ncc@gmail.com` linked to the NITER Computer Club (active ClubAccount, full manager capabilities) + README/handover updates | *(see §129)* |
 | 128 | README solution section — official project description (modular hub + mobile app, sub-dashboards, Website Builder, Emergency Siren & Broadcast) | *(see §128)* |
@@ -7362,3 +7363,129 @@ Fixes the top navigation across every shared-topbar page and the new
   4-col at 1280px, attendance 1-col at 390px / 2-col at 1280px, pharmacy
   Rx/checkout buttons at the specified colors (disabled state confirmed).
 - Full suite: **1013 tests OK**.
+
+## 131. Meals/News Loading Fixes · Study Corner PDF Preview + Local Uploads · Vector DB (RAG)
+
+Three requests against localhost behaviour: (1) `/meals/` and `/news/` loading
+problems, (2) a working Study Corner document experience (PDF preview + real
+uploads, no Google Drive), and (3) an embedded vector database (ChromaDB) with
+full RAG retrieval, **restricted to the Study Corner and Research AI
+assistants**.
+
+Everything vector-related is offline-friendly: `chromadb` is imported lazily
+and every vector operation logs once then no-ops when it is unavailable, so
+uploads and chat never break. Embeddings use a hosted model when
+`EMBEDDINGS_API_KEY` is set, otherwise a deterministic, dependency-free
+fallback in `services/embeddings.py`.
+
+### Task 1 — `/meals/` + `/news/`
+- **`templates/meals.html`** — the "remaining" figure rendered the literal
+  string `200-15` because it (mis)used the `add` filter as subtraction
+  (`{{ total_capacity|add:"-"|add:total_claimed_today }}`). All three spots
+  (ring "X remaining", "Remaining Supply", "Slots Remaining") now render a
+  view-computed `{{ total_remaining }}`.
+- **`core/views.py::meal_dashboard`** — computes `total_capacity`,
+  `total_claimed_today`, a per-meal `remaining` map, and
+  `total_remaining = max(total_capacity - total_claimed_today, 0)`; added to
+  both the template context and the JSON state. The claimed-today aggregate and
+  the authenticated subscription/ticket lookups are wrapped in `try/except`
+  that degrades to zeros + an empty ticket list (the requested fallback state).
+- **`core/views.py::news_page`** (+ the student dashboard and admin overview
+  call sites) — the two live API calls now go through
+  `cache.get_or_set('news:global' / 'news:videos', …, 900)` (15-min TTL), so
+  only the first load pays the latency and every subsequent load is instant.
+  Fallback behaviour is unchanged.
+- **`core/news_service.py`** — `TIMEOUT_SECONDS` 5 → 3 so a cold/offline load
+  degrades to sample data faster (worst case ~6 s instead of ~10 s).
+
+> Note: no hard 500/hang was reproducible on `/meals/` — its only visible
+> defect was the `200-15` remaining count. The `try/except` was added as
+> belt-and-suspenders per the "add fallback state" request.
+
+### Task 2 — Study Corner: PDF preview, Drive removal, local uploads
+(all UI changes confined to `templates/academic/study_corner.html`)
+- **PDF preview box** — a `#doc-preview` pane embeds the selected material in an
+  `<iframe>`; PDFs render inline, non-PDF files show a download affordance, and
+  the newest material is selected on load. Doc cards are now clickable and
+  keyboard-accessible (`data-file-view` / `data-file-url` / `data-file-type`).
+- **Google Drive removed from this page** — the `{% elif material.drive_view_link %}`
+  card branch and the placeholder "connect Google Drive" upload toast are gone.
+  No shared Drive code (google_service, Notes Engine, Clubs, Settings) touched.
+- **Direct local/DB upload** — the upload button (auth-only) reveals a real
+  `multipart/form-data` form posting to a new view; a `fetch()` handler submits
+  it and reloads on success. Backed by:
+  - `core/forms.py::CourseMaterialForm` — `title` / `course` / `file`, validates
+    extension (`.pdf/.docx/.pptx`) and size (≤10 MB).
+  - `core/views.py::study_material_upload` (`@login_required`, POST) — saves to
+    the shared `CourseMaterial` catalog, sets `file_type` from the extension,
+    enqueues indexing, returns JSON for the fetch path.
+  - `core/views.py::study_material_file` (`@xframe_options_sameorigin`) +
+    `core/urls.py` route `study-corner/file/<id>/` — serves the file inline so
+    the iframe can preview it (the site-wide `X-Frame-Options: DENY` is
+    overridden to SAMEORIGIN on this one response only, not globally).
+
+### Task 3 — Vector DB (ChromaDB) + RAG, restricted to Study Corner & Research AI
+- **New `services/` adapters** (mirror the `openrouter.py` / `parser.py` ethos):
+  - `services/chunking.py` — `chunk_text(text, size=1000, overlap=150)`,
+    dependency-free.
+  - `services/embeddings.py` — `embed_text` / `embed_texts` → 384-dim vectors
+    (hosted model when configured, deterministic L2-normalized offline fallback
+    otherwise).
+  - `services/vector_store.py` — embedded ChromaDB `PersistentClient` with
+    **exactly two collections** (`study_corner`, `research_ai`; any other name
+    raises `ValueError`). `index` / `query` / `delete`; cosine space; our own
+    embeddings passed in (no ONNX download); idempotent re-index; owner filter
+    for per-user Research AI. Lazy import + no-op on failure; chromadb telemetry
+    logger silenced (0.5.x posthog noise).
+- **`core/models.py::VectorDocument`** (+ migration
+  `0047_vectordocument_and_more`) — tracks module / source / owner / status /
+  chunk_count / indexed_at with a per-source uniqueness constraint; gives
+  idempotency and admin visibility.
+- **`core/tasks.py`** — `@db_task()` `index_course_material(material_id)` and
+  `index_research_document(owner_id, source_id, text, title)`; self-contained
+  with internal `try/except` (never re-raise), run inline in dev (Huey immediate
+  mode) and on the worker in prod.
+- **Auto-index on upload** — `study_material_upload` enqueues
+  `index_course_material`; Research AI enqueues `index_research_document`
+  (owner-scoped) for the attached document.
+- **Retrieval wired into answers (RAG):**
+  - `study_chat` (`/api/study/chat/`) — retrieves top-k from the shared
+    `study_corner` collection and injects the excerpts into the system prompt,
+    framed as untrusted reference data (prompt-injection defense), truncated to
+    ~6 000 chars.
+  - `research_query` — retrieves top-k from `research_ai` scoped to
+    `owner=request.user.id` (retrieval *before* indexing to avoid duplicating
+    the current turn), combines it with the freshly-extracted document text, and
+    passes the richer context to `build_system_prompt`.
+- **Config** — `config/settings.py` gains `VECTOR_STORE_BACKEND`,
+  `VECTOR_STORE_PATH`, `EMBEDDINGS_API_KEY` / `EMBEDDINGS_MODEL`,
+  `VECTOR_INDEXING_ENABLED`; the duplicate `cms_system_blocks` context-processor
+  registration was removed (it ran the same `EditablePage` query twice per
+  request). `vector_store/` added to `.gitignore`; `requirements.txt` adds
+  `chromadb>=0.5,<0.6` (installed & tested: 0.5.23).
+
+### Notes
+- Offline embeddings are low-quality by design (deterministic hashing/TF
+  fallback) — fine for wiring and keys-absent dev; set `EMBEDDINGS_API_KEY` for
+  production-grade retrieval (a one-file swap in `services/embeddings.py`).
+- Chroma is per-instance on the local path; multi-worker prod wants a shared
+  volume or a client/server Chroma — the adapter isolates that choice.
+- **Dependency hygiene:** removed two spurious, never-committed lines from
+  `requirements.txt` — `chromadb==1.5.9` (conflicts with the tested `<0.6` pin)
+  and `xberg==1.0.14` (an unused compiled "document intelligence" package
+  referenced nowhere in the code, installed separately from the vector-DB
+  work). `xberg` remains installed in the local venv only; recommend
+  `pip uninstall xberg`.
+
+### Verified
+- `manage.py check` clean.
+- Django-shell sanity check of the full pipeline: chunk → embed (384-dim, L2
+  norm 1.0) → index → query round-trips the indexed chunk; the module
+  allow-list rejects disallowed names; `is_available()` True with chromadb
+  0.5.23; offline embedding fallback active (`api_enabled=False`).
+- Core suite on SQLite (`SUPABASE_DB_URL= DATABASE_URL= TESTING=1 manage.py
+  test core`): **965 tests OK** (0 failures). Three `GlobalNewsDashboardTest`
+  cases initially failed because the new news cache leaked mocked payloads
+  across test methods (LocMemCache is not reset between tests); fixed by
+  bypassing the cache under the test runner (same `_is_test_run()` gate the
+  network already uses), leaving production caching active.

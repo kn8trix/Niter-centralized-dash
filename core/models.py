@@ -665,6 +665,80 @@ class CourseMaterial(models.Model):
         return self.title
 
 
+class VectorDocument(models.Model):
+    """Tracking row for a document indexed into the RAG vector store.
+
+    One row per indexed source — a Study Corner ``CourseMaterial`` or a Research
+    AI reference upload. It gives idempotency, admin visibility into what has
+    been embedded, and a handle for cleanup. The vectors themselves live in
+    ChromaDB (``services/vector_store.py``); this row only tracks the status and
+    metadata of that indexing job. Restricted to the two allowed modules.
+    """
+
+    MODULE_STUDY_CORNER = 'study_corner'
+    MODULE_RESEARCH_AI = 'research_ai'
+    MODULE_CHOICES = [
+        (MODULE_STUDY_CORNER, 'Study Corner'),
+        (MODULE_RESEARCH_AI, 'Research AI'),
+    ]
+
+    STATUS_PENDING = 'pending'
+    STATUS_INDEXED = 'indexed'
+    STATUS_FAILED = 'failed'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_INDEXED, 'Indexed'),
+        (STATUS_FAILED, 'Failed'),
+    ]
+
+    module = models.CharField(max_length=20, choices=MODULE_CHOICES, db_index=True)
+    source_type = models.CharField(
+        max_length=40,
+        help_text='Origin kind, e.g. "course_material" or "research_upload".',
+    )
+    source_id = models.CharField(
+        max_length=64,
+        help_text='Identifier of the source within its module (stringified).',
+    )
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='vector_documents',
+        help_text=(
+            'Owning user for per-user scoping (Research AI); null when the '
+            'document is shared (Study Corner).'
+        ),
+    )
+    title = models.CharField(max_length=255, blank=True, default='')
+    status = models.CharField(
+        max_length=12,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+        db_index=True,
+    )
+    chunk_count = models.PositiveIntegerField(default=0)
+    error_message = models.CharField(max_length=255, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    indexed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['module', 'source_id']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['module', 'source_type', 'source_id'],
+                name='uniq_vector_document_source',
+            ),
+        ]
+
+    def __str__(self):
+        return '%s/%s (%s)' % (self.module, self.source_id, self.status)
+
+
 class MealSubscription(models.Model):
     """A user's active monthly meal plan entitlement.
 

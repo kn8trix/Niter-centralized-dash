@@ -11,6 +11,8 @@ db.sqlite3
 server.log
 daphne.log
 media/
+# Embedded ChromaDB vector store (RAG index — rebuildable from uploads)
+vector_store/
 # Collected static assets (output of `manage.py collectstatic`)
 staticfiles/
 !staticfiles/.gitkeep

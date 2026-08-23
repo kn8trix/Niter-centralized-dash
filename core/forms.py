@@ -12,7 +12,7 @@ fallback, published/draft flag, and the standard event fields.
 from django import forms
 from django.contrib.auth.models import User
 
-from .models import ClubEvent, StudentProfile
+from .models import ClubEvent, Course, CourseMaterial, StudentProfile
 
 
 class SignUpForm(forms.Form):
@@ -119,3 +119,45 @@ class ClubEventForm(forms.ModelForm):
             'capacity': forms.NumberInput(attrs={'min': 1, 'placeholder': 'e.g. 100'}),
             'banner_url': forms.URLInput(attrs={'placeholder': 'https://…/poster.jpg (optional)'}),
         }
+
+
+class CourseMaterialForm(forms.ModelForm):
+    """Upload a course document (PDF/DOCX/PPTX) to the Study Corner drive.
+
+    Direct local/DB upload — the file is stored under ``MEDIA_ROOT`` via the
+    model's ``FileField`` (no Google Drive). Mirrors ``ClubEventForm`` (a
+    ModelForm carrying a file field); the view triggers vector indexing after a
+    successful save.
+    """
+
+    ALLOWED_EXTENSIONS = ('.pdf', '.docx', '.pptx')
+    MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+    class Meta:
+        model = CourseMaterial
+        fields = ['course', 'title', 'file']
+        widgets = {
+            'title': forms.TextInput(
+                attrs={'placeholder': 'e.g. Week 3 — Thermodynamics notes'}
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # A file is mandatory for a direct upload (the model field is optional
+        # so legacy Drive-linked rows stay valid).
+        self.fields['file'].required = True
+        self.fields['course'].queryset = Course.objects.order_by('code')
+        self.fields['course'].empty_label = 'Select a course…'
+
+    def clean_file(self):
+        upload = self.cleaned_data.get('file')
+        if not upload:
+            raise forms.ValidationError('Please choose a file to upload.')
+        name = (getattr(upload, 'name', '') or '').lower()
+        if not name.endswith(self.ALLOWED_EXTENSIONS):
+            raise forms.ValidationError('Only PDF, DOCX, or PPTX files are allowed.')
+        size = getattr(upload, 'size', 0) or 0
+        if size > self.MAX_UPLOAD_BYTES:
+            raise forms.ValidationError('File must be 10 MB or smaller.')
+        return upload

@@ -169,8 +169,6 @@ TEMPLATES = [
                 'core.context_processors.display_prefs',
                 # Customized CMS blocks for the current core system route
                 'core.context_processors.cms_system_blocks',
-                # Customized CMS blocks for the current core system route
-                'core.context_processors.cms_system_blocks',
             ],
         },
     },
@@ -513,6 +511,27 @@ OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions'
 # Convenience flag — mirrors whether a key is configured (used by the view to
 # decide between the live provider and the offline engine).
 OPENROUTER_ENABLED = bool(OPENROUTER_API_KEY)
+
+# --- Vector store (RAG for Study Corner + Research AI only) ------------------
+# An embedded ChromaDB persistent store on the local filesystem — works with
+# both the SQLite dev DB and the Supabase/Postgres prod DB (pgvector would not
+# work on the SQLite fallback). Study Corner uploads and Research AI reference
+# files are chunked, embedded, and indexed here, and the two assistants retrieve
+# top-k passages to ground their answers (see ``services/vector_store.py``). The
+# store is restricted to those two modules in code.
+#
+# Embeddings use a hosted model when ``EMBEDDINGS_API_KEY`` is set, otherwise a
+# deterministic offline fallback (zero configuration, no network). Set
+# ``VECTOR_INDEXING_ENABLED=0`` to disable the whole pipeline (indexing and
+# retrieval both no-op) — and it also silently no-ops when ``chromadb`` is not
+# installed, so the app runs fine without the optional dependency.
+VECTOR_STORE_BACKEND = env('VECTOR_STORE_BACKEND', default='chromadb')
+VECTOR_STORE_PATH = str(BASE_DIR / 'vector_store')
+VECTOR_INDEXING_ENABLED = env.bool('VECTOR_INDEXING_ENABLED', default=True)
+EMBEDDINGS_API_KEY = env('EMBEDDINGS_API_KEY', default='')
+EMBEDDINGS_API_URL = env('EMBEDDINGS_API_URL', default='')
+EMBEDDINGS_MODEL = env('EMBEDDINGS_MODEL', default='text-embedding-3-small')
+EMBEDDINGS_DIM = env.int('EMBEDDINGS_DIM', default=384)
 
 # --- Emergency push (Firebase Cloud Messaging) -------------------------------
 # Mobile push for Emergency Alerts. ``FIREBASE_CREDENTIALS`` is either the

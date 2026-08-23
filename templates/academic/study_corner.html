@@ -20,6 +20,156 @@
     <!-- Study Corner layout (two columns, YouTube, chat) -->
     <link rel="stylesheet" href="{% static 'css/study.css' %}">
 
+    <!-- Study Corner — upload panel, PDF preview box & toast (scoped to this page) -->
+    <style>
+        .upload-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            box-shadow: var(--shadow-card);
+            padding: 1.2rem 1.3rem;
+            margin: 0 0 1.4rem;
+        }
+        .upload-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.9rem 1.1rem;
+        }
+        .upload-field { display: flex; flex-direction: column; gap: 0.35rem; }
+        .upload-field-file { grid-column: 1 / -1; }
+        .upload-field > span { font-size: 0.82rem; font-weight: 600; color: var(--text-muted); }
+        .upload-field select,
+        .upload-field input[type="text"],
+        .upload-field input[type="file"] {
+            width: 100%;
+            padding: 0.6rem 0.7rem;
+            border: 1px solid var(--border-color);
+            border-radius: 0.6rem;
+            background: var(--bg-subtle);
+            color: var(--text-primary);
+            font: inherit;
+        }
+        .upload-field input[type="file"] { padding: 0.5rem; }
+        .upload-actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .upload-status { margin: 0; font-size: 0.85rem; color: var(--text-muted); }
+        .upload-status.ok { color: #1a7f4b; }
+        .upload-status.err { color: #c0392b; }
+        .upload-submit {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.6rem 1.1rem;
+            border: none;
+            border-radius: 999px;
+            background: var(--accent-primary);
+            color: var(--accent-dark);
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .upload-submit:disabled { opacity: 0.6; cursor: default; }
+
+        .doc-preview {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            box-shadow: var(--shadow-card);
+            overflow: hidden;
+            margin: 0 0 1.4rem;
+        }
+        .doc-preview-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 0.9rem 1.1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .doc-preview-meta { display: flex; align-items: center; gap: 0.8rem; min-width: 0; }
+        .doc-preview-icon {
+            display: grid; place-items: center;
+            width: 40px; height: 40px;
+            border-radius: 12px;
+            background: var(--accent-primary);
+            color: var(--accent-dark);
+            flex-shrink: 0;
+        }
+        .doc-preview-info { min-width: 0; }
+        .doc-preview-title {
+            margin: 0; font-size: 1rem; font-weight: 700; color: var(--text-primary);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .doc-preview-sub { margin: 0.1rem 0 0; font-size: 0.8rem; color: var(--text-muted); }
+        .doc-preview-open {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            padding: 0.45rem 0.85rem;
+            border-radius: 999px;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            text-decoration: none;
+            font-size: 0.82rem; font-weight: 600;
+            white-space: nowrap;
+        }
+        .doc-preview-open:hover { background: var(--bg-subtle); }
+        .doc-preview-stage { position: relative; height: 520px; background: var(--bg-subtle); }
+        .doc-preview-frame { width: 100%; height: 100%; border: 0; display: block; }
+        .doc-preview-empty,
+        .doc-preview-fallback {
+            position: absolute; inset: 0;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 0.5rem; text-align: center; padding: 1.5rem;
+            color: var(--text-muted);
+        }
+        .doc-preview-empty i,
+        .doc-preview-fallback i { font-size: 2.4rem; opacity: 0.5; }
+        .doc-preview-empty p,
+        .doc-preview-fallback p { margin: 0; font-weight: 600; color: var(--text-primary); }
+        .doc-preview-empty span { font-size: 0.85rem; }
+        .doc-download-btn {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            margin-top: 0.4rem;
+            padding: 0.55rem 1.1rem;
+            border-radius: 999px;
+            background: var(--accent-primary);
+            color: var(--accent-dark);
+            text-decoration: none; font-weight: 700;
+        }
+
+        .doc-card-selectable { cursor: pointer; }
+        .doc-card.selected {
+            border-color: var(--accent-dark);
+            box-shadow: 0 0 0 2px var(--accent-primary), var(--shadow-card);
+        }
+
+        .study-toast {
+            position: fixed;
+            left: 50%; bottom: 1.5rem;
+            transform: translateX(-50%) translateY(1rem);
+            background: #1f2937; color: #fff;
+            padding: 0.75rem 1.2rem;
+            border-radius: 999px;
+            font-size: 0.9rem; font-weight: 600;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            z-index: 1000;
+            max-width: 90vw; text-align: center;
+        }
+        .study-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        @media (max-width: 640px) {
+            .upload-grid { grid-template-columns: 1fr; }
+            .upload-actions { flex-direction: column; align-items: stretch; }
+            .doc-preview-stage { height: 60vh; }
+        }
+    </style>
+
     <!-- Google Fonts (Inter) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -66,10 +216,46 @@
                             <i class="fa-solid fa-magnifying-glass"></i>
                             <input type="text" id="notes-search" placeholder="Search notes, topics, or course codes..." aria-label="Search notes">
                         </div>
-                        <button type="button" class="upload-btn" id="upload-btn">
+                        {% if user.is_authenticated %}
+                        <button type="button" class="upload-btn" id="upload-btn" aria-expanded="false" aria-controls="upload-panel">
                             <i class="fa-solid fa-arrow-up-from-bracket"></i> Upload Note / PDF
                         </button>
+                        {% endif %}
                     </div>
+
+                    {% if user.is_authenticated %}
+                    <!-- Direct local/DB upload — stores the file under MEDIA_ROOT via
+                         CourseMaterial.file and triggers vector indexing (no Google Drive). -->
+                    <form class="upload-panel" id="upload-panel" method="post" enctype="multipart/form-data"
+                          action="{% url 'study_material_upload' %}" hidden>
+                        {% csrf_token %}
+                        <div class="upload-grid">
+                            <label class="upload-field">
+                                <span>Course</span>
+                                <select name="course" required>
+                                    <option value="">Select a course…</option>
+                                    {% for course in courses %}
+                                    <option value="{{ course.id }}">{{ course.code }} — {{ course.title }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label class="upload-field">
+                                <span>Title</span>
+                                <input type="text" name="title" maxlength="200" placeholder="e.g. Week 3 — Thermodynamics notes" required>
+                            </label>
+                            <label class="upload-field upload-field-file">
+                                <span>File — PDF, DOCX or PPTX (max 10&nbsp;MB)</span>
+                                <input type="file" name="file" accept=".pdf,.docx,.pptx" required>
+                            </label>
+                        </div>
+                        <div class="upload-actions">
+                            <p class="upload-status" id="upload-status" role="status" aria-live="polite"></p>
+                            <button type="submit" class="upload-submit" id="upload-submit">
+                                <i class="fa-solid fa-cloud-arrow-up"></i> Upload &amp; Index
+                            </button>
+                        </div>
+                    </form>
+                    {% endif %}
 
                     <h3 class="study-sub-title">Course Folders</h3>
                     <p class="study-sub-caption">Browse study material by department folder.</p>
@@ -90,10 +276,45 @@
 
                     <h3 class="study-sub-title">Recent Documents</h3>
                     <p class="study-sub-caption">Latest uploads with file size and course details.</p>
+
+                    <!-- PDF preview box — embeds the selected document inline
+                         (served same-origin by study_material_file). -->
+                    <div class="doc-preview" id="doc-preview">
+                        <div class="doc-preview-head">
+                            <div class="doc-preview-meta">
+                                <span class="doc-preview-icon"><i class="fa-solid fa-file-lines"></i></span>
+                                <div class="doc-preview-info">
+                                    <h4 class="doc-preview-title" id="doc-preview-title">Document preview</h4>
+                                    <p class="doc-preview-sub" id="doc-preview-sub">Select a document below to read it here.</p>
+                                </div>
+                            </div>
+                            <a class="doc-preview-open" id="doc-preview-open" href="#" target="_blank" rel="noopener" hidden>
+                                <i class="fa-solid fa-arrow-up-right-from-square"></i> Open in new tab
+                            </a>
+                        </div>
+                        <div class="doc-preview-stage">
+                            <div class="doc-preview-empty" id="doc-preview-empty">
+                                <i class="fa-solid fa-file-lines"></i>
+                                <p>No document selected</p>
+                                <span>Choose a PDF from the list below to preview it here.</span>
+                            </div>
+                            <iframe class="doc-preview-frame" id="doc-preview-frame" title="Document preview" hidden></iframe>
+                            <div class="doc-preview-fallback" id="doc-preview-fallback" hidden>
+                                <i class="fa-solid fa-file-arrow-down"></i>
+                                <p id="doc-preview-fallback-text">This file can’t be previewed inline.</p>
+                                <a class="doc-download-btn" id="doc-preview-download" href="#" target="_blank" rel="noopener">
+                                    <i class="fa-solid fa-download"></i> Download file
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="docs-grid" id="docs-grid">
                         {% for material in materials %}
-                        <article class="doc-card" data-dept="{{ material.course.department }}"
-                                 data-search="{{ material.title|lower }} {{ material.course.code|lower }} {{ material.course.title|lower }}">
+                        <article class="doc-card{% if material.file %} doc-card-selectable{% endif %}"
+                                 data-dept="{{ material.course.department }}"
+                                 data-search="{{ material.title|lower }} {{ material.course.code|lower }} {{ material.course.title|lower }}"
+                                 {% if material.file %}data-file-view="{% url 'study_material_file' material.id %}" data-file-url="{{ material.file.url }}" data-file-type="{{ material.display_type }}" data-title="{{ material.title }}" data-course="{{ material.course.code }}" role="button" tabindex="0" aria-label="Preview {{ material.title }}"{% endif %}>
                             <div class="doc-card-head">
                                 <span class="doc-icon"><i class="fa-solid fa-file-lines"></i></span>
                                 <span class="doc-course">{{ material.course.code }}</span>
@@ -105,9 +326,7 @@
                                 <span><i class="fa-regular fa-file"></i> {{ material.size_display }}</span>
                                 <span><i class="fa-regular fa-calendar"></i> {{ material.uploaded_at|date:"M d, Y" }}</span>
                                 {% if material.file %}
-                                <a href="{{ material.file.url }}" class="doc-view" target="_blank" rel="noopener">Open</a>
-                                {% elif material.drive_view_link %}
-                                <a href="{{ material.drive_view_link }}" class="doc-view" target="_blank" rel="noopener">Open</a>
+                                <a href="{{ material.file.url }}" class="doc-view" target="_blank" rel="noopener" data-open>Open</a>
                                 {% else %}
                                 <span class="doc-view doc-view-muted" title="No file attached yet">—</span>
                                 {% endif %}
@@ -179,18 +398,23 @@
                 </section>
             </aside>
         </div>
+
+        <!-- Toast — upload feedback -->
+        <div id="toast" class="study-toast" role="status" aria-live="polite"></div>
     </div>
 
     <script>
         // ====================================================================
         // Notes search + folder filtering over the server-rendered documents
         // ====================================================================
+        // ====================================================================
+        // Notes: search + folder filtering, PDF preview box, direct upload
+        // ====================================================================
         (function () {
             const foldersGrid = document.getElementById('folders-grid');
             const docsGrid = document.getElementById('docs-grid');
             const searchInput = document.getElementById('notes-search');
             const emptyEl = document.getElementById('docs-empty');
-            const uploadBtn = document.getElementById('upload-btn');
             const toastEl = document.getElementById('toast');
             let toastTimer;
             let folderFilter = null;
@@ -204,7 +428,7 @@
             }
 
             function applyFilters() {
-                const q = (searchInput.value || '').trim().toLowerCase();
+                const q = ((searchInput && searchInput.value) || '').trim().toLowerCase();
                 let visible = 0;
                 docsGrid.querySelectorAll('.doc-card').forEach((card) => {
                     const matchesFolder = !folderFilter || card.dataset.dept === folderFilter;
@@ -239,9 +463,104 @@
                 });
             }
 
-            if (uploadBtn) {
+            // ---- PDF / document preview box --------------------------------
+            const preview = document.getElementById('doc-preview');
+            const frame = document.getElementById('doc-preview-frame');
+            const previewEmpty = document.getElementById('doc-preview-empty');
+            const previewFallback = document.getElementById('doc-preview-fallback');
+            const previewFallbackText = document.getElementById('doc-preview-fallback-text');
+            const previewDownload = document.getElementById('doc-preview-download');
+            const previewTitle = document.getElementById('doc-preview-title');
+            const previewSub = document.getElementById('doc-preview-sub');
+            const previewOpen = document.getElementById('doc-preview-open');
+
+            function selectDoc(card, scroll) {
+                if (!card || !card.dataset.fileView) return;
+                const type = (card.dataset.fileType || '').toUpperCase();
+                const title = card.dataset.title || 'Document';
+                const course = card.dataset.course || '';
+                if (previewTitle) previewTitle.textContent = title;
+                if (previewSub) previewSub.textContent = (course ? course + ' · ' : '') + (type || 'FILE');
+                if (previewOpen) { previewOpen.href = card.dataset.fileUrl || '#'; previewOpen.hidden = false; }
+
+                docsGrid.querySelectorAll('.doc-card').forEach((c) =>
+                    c.classList.toggle('selected', c === card));
+
+                if (previewEmpty) previewEmpty.hidden = true;
+                if (type === 'PDF') {
+                    if (previewFallback) previewFallback.hidden = true;
+                    if (frame) { frame.src = card.dataset.fileView; frame.hidden = false; }
+                } else {
+                    if (frame) { frame.hidden = true; frame.removeAttribute('src'); }
+                    if (previewFallbackText) previewFallbackText.textContent =
+                        (type || 'This file') + ' documents can’t be previewed inline — download to view.';
+                    if (previewDownload) previewDownload.href = card.dataset.fileUrl || '#';
+                    if (previewFallback) previewFallback.hidden = false;
+                }
+                if (scroll && preview) preview.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+
+            if (docsGrid) {
+                docsGrid.addEventListener('click', (e) => {
+                    if (e.target.closest('[data-open]')) return; // let the "Open" link work
+                    const card = e.target.closest('.doc-card-selectable');
+                    if (card) selectDoc(card, true);
+                });
+                docsGrid.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    const card = e.target.closest('.doc-card-selectable');
+                    if (!card) return;
+                    e.preventDefault();
+                    selectDoc(card, true);
+                });
+                // Default to the newest document with a file on load (no scroll).
+                const firstDoc = docsGrid.querySelector('.doc-card-selectable');
+                if (firstDoc) selectDoc(firstDoc, false);
+            }
+
+            // ---- Direct upload (fetch → JSON, reload on success) -----------
+            const uploadBtn = document.getElementById('upload-btn');
+            const uploadPanel = document.getElementById('upload-panel');
+            const uploadStatus = document.getElementById('upload-status');
+            const uploadSubmit = document.getElementById('upload-submit');
+
+            if (uploadBtn && uploadPanel) {
                 uploadBtn.addEventListener('click', () => {
-                    showToast('Upload is ready — drag a PDF or connect Google Drive to continue.');
+                    const willOpen = uploadPanel.hidden;
+                    uploadPanel.hidden = !willOpen;
+                    uploadBtn.setAttribute('aria-expanded', String(willOpen));
+                    if (willOpen) {
+                        const firstField = uploadPanel.querySelector('select, input');
+                        if (firstField) firstField.focus();
+                    }
+                });
+
+                uploadPanel.addEventListener('submit', (ev) => {
+                    ev.preventDefault();
+                    if (uploadStatus) { uploadStatus.textContent = 'Uploading…'; uploadStatus.className = 'upload-status'; }
+                    if (uploadSubmit) uploadSubmit.disabled = true;
+                    fetch(uploadPanel.action, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                        body: new FormData(uploadPanel),
+                    })
+                        .then((res) => res.json().then((json) => ({ ok: res.ok, json })))
+                        .then(({ ok, json }) => {
+                            if (ok && json && json.status === 'success') {
+                                if (uploadStatus) { uploadStatus.textContent = json.message || 'Uploaded.'; uploadStatus.classList.add('ok'); }
+                                showToast((json.message || 'Uploaded.') + ' Indexing in the background…');
+                                setTimeout(() => window.location.reload(), 900);
+                            } else {
+                                const msg = (json && json.message) || 'Upload failed — please check the file and try again.';
+                                if (uploadStatus) { uploadStatus.textContent = msg; uploadStatus.classList.add('err'); }
+                                if (uploadSubmit) uploadSubmit.disabled = false;
+                            }
+                        })
+                        .catch(() => {
+                            if (uploadStatus) { uploadStatus.textContent = 'Upload failed — please try again.'; uploadStatus.classList.add('err'); }
+                            if (uploadSubmit) uploadSubmit.disabled = false;
+                        });
                 });
             }
 

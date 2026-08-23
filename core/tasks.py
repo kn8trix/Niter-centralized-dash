@@ -12,8 +12,18 @@ from django.utils import timezone
 from huey.contrib.djhuey import db_task
 
 from .consumers import notify_user
-from .models import EmergencyAlert, NoteAnalysis, Notice, Notification, User
+from .models import (
+    CourseMaterial,
+    EmergencyAlert,
+    NoteAnalysis,
+    Notice,
+    Notification,
+    User,
+    VectorDocument,
+)
 from .notes_analysis import count_sentences, extract_keywords, extract_summary
+from services import vector_store
+from services.parser import extract_document_text
 
 logger = logging.getLogger('core.tasks')
 
@@ -121,3 +131,119 @@ def analyze_note_content(analysis_id):
         analysis.error_message = 'Analysis failed — please try again.'
     analysis.completed_at = timezone.now()
     analysis.save()
+
+
+# --- Vector-store (RAG) indexing --------------------------------------------
+# Restricted to Study Corner + Research AI. Each task extracts/receives text,
+# then chunks → embeds → upserts into ChromaDB via ``services.vector_store`` and
+# records the outcome on a ``VectorDocument`` tracking row. In dev/tests HUEY is
+# in ``immediate`` mode, so these run inline right after upload; in production
+# the Huey consumer runs them off the request path. Every failure is caught so
+# indexing never breaks the upload / chat flow.
+
+def _finalize_vector_document(doc, chunk_count):
+    """Stamp a ``VectorDocument`` row from an indexing result."""
+    if chunk_count > 0:
+        doc.status = VectorDocument.STATUS_INDEXED
+        doc.chunk_count = chunk_count
+        doc.error_message = ''
+    else:
+        doc.status = VectorDocument.STATUS_FAILED
+        doc.chunk_count = 0
+        doc.error_message = 'No extractable text (unsupported format or empty file).'
+    doc.indexed_at = timezone.now()
+    doc.save()
+
+
+@db_task()
+def index_course_material(material_id):
+    """Index a Study Corner ``CourseMaterial`` upload into the vector store.
+
+    Opens the stored file, extracts its plain text (PDF/DOCX), and indexes it
+    into the shared ``study_corner`` collection (no owner — Study Corner is a
+    shared catalog). Returns the number of chunks indexed.
+    """
+    try:
+        material = CourseMaterial.objects.select_related('course').get(pk=material_id)
+    except CourseMaterial.DoesNotExist:
+        logger.warning('index_course_material: material %s not found', material_id)
+        return 0
+    if not material.file:
+        return 0
+
+    doc, _created = VectorDocument.objects.update_or_create(
+        module=VectorDocument.MODULE_STUDY_CORNER,
+        source_type='course_material',
+        source_id=str(material.pk),
+        defaults={
+            'title': material.title,
+            'owner': None,
+            'status': VectorDocument.STATUS_PENDING,
+        },
+    )
+    try:
+        material.file.open('rb')
+        try:
+            text = extract_document_text(material.file)
+        finally:
+            material.file.close()
+        chunk_count = vector_store.index(
+            vector_store.STUDY_CORNER,
+            material.pk,
+            text or '',
+            metadata={
+                'title': material.title,
+                'course': material.course.code,
+                'source_type': 'course_material',
+            },
+        )
+        _finalize_vector_document(doc, chunk_count)
+        return chunk_count
+    except Exception:
+        logger.exception('index_course_material failed for %s', material_id)
+        doc.status = VectorDocument.STATUS_FAILED
+        doc.error_message = 'Indexing failed — see server logs.'
+        doc.indexed_at = timezone.now()
+        doc.save()
+        return 0
+
+
+@db_task()
+def index_research_document(owner_id, source_id, text, title=''):
+    """Index an already-extracted Research AI reference document.
+
+    Research AI extracts the uploaded file's text in the request (it is not
+    persisted as a model), so the plain ``text`` is passed straight in and
+    indexed into the ``research_ai`` collection scoped to ``owner_id`` — each
+    user only ever retrieves their own uploaded references.
+    """
+    if not (text or '').strip():
+        return 0
+
+    doc, _created = VectorDocument.objects.update_or_create(
+        module=VectorDocument.MODULE_RESEARCH_AI,
+        source_type='research_upload',
+        source_id=str(source_id),
+        defaults={
+            'title': title or '',
+            'owner_id': owner_id,
+            'status': VectorDocument.STATUS_PENDING,
+        },
+    )
+    try:
+        chunk_count = vector_store.index(
+            vector_store.RESEARCH_AI,
+            source_id,
+            text,
+            metadata={'title': title or '', 'source_type': 'research_upload'},
+            owner=owner_id,
+        )
+        _finalize_vector_document(doc, chunk_count)
+        return chunk_count
+    except Exception:
+        logger.exception('index_research_document failed for %s', source_id)
+        doc.status = VectorDocument.STATUS_FAILED
+        doc.error_message = 'Indexing failed — see server logs.'
+        doc.indexed_at = timezone.now()
+        doc.save()
+        return 0
