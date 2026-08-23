@@ -22,6 +22,14 @@
 
     <!-- Study Corner — upload panel, PDF preview box & toast (scoped to this page) -->
     <style>
+        /* The `hidden` attribute must win over the explicit `display` rules
+           below. Author `display:flex/block/inline-flex` beats the UA
+           `[hidden]{display:none}`, so without this guard the JS toggling of
+           `.hidden` on the preview iframe, empty state and fallback card has no
+           visual effect and all three render stacked on top of one another
+           (the iframe bleeding through the "Download file" overlay). */
+        [hidden] { display: none !important; }
+
         .upload-panel {
             background: var(--bg-card);
             border: 1px solid var(--border-color);

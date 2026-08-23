@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 132 | Study Corner PDF-preview overlap fix (`[hidden]` display guard) + case-insensitive Student/Staff ID login (`StudentIdAuthenticationForm` on `RoleAwareLoginView`) | *(see §132)* |
 | 131 | Meals remaining-count fix + news response caching; Study Corner PDF preview box, Google Drive removal, direct local/DB uploads; embedded ChromaDB vector store + RAG retrieval wired into Study Corner & Research AI | *(see §131)* |
 | 130 | Navbar underline fix, modal button contrast (Rx Upload / Checkout), mobile WebView responsiveness for /news/ /attendance/ /pharmacy/ | *(see §130)* |
 | 129 | NCC club-manager demo account — `NCC`/`ncc@gmail.com` linked to the NITER Computer Club (active ClubAccount, full manager capabilities) + README/handover updates | *(see §129)* |
@@ -7489,3 +7490,61 @@ fallback in `services/embeddings.py`.
   across test methods (LocMemCache is not reset between tests); fixed by
   bypassing the cache under the test runner (same `_is_test_run()` gate the
   network already uses), leaving production caching active.
+
+## 132. Study Corner PDF-Preview Overlap Fix · Case-Insensitive Student ID Login
+
+Two follow-up bug fixes on top of §131: (1) the Study Corner PDF preview
+rendered its iframe, empty state and fallback download card stacked on top of
+one another, and (2) valid Student/Staff IDs failed to log in unless the exact
+stored letter-case was typed.
+
+### Issue 1 — PDF preview overlap (`templates/academic/study_corner.html`)
+The preview's three stage layers (`#doc-preview-frame`, `#doc-preview-empty`,
+`#doc-preview-fallback`) are shown/hidden by JS toggling their `hidden`
+attribute, but each carried an explicit `display` rule in the page CSS
+(`.doc-preview-frame{display:block}`;
+`.doc-preview-empty`/`.doc-preview-fallback{display:flex}`). An **author**
+`display` declaration beats the browser's UA `[hidden]{display:none}` rule
+regardless of specificity, so the `hidden` attribute was silently ignored and
+all three layers rendered simultaneously — the iframe bleeding through the
+"Download file" overlay.
+
+**Fix:** a single page-scoped guard at the top of the template's `<style>`
+block — `[hidden] { display: none !important; }` (the canonical normalize.css
+remedy for this UA-vs-author conflict). Each state now resolves cleanly: a valid
+PDF shows only the `<iframe>`; a non-previewable file shows only the fallback
+download card; nothing selected shows only the empty state. The one rule also
+fixes two latent instances of the same defect on the page — the
+`#doc-preview-open` "Open in new tab" link (`display:inline-flex`), which would
+otherwise show with `href="#"` before any document is selected, and folder
+card-filter hiding (`card.hidden`). The opacity-based `.study-toast` never uses
+the `hidden` attribute, so it is unaffected.
+
+### Issue 2 — Student/Staff ID login (`core/views.py`)
+IDs are stored **upper-cased** — `SignUpForm.clean_student_id` normalizes them
+before the `User` is created — but Django's default `ModelBackend` resolves
+usernames **case-sensitively** (`get_by_natural_key`). A student stored as
+`S1001` who typed `s1001` therefore failed authentication *even with the correct
+password*. Fresh signups always worked because `signup_view` signs the
+just-created `User` in directly (`auth_login(request, user)`) without ever
+re-authenticating — which is exactly what drove the "keep creating new test
+accounts" symptom. Session persistence itself was already correct in dev
+(`DEBUG=True` → `SESSION_COOKIE_SECURE=False`).
+
+**Fix:** a form-layer `StudentIdAuthenticationForm(AuthenticationForm)` whose
+`clean_username` maps the typed value to the stored username's exact casing — an
+exact match wins; otherwise a single case-insensitive match (`username__iexact`)
+is substituted; anything ambiguous (two records differing only by case) or
+unknown is left untouched so authentication fails normally. It is wired onto
+`RoleAwareLoginView` via `authentication_form`. The authentication backend, the
+signup auto-login path, existing sessions and all production security settings
+are left untouched — nothing weakened.
+
+### Verified
+- `manage.py check` clean.
+- New `core.tests.LoginCaseInsensitiveTest` (4 tests) drives the real login POST:
+  a lower-cased ID authenticates and establishes the session (`_auth_user_id`),
+  exact case still works, and wrong password / unknown ID still fail.
+- Full core suite on SQLite (`SUPABASE_DB_URL= DATABASE_URL= TESTING=1 manage.py
+  test core`): **969 tests OK** (0 failures) — the §131 baseline of 965 plus the
+  4 new login tests, no regressions.

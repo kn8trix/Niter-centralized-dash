@@ -14,7 +14,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import login as auth_login, update_session_auth_hash
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.forms import PasswordChangeForm
+from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
@@ -3227,6 +3227,45 @@ def book_appointment(request):
 # Account & profile pages
 # ============================================================================
 
+class StudentIdAuthenticationForm(AuthenticationForm):
+    """Login form that matches the Student/Staff ID regardless of typed case.
+
+    Student IDs are stored upper-cased — ``SignUpForm.clean_student_id``
+    normalises them before the ``User`` is created — but the default
+    ``ModelBackend`` resolves usernames *case-sensitively*
+    (``get_by_natural_key`` → ``User.objects.get(username=...)``). A student who
+    registered as ``s1001`` (stored ``S1001``) and later logs in typing
+    ``s1001`` would therefore fail to authenticate *even with the correct
+    password*. That is why fresh signups always worked while re-login appeared
+    broken: ``signup_view`` signs the freshly-created ``User`` in directly
+    (``auth_login(request, user)``) without ever re-authenticating, so the
+    casing mismatch never surfaced there.
+
+    ``clean_username`` resolves the typed value to the stored username's exact
+    casing so the unchanged backend can find it. An exact match always wins;
+    otherwise a single case-insensitive match is substituted. Anything ambiguous
+    (two records differing only by case) or unmatched is left untouched so
+    authentication fails normally — the backend, the signup auto-login path and
+    existing sessions are all unaffected.
+    """
+
+    def clean_username(self):
+        username = self.cleaned_data.get('username', '')
+        if not username:
+            return username
+        # An exact-case record is already resolvable by the backend.
+        if User.objects.filter(username=username).exists():
+            return username
+        # Otherwise substitute a unique case-insensitive match, if there is one.
+        matches = list(
+            User.objects.filter(username__iexact=username)
+            .values_list('username', flat=True)[:2]
+        )
+        if len(matches) == 1:
+            return matches[0]
+        return username
+
+
 class RoleAwareLoginView(auth_views.LoginView):
     """Login that lands every role on its own area.
 
@@ -3238,7 +3277,12 @@ class RoleAwareLoginView(auth_views.LoginView):
     managers, ``/dashboard/student/`` for students). ``redirect_authenticated_user``
     keeps working — an authenticated visitor to /login/ is forwarded to the
     same role-aware URL.
+
+    ``authentication_form`` uses :class:`StudentIdAuthenticationForm` so a
+    Student/Staff ID authenticates regardless of the case it is typed in.
     """
+
+    authentication_form = StudentIdAuthenticationForm
 
     def get_success_url(self):
         redirect_to = self.get_redirect_url()

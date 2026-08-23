@@ -1479,6 +1479,54 @@ class SignupViewTest(TestCase):
         self.assertRedirects(response, reverse('student_dashboard'))
 
 
+class LoginCaseInsensitiveTest(TestCase):
+    """Student/Staff IDs authenticate regardless of the case typed at login.
+
+    IDs are stored upper-cased (``SignUpForm`` normalises them before creating
+    the ``User``), but the default ``ModelBackend`` matches usernames
+    case-sensitively. ``RoleAwareLoginView`` uses ``StudentIdAuthenticationForm``
+    to resolve the typed value to the stored casing, so a student who registered
+    as ``S5001`` can log back in typing ``s5001`` — the regression that
+    previously made re-login fail (and drove people to keep creating fresh
+    accounts, since signup auto-logs-in without re-authenticating). These tests
+    drive the real login POST so the form is exercised end to end, and assert
+    the session is actually established (``_auth_user_id``).
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='S5001', password='secretpass1')
+        StudentProfile.objects.create(user=self.user, student_id='S5001', department='CSE')
+
+    def test_login_succeeds_with_lowercase_id(self):
+        response = self.client.post(
+            reverse('login'), {'username': 's5001', 'password': 'secretpass1'},
+        )
+        self.assertRedirects(response, reverse('student_dashboard'))
+        self.assertEqual(int(self.client.session['_auth_user_id']), self.user.pk)
+
+    def test_login_succeeds_with_exact_case_id(self):
+        response = self.client.post(
+            reverse('login'), {'username': 'S5001', 'password': 'secretpass1'},
+        )
+        self.assertRedirects(response, reverse('student_dashboard'))
+        self.assertEqual(int(self.client.session['_auth_user_id']), self.user.pk)
+
+    def test_login_fails_with_wrong_password(self):
+        response = self.client.post(
+            reverse('login'), {'username': 's5001', 'password': 'wrongpass'},
+        )
+        # Form redisplayed, no session established.
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_login_fails_for_unknown_id(self):
+        response = self.client.post(
+            reverse('login'), {'username': 'nobody999', 'password': 'secretpass1'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+
 class StaffAdminBackendTest(TestCase):
     """Persistent staff/admin action endpoints — permissions and state changes.
 
