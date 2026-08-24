@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 142 | News visual builder fix — editor iframe loads real /news/ route, CMS content_json binding for editable text, preview mode shows hidden blocks | *(see §142)* |
 | 141 | CMS WYSIWYG integration tests — end-to-end `CmsWysiwygIntegrationTest` (system page existence, AJAX save, student-facing rendering) | *(see §141)* |
 | 140 | CMS dynamic navigation — `nav_order`/`nav_icon` fields on EditablePage, per-page icon in topbar Pages dropdown, builder toolbar inputs, admin table columns | *(see §140)* |
 | 139 | Pharmacy product detail modal & card image fixes — pill placeholder fallback, `object-fit:contain` modal image, `.pd-head` padding, `max-height:85vh` scrollable modal | *(see §139)* |
@@ -8238,3 +8239,169 @@ register_system_pages()          admin edits block
 - 18 targeted tests (RegisterSystemPages 8, ContentBlockVisibility 5,
   CmsWysiwygIntegration 4, + 1 shared) — **all pass**
 - No model/view/template changes required — the pipeline was already complete
+
+---
+
+## 142. News Visual Builder Fix — Live Student Layout in Editor Canvas + CMS Text Binding
+
+### Date
+August 2026
+
+### Summary
+Fixed the Global News visual builder (`/builder/visual/news/`) so the editor
+canvas renders the **actual live student `/news/` page** — with real news feed,
+video cards, and search bar — instead of the generic `/page/news/` builder
+template showing only CMS block placeholders. Also wired the student-facing
+templates to pull editable text from CMS `content_json` with graceful fallback
+defaults.
+
+### Problem
+The visual editor iframe loaded `{% url 'editable_page' page.slug %}?preview=1`
+which resolved to `/page/news/?preview=1` — a generic builder template that
+only rendered CMS `ContentBlock` markup. The real student news page at `/news/`
+has a completely different layout: topbar, intro section, live NewsAPI feed,
+YouTube video cards, and client-side search. Admins editing the news page in
+the builder saw none of this.
+
+### Changes
+
+#### 1. Visual editor iframe loads the real system route (`core/views.py`)
+
+`visual_editor` now resolves the system route URL for pages with a `system_key`:
+
+```python
+system_route_url = None
+if page.system_key:
+    view_name = {v: k for k, v in SYSTEM_ROUTE_KEYS.items()}.get(page.system_key)
+    if view_name:
+        system_route_url = reverse(view_name)
+```
+
+The `system_route_url` is passed to the template context. For the news page,
+this resolves to `/news/`.
+
+#### 2. Editor template uses system route (`templates/builder/editor.html`)
+
+The iframe `src` now checks for `system_route_url`:
+
+```html
+{% if system_route_url %}
+<iframe src="{{ system_route_url }}?builder=1&preview=1" ...>
+{% else %}
+<iframe src="{% url 'editable_page' page.slug %}?preview=1" ...>
+{% endif %}
+```
+
+System pages load their real student route with `?builder=1&preview=1`;
+non-system pages keep the generic builder route unchanged.
+
+#### 3. CMS context processor shows hidden blocks in preview mode
+(`core/context_processors.py` → `cms_system_blocks`)
+
+When the editor iframe loads `/news/?preview=1`, the context processor now
+includes **all** CMS blocks (including `visible=False`) so the canvas renders
+the full page layout — not just the subset an admin has already revealed:
+
+```python
+is_preview = (
+    request.GET.get('preview') == '1'
+    and request.user.has_perm('core.change_editablepage')
+)
+block_qs = page.content_blocks.order_by('order', 'id')
+if not is_preview:
+    block_qs = block_qs.filter(visible=True)
+```
+
+Regular student visitors (no `?preview=1` or no builder permission) still
+see only `visible=True` blocks — no change to the public rendering.
+
+#### 4. News view passes CMS block content (`core/views.py` → `news_page`)
+
+The news view now loads the CMS system page and builds a `cms_content` dict
+mapping each visible block's `element_id` → `content_json`. The template can
+reference these values inline with `|default` filters for hardcoded fallbacks:
+
+```python
+cms_content = {}
+page = EditablePage.objects.filter(system_key='news').first()
+if page:
+    for block in page.content_blocks.filter(visible=True):
+        cms_content[block.element_id] = block.content_json or {}
+```
+
+#### 5. News template binds to CMS content (`templates/news.html`)
+
+The intro section now pulls from `cms_content.news_search`:
+
+```html
+<h1 data-editable-id="news-search">
+    {{ cms_content.news_search.title|default:"Global News" }}
+</h1>
+<p>{{ cms_content.news_search.subtitle|default:"Top headlines from around the world…" }}</p>
+```
+
+When no CMS content is set, the hardcoded defaults render. When an admin
+edits the `news-search` block's `content_json` and reveals it, the custom
+title appears on the live page.
+
+#### 6. Global news partial section headers (`templates/partials/global_news.html`)
+
+Section headers bind to their respective CMS blocks:
+
+- **Global News heading** → `cms_content.image-card-grid.title` (default: "Global News")
+- **Video News heading** → `cms_content.video-feed.title` (default: "Video News")
+
+Both carry `data-editable-id` attributes so the WYSIWYG editor can target
+them for inline editing.
+
+### End-to-End Flow
+
+```
+Admin opens /builder/visual/news/
+        │
+        ▼
+Editor loads /news/?builder=1&preview=1 in iframe
+(→ cms_system_blocks returns ALL blocks including hidden ones)
+(→ news.html renders live feed + video cards + search bar)
+(→ intro section binds to cms_content.news_search.title)
+        │
+        ▼
+Admin double-clicks text → contenteditable → edits title
+        │
+        ▼
+Admin clicks "Save Changes"
+→ POST /api/builder/pages/<id>/save/
+→ content_json updated in DB, template caches flushed
+        │
+        ▼
+Student visits /news/
+→ cms_system_blocks loads visible blocks (no preview mode)
+→ news.html renders cms_content.news_search.title (or default)
+→ global_news.html renders cms_content.image-card-grid.title
+```
+
+### Files Modified
+
+- `core/views.py` — `visual_editor` passes `system_route_url`; `news_page` passes `cms_content`
+- `core/context_processors.py` — `cms_system_blocks` preview-mode block visibility
+- `templates/builder/editor.html` — iframe `src` uses system route when available
+- `templates/news.html` — intro section binds to `cms_content.news_search`
+- `templates/partials/global_news.html` — section headers bind to `cms_content`
+- `core/tests.py` — added `NewsBuilderIntegrationTest` (6 tests)
+
+### Tests (`NewsBuilderIntegrationTest`)
+
+| Test | What it verifies |
+|---|---|
+| `test_visual_editor_iframe_loads_real_news_route` | Editor canvas iframe src is `/news/?builder=1&preview=1`, not `/page/news/` |
+| `test_wysiwyg_save_updates_news_search_title` | POST to WYSIWYG save updates `news-search` block's `content_json` |
+| `test_live_news_renders_updated_section_title` | After save + reveal, student GET to `/news/` returns updated `image-card-grid` title |
+| `test_live_news_renders_updated_video_feed_title` | After save + reveal, student GET to `/news/` returns updated `video-feed` title |
+| `test_preview_mode_shows_hidden_blocks_for_editors` | `?preview=1` includes hidden blocks for builder-permissioned users |
+| `test_news_intro_uses_cms_content_with_defaults` | Intro h1 falls back to "Global News" when no CMS content is set |
+
+### Verification
+
+- `python manage.py check` — **0 issues**
+- `node --check editor.js` — **syntax OK**
+- 10 targeted tests (NewsBuilderIntegration 6, CmsWysiwygIntegration 4) — **all pass**
