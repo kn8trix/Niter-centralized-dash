@@ -1674,8 +1674,19 @@ class MedicineItem(models.Model):
     dosage_info = models.TextField(blank=True, default='', help_text='Dosage instructions')
     precautions = models.TextField(blank=True, default='', help_text='Precautions / warnings')
     side_effects = models.TextField(blank=True, default='', help_text='Possible side effects')
+    image = models.ImageField(
+        upload_to='pharmacy_products/',
+        null=True,
+        blank=True,
+        help_text='Product photo — displayed on the store card and inventory grid',
+    )
+    is_available = models.BooleanField(
+        default=True,
+        help_text='Product is available for purchase',
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['name']

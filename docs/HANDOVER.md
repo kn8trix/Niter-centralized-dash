@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 137 | E-Commerce pharmacy inventory management — CRUD views (list/add/edit/delete/toggle/adjust), image upload, stock badges, sidebar logout + Pharmacy Inventory nav link | *(see §137)* |
 | 136 | Attendance page mobile layout — card overflow fix, video proportional scaling, `flex:1 1 45%` button wrap, full-width input/button on mobile | *(see §136)* |
 | 135 | WebView zoom & layout settings — `setSupportZoom(false)`, `builtInZoomControls=false`, `displayZoomControls=false`, `TEXT_AUTOSIZING` layout algorithm | *(see §135)* |
 | 134 | Mobile viewport optimization — `maximum-scale=1.0, user-scalable=no` on all 31 templates, global 44×44 px touch-target minimum, attendance/dashboard mobile touch-friendly CSS | *(see §134)* |
@@ -7851,3 +7852,74 @@ on small screens instead of sharing a cramped row.
 ### Files Modified
 - `static/css/attendance.css` (card overflow fix, video scaling, button flex,
   input/button width)
+
+---
+
+## 137. E-Commerce Pharmacy Inventory & Medical Staff Logout
+
+### Date
+August 2026
+
+### Summary
+Added a full e-commerce-style **Pharmacy Product & Inventory Management** module to the
+Medical Staff dashboard, plus a **functional logout button** on the medical staff sidebar.
+
+### 1. Model Updates (`core/models.py`)
+
+Added two fields to the existing `MedicineItem` model:
+
+| Field | Type | Details |
+|-------|------|---------|
+| `image` | `ImageField` | `upload_to='pharmacy_products/'`, nullable, optional |
+| `is_available` | `BooleanField` | Default `True` |
+
+Migration `0048_medicineitem_image_medicineitem_is_available_and_more` created and applied.
+
+### 2. CRUD Views & URLs (`host/views.py`, `host/urls.py`)
+
+Six new views under the `host` namespace:
+
+| View | URL Pattern | Method | Description |
+|------|-------------|--------|-------------|
+| `pharmacy_inventory` | `/host/medical/pharmacy/inventory/` | GET | Product catalog grid with live search, category filters, stock status |
+| `pharmacy_product_add` | `/host/medical/pharmacy/inventory/add/` | GET/POST | Form with image upload (`enctype="multipart/form-data"`) |
+| `pharmacy_product_edit` | `/host/medical/pharmacy/inventory/<pk>/edit/` | GET/POST | Edit pricing, stock, photo, availability |
+| `pharmacy_product_delete` | `/host/medical/pharmacy/inventory/<pk>/delete/` | GET/POST | Confirmation + removal |
+| `pharmacy_stock_toggle` | `/host/medical/pharmacy/inventory/<pk>/toggle/` | POST | AJAX-style availability toggle |
+| `pharmacy_stock_adjust` | `/host/medical/pharmacy/inventory/<pk>/adjust/` | POST | +/- stock quantity adjustment |
+
+### 3. Templates Created
+
+| Template | Path | Description |
+|----------|------|-------------|
+| `pharmacy_inventory.html` | `templates/host/medical/` | Full inventory grid with search, filters, add/edit/delete buttons |
+| `pharmacy_product_form.html` | `templates/host/medical/` | Add/Edit form with image upload, dark theme |
+| `pharmacy_product_confirm_delete.html` | `templates/host/medical/` | Deletion confirmation with back button |
+
+### 4. Medical Staff Sidebar Logout (`templates/host/host_base.html`)
+
+Added to the MEDICAL MENU sidebar profile block:
+- **Logout button** — Django POST form with CSRF token, routes to `{% url 'logout' %}`
+- **Pharmacy Inventory** nav link — routes to `host:pharmacy_inventory`
+
+### 5. UI Features
+- Dark theme matching CampusDash design system
+- Card layout with product image preview (or SVG pill placeholder fallback)
+- Stock status badges: **In Stock** (green), **Low Stock** (amber), **Out of Stock** (red)
+- Category tags with color coding
+- Quick stock toggle (single-click) and quantity +/- adjustment
+- Image upload with file preview
+
+### Files Modified
+- `core/models.py` — added `image` and `is_available` fields to `MedicineItem`
+- `host/views.py` — added 6 inventory CRUD views + imports
+- `host/urls.py` — added 6 URL patterns
+- `templates/host/host_base.html` — added logout form + Pharmacy Inventory nav link
+- `templates/host/medical/pharmacy_inventory.html` — **new** inventory grid
+- `templates/host/medical/pharmacy_product_form.html` — **new** add/edit form
+- `templates/host/medical/pharmacy_product_confirm_delete.html` — **new** delete confirmation
+
+### Testing
+- `python manage.py check` — **0 issues**
+- `python manage.py migrate` — migration `0048` applied successfully
+- URL reverse check — all 6 routes resolve correctly under `host:` namespace

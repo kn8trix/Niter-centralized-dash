@@ -1,0 +1,172 @@
+{% extends "host/host_base.html" %}
+{% load static %}
+
+{% block title %}{% if editing %}Edit {{ medicine.name }}{% else %}Add Product{% endif %} — Pharmacy Inventory{% endblock %}
+
+{% block content %}
+<div class="p-4 md:p-8 max-w-2xl mx-auto">
+
+    <!-- Back link -->
+    <a href="{% url 'host:pharmacy_inventory' %}" class="inline-flex items-center gap-2 text-sm text-main/60 hover:text-main mb-4 transition-colors">
+        <i class="fa-solid fa-arrow-left"></i> Back to Inventory
+    </a>
+
+    <!-- Flash messages -->
+    {% if messages %}
+    <div class="mb-4 space-y-2">
+        {% for message in messages %}
+        <div class="px-4 py-3 rounded-lg text-sm font-medium
+            {% if message.tags == 'success' %}bg-green-50 text-green-800 border border-green-200
+            {% elif message.tags == 'error' %}bg-red-50 text-red-800 border border-red-200
+            {% else %}bg-blue-50 text-blue-800 border border-blue-200{% endif %}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Form card -->
+    <div class="bg-card border border-border rounded-2xl overflow-hidden">
+        <div class="p-5 border-b border-border">
+            <h1 class="text-xl font-bold text-main">
+                {% if editing %}<i class="fa-solid fa-pen text-[#0284c7]"></i> Edit Product: {{ medicine.name }}
+                {% else %}<i class="fa-solid fa-plus text-[#0284c7]"></i> Add New Product{% endif %}
+            </h1>
+        </div>
+
+        <form method="post" enctype="multipart/form-data" class="p-5 space-y-5">
+            {% csrf_token %}
+
+            <!-- Name & Generic Name -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-semibold text-main/60 mb-1">Product Name *</label>
+                    <input type="text" name="name" required
+                        value="{% if editing %}{{ medicine.name }}{% elif form_data %}{{ form_data.name }}{% endif %}"
+                        class="w-full px-3 py-2.5 rounded-lg border border-border bg-base text-main text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/30 focus:border-[#0284c7]">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-main/60 mb-1">Generic Name</label>
+                    <input type="text" name="generic_name"
+                        value="{% if editing %}{{ medicine.generic_name }}{% elif form_data %}{{ form_data.generic_name }}{% endif %}"
+                        class="w-full px-3 py-2.5 rounded-lg border border-border bg-base text-main text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/30 focus:border-[#0284c7]">
+                </div>
+            </div>
+
+            <!-- Category & Price -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-semibold text-main/60 mb-1">Category</label>
+                    <select name="category" class="w-full px-3 py-2.5 rounded-lg border border-border bg-base text-main text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/30 focus:border-[#0284c7]">
+                        {% for value, label in categories %}
+                        <option value="{{ value }}"
+                            {% if editing and medicine.category == value %}selected
+                            {% elif form_data and form_data.category == value %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-main/60 mb-1">Price (৳) *</label>
+                    <input type="number" name="price" step="0.01" min="0" required
+                        value="{% if editing %}{{ medicine.price }}{% elif form_data %}{{ form_data.price }}{% endif %}"
+                        class="w-full px-3 py-2.5 rounded-lg border border-border bg-base text-main text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/30 focus:border-[#0284c7]">
+                </div>
+            </div>
+
+            <!-- Stock, Reorder, Strength -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-xs font-semibold text-main/60 mb-1">Stock Quantity</label>
+                    <input type="number" name="stock_quantity" min="0"
+                        value="{% if editing %}{{ medicine.stock_quantity }}{% elif form_data %}{{ form_data.stock_quantity }}{% else %}0{% endif %}"
+                        class="w-full px-3 py-2.5 rounded-lg border border-border bg-base text-main text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/30 focus:border-[#0284c7]">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-main/60 mb-1">Reorder Level</label>
+                    <input type="number" name="reorder_level" min="0"
+                        value="{% if editing %}{{ medicine.reorder_level }}{% elif form_data %}{{ form_data.reorder_level }}{% else %}10{% endif %}"
+                        class="w-full px-3 py-2.5 rounded-lg border border-border bg-base text-main text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/30 focus:border-[#0284c7]">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-main/60 mb-1">Strength</label>
+                    <input type="text" name="strength" placeholder="e.g. 500mg"
+                        value="{% if editing %}{{ medicine.strength }}{% elif form_data %}{{ form_data.strength }}{% endif %}"
+                        class="w-full px-3 py-2.5 rounded-lg border border-border bg-base text-main text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/30 focus:border-[#0284c7]">
+                </div>
+            </div>
+
+            <!-- Manufacturer & Batch -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-semibold text-main/60 mb-1">Manufacturer</label>
+                    <input type="text" name="manufacturer"
+                        value="{% if editing %}{{ medicine.manufacturer }}{% elif form_data %}{{ form_data.manufacturer }}{% endif %}"
+                        class="w-full px-3 py-2.5 rounded-lg border border-border bg-base text-main text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/30 focus:border-[#0284c7]">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-main/60 mb-1">Batch Number</label>
+                    <input type="text" name="batch_number"
+                        value="{% if editing %}{{ medicine.batch_number }}{% elif form_data %}{{ form_data.batch_number }}{% endif %}"
+                        class="w-full px-3 py-2.5 rounded-lg border border-border bg-base text-main text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/30 focus:border-[#0284c7]">
+                </div>
+            </div>
+
+            <!-- Expiry Date -->
+            <div>
+                <label class="block text-xs font-semibold text-main/60 mb-1">Expiry Date</label>
+                <input type="date" name="expiry_date"
+                    value="{% if editing and medicine.expiry_date %}{{ medicine.expiry_date|date:'Y-m-d' }}{% elif form_data %}{{ form_data.expiry_date }}{% endif %}"
+                    class="w-full px-3 py-2.5 rounded-lg border border-border bg-base text-main text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/30 focus:border-[#0284c7]">
+            </div>
+
+            <!-- Description -->
+            <div>
+                <label class="block text-xs font-semibold text-main/60 mb-1">Description</label>
+                <textarea name="description" rows="3"
+                    class="w-full px-3 py-2.5 rounded-lg border border-border bg-base text-main text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/30 focus:border-[#0284c7] resize-none">{% if editing %}{{ medicine.description }}{% elif form_data %}{{ form_data.description }}{% endif %}</textarea>
+            </div>
+
+            <!-- Image upload -->
+            <div>
+                <label class="block text-xs font-semibold text-main/60 mb-1">Product Image</label>
+                {% if editing and medicine.image %}
+                <div class="mb-2">
+                    <img src="{{ medicine.image.url }}" alt="{{ medicine.name }}" class="w-24 h-24 rounded-lg object-cover border border-border">
+                </div>
+                {% endif %}
+                <input type="file" name="image" accept="image/*"
+                    class="w-full px-3 py-2.5 rounded-lg border border-border bg-base text-main text-sm file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-[#0284c7] file:text-white file:text-xs file:font-semibold file:cursor-pointer">
+                <p class="text-xs text-main/40 mt-1">Leave empty to keep the current image.</p>
+            </div>
+
+            <!-- Checkboxes -->
+            <div class="flex items-center gap-6">
+                <label class="flex items-center gap-2 text-sm text-main cursor-pointer">
+                    <input type="checkbox" name="is_prescription"
+                        {% if editing and medicine.is_prescription %}checked{% endif %}
+                        class="w-4 h-4 rounded border-border text-[#0284c7] focus:ring-[#0284c7]">
+                    Rx Required
+                </label>
+                <label class="flex items-center gap-2 text-sm text-main cursor-pointer">
+                    <input type="checkbox" name="is_available"
+                        {% if not editing or medicine.is_available %}checked{% endif %}
+                        class="w-4 h-4 rounded border-border text-[#0284c7] focus:ring-[#0284c7]">
+                    Available for Purchase
+                </label>
+            </div>
+
+            <!-- Submit -->
+            <div class="flex gap-3 pt-2">
+                <button type="submit" class="flex-1 px-4 py-3 rounded-lg bg-[#0284c7] text-white font-semibold text-sm hover:bg-[#0369a1] transition-colors">
+                    {% if editing %}<i class="fa-solid fa-save"></i> Save Changes{% else %}<i class="fa-solid fa-plus"></i> Add Product{% endif %}
+                </button>
+                <a href="{% url 'host:pharmacy_inventory' %}" class="px-4 py-3 rounded-lg border border-border text-main/60 font-semibold text-sm hover:bg-base transition-colors">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
