@@ -4939,14 +4939,18 @@ class ClubsCmsContentTest(TestCase):
         self.assertIn('Featured Club', html)
         self.assertNotIn('Join a campus club', html)
 
-    def test_hidden_block_uses_fallback_default(self):
-        """When the promo block is hidden the hardcoded fallback renders."""
+    def test_hidden_block_still_populates_cms_content(self):
+        """cms_content includes ALL blocks regardless of visibility — the
+        admin edits content_json even on hidden blocks, and inline template
+        bindings should always reflect the latest content."""
         self.promo_block.visible = False
         self.promo_block.save(update_fields=['visible'])
         response = self.client.get(reverse('clubs_dashboard'))
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
-        self.assertIn('Featured Clubs', html)
+        # The promo headline should still render from cms_content even
+        # though the block is hidden in the system zone.
+        self.assertIn('Join a campus club', html)
 
     def test_upcoming_events_header_has_default(self):
         """The 'Upcoming Events' section header falls back to hardcoded text."""
@@ -4954,6 +4958,152 @@ class ClubsCmsContentTest(TestCase):
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
         self.assertIn('Upcoming Events', html)
+
+
+class SystemPageCmsBindingsTest(TestCase):
+    """Global WYSIWYG element-level editability: all 11 student portal pages
+    receive ``cms_content`` from the ``cms_system_blocks`` context processor,
+    and section headers can be dynamically bound to CMS content_json."""
+
+    def setUp(self):
+        from core.system_pages import register_system_pages
+        register_system_pages()
+
+    # ------------------------------------------------------------------
+    # Context processor: cms_content is available on all system pages
+    # ------------------------------------------------------------------
+    def test_cms_content_injected_on_all_system_pages(self):
+        """Every system route gets a non-empty cms_content dict from the
+        context processor so templates can bind inline text."""
+        ALL_ROUTES = [
+            'student_dashboard', 'study_corner', 'departments',
+            'research_ai', 'notices', 'transport_dashboard',
+            'meal_dashboard', 'medical', 'attendance',
+            'clubs_dashboard', 'news',
+        ]
+        for view_name in ALL_ROUTES:
+            with self.subTest(view=view_name):
+                response = self.client.get(reverse(view_name))
+                self.assertEqual(response.status_code, 200)
+                self.assertIn('cms_content', response.context)
+                cms = response.context['cms_content']
+                self.assertIsInstance(cms, dict)
+                self.assertGreater(len(cms), 0,
+                    'cms_content should have entries for %s' % view_name)
+
+    # ------------------------------------------------------------------
+    # Dynamic text rendering: update block content_json → GET shows updated text
+    # ------------------------------------------------------------------
+    def _set_block_headline(self, system_key, element_id, headline):
+        """Helper: update a block's content_json headline and make it visible."""
+        page = EditablePage.objects.filter(system_key=system_key).first()
+        self.assertIsNotNone(page, '%s page not found' % system_key)
+        block = page.content_blocks.filter(element_id=element_id).first()
+        self.assertIsNotNone(block, '%s block not found' % element_id)
+        block.visible = True
+        block.content_json['headline'] = headline
+        block.save(update_fields=['content_json', 'visible'])
+        return block
+
+    def test_dashboard_welcome_banner_update(self):
+        self._set_block_headline('dashboard', 'welcome-banner', 'Welcome Admin')
+        response = self.client.get(reverse('student_dashboard'))
+        self.assertContains(response, 'Welcome Admin')
+
+    def test_study_corner_notes_listing_update(self):
+        page = EditablePage.objects.filter(system_key='study-corner').first()
+        block = page.content_blocks.filter(element_id='notes-listing').first()
+        block.visible = True
+        block.content_json['title'] = 'My Notes Portal'
+        block.save(update_fields=['content_json', 'visible'])
+        response = self.client.get(reverse('study_corner'))
+        self.assertContains(response, 'My Notes Portal')
+
+    def test_pharmacy_hero_promo_update(self):
+        self._set_block_headline('pharmacy', 'hero-promo', 'Campus Pharmacy')
+        response = self.client.get(reverse('pharmacy_store'))
+        self.assertContains(response, 'Campus Pharmacy')
+
+    def test_departments_hero_update(self):
+        self._set_block_headline('departments', 'dept-hero', 'Our Departments')
+        response = self.client.get(reverse('departments'))
+        self.assertContains(response, 'Our Departments')
+
+    def test_research_ai_hero_update(self):
+        self._set_block_headline('research-ai', 'research-hero', 'AI Research Hub')
+        response = self.client.get(reverse('research_ai'))
+        self.assertContains(response, 'AI Research Hub')
+
+    def test_notices_hero_update(self):
+        self._set_block_headline('notices', 'notices-hero', 'Campus Bulletins')
+        response = self.client.get(reverse('notices'))
+        self.assertContains(response, 'Campus Bulletins')
+
+    def test_transport_hero_update(self):
+        self._set_block_headline('transport', 'transport-hero', 'Bus Booking')
+        response = self.client.get(reverse('transport_dashboard'))
+        self.assertContains(response, 'Bus Booking')
+
+    def test_meals_hero_update(self):
+        self._set_block_headline('meals', 'meals-hero', 'Cafeteria Pass')
+        response = self.client.get(reverse('meal_dashboard'))
+        self.assertContains(response, 'Cafeteria Pass')
+
+    def test_medical_hero_update(self):
+        self._set_block_headline('medical', 'medical-hero', 'Doctor Visits')
+        response = self.client.get(reverse('medical'))
+        self.assertContains(response, 'Doctor Visits')
+
+    def test_attendance_hero_update(self):
+        self._set_block_headline('attendance', 'attendance-hero', 'QR Check-In')
+        response = self.client.get(reverse('attendance'))
+        self.assertContains(response, 'QR Check-In')
+
+    def test_news_search_title_update(self):
+        page = EditablePage.objects.filter(system_key='news').first()
+        block = page.content_blocks.filter(element_id='news-search').first()
+        block.visible = True
+        block.content_json['title'] = 'Headline Finder'
+        block.save(update_fields=['content_json', 'visible'])
+        response = self.client.get(reverse('news'))
+        self.assertContains(response, 'Headline Finder')
+
+    def test_clubs_promo_headline_update(self):
+        page = EditablePage.objects.filter(system_key='clubs').first()
+        block = page.content_blocks.filter(element_id='clubs-promo').first()
+        block.visible = True
+        block.content_json['headline'] = 'Join Our Society'
+        block.save(update_fields=['content_json', 'visible'])
+        response = self.client.get(reverse('clubs_dashboard'))
+        self.assertContains(response, 'Join Our Society')
+
+    # ------------------------------------------------------------------
+    # Fallback: hidden blocks → hardcoded defaults still render
+    # ------------------------------------------------------------------
+    def test_all_pages_render_defaults_when_content_empty(self):
+        """When CMS content_json has no headline/title, hardcoded fallback appears."""
+        DEFAULTS = {
+            'student_dashboard': 'Your campus day at a glance',
+            'study_corner': 'Study Corner',
+            'pharmacy_store': 'Online Pharmacy',
+            'departments': 'Academic Departments',
+            'research_ai': 'Academic Research',
+            'notices': 'Institutional Notices',
+            'transport_dashboard': 'Transport Online Ticket System',
+            'meal_dashboard': 'Online Meal Ticket System',
+            'medical': 'Medical Center Appointment System',
+            'attendance': 'Class Attendance',
+            'news': 'Global News',
+            'clubs_dashboard': 'Featured Clubs',
+        }
+        # Clear content_json on all system page blocks so |default triggers.
+        for page in EditablePage.objects.filter(system_key__isnull=False):
+            page.content_blocks.update(content_json={})
+        for view_name, needle in DEFAULTS.items():
+            with self.subTest(view=view_name):
+                response = self.client.get(reverse(view_name))
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, needle)
 
 
 class JoinClubApiTest(TestCase):
@@ -7392,6 +7542,90 @@ class CustomPagesNavTest(TestCase):
     def test_draft_page_is_404_for_visitors(self):
         response = self.client.get(reverse('editable_page', args=['draft-nav']))
         self.assertEqual(response.status_code, 404)
+
+
+class NewPageNavDefaultTest(TestCase):
+    """Newly created custom pages default to show_in_nav=True so they
+    appear in the top navigation bar across all student pages."""
+
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(
+            username='nav_creator', email='nc@niter.edu.bd', password='rootpass123',
+        )
+        self.client.force_login(self.superuser)
+
+    def test_create_page_defaults_to_show_in_nav(self):
+        """POST /api/builder/create-page/ creates a page with show_in_nav=True."""
+        response = self.client.post(
+            reverse('create_page'),
+            data=json.dumps({'title': 'hh', 'slug': 'tyyty'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        page = EditablePage.objects.get(slug='tyyty')
+        self.assertTrue(page.show_in_nav, 'New pages should default to show_in_nav=True')
+        self.assertTrue(page.is_published, 'New pages should be published by default')
+
+    def test_new_nav_page_renders_in_topbar_on_system_pages(self):
+        """A newly created page with show_in_nav=True appears in the nav
+        dropdown on system pages like /pharmacy/."""
+        EditablePage.objects.create(
+            title='hh', slug='tyyty', is_published=True, show_in_nav=True,
+            nav_order=1, nav_icon='flask',
+        )
+        # Check the navbar on a system page.
+        response = self.client.get(reverse('pharmacy_store'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('/page/tyyty/', html)
+        self.assertIn('hh', html)
+        # Check on another system page.
+        response = self.client.get(reverse('clubs_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('/page/tyyty/', html)
+        self.assertIn('hh', html)
+
+    def test_new_nav_page_renders_in_topbar_on_its_own_page(self):
+        """A newly created page shows its own nav button when visited."""
+        EditablePage.objects.create(
+            title='hh', slug='tyyty', is_published=True, show_in_nav=True,
+        )
+        response = self.client.get(reverse('editable_page', args=['tyyty']))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('nav-dropdown', html)
+        self.assertIn('/page/tyyty/', html)
+        self.assertIn('hh', html)
+
+    def test_toggle_show_in_nav_off_removes_from_navbar(self):
+        """Toggling show_in_nav=False via the save endpoint removes the
+        page from the navbar."""
+        page = EditablePage.objects.create(
+            title='Toggle Test', slug='toggle-nav',
+            is_published=True, show_in_nav=True,
+        )
+        # Verify it shows in nav.
+        response = self.client.get(reverse('pharmacy_store'))
+        self.assertIn('toggle-nav', response.content.decode())
+        # Toggle off via the builder save endpoint.
+        response = self.client.post(
+            reverse('builder_page_save'),
+            data=json.dumps({
+                'page_slug': 'toggle-nav',
+                'title': 'Toggle Test',
+                'show_in_nav': False,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        page.refresh_from_db()
+        self.assertFalse(page.show_in_nav)
+        # Verify it's gone from nav.
+        response = self.client.get(reverse('pharmacy_store'))
+        self.assertNotIn('toggle-nav', response.content.decode())
 
 
 class BuilderPageManagerTest(TestCase):

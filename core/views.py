@@ -1539,12 +1539,8 @@ def clubs_dashboard(request):
     every upcoming event; membership requests are handled by ``join_club``
     (``POST /api/clubs/join/``) and event seats route to the checkout gateway.
 
-    When the CMS system page for 'clubs' has blocks with ``content_json``
-    data, the template can bind editable section headers (e.g. "Featured
-    Clubs", "Upcoming Events") to those values — falling back to hardcoded
-    defaults when no CMS content is set.  ``cms_content`` maps element_id →
-    content_json so the template can reference them inline (same pattern as
-    the ``news_page`` view).
+    cms_content (element_id → content_json) is injected automatically by the
+    ``cms_system_blocks`` context processor for the 'clubs' system_key.
     """
     clubs = Club.objects.annotate(
         member_count=Count('registrations', filter=Q(registrations__status='active'))
@@ -1563,22 +1559,10 @@ def clubs_dashboard(request):
         event_date__gte=timezone.now().date(),
     ).select_related('club').order_by('event_date')
 
-    # CMS dynamic content — section headers can be edited via the Website
-    # Builder; cms_content maps element_id → content_json.
-    cms_content = {}
-    try:
-        page = EditablePage.objects.filter(system_key='clubs').first()
-        if page:
-            for block in page.content_blocks.filter(visible=True):
-                cms_content[block.element_id] = block.content_json or {}
-    except Exception:
-        pass
-
     return render(request, 'clubs.html', {
         'clubs': club_rows,
         'events': events,
         'checkout_url': reverse('checkout'),
-        'cms_content': cms_content,
     })
 
 
@@ -6092,7 +6076,12 @@ def create_page(request):
                 status=400,
             )
 
-    page = EditablePage.objects.create(title=title, slug=slug, template=template)
+    # New custom pages default to show_in_nav=True so they appear
+    # in the top navigation bar immediately — the admin can toggle it off
+    # from the page editor toolbar if needed.
+    page = EditablePage.objects.create(
+        title=title, slug=slug, template=template, show_in_nav=True,
+    )
     return JsonResponse({
         'status': 'success',
         'page_slug': page.slug,
@@ -7268,24 +7257,13 @@ def news_page(request):
     drives the widget on the student/admin dashboards. The two live API calls
     are cached (15 min) so only the first load after expiry is slow.
 
-    When the CMS system page for 'news' has blocks with ``content_json``
-    data, the template can bind editable text nodes (title, subtitle, section
-    headers) to those values — falling back to hardcoded defaults when no CMS
-    content is set.  ``cms_content`` maps element_id → content_json so the
-    template can reference them inline.
+    cms_content (element_id → content_json) is injected automatically by the
+    ``cms_system_blocks`` context processor for the 'news' system_key.
     """
     ctx = {
         'news_articles': _cached_global_news(),
         'videos': _cached_news_videos(),
-        'cms_content': {},
     }
-    try:
-        page = EditablePage.objects.filter(system_key='news').first()
-        if page:
-            for block in page.content_blocks.filter(visible=True):
-                ctx['cms_content'][block.element_id] = block.content_json or {}
-    except Exception:
-        pass
     return render(request, 'news.html', ctx)
 
 

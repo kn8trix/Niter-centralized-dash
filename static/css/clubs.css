@@ -841,3 +841,126 @@ body.clubs a {
         transition: none;
     }
 }
+
+/* ====================================================================
+   Event Details Modal
+==================================================================== */
+.event-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    padding: 1rem;
+}
+
+.event-modal-backdrop[hidden] {
+    display: none;
+}
+
+.event-modal {
+    position: relative;
+    background: var(--bg-card, #fff);
+    border-radius: 1rem;
+    max-width: 560px;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+
+.event-modal-close {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 10;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.event-modal-close:hover {
+    background: rgba(0, 0, 0, 0.7);
+}
+
+.event-modal-banner {
+    width: 100%;
+    height: 220px;
+    object-fit: cover;
+    border-radius: 1rem 1rem 0 0;
+    background: linear-gradient(135deg, var(--accent-primary, #e8e2d8), var(--accent-primary-hover, #dfd7cb));
+}
+
+.event-modal-banner img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 1rem 1rem 0 0;
+}
+
+.event-modal-body {
+    padding: 1.5rem;
+}
+
+.event-modal-title {
+    margin: 0 0 0.75rem;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--text-primary, #1f2937);
+}
+
+.event-modal-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    font-size: 0.88rem;
+    color: var(--text-muted, #6b7280);
+}
+
+.event-modal-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.event-modal-desc {
+    margin: 0 0 1.25rem;
+    font-size: 0.95rem;
+    line-height: 1.65;
+    color: var(--text-primary, #1f2937);
+}
+
+.event-modal-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.7rem;
+    background: var(--accent-dark, #27272a);
+    color: #fff;
+    font-weight: 600;
+    text-decoration: none;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.event-modal-cta:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+.event-card[role='button'] {
+    cursor: pointer;
+}

@@ -38,8 +38,8 @@
              Centered hero header
         ============================================================ -->
         <div class="intro">
-            <h1>Academic Research &amp; Thesis Assistant</h1>
-            <p>Brainstorm literature reviews, summarize methodology papers, analyze IEEE-style citations, and edit your academic draft.</p>
+            <h1>{{ cms_content.research_hero.headline|default:"Academic Research & Thesis Assistant" }}</h1>
+            <p>{{ cms_content.research_hero.subheadline|default:"Brainstorm literature reviews, summarize methodology papers, analyze IEEE-style citations, and edit your academic draft." }}</p>
         </div>
 
         {% include 'cms/system_zone.html' %}

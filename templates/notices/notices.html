@@ -35,8 +35,8 @@
              Intro
         ============================================================ -->
         <div class="intro">
-            <h1>Academic &amp; Institutional Notices</h1>
-            <p>Stay updated with official exam schedules, results, and administrative circulars.</p>
+            <h1>{{ cms_content.notices_hero.headline|default:"Academic & Institutional Notices" }}</h1>
+            <p>{{ cms_content.notices_hero.subheadline|default:"Stay updated with official exam schedules, results, and administrative circulars." }}</p>
         </div>
 
         {% include 'cms/system_zone.html' %}

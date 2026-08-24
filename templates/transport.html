@@ -40,8 +40,8 @@
              Intro
         ============================================================ -->
         <div class="intro">
-            <h1>Transport Online Ticket System</h1>
-            <p>Pick a route, choose your seat, pay via bKash / Nagad, and board with a digital pass.</p>
+            <h1>{{ cms_content.transport_hero.headline|default:"Transport Online Ticket System" }}</h1>
+            <p>{{ cms_content.transport_hero.subheadline|default:"Pick a route, choose your seat, pay via bKash / Nagad, and board with a digital pass." }}</p>
         </div>
 
         {% include 'cms/system_zone.html' %}

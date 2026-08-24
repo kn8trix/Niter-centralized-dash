@@ -197,8 +197,8 @@
              Intro
         ============================================================ -->
         <div class="intro">
-            <h1>Study Corner</h1>
-            <p>Notes, video lectures, and an AI study assistant — everything you need to prep for exams.</p>
+            <h1>{{ cms_content.notes_listing.title|default:"Study Corner" }}</h1>
+            <p>{{ cms_content.notes_listing.subtitle|default:"Notes, video lectures, and an AI study assistant — everything you need to prep for exams." }}</p>
         </div>
 
         <!-- CMS system zone — customized blocks (notes listing / YouTube /
@@ -350,8 +350,8 @@
                 <!-- Section 2: YouTube Video Tutorials & Lectures -->
                 <section class="study-panel" id="youtube-panel" aria-labelledby="youtube-panel-title">
                     <div class="study-panel-head">
-                        <h2 class="section-title" id="youtube-panel-title"><i class="fa-brands fa-youtube"></i> Video Tutorials &amp; Lectures</h2>
-                        <p class="section-subtitle">Search YouTube for lectures on any topic — Circuit Analysis, Calculus, Java Programming and more.</p>
+                        <h2 class="section-title" id="youtube-panel-title"><i class="fa-brands fa-youtube"></i> {{ cms_content.youtube_section.title|default:"Video Tutorials & Lectures" }}</h2>
+                        <p class="section-subtitle">{{ cms_content.youtube_section.subtitle|default:"Search YouTube for lectures on any topic — Circuit Analysis, Calculus, Java Programming and more." }}</p>
                     </div>
 
                     <form class="yt-search" id="yt-search-form" role="search">
@@ -387,7 +387,7 @@
             <aside class="study-aside">
                 <section class="study-panel chat-panel" id="chat-panel" aria-labelledby="chat-panel-title">
                     <div class="chat-head">
-                        <h2 class="section-title" id="chat-panel-title"><i class="fa-solid fa-robot"></i> Study Assistant</h2>
+                        <h2 class="section-title" id="chat-panel-title"><i class="fa-solid fa-robot"></i> {{ cms_content.study_assistant.title|default:"Study Assistant" }}</h2>
                         <span class="chat-status" id="chat-status"><span class="chat-status-dot"></span> online</span>
                     </div>
 

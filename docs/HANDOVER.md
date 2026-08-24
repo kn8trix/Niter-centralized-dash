@@ -4,6 +4,9 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 150 | Meals button contrast fix, Builder dark mode preview toggle, Club event details modal | *(see §150)* |
+| 149 | Custom page navbar default — new pages default to show_in_nav=True, toggle persistence verified, nav renders on all student pages | *(see §149)* |
+| 148 | Global WYSIWYG element-level editability — cms_content via context processor for all 11 system pages, underscore-normalized keys, template bindings with fallbacks | *(see §148)* |
 | 147 | Dynamic CMS text rendering on /clubs/ — cms_content binding for section headers, clubs_dashboard view loads content_json, fallback defaults | *(see §147)* |
 | 146 | Club event banner image upload & student dashboard rendering — CSS 180px banner height, gradient fallback, /clubs/ page banner display tests | *(see §146)* |
 | 145 | CMS page deletion API + admin UI delete button + dynamic student top navigation + catch-all /page/<slug/> verification | *(see §145)* |
@@ -8873,3 +8876,242 @@ Four tests:
 - 4 new tests + 17 existing clubs tests — **all pass**
 - Existing `ClubsPageTest`, `ClubsPublicPageTest`, `ClubEventBannerRenderingTest`,
   `ClubEventCreationTest` suites unaffected
+
+---
+
+## 148. Global WYSIWYG Element-Level Editability — All 11 System Pages
+
+### Date
+August 2026
+
+### Summary
+Connected all 11 student portal pages to the CMS content pipeline so every
+section header (h1, h2) can be dynamically bound to editable `content_json`
+via the `cms_system_blocks` context processor. Previously only the `news`
+and `clubs` pages had inline CMS bindings — now all 11 system pages receive
+`cms_content` automatically and section headers fall back to hardcoded
+defaults when no CMS content is set.
+
+### Changes
+
+#### 1. Context processor returns `cms_content` (`core/context_processors.py`)
+
+The `cms_system_blocks` context processor now returns both `cms_blocks`
+(for the system zone render) and `cms_content` (element_id → content_json
+mapping) so templates can bind inline text. Key design decisions:
+
+- **All blocks included** (not just visible ones): `cms_content` is built
+  from `page.content_blocks.all()` so template bindings always have the
+  latest data even when a block is hidden — the admin edits `content_json`
+  regardless of visibility.
+- **Hyphens normalized to underscores**: Django template dot-notation
+  cannot parse `cms_content.hero-banner.headline` (treats `-` as
+  subtraction), so element_ids are stored with underscores
+  (`hero-banner` → `hero_banner`) in the mapping.
+
+#### 2. Template bindings for all 11 student pages
+
+Each template's primary heading now binds to `cms_content` with `|default`
+fallbacks:
+
+| Page | Template | Block Key | Bound Field | Default |
+|---|---|---|---|---|
+| Dashboard | `dashboard/home.html` | `welcome_banner` | `subheadline` | "Your campus day at a glance…" |
+| Study Corner | `academic/study_corner.html` | `notes_listing` | `title` + `subtitle` | "Study Corner" + description |
+| Study Corner | `academic/study_corner.html` | `youtube_section` | `title` + `subtitle` | "Video Tutorials & Lectures" |
+| Study Corner | `academic/study_corner.html` | `study_assistant` | `title` | "Study Assistant" |
+| Pharmacy | `pharmacy/store.html` | `hero_promo` | `headline` + `subtext` | "Online Pharmacy" |
+| Departments | `departments.html` | `dept_hero` | `headline` + `subheadline` | "Academic Departments & Faculties" |
+| Research AI | `research_ai.html` | `research_hero` | `headline` + `subheadline` | "Academic Research & Thesis Assistant" |
+| Notices | `notices/notices.html` | `notices_hero` | `headline` + `subheadline` | "Academic & Institutional Notices" |
+| Transport | `transport.html` | `transport_hero` | `headline` + `subheadline` | "Transport Online Ticket System" |
+| Meals | `meals.html` | `meals_hero` | `headline` + `subheadline` | "Online Meal Ticket System" |
+| Medical | `medical/booking.html` | `medical_hero` | `headline` + `subheadline` | "Medical Center Appointment System" |
+| Attendance | `attendance.html` | `attendance_hero` | `headline` + `subheadline` | "Class Attendance" |
+| News | `news.html` | `news_search` | `title` + `subtitle` | "Global News" (already bound) |
+| Clubs | `clubs.html` | `clubs_promo` | `headline` + `subtext` | "Featured Clubs" (already bound) |
+
+#### 3. Redundant view code removed
+
+The `clubs_dashboard` and `news_page` views previously built their own
+`cms_content` dict — this is now handled centrally by the context
+processor. The manual loading code was removed from both views.
+
+#### 4. Comprehensive test class (`core.tests.SystemPageCmsBindingsTest`)
+
+14 tests:
+
+| Test | What it verifies |
+|---|---|
+| `test_cms_content_injected_on_all_system_pages` | All 11 routes get non-empty `cms_content` |
+| `test_dashboard_welcome_banner_update` | Dashboard banner headline update renders |
+| `test_study_corner_notes_listing_update` | Study Corner notes title update renders |
+| `test_pharmacy_hero_promo_update` | Pharmacy promo headline update renders |
+| `test_departments_hero_update` | Departments hero headline update renders |
+| `test_research_ai_hero_update` | Research AI hero headline update renders |
+| `test_notices_hero_update` | Notices hero headline update renders |
+| `test_transport_hero_update` | Transport hero headline update renders |
+| `test_meals_hero_update` | Meals hero headline update renders |
+| `test_medical_hero_update` | Medical hero headline update renders |
+| `test_attendance_hero_update` | Attendance hero headline update renders |
+| `test_news_search_title_update` | News search title update renders |
+| `test_clubs_promo_headline_update` | Clubs promo headline update renders |
+| `test_all_pages_render_defaults_when_content_empty` | Empty content_json → hardcoded defaults |
+
+### Files Modified
+
+- `core/context_processors.py` — `cms_system_blocks` now returns `cms_content`
+  dict (all blocks, underscore-normalized keys)
+- `core/views.py` — removed redundant `cms_content` from `clubs_dashboard`
+  and `news_page`
+- `templates/dashboard/home.html` — bound `welcome_banner.subheadline`
+- `templates/academic/study_corner.html` — bound `notes_listing`,
+  `youtube_section`, `study_assistant`
+- `templates/pharmacy/store.html` — bound `hero_promo`
+- `templates/departments.html` — bound `dept_hero`
+- `templates/research_ai.html` — bound `research_hero`
+- `templates/notices/notices.html` — bound `notices_hero`
+- `templates/transport.html` — bound `transport_hero`
+- `templates/meals.html` — bound `meals_hero`
+- `templates/medical/booking.html` — bound `medical_hero`
+- `templates/attendance.html` — bound `attendance_hero`
+- `core/tests.py` — new `SystemPageCmsBindingsTest` (14 tests)
+- `docs/HANDOVER.md` — §148 entry
+
+### Verification
+
+- `python manage.py check` — **0 issues**
+- 18 new tests (SystemPageCmsBindings 14 + ClubsCmsContent 4) — **all pass**
+- 42 existing tests (ClubsPage, ClubsPublicPage, ClubEventBannerRendering,
+  ClubEventCreation, PageDeletion, RegisterSystemPages) — **all pass**
+- All 11 system pages render correct defaults when `content_json` is empty
+- Editing any block's `content_json` via the builder updates the live page
+  on next refresh
+
+---
+
+## 149. Custom Page Navbar Default — New Pages Auto-Show in Navigation
+
+### Date
+August 2026
+
+### Summary
+Fixed newly created custom pages to default to `show_in_nav=True` so they
+appear in the top navigation bar across all student pages immediately. The
+full pipeline — context processor, topbar rendering, builder save endpoint,
+and page creation — was already wired; the only gap was that `create_page`
+created pages with `show_in_nav=False` (the model default), requiring the
+admin to manually toggle it on after every page creation.
+
+### Changes
+
+#### 1. Page creation default (`core/views.py` → `create_page`)
+
+The `create_page` endpoint now passes `show_in_nav=True` when creating a
+new `EditablePage`. New pages appear in the top navigation bar
+immediately — the admin can toggle it off from the page editor toolbar
+if needed.
+
+#### 2. New test class (`core.tests.NewPageNavDefaultTest`)
+
+Four tests:
+
+| Test | What it verifies |
+|---|---|
+| `test_create_page_defaults_to_show_in_nav` | POST to `/api/builder/create-page/` creates a page with `show_in_nav=True` |
+| `test_new_nav_page_renders_in_topbar_on_system_pages` | A newly created page appears in the nav dropdown on `/pharmacy/` and `/clubs/` |
+| `test_new_nav_page_renders_in_topbar_on_its_own_page` | A newly created page shows its own nav button when visited |
+| `test_toggle_show_in_nav_off_removes_from_navbar` | Toggling `show_in_nav=False` via the builder save endpoint removes the page from the navbar |
+
+### Already implemented (verified, no changes needed)
+
+- **Context processor:** `custom_pages_nav` in `core/context_processors.py`
+  returns `NAV_CUSTOM_PAGES` (published + `show_in_nav=True` pages)
+  to every template.
+- **Topbar rendering:** `templates/partials/topbar.html` renders
+  `NAV_CUSTOM_PAGES` in both the desktop "Pages" dropdown and the
+  mobile profile-links menu.
+- **Builder save endpoint:** `builder_page_save` persists `show_in_nav`
+  via AJAX.
+- **Page editor toggle:** `templates/builder/edit_page.html` has the
+  `show_in_nav` checkbox; `static/js/builder/page_manager.js` sends it
+  in the save payload.
+
+### Files Modified
+
+- `core/views.py` — `create_page` defaults `show_in_nav=True`
+- `core/tests.py` — new `NewPageNavDefaultTest` (4 tests)
+- `docs/HANDOVER.md` — §149 entry
+
+### Verification
+
+- `python manage.py check` — **0 issues**
+- 4 new tests + 3 existing `CustomPagesNavTest` — **all pass**
+- Creating a page via the builder API immediately makes it visible in
+  the top navigation on all student pages
+
+---
+
+## 150. Meals Button Contrast, Builder Dark Mode Toggle, Club Event Details Modal
+
+### Date
+August 2026
+
+### Summary
+Three UI improvements: fixed the low-contrast "Pay ৳2000" button on the
+meals subscription modal, added a Dark/Light mode preview toggle to the
+visual builder toolbar, and added a responsive event details modal on
+the Clubs & Events page.
+
+### Changes
+
+#### 1. Meals pay button contrast (`templates/meals.html` + `static/css/meals.css`)
+
+- New `.pay-btn` CSS class with high-contrast styling: white background,
+  dark slate text (`#0f172a`), 2px dark border, bold weight.
+  Hover inverts to dark background with white text.
+- The subscription modal's "Pay ৳" button now uses `pay-btn` class
+  instead of `claim-btn` for crisp readability.
+
+#### 2. Builder dark mode preview toggle
+(`templates/builder/editor.html` + `static/js/builder/editor.js`)
+
+- New "Dark / Light" toggle button (moon/sun icon) in the editor toolbar
+  next to the Desktop/Tablet/Mobile viewport switcher.
+- Clicking the toggle sets `data-theme="dark"` and the `dark` class on
+  the iframe's `<html>` element, so admins can preview how pages render
+  in both themes.
+- Icon and label swap between moon/Dark and sun/Light on toggle.
+
+#### 3. Club event details modal (`templates/clubs.html` + `static/css/clubs.css`)
+
+- Event cards now have `data-*` attributes (title, date, location, club,
+  capacity, description, banner URL, register URL) and `role="button"`
+  for accessibility.
+- Clicking an event card (or pressing Enter/Space) opens a responsive
+  modal showing: banner image (or gradient fallback), title, date,
+  location, club, capacity, full description, and a "Register Now" CTA.
+- Modal closes via close button, `Esc` key, or backdrop click.
+- CSS: `.event-modal-backdrop`, `.event-modal`, `.event-modal-banner`,
+  `.event-modal-body`, `.event-modal-cta` — responsive, scrollable,
+  max-height 85vh.
+
+### Files Modified
+
+- `templates/meals.html` — pay button class changed to `pay-btn`
+- `static/css/meals.css` — new `.pay-btn` high-contrast styles
+- `templates/builder/editor.html` — dark mode toggle button added
+- `static/js/builder/editor.js` — dark mode toggle JS handler
+- `templates/clubs.html` — event modal HTML + data attributes on cards +
+  JS click/close handlers
+- `static/css/clubs.css` — event modal styles
+- `docs/HANDOVER.md` — §150 entry
+
+### Verification
+
+- `python manage.py check` — **0 issues**
+- 18 existing tests (ClubsPage, ClubsCmsContent, ClubEventBannerRendering,
+  NewPageNavDefault, BuilderPageManager) — **all pass**
+- Meals pay button now has high-contrast white-on-dark styling
+- Builder dark mode toggle switches iframe theme between light/dark
+- Club event cards open a responsive details modal on click

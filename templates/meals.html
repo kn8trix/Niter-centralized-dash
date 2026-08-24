@@ -41,8 +41,8 @@
              Intro
         ============================================================ -->
         <div class="intro">
-            <h1>Online Meal Ticket System</h1>
-            <p>Subscribe monthly, claim your meal slot, and board the line with a scannable digital pass.</p>
+            <h1>{{ cms_content.meals_hero.headline|default:"Online Meal Ticket System" }}</h1>
+            <p>{{ cms_content.meals_hero.subheadline|default:"Subscribe monthly, claim your meal slot, and board the line with a scannable digital pass." }}</p>
         </div>
 
         {% include 'cms/system_zone.html' %}
@@ -268,7 +268,7 @@
 
             <div class="modal-alert" id="sub-alert" role="alert" hidden></div>
 
-            <button type="button" class="claim-btn" id="sub-pay-btn">
+            <button type="button" class="pay-btn" id="sub-pay-btn">
                 <i class="fa-solid fa-lock" id="sub-pay-icon"></i>
                 <span id="sub-pay-label">Pay ৳{{ meal_monthly_fee }}</span>
             </button>

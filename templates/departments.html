@@ -38,8 +38,8 @@
              Hero — title, search, quick jump pills
         ============================================================ -->
         <section class="dept-hero" data-widget="dept-directory-hero">
-            <h1>Academic Departments &amp; Faculties</h1>
-            <p>Explore NITER's departments — meet the heads, browse faculty, check weekly routines, and grab semester-wise notes from each department's hub.</p>
+            <h1>{{ cms_content.dept_hero.headline|default:"Academic Departments & Faculties" }}</h1>
+            <p>{{ cms_content.dept_hero.subheadline|default:"Explore NITER's departments — meet the heads, browse faculty, check weekly routines, and grab semester-wise notes from each department's hub." }}</p>
 
             <div class="dept-search-wrap">
                 <i class="fa-solid fa-magnifying-glass dept-search-icon"></i>

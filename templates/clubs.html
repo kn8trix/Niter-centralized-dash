@@ -79,7 +79,16 @@
             <p class="section-subtitle">{{ cms_content.upcoming_events.subtitle|default:"Register online — payments via bKash / Nagad." }}</p>
             <div class="events-grid" id="events-grid">
                 {% for event in events %}
-                <article class="event-card" data-widget="event-card">
+                <article class="event-card" data-widget="event-card"
+                    data-title="{{ event.title }}"
+                    data-date="{{ event.event_date|date:"M d, Y" }}"
+                    data-location="{{ event.location|default:"Campus" }}"
+                    data-club="{{ event.club.name }}"
+                    data-capacity="{{ event.capacity }}"
+                    data-description="{{ event.description|default:"No description provided." }}"
+                    data-banner="{% if event.banner %}{{ event.banner.url }}{% elif event.banner_url %}{{ event.banner_url }}{% endif %}"
+                    data-register-url="{{ checkout_url }}?type=event&amp;item={{ event.title|urlencode }}&amp;issuer={{ event.club.name|urlencode }}&amp;fee=0"
+                    role="button" tabindex="0">
                     {% if event.banner %}
                     <img class="event-card-banner" src="{{ event.banner.url }}" alt="{{ event.title }} banner" loading="lazy">
                     {% elif event.banner_url %}
@@ -99,9 +108,6 @@
                         <span><i class="fa-solid fa-location-dot"></i> {{ event.location|default:"Campus" }}</span>
                         <span><i class="fa-solid fa-flag"></i> {{ event.club.name }}</span>
                     </div>
-                    <a href="{{ checkout_url }}?type=event&amp;item={{ event.title|urlencode }}&amp;issuer={{ event.club.name|urlencode }}&amp;fee=0" class="register-btn">
-                        <i class="fa-solid fa-ticket"></i> Register Now
-                    </a>
                 </article>
                 {% empty %}
                 <div class="event-card" style="grid-column: 1 / -1;" role="status">
@@ -113,8 +119,29 @@
 
         </section>
 
+    </div>
 
-
+    <!-- Event Details Modal -->
+    <div class="event-modal-backdrop" id="event-modal" role="dialog" aria-modal="true" aria-labelledby="event-modal-title" hidden>
+        <div class="event-modal">
+            <button type="button" class="event-modal-close" id="event-modal-close" aria-label="Close">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <div class="event-modal-banner" id="event-modal-banner"></div>
+            <div class="event-modal-body">
+                <h2 class="event-modal-title" id="event-modal-title"></h2>
+                <div class="event-modal-meta">
+                    <span id="event-modal-date"><i class="fa-regular fa-calendar"></i> </span>
+                    <span id="event-modal-location"><i class="fa-solid fa-location-dot"></i> </span>
+                    <span id="event-modal-club"><i class="fa-solid fa-flag"></i> </span>
+                    <span id="event-modal-capacity"><i class="fa-solid fa-users"></i> </span>
+                </div>
+                <p class="event-modal-desc" id="event-modal-desc"></p>
+                <a class="event-modal-cta" id="event-modal-cta" href="#">
+                    <i class="fa-solid fa-ticket"></i> Register Now
+                </a>
+            </div>
+        </div>
     </div>
 
     <!-- Toast for confirmations -->
@@ -170,6 +197,85 @@
                 btn.disabled = false;
             }
         });
+
+        // ====================================================================
+        // Event Details Modal
+        // ====================================================================
+        (function () {
+            const modal = document.getElementById('event-modal');
+            const closeBtn = document.getElementById('event-modal-close');
+            const bannerEl = document.getElementById('event-modal-banner');
+            const titleEl = document.getElementById('event-modal-title');
+            const dateEl = document.getElementById('event-modal-date');
+            const locEl = document.getElementById('event-modal-location');
+            const clubEl = document.getElementById('event-modal-club');
+            const capEl = document.getElementById('event-modal-capacity');
+            const descEl = document.getElementById('event-modal-desc');
+            const ctaEl = document.getElementById('event-modal-cta');
+            if (!modal) return;
+
+            function openModal(card) {
+                var title = card.dataset.title || '';
+                var date = card.dataset.date || '';
+                var location = card.dataset.location || '';
+                var club = card.dataset.club || '';
+                var capacity = card.dataset.capacity || '';
+                var desc = card.dataset.description || '';
+                var banner = card.dataset.banner || '';
+                var regUrl = card.dataset.registerUrl || '#';
+
+                titleEl.textContent = title;
+                dateEl.innerHTML = '<i class="fa-regular fa-calendar"></i> ' + date;
+                locEl.innerHTML = '<i class="fa-solid fa-location-dot"></i> ' + location;
+                clubEl.innerHTML = '<i class="fa-solid fa-flag"></i> ' + club;
+                capEl.innerHTML = '<i class="fa-solid fa-users"></i> ' + capacity + ' seats';
+                descEl.textContent = desc;
+                ctaEl.href = regUrl;
+
+                bannerEl.innerHTML = '';
+                if (banner) {
+                    var img = document.createElement('img');
+                    img.src = banner;
+                    img.alt = title + ' banner';
+                    bannerEl.appendChild(img);
+                }
+
+                modal.hidden = false;
+                document.body.style.overflow = 'hidden';
+            }
+
+            function closeModal() {
+                modal.hidden = true;
+                document.body.style.overflow = '';
+            }
+
+            // Click on event card → open modal.
+            document.getElementById('events-grid').addEventListener('click', function (e) {
+                var card = e.target.closest('.event-card[data-title]');
+                if (!card) return;
+                // Don't open modal if clicking the Register Now link.
+                if (e.target.closest('.register-btn')) return;
+                openModal(card);
+            });
+
+            // Keyboard: Enter/Space on focused card.
+            document.getElementById('events-grid').addEventListener('keydown', function (e) {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                var card = e.target.closest('.event-card[data-title]');
+                if (!card) return;
+                e.preventDefault();
+                openModal(card);
+            });
+
+            // Close handlers.
+            if (closeBtn) closeBtn.addEventListener('click', closeModal);
+            modal.addEventListener('click', function (e) {
+                if (e.target === modal) closeModal();
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && !modal.hidden) closeModal();
+            });
+        })();
 
     </script>
 </body>

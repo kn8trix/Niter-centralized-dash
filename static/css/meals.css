@@ -281,6 +281,38 @@ body.meals a {
     cursor: not-allowed;
 }
 
+/* High-contrast pay button for the subscription modal */
+.pay-btn {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.85rem 1.2rem;
+    border: none;
+    border-radius: 0.7rem;
+    background: #ffffff;
+    color: #0f172a;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 2px solid #0f172a;
+    transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pay-btn:hover:not(:disabled) {
+    background: #0f172a;
+    color: #ffffff;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+.pay-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
 /* Monthly subscription status banner (paid via /checkout/) */
 .meal-sub {
     display: flex;

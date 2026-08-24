@@ -68,7 +68,22 @@ def cms_system_blocks(request):
             for block in block_qs
             if _block_has_content(block)
         ]
-        return {'cms_blocks': blocks}
+        # cms_content maps element_id → content_json so inline templates
+        # can bind section headers ({{ cms_content.hero.headline }}) with
+        # fallback defaults — same pattern used by news_page and
+        # clubs_dashboard views.
+        # NOTE: Django template dot-notation cannot access dict keys with
+        # hyphens (e.g. cms_content.hero-banner fails as subtraction), so
+        # element_ids are normalized to underscores in the mapping key.
+        # cms_content should include ALL blocks (not just visible) so
+        # template bindings always have the data available even when a
+        # block is hidden — visibility only controls the system_zone render.
+        all_blocks = page.content_blocks.order_by('order', 'id')
+        cms_content = {
+            block.element_id.replace('-', '_'): (block.content_json or {})
+            for block in all_blocks
+        }
+        return {'cms_blocks': blocks, 'cms_content': cms_content}
     except Exception:
         logger.exception('cms_system_blocks failed for %s', url_name)
         return {}

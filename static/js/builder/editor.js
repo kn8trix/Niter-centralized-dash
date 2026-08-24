@@ -420,6 +420,34 @@
     });
 
     // ---------------------------------------------------------------------
+    // Dark / Light mode preview toggle
+    // ---------------------------------------------------------------------
+    var darkToggle = document.getElementById('dark-mode-toggle');
+    if (darkToggle) {
+        darkToggle.addEventListener('click', function () {
+            var isDark = darkToggle.classList.toggle('active');
+            darkToggle.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+            var icon = darkToggle.querySelector('i');
+            if (icon) {
+                icon.className = isDark ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+            }
+            darkToggle.childNodes[darkToggle.childNodes.length - 1].textContent = isDark ? ' Light' : ' Dark';
+            // Toggle dark theme on the iframe document.
+            try {
+                var iframeDoc = canvasFrame.contentDocument || canvasFrame.contentWindow.document;
+                var root = iframeDoc.documentElement;
+                if (root) {
+                    root.setAttribute('data-theme', isDark ? 'dark' : 'light');
+                    root.classList.toggle('dark', isDark);
+                }
+            } catch (e) {
+                // Cross-origin — ignore silently.
+            }
+            showToast(isDark ? 'Dark mode preview' : 'Light mode preview', true);
+        });
+    }
+
+    // ---------------------------------------------------------------------
     // Live preview toggle (edit highlights on/off)
     // ---------------------------------------------------------------------
     liveToggle.addEventListener('change', function () {
