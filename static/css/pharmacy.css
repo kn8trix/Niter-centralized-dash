@@ -574,6 +574,21 @@ body.pharmacy.modal-open {
 
 .modal-card-wide { max-width: 560px; }
 
+/* Product detail modal — scrollable body so all sections (Usage, Dosage,
+   Precautions, Side Effects) are accessible without clipping the header
+   or action buttons. */
+#product-modal .modal-card {
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#product-modal .product-detail {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
 .modal-card h3 {
     margin: 0 0 0.3rem;
     font-size: 1.1rem;
@@ -727,7 +742,8 @@ body.pharmacy.modal-open {
 --------------------------------------------------------------------------- */
 .pd-img {
     position: relative;
-    height: 190px;
+    height: auto;
+    min-height: 120px;
     border-radius: 0.8rem;
     overflow: hidden;
     margin-bottom: 0.9rem;
@@ -739,12 +755,12 @@ body.pharmacy.modal-open {
 
 .pd-img img {
     width: 100%;
-    height: 100%;
-    object-fit: cover;
+    max-height: 180px;
+    object-fit: contain;
     display: block;
 }
 
-.pd-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; }
+.pd-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; padding-top: 0.75rem; width: 100%; }
 .pd-name { margin: 0 0 0.15rem; font-size: 1.3rem; font-weight: 800; }
 .pd-name span { color: var(--text-muted, #6b7280); font-size: 0.85em; font-weight: 600; }
 .pd-generic { margin: 0 0 0.6rem; color: var(--text-muted, #6b7280); font-size: 0.88rem; }

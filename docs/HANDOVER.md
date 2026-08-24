@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 139 | Pharmacy product detail modal & card image fixes — pill placeholder fallback, `object-fit:contain` modal image, `.pd-head` padding, `max-height:85vh` scrollable modal | *(see §139)* |
 | 138 | Pharmacy product image display fix — catalog serializer uses `item.image.url` (ImageField) with `image_url` fallback, media serving verified | *(see §138)* |
 | 137 | E-Commerce pharmacy inventory management — CRUD views (list/add/edit/delete/toggle/adjust), image upload, stock badges, sidebar logout + Pharmacy Inventory nav link | *(see §137)* |
 | 136 | Attendance page mobile layout — card overflow fix, video proportional scaling, `flex:1 1 45%` button wrap, full-width input/button on mobile | *(see §136)* |
@@ -7984,3 +7985,70 @@ The storefront JS in `templates/pharmacy/store.html` already handles both cases:
 
 ### Files Modified
 - `core/views.py` — updated `_pharmacy_medicine_catalog()` image serialization
+
+---
+
+## 139. Pharmacy Product Detail Modal & Card Image Fixes
+
+### Date
+August 2026
+
+### Summary
+Fixed the product detail modal and catalog card image rendering on the student-facing
+Online Pharmacy page (`/pharmacy/`) so uploaded product photos display correctly with
+proper styling, fallback placeholders, and scrollable modal content.
+
+### 1. Catalog Card Image Fix (`templates/pharmacy/store.html`)
+
+**Before:** When no image existed, `cardImage(m)` returned an empty string — no
+image container rendered at all, leaving a blank gap in the card.
+
+**After:**
+- When `m.image` exists → renders `<img>` with `onerror` that adds `.no-img` class
+  to show the fallback pill icon
+- When no image → renders a dark slate container with a visible pill icon placeholder
+  (`<i class="fa-solid fa-pills">`)
+
+```javascript
+// Before:
+if (!m.image) return '';
+
+// After — shows pill placeholder when no image:
+if (m.image) {
+    return '<div class="med-img"><img ... onerror="this.parentElement.classList.add(\'no-img\');">...</div>';
+}
+return '<div class="med-img no-img"><span class="med-img-fallback" style="opacity:1"><i class="fa-solid fa-pills"></i></span></div>';
+```
+
+### 2. Product Detail Modal Image Fix (`templates/pharmacy/store.html`)
+
+**Before:** Modal image had `object-fit: cover` with no padding — photos were cropped
+and could overlap the title text below.
+
+**After:**
+- `<img>` styled with `max-height: 180px; object-fit: contain; padding: 8px;
+  border-radius: 8px; background: rgba(0,0,0,0.2)` — photos display fully without
+  cropping, with a subtle dark background and rounded corners
+- When no image exists → pill icon placeholder is always shown (was previously
+  rendering nothing)
+
+### 3. Modal Header & Scroll Fix (`static/css/pharmacy.css`)
+
+| Element | Before | After |
+|---------|--------|-------|
+| `.pd-img` | `height: 190px` fixed | `height: auto; min-height: 120px` — adapts to image |
+| `.pd-img img` | `object-fit: cover` | `object-fit: contain; max-height: 180px` — no cropping |
+| `.pd-head` | no padding-top | `padding-top: 0.75rem; width: 100%` — no overlap with image |
+| `#product-modal .modal-card` | no scroll constraint | `max-height: 85vh; display: flex; flex-direction: column` |
+| `#product-modal .product-detail` | unscrollable | `flex: 1; overflow-y: auto` — all sections scroll cleanly |
+
+### 4. Media URL Verification
+
+Already correctly configured:
+- `config/urls.py`: `urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)`
+- `config/settings.py`: `MEDIA_URL = '/media/'`, `MEDIA_ROOT = BASE_DIR / 'media'`
+- Uploaded images served at `/media/pharmacy_products/...` in development
+
+### Files Modified
+- `templates/pharmacy/store.html` — card image fallback + modal image styling
+- `static/css/pharmacy.css` — `.pd-img`, `.pd-head`, product modal scroll

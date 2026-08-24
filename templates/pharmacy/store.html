@@ -334,10 +334,14 @@
         var DEFAULT_MED_IMG = '/static/images/pharmacy/default_medicine.png';
 
         function cardImage(m) {
-            if (!m.image) return '';
-            return '<div class="med-img">' +
-                '<img src="' + esc(m.image) + '" alt="' + esc(m.name) + '" loading="lazy" onerror="this.onerror=null; this.src=\'' + DEFAULT_MED_IMG + '\';">' +
-                '<span class="med-img-fallback"><i class="fa-solid fa-pills"></i></span>' +
+            if (m.image) {
+                return '<div class="med-img">' +
+                    '<img src="' + esc(m.image) + '" alt="' + esc(m.name) + '" loading="lazy" onerror="this.onerror=null; this.parentElement.classList.add(\"no-img\");">' +
+                    '<span class="med-img-fallback"><i class="fa-solid fa-pills"></i></span>' +
+                '</div>';
+            }
+            return '<div class="med-img no-img">' +
+                '<span class="med-img-fallback" style="opacity:1"><i class="fa-solid fa-pills"></i></span>' +
             '</div>';
         }
 
@@ -461,8 +465,8 @@
                     '<p class="modal-note">No in-stock ' + esc(item.generic) + ' alternatives right now — check back soon.</p></div>';
             }
             const imgHtml = item.image
-                ? '<div class="pd-img"><img src="' + esc(item.image) + '" alt="' + esc(item.name) + '" onerror="this.onerror=null; this.src=\'' + DEFAULT_MED_IMG + '\';"><span class="pd-img-fallback"><i class="fa-solid fa-pills"></i></span></div>'
-                : '';
+                ? '<div class="pd-img"><img src="' + esc(item.image) + '" alt="' + esc(item.name) + '" style="max-height:180px;width:100%;object-fit:contain;background:rgba(0,0,0,0.2);padding:8px;border-radius:8px;" onerror="this.onerror=null; this.parentElement.classList.add(\"no-img\");"><span class="pd-img-fallback"><i class="fa-solid fa-pills"></i></span></div>'
+                : '<div class="pd-img no-img"><span class="pd-img-fallback" style="opacity:1"><i class="fa-solid fa-pills"></i></span></div>';
             const actionBtns = outOfStock
                 ? '<button type="button" class="btn-primary pd-request" data-id="' + item.id + '"><i class="fa-solid fa-truck-medical"></i> Request Stock</button>'
                 : '<button type="button" class="btn-ghost pd-buy" data-id="' + item.id + '"><i class="fa-solid fa-bolt"></i> Buy Now</button>' +
