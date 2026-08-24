@@ -730,6 +730,17 @@ a {
     box-shadow: 0 14px 40px rgba(0, 0, 0, 0.2);
     font-size: 0.82rem;
     color: var(--text-primary);
+    /* Allow mouse clicks to pass through the overlay into the canvas iframe
+       so double-click inline text editing works without obstruction. */
+    pointer-events: none;
+}
+
+/* Re-enable interaction on the toolbar controls themselves so the admin
+   can still adjust font-size / colour / alignment while editing. */
+.wysiwyg-toolbar input,
+.wysiwyg-toolbar button,
+.wysiwyg-toolbar select {
+    pointer-events: auto;
 }
 
 .wysiwyg-toolbar[hidden] {

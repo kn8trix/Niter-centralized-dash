@@ -4,6 +4,10 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 147 | Dynamic CMS text rendering on /clubs/ — cms_content binding for section headers, clubs_dashboard view loads content_json, fallback defaults | *(see §147)* |
+| 146 | Club event banner image upload & student dashboard rendering — CSS 180px banner height, gradient fallback, /clubs/ page banner display tests | *(see §146)* |
+| 145 | CMS page deletion API + admin UI delete button + dynamic student top navigation + catch-all /page/<slug/> verification | *(see §145)* |
+| 144 | Builder inline text editing — contenteditable inside iframe canvas, WYSIWYG overlay pointer-events fix, postMessage CMS_TEXT_UPDATE sync | *(see §144)* |
 | 143 | Visual builder extended to all 11 navbar routes — SYSTEM_PAGES expanded to 13, @xframe_options_sameorigin on all views, cms/system_zone.html added to 8 templates | *(see §143)* |
 | 142 | News visual builder fix — editor iframe loads real /news/ route, CMS content_json binding for editable text, preview mode shows hidden blocks | *(see §142)* |
 | 141 | CMS WYSIWYG integration tests — end-to-end `CmsWysiwygIntegrationTest` (system page existence, AJAX save, student-facing rendering) | *(see §141)* |
@@ -8512,3 +8516,360 @@ Also fixed `RegisterSystemPagesTest` for the expanded registry (5→13 pages).
 
 - `python manage.py check` — **0 issues**
 - 26 targeted tests (RegisterSystemPages 8, NewsBuilderIntegration 6, CmsWysiwygIntegration 4, AllNavbarRoutes 5, ContentBlockVisibility 3) — **all pass**
+
+---
+
+## 144. Builder Inline Text Editing — contenteditable Canvas, Overlay Fix & postMessage Sync
+
+### Date
+August 2026
+
+### Summary
+Fixed double-click inline text editing inside the builder iframe
+(`/builder/visual/<slug>/`) so that headings, paragraphs, and CMS block
+text can be edited directly on the live canvas. Three coordinated changes
+across the iframe content, parent editor CSS, and parent editor JS.
+
+### Changes
+
+#### 1. Canvas iframe contenteditable & content sync
+(`templates/cms/system_zone.html`)
+
+When the builder loads a student page with `?builder=1` in the iframe URL,
+an inline `<script>` now:
+
+- **Contenteditable injection:** dynamically sets `contenteditable="true"`,
+  `cursor: text`, and `outline: none` on `[data-cms-key]`, `[data-block]`,
+  `.cms-editable`, headings `h1`–`h6`, and paragraphs `p` inside the
+  embedded document.
+- **Overlay blocking:** disables `pointer-events` on `.builder-selected`,
+  `.builder-outline`, `.wysiwyg-toolbar`, and `[data-builder-overlay]`
+  elements so mouse clicks pass directly into the active text element.
+- **Live state sync:** adds `input` and `focusout` event listeners on every
+  editable element that post `{ type: 'CMS_TEXT_UPDATE', id, html }` back
+  to the parent builder page via `window.parent.postMessage`.
+
+The script is guarded by `window.__cmsBuilderInlineReady` to prevent
+re-initialization on navigation, and only runs when `?builder=1` is present
+in `window.location.search`.
+
+Each `.cms-block` div also gained a `data-cms-key="{{ block.element_id }}"`
+attribute so the postMessage payload carries a stable block identifier.
+
+#### 2. WYSIWYG overlay pointer-events fix
+(`static/css/builder_editor.css`)
+
+The floating `.wysiwyg-toolbar` (the `#Style` tooltip) is `position: fixed`
+with `z-index: 70`, which previously sat above the canvas iframe and
+intercepted mouse events. Added:
+
+- `pointer-events: none` on `.wysiwyg-toolbar` so clicks pass through to
+  the iframe beneath.
+- `pointer-events: auto` on `.wysiwyg-toolbar input`, `button`, and
+  `select` so the toolbar controls (font-size, color, alignment) remain
+  interactive.
+
+#### 3. Parent-side postMessage listener
+(`static/js/builder/editor.js`)
+
+Added a `window.addEventListener('message', ...)` handler that receives
+`CMS_TEXT_UPDATE` messages from the iframe's inline script:
+
+- Writes the edited HTML into the `dirtyBlocks` map (the WYSIWYG dirty
+  state) so the change is included in the next Save All / Publish payload.
+- Mirrors the HTML into the inspector sidebar's Content (HTML) textarea
+  (bidirectional binding) so the admin sees the live edit reflected in the
+  sidebar.
+
+The handler is idempotent — if the same block is already dirty, the new
+HTML overwrites the previous value.
+
+### Files Modified
+
+- `templates/cms/system_zone.html` — `data-cms-key` attribute + inline
+  `<script>` (contenteditable, overlay fix, postMessage sync)
+- `static/css/builder_editor.css` — `pointer-events: none` on
+  `.wysiwyg-toolbar` + `pointer-events: auto` on its interactive children
+- `static/js/builder/editor.js` — `window.addEventListener('message', ...)`
+  for `CMS_TEXT_UPDATE`
+
+### Tests
+
+16 targeted tests — **all pass**:
+
+| Suite | Tests | Result |
+|---|---|---|
+| `SystemCmsZoneTest` | 4 | ✅ |
+| `CmsWysiwygIntegrationTest` | 4 | ✅ |
+| `NewsBuilderIntegrationTest` | 8 | ✅ |
+
+### Verification
+
+- The inline script only activates inside the builder iframe (`?builder=1`)
+  so it has zero impact on the live student-facing pages.
+- The `pointer-events: none` toolbar overlay is a CSS-only change — the
+  toolbar buttons remain clickable via the `pointer-events: auto` override.
+- postMessage payloads carry `type`, `id`, and `html` fields; the parent
+  handler filters on `type === 'CMS_TEXT_UPDATE'` so unrelated messages
+  are ignored.
+
+---
+
+## 145. CMS Page Deletion, Admin UI Delete Button & Dynamic Student Navigation
+
+### Date
+August 2026
+
+### Summary
+Implemented page deletion for custom builder pages, added a Delete button
+with confirmation to the admin content table, verified the existing
+dynamic student top navigation integration, and added comprehensive
+tests for the full lifecycle: deletion, system page protection, navbar
+rendering, and catch-all `/page/<slug>/` rendering.
+
+### Changes
+
+#### 1. Page Deletion API (`core/views.py` → `api_delete_editable_page`)
+
+New `@change_editablepage_required` JSON endpoint:
+
+- **POST `/api/builder/pages/<id>/delete/`** — deletes a custom page and all
+  its `ContentBlock` children via CASCADE.
+- **System page protection:** pages with a non-null `system_key` (home,
+  news, pharmacy, study-corner, clubs, dashboard, departments, research-ai,
+  notices, transport, meals, medical, attendance) return **403 Forbidden**
+  with `{status: 'error', message: 'System pages cannot be deleted.',
+  is_system_page: true}`.
+- Custom pages return `{status: 'success', message: 'Page "<slug>" deleted.'}`.
+- GET requests return 405; missing pages return 404.
+
+#### 2. Delete URL route (`core/urls.py`)
+
+```python
+path('api/builder/pages/<int:page_id>/delete/', views.api_delete_editable_page,
+     name='api_delete_editable_page'),
+```
+
+#### 3. Admin content table — Delete button (`templates/admin/content.html`)
+
+- Each custom (non-system) page row now shows a red **Delete** button
+  with a trash icon.
+- System core pages show a **lock icon** (`fa-lock`) with `cursor: not-allowed`
+  and a tooltip "System page — cannot be deleted".
+- Client-side JavaScript: clicking Delete triggers a `confirm()` dialog,
+  then `fetch(POST)` to the delete endpoint. On success the `<tr>` is
+  removed from the DOM. CSRF token is read from the `csrftoken` cookie.
+
+#### 4. Dynamic Student Navigation (already implemented — verified)
+
+The existing `custom_pages_nav` context processor (`core/context_processors.py`)
+exposes `NAV_CUSTOM_PAGES` — all `EditablePage` rows with
+`is_published=True` and `show_in_nav=True`, ordered by `nav_order, title`.
+The shared topbar (`templates/partials/topbar.html`) renders these in:
+
+- **Desktop:** a "Pages" dropdown pill in the nav row (`nav-dropdown`)
+- **Mobile:** a "Custom Pages" section in the profile-links menu
+
+Each button links to `/page/<slug>/` via `{% url 'editable_page' item.slug %}`.
+No changes were needed — the integration was already complete.
+
+#### 5. Catch-All Dynamic Page Rendering (already implemented — verified)
+
+`/page/<slug>/` (`core.views.editable_page_view`) renders custom builder
+pages inside `templates/editable_page.html` which:
+- Includes the shared topbar (`partials/topbar.html`) with full navigation
+- Includes `partials/display_prefs.html` for dark mode support
+  (`data-theme` attribute on `<html>`)
+- Renders all visible `ContentBlock` items via `render_block_html`
+- Applies custom CSS from the builder
+
+No template changes were needed — the student theme layout with top
+navigation and dark mode styling was already functional.
+
+### Files Modified
+
+- `core/views.py` — new `api_delete_editable_page` view
+- `core/urls.py` — new URL route `api/builder/pages/<id>/delete/`
+- `templates/admin/content.html` — delete button + lock icon + confirmation JS
+- `core/tests.py` — new `PageDeletionTest` (16 tests)
+- `docs/HANDOVER.md` — §145 entry
+
+### Tests (`PageDeletionTest`)
+
+| Test | What it verifies |
+|---|---|
+| `test_delete_custom_page_removes_from_db` | POST deletes a custom page and its blocks |
+| `test_delete_requires_post` | GET is rejected with 405 |
+| `test_delete_system_page_returns_403` | System core pages cannot be deleted (403) |
+| `test_delete_system_page_by_staff_with_permission_also_blocked` | Staff with builder permission still blocked from deleting system pages |
+| `test_delete_requires_permission` | Anonymous → 302 redirect; staff without permission → 403 |
+| `test_delete_nonexistent_page_returns_404` | Missing page returns 404 |
+| `test_deleted_page_vanishes_from_navigation` | After deletion, page no longer in NAV_CUSTOM_PAGES |
+| `test_deleted_page_returns_404_on_public_route` | After deletion, /page/<slug>/ returns 404 |
+| `test_published_nav_page_renders_in_topbar_desktop_dropdown` | Published nav page appears in nav-dropdown |
+| `test_published_nav_page_renders_in_topbar_mobile_menu` | Published nav page appears in mobile profile-links |
+| `test_unpublished_page_not_in_nav` | Unpublished pages never appear in NAV_CUSTOM_PAGES |
+| `test_hidden_nav_page_not_in_nav` | Pages with show_in_nav=False never appear in NAV_CUSTOM_PAGES |
+| `test_dynamic_page_loads_with_student_theme_layout` | /page/<slug>/ loads blocks with topbar + dark mode support |
+| `test_dynamic_page_links_from_navbar` | Navbar buttons route correctly to /page/<slug>/ |
+| `test_admin_content_shows_delete_button_for_custom_pages` | Admin table shows Delete button for custom pages |
+| `test_admin_content_shows_lock_for_system_pages` | Admin table shows lock icon for system pages |
+
+### Verification
+
+- `python manage.py check` — **0 issues**
+- 16 targeted tests — **all pass**
+- Custom page deletion cascades to ContentBlocks (no orphaned rows)
+- System pages (13 registered) are never deletable via the API
+- Deleted pages vanish from navigation, public routes, and the admin table
+- Existing `CustomPagesNavTest` and `AllNavbarRoutesBuilderIntegrationTest`
+  suites unaffected
+
+---
+
+## 146. Club Event Banner Image Upload & Student Dashboard Rendering
+
+### Date
+August 2026
+
+### Summary
+Completed the club event banner image upload pipeline end-to-end: the
+`ClubEvent.banner` ImageField and `ClubEventForm` were already wired, but
+the student-facing `/clubs/` template lacked a gradient fallback when no
+image was uploaded, and the CSS banner height was below spec. Added the
+gradient fallback, updated the banner height, and added tests verifying
+uploaded banner URLs render in the public clubs page.
+
+### Changes
+
+#### 1. CSS banner height + gradient fallback (`static/css/clubs.css`)
+
+- Updated `.event-card-banner` height from 130px → **180px** and
+  `border-radius` to `0.65rem 0.65rem 0 0` (top corners only) to match
+  the card's edge.
+- Added `.event-card-fallback` — a 180px gradient banner
+  (`linear-gradient(135deg, accent 0%, accent-hover 100%)`) with a faded
+  star icon, shown when neither `event.banner` nor `event.banner_url` is
+  set.
+
+#### 2. Student clubs template fallback (`templates/clubs.html`)
+
+When an event has no banner at all, a `<div class="event-card-fallback">`
+with a star icon is rendered instead of leaving the top of the card bare.
+
+#### 3. New test class (`core.tests.ClubEventBannerRenderingTest`)
+
+Three tests:
+
+| Test | What it verifies |
+|---|---|
+| `test_uploaded_banner_renders_in_clubs_page` | Banner uploaded via club workspace POST persists and its `.url` appears in `/clubs/` HTML |
+| `test_fallback_banner_url_renders_in_clubs_page` | Remote `banner_url` renders as `<img src>` in `/clubs/` |
+| `test_no_banner_shows_fallback_div` | Event with no banner shows `event-card-fallback` gradient div |
+
+### Already implemented (verified, no changes needed)
+
+- **Model:** `ClubEvent.banner` ImageField (`upload_to='club_events/banners/'`,
+  `null=True, blank=True`) + `banner_url` CharField — already in
+  `core/models.py`.
+- **Form:** `ClubEventForm` includes `banner` and `banner_url` fields —
+  already in `core/forms.py`.
+- **View:** `club_events_view` handles `request.FILES` with
+  `ClubEventForm(request.POST, request.FILES)` — already in `core/views.py`.
+- **Club workspace template:** `templates/club/events.html` has
+  `enctype="multipart/form-data"`, banner file input, live preview JS,
+  and banner thumbnail in the events table.
+- **Media config:** `MEDIA_URL = '/media/'` + `MEDIA_ROOT = BASE_DIR / 'media'`
+  in `config/settings.py`; `static(settings.MEDIA_URL, ...)` in
+  `config/urls.py`.
+- **No migration needed** — `makemigrations --check` reports no changes.
+
+### Files Modified
+
+- `static/css/clubs.css` — banner height 130px → 180px, gradient fallback
+- `templates/clubs.html` — `{% else %}` fallback div with star icon
+- `core/tests.py` — new `ClubEventBannerRenderingTest` (3 tests)
+- `docs/HANDOVER.md` — §146 entry
+
+### Verification
+
+- `python manage.py check` — **0 issues**
+- `python manage.py makemigrations --check` — **No changes detected**
+- 12 targeted tests (ClubEventCreation 5, ClubEventBannerRendering 3,
+  StudentDashboardClubEvents 2, ClubEventModelFields 2) — **all pass**
+- Uploaded banner files are served from `MEDIA_ROOT` via Django's
+  `static()` helper in development
+
+---
+
+## 147. Dynamic CMS Text Rendering on /clubs/ — Section Header Binding
+
+### Date
+August 2026
+
+### Summary
+Connected the `/clubs/` student page to the CMS content pipeline so that
+section headers ("Featured Clubs", "Upcoming Events") can be edited via
+the Website Builder and render dynamically. The `clubs_dashboard` view
+now loads `content_json` from the `clubs` system page's visible blocks
+and passes it as `cms_content` to the template — the same pattern used
+by the `news_page` view.
+
+### Changes
+
+#### 1. View context — `cms_content` payload (`core/views.py` → `clubs_dashboard`)
+
+Added a try/except block that loads the `EditablePage` with
+`system_key='clubs'`, iterates over its visible `ContentBlock` rows, and
+builds a `cms_content` dict mapping `element_id → content_json`. This dict
+is passed to the template alongside the existing `clubs`, `events`, and
+`checkout_url` context.
+
+```python
+cms_content = {}
+try:
+    page = EditablePage.objects.filter(system_key='clubs').first()
+    if page:
+        for block in page.content_blocks.filter(visible=True):
+            cms_content[block.element_id] = block.content_json or {}
+except Exception:
+    pass
+```
+
+#### 2. Template dynamic binding (`templates/clubs.html`)
+
+Replaced hardcoded section headers with CMS-bound fallback chains:
+
+- **"Featured Clubs"** → `{{ cms_content.clubs_promo.headline|default:"Featured Clubs" }}`
+  (falls back to the `clubs-promo` block's `headline`, then hardcoded default)
+- **"Upcoming Events"** → `{{ cms_content.upcoming_events.title|default:"Upcoming Events" }}`
+  (falls back to hardcoded default when no `upcoming-events` block exists)
+
+Both `<h2>` elements now carry `data-editable-id` attributes so the
+WYSIWYG editor can target them for inline editing.
+
+#### 3. New test class (`core.tests.ClubsCmsContentTest`)
+
+Four tests:
+
+| Test | What it verifies |
+|---|---|
+| `test_clubs_page_renders_default_section_header` | Visible promo block's headline renders on /clubs/ |
+| `test_updating_cms_title_renders_on_clubs_page` | Changing `content_json['headline']` to "Featured Club" updates the live page |
+| `test_hidden_block_uses_fallback_default` | Hidden promo block → hardcoded "Featured Clubs" fallback |
+| `test_upcoming_events_header_has_default` | "Upcoming Events" header renders with hardcoded default |
+
+### Files Modified
+
+- `core/views.py` — `clubs_dashboard` now builds and passes `cms_content`
+- `templates/clubs.html` — section headers bound to `cms_content` with
+  `|default` fallbacks + `data-editable-id` attributes
+- `core/tests.py` — new `ClubsCmsContentTest` (4 tests)
+- `docs/HANDOVER.md` — §147 entry
+
+### Verification
+
+- `python manage.py check` — **0 issues**
+- 4 new tests + 17 existing clubs tests — **all pass**
+- Existing `ClubsPageTest`, `ClubsPublicPageTest`, `ClubEventBannerRenderingTest`,
+  `ClubEventCreationTest` suites unaffected

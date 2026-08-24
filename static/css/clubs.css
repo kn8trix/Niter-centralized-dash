@@ -279,12 +279,28 @@ body.clubs a {
 
 .event-card-banner {
     width: 100%;
-    height: 130px;
+    height: 180px;
     object-fit: cover;
-    border-radius: 0.65rem;
-    margin-bottom: 0.9rem;
+    border-radius: 0.65rem 0.65rem 0 0;
     display: block;
     background: var(--bg-muted, #f2efe9);
+}
+
+/* Gradient fallback banner when no image is uploaded */
+.event-card-fallback {
+    width: 100%;
+    height: 180px;
+    border-radius: 0.65rem 0.65rem 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--accent-primary, #e8e2d8) 0%, var(--accent-primary-hover, #dfd7cb) 100%);
+}
+
+.event-card-fallback i {
+    font-size: 2.2rem;
+    color: var(--accent-dark, #27272a);
+    opacity: 0.45;
 }
 
 .event-card:hover {

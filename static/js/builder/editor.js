@@ -744,4 +744,30 @@
         hideToolbar();
         wireWysiwygClicks();
     });
+
+    // ---------------------------------------------------------------------
+    // CMS inline-edit postMessage listener
+    // ---------------------------------------------------------------------
+    // The iframe's inner script (cms/system_zone.html) posts CMS_TEXT_UPDATE
+    // messages whenever a contenteditable element is edited.  This handler
+    // captures them into the dirty map and mirrors the HTML into the
+    // inspector sidebar's Content (HTML) textarea so Save All persists the
+    // change.
+    window.addEventListener('message', function (e) {
+        if (!e.data || e.data.type !== 'CMS_TEXT_UPDATE') return;
+        var id = e.data.id;
+        var html = e.data.html;
+        if (!id || html == null) return;
+        // Write into the WYSIWYG dirty map.
+        if (!dirtyBlocks[id]) dirtyBlocks[id] = {};
+        dirtyBlocks[id].content_html = html.trim();
+        // Mirror into the inspector sidebar textarea (bidirectional binding).
+        var item = inspectorList.querySelector('[data-block-id="' + id + '"]');
+        if (item) {
+            var textarea = item.querySelector('[data-edit="html"]');
+            if (textarea && document.activeElement !== textarea) {
+                textarea.value = html.trim();
+            }
+        }
+    });
 })();

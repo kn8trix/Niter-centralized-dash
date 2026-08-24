@@ -32,7 +32,7 @@
             </thead>
             <tbody>
                 {% for page in pages %}
-                <tr>
+                <tr data-page-id="{{ page.pk }}" data-system="{% if page.system_key %}true{% endif %}">
                     <td class="font-medium">{{ page.title }}</td>
                     <td class="mono">{{ page.slug }}</td>
                     <td><span class="admin-badge {% if page.is_published %}admin-badge-green{% else %}admin-badge-gray{% endif %}">{{ page.is_published|yesno:"Published,Draft" }}</span></td>
@@ -45,6 +45,15 @@
                         <a href="{% url 'visual_editor' page.slug %}" class="admin-btn"><i class="fa-solid fa-pen"></i> Edit</a>
                         {% endif %}
                         <a href="{% url 'editable_page' page.slug %}" class="admin-btn"><i class="fa-solid fa-eye"></i> View</a>
+                        {% if can_build %}
+                        {% if page.system_key %}
+                        <span class="admin-btn" style="opacity:0.4;cursor:not-allowed;" title="System page — cannot be deleted"><i class="fa-solid fa-lock"></i></span>
+                        {% else %}
+                        <button type="button" class="admin-btn delete-page-btn" data-page-id="{{ page.pk }}" data-page-title="{{ page.title }}" style="color:#dc2626;">
+                            <i class="fa-solid fa-trash"></i> Delete
+                        </button>
+                        {% endif %}
+                        {% endif %}
                     </td>
                 </tr>
                 {% empty %}
@@ -54,4 +63,35 @@
         </table>
     </div>
 </div>
+
+<script>
+(function() {
+    var DELETE_URL = '/api/builder/pages/';
+    document.querySelectorAll('.delete-page-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var pageId = btn.dataset.pageId;
+            var pageTitle = btn.dataset.pageTitle;
+            if (!confirm('Are you sure you want to delete "' + pageTitle + '"? This cannot be undone.')) return;
+            fetch(DELETE_URL + pageId + '/delete/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'X-CSRFToken': (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '',
+                },
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.status === 'success') {
+                    var row = btn.closest('tr');
+                    if (row) row.remove();
+                } else {
+                    alert(data.message || 'Failed to delete page.');
+                }
+            })
+            .catch(function() { alert('Network error — page was not deleted.'); });
+        });
+    });
+})();
+</script>
+
 {% endblock %}

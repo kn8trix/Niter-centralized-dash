@@ -1538,6 +1538,13 @@ def clubs_dashboard(request):
     The student view lists every club (with a live active-member count) and
     every upcoming event; membership requests are handled by ``join_club``
     (``POST /api/clubs/join/``) and event seats route to the checkout gateway.
+
+    When the CMS system page for 'clubs' has blocks with ``content_json``
+    data, the template can bind editable section headers (e.g. "Featured
+    Clubs", "Upcoming Events") to those values — falling back to hardcoded
+    defaults when no CMS content is set.  ``cms_content`` maps element_id →
+    content_json so the template can reference them inline (same pattern as
+    the ``news_page`` view).
     """
     clubs = Club.objects.annotate(
         member_count=Count('registrations', filter=Q(registrations__status='active'))
@@ -1556,10 +1563,22 @@ def clubs_dashboard(request):
         event_date__gte=timezone.now().date(),
     ).select_related('club').order_by('event_date')
 
+    # CMS dynamic content — section headers can be edited via the Website
+    # Builder; cms_content maps element_id → content_json.
+    cms_content = {}
+    try:
+        page = EditablePage.objects.filter(system_key='clubs').first()
+        if page:
+            for block in page.content_blocks.filter(visible=True):
+                cms_content[block.element_id] = block.content_json or {}
+    except Exception:
+        pass
+
     return render(request, 'clubs.html', {
         'clubs': club_rows,
         'events': events,
         'checkout_url': reverse('checkout'),
+        'cms_content': cms_content,
     })
 
 
@@ -7804,4 +7823,42 @@ def api_club_account_permissions(request, account_id):
         'status': 'success',
         'message': 'Permissions updated for %s.' % account.user.username,
         'account': _serialize_club_account(account),
+    })
+
+
+# ---------------------------------------------------------------------------
+# CMS Page Deletion
+# ---------------------------------------------------------------------------
+
+@change_editablepage_required
+def api_delete_editable_page(request, page_id):
+    """Delete a builder-authored page and all its ContentBlocks.
+
+    System core pages (those with a ``system_key``) are protected from
+    deletion — the endpoint returns a 403 error. Custom user-created pages
+    can be cleanly removed.
+
+    POST /api/builder/pages/<id>/delete/ — deletes the page.
+    """
+    if request.method != 'POST':
+        return JsonResponse(
+            {'status': 'error', 'message': 'POST required'}, status=405,
+        )
+    page = get_object_or_404(EditablePage, pk=page_id)
+
+    # System core pages (home, news, pharmacy, study-corner, clubs, etc.)
+    # are never deletable — they are registered by the system and carry a
+    # system_key.
+    if page.system_key:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'System pages cannot be deleted.',
+            'is_system_page': True,
+        }, status=403)
+
+    slug = page.slug
+    page.delete()
+    return JsonResponse({
+        'status': 'success',
+        'message': 'Page "%s" deleted.' % slug,
     })

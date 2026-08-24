@@ -51,8 +51,8 @@
         ============================================================ -->
         <section id="panel-student">
 
-            <h2 class="section-title">Featured Clubs</h2>
-            <p class="section-subtitle">Find your community and join an active campus club.</p>
+            <h2 class="section-title" data-editable-id="featured-clubs">{{ cms_content.clubs_promo.headline|default:"Featured Clubs" }}</h2>
+            <p class="section-subtitle">{{ cms_content.clubs_promo.subtext|default:"Find your community and join an active campus club." }}</p>
             <div class="clubs-grid" id="clubs-grid">
                 {% for row in clubs %}
                 <article class="club-card" data-widget="club-card">
@@ -75,8 +75,8 @@
                 {% endfor %}
             </div>
 
-            <h2 class="section-title">Upcoming Events</h2>
-            <p class="section-subtitle">Register online — payments via bKash / Nagad.</p>
+            <h2 class="section-title" data-editable-id="upcoming-events">{{ cms_content.upcoming_events.title|default:"Upcoming Events" }}</h2>
+            <p class="section-subtitle">{{ cms_content.upcoming_events.subtitle|default:"Register online — payments via bKash / Nagad." }}</p>
             <div class="events-grid" id="events-grid">
                 {% for event in events %}
                 <article class="event-card" data-widget="event-card">
@@ -84,6 +84,10 @@
                     <img class="event-card-banner" src="{{ event.banner.url }}" alt="{{ event.title }} banner" loading="lazy">
                     {% elif event.banner_url %}
                     <img class="event-card-banner" src="{{ event.banner_url }}" alt="{{ event.title }} banner" loading="lazy">
+                    {% else %}
+                    <div class="event-card-fallback" aria-hidden="true">
+                        <i class="fa-solid fa-star"></i>
+                    </div>
                     {% endif %}
                     <div class="event-card-head">
                         <h3 class="event-title">{{ event.title }}</h3>

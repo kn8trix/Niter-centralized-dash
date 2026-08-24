@@ -4824,6 +4824,138 @@ class StudentDashboardClubEventsTest(TestCase):
         self.assertNotIn('Past Event', response.content.decode())
 
 
+class ClubEventBannerRenderingTest(TestCase):
+    """Banner image upload via Club Workspace renders on the public /clubs/ page."""
+
+    def setUp(self):
+        self.club = Club.objects.get(slug='computer-club')
+        self.manager = User.objects.create_user(
+            username='banner_mgr', password='x12345678',
+        )
+        ClubAccount.objects.create(user=self.manager, club=self.club, role='manager')
+
+    def test_uploaded_banner_renders_in_clubs_page(self):
+        """A banner uploaded via the club workspace POST appears as an <img>
+        in the /clubs/ student page with its media URL."""
+        import io
+        from PIL import Image
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        buffer = io.BytesIO()
+        Image.new('RGB', (80, 60), (200, 100, 50)).save(buffer, format='PNG')
+        banner = SimpleUploadedFile(
+            'event_poster.png', buffer.getvalue(), content_type='image/png',
+        )
+        # Create event with uploaded banner via the club workspace view.
+        self.client.force_login(self.manager)
+        response = self.client.post(reverse('club_dashboard_events'), {
+            'club': self.club.pk,
+            'title': 'Banner Render Test',
+            'event_date': (timezone.now().date() + timedelta(days=7)).isoformat(),
+            'location': 'Lab',
+            'capacity': '40',
+            'description': 'Banner rendering test event.',
+            'banner': banner,
+            'is_published': 'on',
+        })
+        self.assertEqual(response.status_code, 302)
+        event = ClubEvent.objects.get(title='Banner Render Test')
+        self.assertTrue(event.banner, 'Banner file should be persisted')
+
+        # Public /clubs/ page should render the uploaded banner image URL.
+        response = self.client.get(reverse('clubs_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('Banner Render Test', html)
+        self.assertIn(event.banner.url, html)
+        self.assertIn('event-card-banner', html)
+
+    def test_fallback_banner_url_renders_in_clubs_page(self):
+        """A remote banner_url (no file upload) renders as an <img> src."""
+        ClubEvent.objects.create(
+            club=self.club, title='URL Banner Event',
+            event_date=timezone.now().date() + timedelta(days=3),
+            banner_url='https://example.com/event.jpg',
+            is_published=True,
+        )
+        response = self.client.get(reverse('clubs_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('https://example.com/event.jpg', html)
+        self.assertIn('event-card-banner', html)
+
+    def test_no_banner_shows_fallback_div(self):
+        """An event with no banner at all shows the gradient fallback div."""
+        ClubEvent.objects.create(
+            club=self.club, title='No Banner Event',
+            event_date=timezone.now().date() + timedelta(days=2),
+            is_published=True,
+        )
+        response = self.client.get(reverse('clubs_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('No Banner Event', html)
+        self.assertIn('event-card-fallback', html)
+        self.assertNotIn('event-card-banner', html.split('No Banner Event')[0].split('event-card')[-1] if 'event-card' in html.split('No Banner Event')[0] else '')
+
+
+class ClubsCmsContentTest(TestCase):
+    """Dynamic CMS text rendering on the /clubs/ page.
+
+    Section headers ("Featured Clubs", "Upcoming Events") are bound to
+    CMS content_json via the clubs_dashboard view — editing the block's
+    content_json through the Website Builder should update the live page.
+    """
+
+    def setUp(self):
+        from core.system_pages import register_system_pages
+        register_system_pages()
+        self.page = EditablePage.objects.filter(system_key='clubs').first()
+        self.assertTrue(self.page, 'clubs system page should exist')
+        self.promo_block = self.page.content_blocks.filter(
+            element_id='clubs-promo'
+        ).first()
+        self.assertTrue(self.promo_block, 'clubs-promo block should exist')
+
+    def test_clubs_page_renders_default_section_header(self):
+        """Without CMS edits the default 'Featured Clubs' header appears."""
+        # Ensure the promo block is visible so cms_content is populated.
+        self.promo_block.visible = True
+        self.promo_block.save(update_fields=['visible'])
+        response = self.client.get(reverse('clubs_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        # Default headline from system_pages.py is 'Join a campus club'.
+        self.assertIn('Join a campus club', html)
+
+    def test_updating_cms_title_renders_on_clubs_page(self):
+        """Changing clubs-promo headline via content_json updates the live page."""
+        self.promo_block.visible = True
+        self.promo_block.content_json['headline'] = 'Featured Club'
+        self.promo_block.save(update_fields=['content_json', 'visible'])
+        response = self.client.get(reverse('clubs_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('Featured Club', html)
+        self.assertNotIn('Join a campus club', html)
+
+    def test_hidden_block_uses_fallback_default(self):
+        """When the promo block is hidden the hardcoded fallback renders."""
+        self.promo_block.visible = False
+        self.promo_block.save(update_fields=['visible'])
+        response = self.client.get(reverse('clubs_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('Featured Clubs', html)
+
+    def test_upcoming_events_header_has_default(self):
+        """The 'Upcoming Events' section header falls back to hardcoded text."""
+        response = self.client.get(reverse('clubs_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('Upcoming Events', html)
+
+
 class JoinClubApiTest(TestCase):
     """POST /api/clubs/join/ — membership requests with lead notifications."""
 
@@ -12144,3 +12276,248 @@ class AllNavbarRoutesBuilderIntegrationTest(TestCase):
             block.save(update_fields=['content_json'])
             block.refresh_from_db()
             self.assertEqual(block.content_json['headline'], 'Updated for %s' % system_key)
+
+
+class PageDeletionTest(TestCase):
+    """CMS page deletion API + admin UI + dynamic navigation integration.
+
+    Verifies:
+    - Custom pages can be deleted via POST /api/builder/pages/<id>/delete/
+    - System core pages are protected from deletion (403)
+    - Deleted pages vanish from DB and navigation
+    - Published custom pages with show_in_nav=True render in the topbar
+    - /page/<slug>/ loads dynamic builder blocks with student theme layout
+    """
+
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(
+            username='page_del_admin', email='pda@niter.edu.bd', password='rootpass123',
+        )
+        self.staff = User.objects.create_user(
+            username='page_del_staff', password='staffpass123', is_staff=True,
+        )
+        self.custom_page = EditablePage.objects.create(
+            title='Custom Test Page', slug='custom-test-page',
+            show_in_nav=True, nav_order=1, nav_icon='flask',
+        )
+        ContentBlock.objects.create(
+            page=self.custom_page, element_id='hero',
+            block_type='hero',
+            content_json={'headline': 'Custom Hero'},
+        )
+        # Ensure a system page exists for the protection test.
+        from core.system_pages import register_system_pages
+        register_system_pages()
+        self.system_page = EditablePage.objects.filter(system_key='news').first()
+
+    # ------------------------------------------------------------------
+    # Deletion API — happy path
+    # ------------------------------------------------------------------
+    def test_delete_custom_page_removes_from_db(self):
+        """POST deletes a custom page and its blocks."""
+        page_id = self.custom_page.pk
+        self.client.login(username='page_del_admin', password='rootpass123')
+        response = self.client.post(
+            reverse('api_delete_editable_page', args=[page_id]),
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertFalse(EditablePage.objects.filter(pk=page_id).exists())
+        self.assertFalse(ContentBlock.objects.filter(page_id=page_id).exists())
+
+    def test_delete_requires_post(self):
+        """GET is rejected with 405."""
+        self.client.login(username='page_del_admin', password='rootpass123')
+        response = self.client.get(
+            reverse('api_delete_editable_page', args=[self.custom_page.pk]),
+        )
+        self.assertEqual(response.status_code, 405)
+
+    # ------------------------------------------------------------------
+    # Deletion API — system page protection
+    # ------------------------------------------------------------------
+    def test_delete_system_page_returns_403(self):
+        """System core pages (home, news, pharmacy, etc.) cannot be deleted."""
+        self.client.login(username='page_del_admin', password='rootpass123')
+        response = self.client.post(
+            reverse('api_delete_editable_page', args=[self.system_page.pk]),
+        )
+        self.assertEqual(response.status_code, 403)
+        data = response.json()
+        self.assertIn('cannot be deleted', data['message'])
+        self.assertTrue(data.get('is_system_page'))
+        # The system page still exists.
+        self.assertTrue(EditablePage.objects.filter(pk=self.system_page.pk).exists())
+
+    def test_delete_system_page_by_staff_with_permission_also_blocked(self):
+        """Even staff with change_editablepage permission cannot delete system pages."""
+        self.staff.user_permissions.add(
+            Permission.objects.get(codename='change_editablepage')
+        )
+        self.client.login(username='page_del_staff', password='staffpass123')
+        response = self.client.post(
+            reverse('api_delete_editable_page', args=[self.system_page.pk]),
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(EditablePage.objects.filter(pk=self.system_page.pk).exists())
+
+    # ------------------------------------------------------------------
+    # Deletion API — access control
+    # ------------------------------------------------------------------
+    def test_delete_requires_permission(self):
+        """Anonymous users get redirected; staff without permission get 403."""
+        # Anonymous → redirect to login
+        response = self.client.post(
+            reverse('api_delete_editable_page', args=[self.custom_page.pk]),
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+        # Staff without permission → 403
+        self.client.login(username='page_del_staff', password='staffpass123')
+        response = self.client.post(
+            reverse('api_delete_editable_page', args=[self.custom_page.pk]),
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_delete_nonexistent_page_returns_404(self):
+        """Deleting a page that doesn't exist returns 404."""
+        self.client.login(username='page_del_admin', password='rootpass123')
+        response = self.client.post(
+            reverse('api_delete_editable_page', args=[99999]),
+        )
+        self.assertEqual(response.status_code, 404)
+
+    # ------------------------------------------------------------------
+    # Deletion — navigation integration
+    # ------------------------------------------------------------------
+    def test_deleted_page_vanishes_from_navigation(self):
+        """After deletion, a page no longer appears in NAV_CUSTOM_PAGES."""
+        # Before deletion — page is in nav.
+        request = RequestFactory().get('/')
+        pages = list(custom_pages_nav(request)['NAV_CUSTOM_PAGES'])
+        self.assertTrue(any(p.slug == 'custom-test-page' for p in pages))
+        # Delete.
+        self.client.login(username='page_del_admin', password='rootpass123')
+        self.client.post(
+            reverse('api_delete_editable_page', args=[self.custom_page.pk]),
+        )
+        # After deletion — gone from nav.
+        pages = list(custom_pages_nav(request)['NAV_CUSTOM_PAGES'])
+        self.assertFalse(any(p.slug == 'custom-test-page' for p in pages))
+
+    def test_deleted_page_returns_404_on_public_route(self):
+        """After deletion, /page/<slug>/ returns 404."""
+        self.client.login(username='page_del_admin', password='rootpass123')
+        self.client.post(
+            reverse('api_delete_editable_page', args=[self.custom_page.pk]),
+        )
+        response = self.client.get(reverse('editable_page', args=['custom-test-page']))
+        self.assertEqual(response.status_code, 404)
+
+    # ------------------------------------------------------------------
+    # Dynamic navigation — published custom pages render in topbar
+    # ------------------------------------------------------------------
+    def test_published_nav_page_renders_in_topbar_desktop_dropdown(self):
+        """A published page with show_in_nav=True appears in the nav-dropdown."""
+        response = self.client.get(reverse('editable_page', args=['custom-test-page']))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('nav-dropdown', html)
+        self.assertIn('/page/custom-test-page/', html)
+        self.assertIn('flask', html)  # nav_icon
+
+    def test_published_nav_page_renders_in_topbar_mobile_menu(self):
+        """Published nav page appears in the mobile profile-links section."""
+        response = self.client.get(reverse('editable_page', args=['custom-test-page']))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('profile-links', html)
+        self.assertIn('/page/custom-test-page/', html)
+
+    def test_unpublished_page_not_in_nav(self):
+        """An unpublished page never appears in NAV_CUSTOM_PAGES."""
+        EditablePage.objects.create(
+            title='Draft Page', slug='draft-page',
+            show_in_nav=True, is_published=False,
+        )
+        request = RequestFactory().get('/')
+        pages = list(custom_pages_nav(request)['NAV_CUSTOM_PAGES'])
+        self.assertFalse(any(p.slug == 'draft-page' for p in pages))
+
+    def test_hidden_nav_page_not_in_nav(self):
+        """A page with show_in_nav=False never appears in NAV_CUSTOM_PAGES."""
+        EditablePage.objects.create(
+            title='Hidden Page', slug='hidden-nav-page',
+            show_in_nav=False,
+        )
+        request = RequestFactory().get('/')
+        pages = list(custom_pages_nav(request)['NAV_CUSTOM_PAGES'])
+        self.assertFalse(any(p.slug == 'hidden-nav-page' for p in pages))
+
+    # ------------------------------------------------------------------
+    # Catch-all dynamic page rendering at /page/<slug>/
+    # ------------------------------------------------------------------
+    def test_dynamic_page_loads_with_student_theme_layout(self):
+        """Visiting /page/<slug>/ loads the dynamic builder blocks inside
+        the student theme layout (topbar, dark mode support)."""
+        response = self.client.get(reverse('editable_page', args=['custom-test-page']))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        # Topbar is included.
+        self.assertIn('topbar', html)
+        # Content blocks render.
+        self.assertIn('Custom Hero', html)
+        self.assertIn('data-block="hero"', html)
+        # Dark mode support via display_prefs.html (data-theme on <html>).
+        self.assertIn('display-prefs-config', html)
+        # Page title.
+        self.assertIn('Custom Test Page', html)
+
+    def test_dynamic_page_links_from_navbar(self):
+        """Clicking the navbar button routes to /page/<slug>/."""
+        # Create a second nav page so the dropdown is populated.
+        page2 = EditablePage.objects.create(
+            title='Admissions Info', slug='admissions-info',
+            show_in_nav=True, nav_order=2, nav_icon='book',
+        )
+        request = RequestFactory().get('/')
+        pages = list(custom_pages_nav(request)['NAV_CUSTOM_PAGES'])
+        # Both pages appear in navigation.
+        slugs = {p.slug for p in pages}
+        self.assertIn('custom-test-page', slugs)
+        self.assertIn('admissions-info', slugs)
+        # Visiting each route loads correctly.
+        for slug in ('custom-test-page', 'admissions-info'):
+            response = self.client.get(reverse('editable_page', args=[slug]))
+            self.assertEqual(response.status_code, 200)
+
+    # ------------------------------------------------------------------
+    # Admin content page — delete button rendering
+    # ------------------------------------------------------------------
+    def test_admin_content_shows_delete_button_for_custom_pages(self):
+        """The admin content table shows a Delete button for custom pages."""
+        self.client.login(username='page_del_admin', password='rootpass123')
+        response = self.client.get(reverse('admin_content'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('delete-page-btn', html)
+        self.assertIn('data-page-id="%d"' % self.custom_page.pk, html)
+
+    def test_admin_content_shows_lock_for_system_pages(self):
+        """System pages show a lock icon instead of a delete button."""
+        self.client.login(username='page_del_admin', password='rootpass123')
+        response = self.client.get(reverse('admin_content'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        # Lock icon present for system pages.
+        self.assertIn('fa-lock', html)
+        # No delete button (delete-page-btn) for the system page specifically —
+        # the row has data-system="true" so the lock icon is rendered instead.
+        # We verify the system_page row does NOT contain a delete button.
+        # The news system page slug is 'news'; check that the news row doesn't
+        # have a delete-page-btn with its page id.
+        self.assertNotIn(
+            'class="admin-btn delete-page-btn" data-page-id="%d"' % self.system_page.pk,
+            html,
+        )

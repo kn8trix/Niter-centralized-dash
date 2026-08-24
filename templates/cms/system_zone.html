@@ -12,9 +12,73 @@
 <link rel="stylesheet" href="{% static 'css/cms.css' %}">
 <section class="cms-system-zone" id="cms-system-blocks" aria-label="Custom content">
     {% for block in cms_blocks %}
-    <div class="cms-block" id="cms-{{ block.element_id }}" data-block="{{ block.element_id }}" data-block-type="{{ block.block_type }}">
+    <div class="cms-block" id="cms-{{ block.element_id }}" data-block="{{ block.element_id }}" data-block-type="{{ block.block_type }}" data-cms-key="{{ block.element_id }}">
         {{ block.rendered_html|safe }}
     </div>
     {% endfor %}
 </section>
+
+{% comment %}
+Builder inline editing — activated when the iframe URL contains ?builder=1.
+Dynamically attaches contenteditable to text nodes (headings, paragraphs,
+cms-editable spans) and posts CMS_TEXT_UPDATE messages back to the parent
+builder page so edits are synced into the editor state.
+{% endcomment %}
+<script>
+(function () {
+    if (!window.location.search.includes('builder=1')) return;
+    if (window.__cmsBuilderInlineReady) return;
+    window.__cmsBuilderInlineReady = true;
+
+    function initInlineEditing() {
+        /* 1. Content editable — attach to text nodes inside CMS blocks and
+              to headings/paragraphs that live outside the CMS zone but within
+              this document so the admin can edit any visible text. */
+        document.querySelectorAll('[data-cms-key], [data-block], .cms-editable, h1, h2, h3, h4, h5, h6, p, span.cms-editable').forEach(function (el) {
+            if (el.getAttribute('contenteditable') === 'true') return;
+            el.setAttribute('contenteditable', 'true');
+            el.style.cursor = 'text';
+            el.style.outline = 'none';
+        });
+
+        /* 2. Overlay blocking — disable pointer-events on selection outlines
+              and any popover/tooltip elements inside the iframe so clicks
+              pass directly into the active text element. */
+        document.querySelectorAll('.builder-selected, .builder-outline, .wysiwyg-toolbar, [data-builder-overlay]').forEach(function (el) {
+            el.style.pointerEvents = 'none';
+        });
+
+        /* 3. Live state synchronization — post every text change back to the
+              parent builder page via postMessage so the editor state stays
+              in sync on input and blur. */
+        document.addEventListener('input', function (e) {
+            var el = e.target.closest ? e.target.closest('[data-cms-key], [data-block], .cms-editable, h1, h2, h3, h4, h5, h6, p, .cms-editable') : null;
+            if (!el) return;
+            var key = el.dataset.cmsKey || el.dataset.block || el.id || '';
+            window.parent.postMessage({
+                type: 'CMS_TEXT_UPDATE',
+                id: key,
+                html: el.innerHTML
+            }, '*');
+        });
+
+        document.addEventListener('focusout', function (e) {
+            var el = e.target.closest ? e.target.closest('[data-cms-key], [data-block], .cms-editable, h1, h2, h3, h4, h5, h6, p, .cms-editable') : null;
+            if (!el) return;
+            var key = el.dataset.cmsKey || el.dataset.block || el.id || '';
+            window.parent.postMessage({
+                type: 'CMS_TEXT_UPDATE',
+                id: key,
+                html: el.innerHTML
+            }, '*');
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initInlineEditing);
+    } else {
+        initInlineEditing();
+    }
+})();
+</script>
 {% endif %}

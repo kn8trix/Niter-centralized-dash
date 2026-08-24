@@ -120,6 +120,8 @@ urlpatterns = [
     path('builder/api/page/save/', views.builder_page_save, name='builder_page_save'),
     # WYSIWYG student-view overlay editor — bulk block + publish save by page id
     path('api/builder/pages/<int:page_id>/save/', views.builder_page_wysiwyg_save, name='builder_page_wysiwyg_save'),
+    # CMS page deletion (system pages protected)
+    path('api/builder/pages/<int:page_id>/delete/', views.api_delete_editable_page, name='api_delete_editable_page'),
     # Block library: create from a section template + delete by block id
     path('builder/api/blocks/create/', views.builder_block_create, name='builder_block_create'),
     path('builder/api/blocks/<int:block_id>/delete/', views.builder_block_delete, name='builder_block_delete'),
