@@ -159,6 +159,7 @@ from services.attendance_email import (  # noqa: E402
 from services.emergency_push import send_emergency_push  # noqa: E402
 
 
+@xframe_options_sameorigin
 def public_home(request):
     """Public homepage (landing page) served at the root URL.
 
@@ -524,6 +525,7 @@ _DEPARTMENT_ICONS = {
 }
 
 
+@xframe_options_sameorigin
 def study_corner(request):
     """Study Corner — Academic Notes drive + YouTube lectures + AI assistant.
 
@@ -862,6 +864,7 @@ def _pharmacy_order_json(order):
     }
 
 
+@xframe_options_sameorigin
 def pharmacy_store(request):
     """Pharmacy storefront — catalog, prescription upload, cart + checkout.
 
@@ -1525,6 +1528,7 @@ _CLUB_ICONS = {
 }
 
 
+@xframe_options_sameorigin
 def clubs_dashboard(request):
     """Club & Event page — live ``Club`` / ``ClubEvent`` rows from the database.
 
@@ -7229,6 +7233,7 @@ def _cached_news_videos():
     return cache.get_or_set('news:videos', fetch_youtube_videos, _NEWS_CACHE_TTL)
 
 
+@xframe_options_sameorigin
 def news_page(request):
     """Student-facing Global News page at /news/.
 

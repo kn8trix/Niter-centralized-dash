@@ -12011,3 +12011,30 @@ class NewsBuilderIntegrationTest(TestCase):
         block.save(update_fields=['content_json', 'visible', 'updated_at'])
         response = self.client.get(reverse('news'))
         self.assertContains(response, 'NITER Daily News')
+
+    # ------------------------------------------------------------------
+    # Test 7: X-Frame-Options header allows same-origin iframe embedding.
+    # ------------------------------------------------------------------
+    def test_news_xframe_options_allows_sameorigin(self):
+        """The /news/ response sets X-Frame-Options: SAMEORIGIN so the
+        builder editor iframe can embed the page without clickjacking blocks."""
+        response = self.client.get(reverse('news'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get('X-Frame-Options'), 'SAMEORIGIN')
+
+    def test_all_system_page_views_allow_sameorigin_iframe(self):
+        """All 5 system page views set X-Frame-Options: SAMEORIGIN so the
+        visual builder canvas can embed them in a same-origin iframe."""
+        routes = [
+            ('home', {}),
+            ('study_corner', {}),
+            ('pharmacy_store', {}),
+            ('news', {}),
+            ('clubs_dashboard', {}),
+        ]
+        for url_name, kwargs in routes:
+            response = self.client.get(reverse(url_name, kwargs=kwargs))
+            self.assertEqual(
+                response.get('X-Frame-Options'), 'SAMEORIGIN',
+                '%s should set X-Frame-Options: SAMEORIGIN' % url_name,
+            )
