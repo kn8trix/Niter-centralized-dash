@@ -87,7 +87,10 @@ body.attendance *::after {
 @media (max-width: 640px) {
     /* Mobile WebView container — full-bleed with a compact gutter. */
     .shell {
-        padding: 0.75rem;
+        width: 100%;
+        max-width: 100%;
+        padding: 0 16px;
+        box-sizing: border-box;
     }
 }
 
@@ -156,6 +159,8 @@ body.attendance *::after {
     display: flex;
     align-items: center;
     justify-content: center;
+    aspect-ratio: 4 / 3;
+    height: auto;
 }
 
 .scanner-box video {
@@ -177,8 +182,15 @@ body.attendance *::after {
 
 .scanner-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.6rem;
     margin-top: 0.8rem;
+    width: 100%;
+}
+
+.scanner-actions .btn {
+    flex: 1 1 0;
+    min-width: 0;
 }
 
 .btn {
@@ -478,10 +490,15 @@ body.attendance *::after {
 
     .scanner-box {
         min-height: 170px;
+        aspect-ratio: 4 / 3;
+    }
+
+    .scanner-actions {
+        flex-direction: column;
     }
 
     .scanner-actions .btn {
-        flex: 1;
+        width: 100%;
         min-height: 48px;
         font-size: 0.9rem;
     }
