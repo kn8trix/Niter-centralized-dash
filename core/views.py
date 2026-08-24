@@ -6415,11 +6415,18 @@ def builder_page_save(request):
         return JsonResponse({'status': 'error', 'message': 'title is required'}, status=400)
 
     page.title = title[:200]
-    update_fields = ['title', 'is_published', 'show_in_nav', 'seo_description', 'updated_at']
+    update_fields = ['title', 'is_published', 'show_in_nav', 'nav_order', 'nav_icon', 'seo_description', 'updated_at']
     if 'is_published' in data:
         page.is_published = _as_bool(data.get('is_published'))
     if 'show_in_nav' in data:
         page.show_in_nav = _as_bool(data.get('show_in_nav'))
+    if 'nav_order' in data:
+        try:
+            page.nav_order = int(data.get('nav_order', 0))
+        except (TypeError, ValueError):
+            pass
+    if 'nav_icon' in data:
+        page.nav_icon = (data.get('nav_icon') or 'file-lines').strip()[:50]
     if 'seo_description' in data:
         page.seo_description = (data.get('seo_description') or '').strip()
     page.save(update_fields=update_fields)
@@ -6428,6 +6435,8 @@ def builder_page_save(request):
         'page_slug': page.slug,
         'is_published': page.is_published,
         'show_in_nav': page.show_in_nav,
+        'nav_order': page.nav_order,
+        'nav_icon': page.nav_icon,
     })
 
 

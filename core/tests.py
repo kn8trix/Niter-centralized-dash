@@ -11760,3 +11760,115 @@ class ContentBlockVisibilityTest(TestCase):
         response = self.client.get(reverse('editable_page', args=[self.page.slug]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'hero-block')
+
+
+class CmsWysiwygIntegrationTest(TestCase):
+    """End-to-end tests for the CMS WYSIWYG pipeline: system page existence,
+    AJAX content updates via the WYSIWYG save endpoint, and student-facing
+    rendering of customized CMS text on the live routes."""
+
+    def setUp(self):
+        from core.system_pages import register_system_pages
+        register_system_pages()
+        self.superuser = User.objects.create_superuser(
+            username='cms_admin', email='cms@niter.edu.bd', password='rootpass123',
+        )
+        self.client.force_login(self.superuser)
+
+    # ------------------------------------------------------------------
+    # Test 1: All 5 core page records exist and carry default content.
+    # ------------------------------------------------------------------
+    def test_all_system_pages_exist_with_default_content(self):
+        """Each of the 5 core system pages is registered with feature blocks
+        whose content_json carries seeded default content."""
+        expected = {
+            'home': ['hero-banner', 'quick-announcements', 'feature-grid'],
+            'study-corner': ['notes-listing', 'youtube-section', 'study-assistant'],
+            'pharmacy': ['category-nav', 'hero-promo', 'top-brands', 'product-grid'],
+            'news': ['news-search', 'image-card-grid', 'video-feed'],
+            'clubs': ['clubs-promo'],
+        }
+        for key, block_ids in expected.items():
+            page = EditablePage.objects.get(system_key=key)
+            self.assertTrue(page.is_published, '%s should be published' % key)
+            actual_ids = set(page.content_blocks.values_list('element_id', flat=True))
+            self.assertEqual(actual_ids, set(block_ids),
+                             '%s block mismatch: got %s' % (key, actual_ids))
+            # Each block should carry non-empty default content.
+            for block in page.content_blocks.all():
+                self.assertTrue(
+                    block.content_json,
+                    '%s/%s should have seeded content_json' % (key, block.element_id),
+                )
+                self.assertTrue(
+                    (block.content_html or '').strip(),
+                    '%s/%s should have default content_html' % (key, block.element_id),
+                )
+
+    # ------------------------------------------------------------------
+    # Test 2: AJAX POST updates text content on a specific slug.
+    # ------------------------------------------------------------------
+    def test_ajax_save_updates_pharmacy_block_headline(self):
+        """POST to the WYSIWYG save endpoint updates the pharmacy hero-promo
+        block's headline text, simulating an inline edit from the builder."""
+        page = EditablePage.objects.get(system_key='pharmacy')
+        block = page.content_blocks.get(element_id='hero-promo')
+        self.assertEqual(
+            block.content_json['headline'],
+            'Medicines delivered to your hall',
+        )
+        # Simulate the WYSIWYG editor posting an edited headline.
+        response = self.client.post(
+            reverse('builder_page_wysiwyg_save', args=[page.pk]),
+            data=json.dumps({
+                'blocks': [{
+                    'element_id': 'hero-promo',
+                    'content_json': {
+                        'headline': 'Order medicines online',
+                        'subtext': 'Updated by the CMS editor.',
+                        'primary_label': 'Shop Now',
+                        'primary_url': '/pharmacy/',
+                    },
+                }],
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body['status'], 'success')
+        block.refresh_from_db()
+        self.assertEqual(block.content_json['headline'], 'Order medicines online')
+        self.assertEqual(block.content_json['subtext'], 'Updated by the CMS editor.')
+
+    # ------------------------------------------------------------------
+    # Test 3: Student-facing pages return the updated CMS text.
+    # ------------------------------------------------------------------
+    def test_pharmacy_page_renders_updated_cms_text(self):
+        """After an admin updates a CMS block's headline and reveals it,
+        a student GET to /pharmacy/ returns the customized text."""
+        page = EditablePage.objects.get(system_key='pharmacy')
+        block = page.content_blocks.get(element_id='hero-promo')
+        # Update the headline and reveal the block.
+        block.content_json['headline'] = 'Campus Pharmacy — Open 24/7'
+        block.visible = True
+        block.save(update_fields=['content_json', 'visible', 'updated_at'])
+        # Student visits the pharmacy storefront.
+        response = self.client.get(reverse('pharmacy_store'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Campus Pharmacy — Open 24/7')
+        # Verify the cms-system-zone section rendered the block.
+        self.assertContains(response, 'cms-system-zone')
+        self.assertContains(response, 'hero-promo')
+
+    def test_home_page_renders_updated_cms_text(self):
+        """After an admin updates the home hero-banner headline and reveals
+        it, a student GET to / returns the customized text."""
+        page = EditablePage.objects.get(system_key='home')
+        block = page.content_blocks.get(element_id='hero-banner')
+        block.content_json['headline'] = 'Welcome to NITER Campus Hub'
+        block.visible = True
+        block.save(update_fields=['content_json', 'visible', 'updated_at'])
+        response = self.client.get(reverse('home'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Welcome to NITER Campus Hub')
+        self.assertContains(response, 'cms-system-zone')

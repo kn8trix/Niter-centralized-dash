@@ -109,6 +109,17 @@ class EditablePage(models.Model):
         db_index=True,
         help_text="Show a link to this page in the top navigation Pages menu",
     )
+    nav_order = models.IntegerField(
+        default=0,
+        db_index=True,
+        help_text="Sort order for the nav link (lower = left)",
+    )
+    nav_icon = models.CharField(
+        max_length=50,
+        default='file-lines',
+        blank=True,
+        help_text="FontAwesome icon name for the nav pill (e.g. 'globe', 'book', 'flask')",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):

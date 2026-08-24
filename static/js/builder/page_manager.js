@@ -26,6 +26,8 @@
     var titleInput = document.getElementById('pb-title');
     var publishedToggle = document.getElementById('pb-published');
     var navToggle = document.getElementById('pb-nav');
+    var navOrderInput = document.getElementById('pb-nav-order');
+    var navIconInput = document.getElementById('pb-nav-icon');
     var seoInput = document.getElementById('pb-seo');
     var saveDraftBtn = document.getElementById('pb-save-draft');
     var publishBtn = document.getElementById('pb-publish');
@@ -152,6 +154,8 @@
             title: titleInput.value,
             is_published: !!publish,
             show_in_nav: navToggle.checked,
+            nav_order: navOrderInput ? parseInt(navOrderInput.value, 10) || 0 : 0,
+            nav_icon: navIconInput ? navIconInput.value.trim() || 'file-lines' : 'file-lines',
             seo_description: seoInput.value,
         }).then(function (_a) {
             saveDraftBtn.disabled = false;

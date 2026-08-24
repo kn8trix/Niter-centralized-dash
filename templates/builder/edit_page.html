@@ -63,6 +63,19 @@
                 <span class="pb-track"><span class="pb-thumb"></span></span>
             </label>
 
+            <label class="pb-toggle-label" title="Sort order in the nav menu (lower = left)">
+                <span>Order</span>
+                <input type="number" id="pb-nav-order" class="pb-nav-order-input" value="{{ page.nav_order }}"
+                       min="0" step="1" style="width:60px; padding:4px 6px; font-size:0.8rem; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-card); color:var(--text-primary);">
+            </label>
+
+            <label class="pb-toggle-label" title="FontAwesome icon name (e.g. globe, book, flask)">
+                <span>Icon</span>
+                <input type="text" id="pb-nav-icon" class="pb-nav-icon-input" value="{{ page.nav_icon|default:'file-lines' }}"
+                       maxlength="50" placeholder="file-lines"
+                       style="width:100px; padding:4px 6px; font-size:0.8rem; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-card); color:var(--text-primary);">
+            </label>
+
             <input type="text" id="pb-seo" class="pb-seo-input" value="{{ page.seo_description }}" maxlength="300"
                    placeholder="SEO description (optional)" aria-label="SEO description">
 

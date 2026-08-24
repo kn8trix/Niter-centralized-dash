@@ -4,6 +4,8 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 141 | CMS WYSIWYG integration tests — end-to-end `CmsWysiwygIntegrationTest` (system page existence, AJAX save, student-facing rendering) | *(see §141)* |
+| 140 | CMS dynamic navigation — `nav_order`/`nav_icon` fields on EditablePage, per-page icon in topbar Pages dropdown, builder toolbar inputs, admin table columns | *(see §140)* |
 | 139 | Pharmacy product detail modal & card image fixes — pill placeholder fallback, `object-fit:contain` modal image, `.pd-head` padding, `max-height:85vh` scrollable modal | *(see §139)* |
 | 138 | Pharmacy product image display fix — catalog serializer uses `item.image.url` (ImageField) with `image_url` fallback, media serving verified | *(see §138)* |
 | 137 | E-Commerce pharmacy inventory management — CRUD views (list/add/edit/delete/toggle/adjust), image upload, stock badges, sidebar logout + Pharmacy Inventory nav link | *(see §137)* |
@@ -8060,3 +8062,179 @@ Already correctly configured:
 ### Files Modified
 - `templates/pharmacy/store.html` — `.modal-img-container`, `closeDetailsModal()`, inline img style
 - `static/css/pharmacy.css` — `.modal-img-container` replaces `.pd-img`, dark mode cleanup
+
+---
+
+## 140. CMS Dynamic Navigation — Per-Page Icons, Sort Order & Builder Toolbar
+
+### Date
+August 2026
+
+### Summary
+Enhanced the Website Builder / CMS so published pages flagged for navigation get
+individual **icons** and **sort order** in the student portal navbar. Previously,
+all nav pages used a hardcoded `fa-file-lines` icon and sorted alphabetically;
+now each page carries its own `nav_icon` (FontAwesome name) and `nav_order`
+(lower = further left).
+
+### 1. Model Updates (`core/models.py`)
+
+Two new fields on `EditablePage`:
+
+| Field | Type | Default | Purpose |
+|-------|------|---------|---------|
+| `nav_order` | `IntegerField` | `0` | Sort position in the nav menu (lower = left). Indexed. |
+| `nav_icon` | `CharField(max_length=50)` | `'file-lines'` | FontAwesome icon name for the nav pill (e.g. `globe`, `book`, `flask`). |
+
+Migration **0049** adds both fields. The existing `show_in_nav` (BooleanField,
+db_index) and `is_published` (BooleanField) are unchanged — a page must be
+both published AND flagged for nav to appear.
+
+### 2. Context Processor (`core/context_processors.py`)
+
+`custom_pages_nav` now orders by `nav_order, title` (was `title` only). The
+`NAV_CUSTOM_PAGES` queryset is unchanged otherwise — still filtered to
+`is_published=True, show_in_nav=True`.
+
+### 3. Topbar Integration (`templates/partials/topbar.html`)
+
+Both the **desktop Pages dropdown** and the **mobile profile menu** now render
+the per-page icon:
+
+```html
+<i class="fa-solid fa-{{ item.nav_icon|default:'file-lines' }}"></i> {{ item.title }}
+```
+
+Instead of the previous hardcoded `<i class="fa-solid fa-file-lines"></i>`.
+
+### 4. Builder Edit Page (`templates/builder/edit_page.html`)
+
+Two new inputs in the toolbar, next to the existing "Show in Nav" toggle:
+
+- **Order** — `<input type="number" id="pb-nav-order">` (min 0, step 1)
+- **Icon** — `<input type="text" id="pb-nav-icon">` (maxlength 50, placeholder
+  `file-lines`)
+
+Both pre-populated from the page object. The page manager JS
+(`static/js/builder/page_manager.js`) sends `nav_order` and `nav_icon` in the
+`savePage()` payload alongside `show_in_nav`.
+
+### 5. Page Save API (`core/views.py` → `builder_page_save`)
+
+Accepts optional `nav_order` (int) and `nav_icon` (string, max 50) in the JSON
+payload. Only present keys are written. Response includes both fields.
+
+### 6. Admin CMS Dashboard (`templates/admin/content.html`)
+
+The Builder Pages table now has two additional columns:
+
+- **Icon** — shows `fa-{icon} {icon_name}` when in nav, `—` otherwise
+- **Order** — shows the nav_order number when in nav, `—` otherwise
+
+The "In Nav" column badge is now green with a checkmark (`Active`) instead of
+the plain `In nav` text badge.
+
+### 7. Django Admin (`core/admin.py`)
+
+`EditablePageAdmin.list_display` now includes `nav_order` and `nav_icon` for
+visibility in the Django admin changelist.
+
+### Files Modified
+
+- `core/models.py` — `nav_order`, `nav_icon` fields
+- `core/migrations/0049_editablepage_nav_order_nav_icon.py` — new migration
+- `core/context_processors.py` — `order_by('nav_order', 'title')`
+- `core/views.py` — `builder_page_save` handles `nav_order` + `nav_icon`
+- `core/admin.py` — `list_display` extended
+- `templates/partials/topbar.html` — per-page icon in desktop dropdown + mobile menu
+- `templates/builder/edit_page.html` — Order + Icon toolbar inputs
+- `templates/admin/content.html` — Icon + Order columns, green Active badge
+- `static/js/builder/page_manager.js` — `savePage()` sends `nav_order` + `nav_icon`
+
+### Verification
+
+- `python manage.py check` — **0 issues**
+- `makemigrations --check` — **no drift**
+- 62 targeted tests (CustomPagesNav, BuilderPageManager, WYSIWYG, BlockLibrary,
+  UnifiedHeader, SecurityAudit) — **all pass**
+- `node --check page_manager.js` — **syntax OK**
+
+---
+
+## 141. CMS WYSIWYG Integration — End-to-End Tests for System Pages, AJAX Save & Live Rendering
+
+### Date
+August 2026
+
+### Summary
+The full Website Builder CMS WYSIWYG pipeline — system page auto-registration,
+feature block seeding, the visual editor (`/builder/visual/<slug>/`), the
+WYSIWYG save endpoint (`POST /api/builder/pages/<id>/save/`), the CMS context
+processor (`cms_system_blocks`), and the template zone (`cms/system_zone.html`)
+— was already fully implemented across §53, §103, §109, §117 and §119. This
+task audits that pipeline end-to-end and adds **four integration tests**
+that prove the full round-trip: seed → edit → persist → render.
+
+### Existing Pipeline (verified, no code changes)
+
+| Component | Where | Behaviour |
+|---|---|---|
+| System page registry | `core/system_pages.py` | Auto-registers 5 core routes (home, study-corner, pharmacy, news, clubs) as `EditablePage` rows keyed by `system_key`; seeds `ContentBlock`s with `content_json` + rendered default `content_html`; blocks start `visible=False` |
+| CMS context processor | `core/context_processors.py` → `cms_system_blocks` | Maps `request.resolver_match.url_name` to `SYSTEM_ROUTE_KEYS`, loads visible blocks, renders via `render_block_html`, returns as `cms_blocks` |
+| Template zone | `templates/cms/system_zone.html` | Included in all 5 student-facing templates (`index.html`, `study_corner.html`, `store.html`, `news.html`, `clubs.html`); renders `cms_blocks` inside a `cms-system-zone` section; empty when no blocks are visible → default template content shows through |
+| Visual editor | `/builder/visual/<slug>/` → `editor.html` + `editor.js` | Split-screen WYSIWYG: iframe of the real student page (`?preview=1` shows hidden blocks), double-click text → `contenteditable`, floating style toolbar, sidebar ↔ canvas bidirectional editing |
+| WYSIWYG save | `POST /api/builder/pages/<id>/save/` → `builder_page_wysiwyg_save` | Persists `content_html` / `content_json` / `style_json` per block via sanitized `_save_content_block_data` path; toggles `is_published`; flushes compiled-template caches |
+| Block visibility | `ContentBlock.visible` | Public routes skip hidden blocks; `?preview=1` shows all for users with builder permission; admin reveals from Block Manager |
+
+### New Tests (`core/tests.py` → `CmsWysiwygIntegrationTest`)
+
+#### Test 1: `test_all_system_pages_exist_with_default_content`
+Verifies all 5 core system pages are registered with the correct feature blocks,
+published status, non-empty `content_json` (seeded data), and non-empty
+`content_html` (rendered default layout). Covers home (3 blocks), study-corner
+(3), pharmacy (4), news (3), clubs (1).
+
+#### Test 2: `test_ajax_save_updates_pharmacy_block_headline`
+POSTs to the WYSIWYG save endpoint (`/api/builder/pages/<id>/save/`) with an
+edited `content_json` payload for the pharmacy `hero-promo` block → verifies the
+block's headline is persisted to the database.
+
+#### Test 3: `test_pharmacy_page_renders_updated_cms_text`
+Updates a CMS block's `content_json['headline']` and sets `visible=True` →
+simulates an admin editing + revealing a section → student GET to `/pharmacy/`
+returns the customized text inside the `cms-system-zone` section.
+
+#### Test 4: `test_home_page_renders_updated_cms_text`
+Same flow for the home `hero-banner` block → student GET to `/` returns the
+updated headline text.
+
+### Test Flow Diagram
+
+```
+register_system_pages()          admin edits block
+        │                              │
+        ▼                              ▼
+ EditablePage + ContentBlock     POST /api/builder/pages/<id>/save/
+ (visible=False, seeded)         → content_json updated, cache flushed
+        │                              │
+        ▼                              ▼
+ Test 1: all 5 pages exist     Test 2: headline persisted
+        │                              │
+        ▼                              ▼
+ block.visible = True          GET /pharmacy/ or GET /
+        │                              │
+        ▼                              ▼
+ Test 3 & 4: CMS text renders on student pages
+```
+
+### Files Modified
+
+- `core/tests.py` — added `CmsWysiwygIntegrationTest` (4 tests)
+
+### Verification
+
+- `python manage.py check` — **0 issues**
+- `makemigrations --check` — **no drift**
+- 18 targeted tests (RegisterSystemPages 8, ContentBlockVisibility 5,
+  CmsWysiwygIntegration 4, + 1 shared) — **all pass**
+- No model/view/template changes required — the pipeline was already complete

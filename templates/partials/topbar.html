@@ -87,7 +87,7 @@ active: dashboard | study | notes | departments | research | notices | news | tr
                         {% for item in NAV_CUSTOM_PAGES %}
                         {% url 'editable_page' item.slug as item_url %}
                         <a href="{{ item_url }}"{% if request.path == item_url %} class="active"{% endif %}>
-                            <i class="fa-solid fa-file-lines"></i> {{ item.title }}
+                            <i class="fa-solid fa-{{ item.nav_icon|default:'file-lines' }}"></i> {{ item.title }}
                         </a>
                         {% endfor %}
                         {% endif %}
@@ -136,7 +136,7 @@ active: dashboard | study | notes | departments | research | notices | news | tr
                 {% for item in NAV_CUSTOM_PAGES %}
                 {% url 'editable_page' item.slug as item_url %}
                 <a href="{{ item_url }}"{% if request.path == item_url %} class="active"{% endif %}>
-                    <i class="fa-solid fa-file-lines"></i> {{ item.title }}
+                    <i class="fa-solid fa-{{ item.nav_icon|default:'file-lines' }}"></i> {{ item.title }}
                 </a>
                 {% endfor %}
             </div>

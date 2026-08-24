@@ -107,7 +107,7 @@ def custom_pages_nav(request):
         'NAV_CUSTOM_PAGES': EditablePage.objects.filter(
             is_published=True,
             show_in_nav=True,
-        ).order_by('title'),
+        ).order_by('nav_order', 'title'),
     }
 
 

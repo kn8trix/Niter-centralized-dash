@@ -28,7 +28,7 @@
     <div class="admin-table-wrap">
         <table class="admin-table">
             <thead>
-                <tr><th>Title</th><th>Slug</th><th>Status</th><th>In Nav</th><th>Updated</th><th></th></tr>
+                <tr><th>Title</th><th>Slug</th><th>Status</th><th>In Nav</th><th>Icon</th><th>Order</th><th>Updated</th><th></th></tr>
             </thead>
             <tbody>
                 {% for page in pages %}
@@ -36,7 +36,9 @@
                     <td class="font-medium">{{ page.title }}</td>
                     <td class="mono">{{ page.slug }}</td>
                     <td><span class="admin-badge {% if page.is_published %}admin-badge-green{% else %}admin-badge-gray{% endif %}">{{ page.is_published|yesno:"Published,Draft" }}</span></td>
-                    <td>{% if page.show_in_nav %}<span class="admin-badge admin-badge-blue">In nav</span>{% else %}<span class="text-main/40">—</span>{% endif %}</td>
+                    <td>{% if page.show_in_nav %}<span class="admin-badge admin-badge-blue"><i class="fa-solid fa-check"></i> Active</span>{% else %}<span class="text-main/40">—</span>{% endif %}</td>
+                    <td>{% if page.show_in_nav %}<i class="fa-solid fa-{{ page.nav_icon|default:'file-lines' }}"></i> {{ page.nav_icon|default:'file-lines' }}{% else %}<span class="text-main/40">—</span>{% endif %}</td>
+                    <td>{% if page.show_in_nav %}{{ page.nav_order }}{% else %}<span class="text-main/40">—</span>{% endif %}</td>
                     <td>{{ page.updated_at|date:"M d, Y" }}</td>
                     <td class="text-right whitespace-nowrap">
                         {% if can_build %}
@@ -46,7 +48,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="6" class="text-center text-main/50 py-4">No builder pages yet.</td></tr>
+                <tr><td colspan="8" class="text-center text-main/50 py-4">No builder pages yet.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
