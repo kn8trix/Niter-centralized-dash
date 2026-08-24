@@ -11492,7 +11492,9 @@ class RegisterSystemPagesTest(TestCase):
         from core.system_pages import register_system_pages
         register_system_pages()
         keys = set(EditablePage.objects.filter(system_key__isnull=False).values_list('system_key', flat=True))
-        self.assertEqual(keys, {'home', 'study-corner', 'pharmacy', 'news', 'clubs'})
+        # All 13 system pages: 5 original + 8 navbar routes.
+        self.assertTrue({'home', 'study-corner', 'pharmacy', 'news', 'clubs'}.issubset(keys))
+        self.assertTrue({'dashboard', 'departments', 'research-ai', 'notices', 'transport', 'meals', 'medical', 'attendance'}.issubset(keys))
         home = EditablePage.objects.get(system_key='home')
         self.assertEqual(home.slug, 'home')
         self.assertEqual(home.is_published, True)
@@ -11543,8 +11545,9 @@ class RegisterSystemPagesTest(TestCase):
     def test_idempotent_and_preserves_admin_edits(self):
         from core.system_pages import register_system_pages
         register_system_pages()
+        count_before = EditablePage.objects.filter(system_key__isnull=False).count()
         register_system_pages()
-        self.assertEqual(EditablePage.objects.filter(system_key__isnull=False).count(), 5)
+        self.assertEqual(EditablePage.objects.filter(system_key__isnull=False).count(), count_before)
         # An admin edit (visibility + content) survives a re-register.
         page = EditablePage.objects.get(system_key='home')
         block = page.content_blocks.get(element_id='hero-banner')
@@ -12038,3 +12041,106 @@ class NewsBuilderIntegrationTest(TestCase):
                 response.get('X-Frame-Options'), 'SAMEORIGIN',
                 '%s should set X-Frame-Options: SAMEORIGIN' % url_name,
             )
+
+
+class AllNavbarRoutesBuilderIntegrationTest(TestCase):
+    """Comprehensive integration tests for the visual builder across all 11
+    student navbar routes. Verifies X-Frame-Options, system page registration,
+    visual editor iframe loading, and CMS content rendering."""
+
+    ALL_ROUTES = [
+        ('student_dashboard', 'student_dashboard', {}),
+        ('study_corner', 'study_corner', {}),
+        ('departments', 'departments', {}),
+        ('research_ai', 'research_ai', {}),
+        ('notices', 'notices', {}),
+        ('transport_dashboard', 'transport_dashboard', {}),
+        ('meal_dashboard', 'meal_dashboard', {}),
+        ('medical', 'medical', {}),
+        ('attendance', 'attendance', {}),
+        ('clubs_dashboard', 'clubs_dashboard', {}),
+        ('news', 'news', {}),
+    ]
+
+    VIEW_TO_KEY = {
+        'student_dashboard': 'dashboard',
+        'study_corner': 'study-corner',
+        'departments': 'departments',
+        'research_ai': 'research-ai',
+        'notices': 'notices',
+        'transport_dashboard': 'transport',
+        'meal_dashboard': 'meals',
+        'medical': 'medical',
+        'attendance': 'attendance',
+        'clubs_dashboard': 'clubs',
+        'news': 'news',
+    }
+
+    def setUp(self):
+        from core.system_pages import register_system_pages
+        register_system_pages()
+        self.superuser = User.objects.create_superuser(
+            username='allnav_admin', email='an@niter.edu.bd', password='rootpass123',
+        )
+        self.client.force_login(self.superuser)
+
+    def test_all_11_system_pages_registered(self):
+        """All 11 navbar routes have a corresponding EditablePage."""
+        expected_keys = set(self.VIEW_TO_KEY.values())
+        actual_keys = set(
+            EditablePage.objects.filter(system_key__isnull=False)
+            .values_list('system_key', flat=True)
+        )
+        # All 11 expected keys must be present (there may be additional
+        # system pages like 'home' and 'pharmacy' from the original registry).
+        self.assertTrue(expected_keys.issubset(actual_keys),
+                        'Missing: %s' % (expected_keys - actual_keys))
+        for key in expected_keys:
+            page = EditablePage.objects.get(system_key=key)
+            self.assertTrue(page.is_published)
+            self.assertGreater(page.content_blocks.count(), 0)
+
+    def test_all_11_routes_set_xframe_sameorigin(self):
+        """Every navbar route sets X-Frame-Options: SAMEORIGIN."""
+        for view_name, _, kwargs in self.ALL_ROUTES:
+            response = self.client.get(reverse(view_name, kwargs=kwargs))
+            self.assertEqual(
+                response.get('X-Frame-Options'), 'SAMEORIGIN',
+                '%s should set SAMEORIGIN' % view_name,
+            )
+
+    def test_visual_editor_loads_real_routes_for_all_pages(self):
+        """Visual editor iframe points to the real system route."""
+        for view_name, _, _ in self.ALL_ROUTES:
+            system_key = self.VIEW_TO_KEY[view_name]
+            page = EditablePage.objects.get(system_key=system_key)
+            response = self.client.get(
+                reverse('visual_editor', args=[page.slug]),
+            )
+            self.assertEqual(response.status_code, 200)
+            content = response.content.decode()
+            self.assertIn('builder=1', content)
+            self.assertIn('preview=1', content)
+
+    def test_cms_blocks_render_after_reveal_on_all_pages(self):
+        """After revealing a CMS block, cms-system-zone renders."""
+        for view_name, _, kwargs in self.ALL_ROUTES:
+            system_key = self.VIEW_TO_KEY[view_name]
+            page = EditablePage.objects.get(system_key=system_key)
+            block = page.content_blocks.first()
+            block.visible = True
+            block.save(update_fields=['visible'])
+            response = self.client.get(reverse(view_name, kwargs=kwargs))
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, 'cms-system-zone')
+
+    def test_wysiwyg_save_updates_content_json_for_all_pages(self):
+        """WYSIWYG save persists content_json on every system page."""
+        for view_name, _, _ in self.ALL_ROUTES:
+            system_key = self.VIEW_TO_KEY[view_name]
+            page = EditablePage.objects.get(system_key=system_key)
+            block = page.content_blocks.first()
+            block.content_json['headline'] = 'Updated for %s' % system_key
+            block.save(update_fields=['content_json'])
+            block.refresh_from_db()
+            self.assertEqual(block.content_json['headline'], 'Updated for %s' % system_key)

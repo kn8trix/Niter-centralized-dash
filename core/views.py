@@ -361,6 +361,7 @@ def dashboard(request):
     return student_dashboard(request)
 
 
+@xframe_options_sameorigin
 def student_dashboard(request):
     """Student dashboard — BST clock, class routine, academic calendar, feeds.
 
@@ -444,6 +445,7 @@ def student_dashboard(request):
 def tickets(request):
     return render(request, 'ticketing/tickets.html')
 
+@xframe_options_sameorigin
 def medical(request):
     """Medical booking page — form plus the signed-in student's live
     appointments and consultation threads (patient-side chat UI).
@@ -1499,6 +1501,7 @@ def api_pharmacy_stock_update(request):
     return JsonResponse({'status': 'success', 'updated': updated, 'message': message})
 
 
+@xframe_options_sameorigin
 def notices(request):
     """Official Notices — published ``Notice`` rows, filtered by category.
 
@@ -1618,6 +1621,7 @@ def join_club(request):
     })
 
 
+@xframe_options_sameorigin
 def transport_dashboard(request):
     """Transport online ticket system — live DB routes, schedules and drivers.
 
@@ -1673,6 +1677,7 @@ def _meal_ticket_can_cancel(ticket):
     )
 
 
+@xframe_options_sameorigin
 def meal_dashboard(request):
     """Online meal ticket system — live subscription, tickets and slot stats.
 
@@ -1969,6 +1974,7 @@ def _process_checkout(request):
     return JsonResponse(payload)
 
 
+@xframe_options_sameorigin
 def research_ai_page(request):
     """Academic Research & Thesis Assistant — frontend-only page driven by
     mock JS data (canned assistant responses, no backend/AI calls).
@@ -1981,6 +1987,7 @@ def research_ai_page(request):
 _WEEKDAY_ORDER = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Sat', 'Fri']
 
 
+@xframe_options_sameorigin
 def departments_directory(request):
     """Department Directory — every ``Department`` row from the database.
 
@@ -2422,7 +2429,7 @@ def cancel_meal(request):
 # ============================================================================
 # QR Attendance System — student scan + stats, admin session management
 # ============================================================================
-
+@xframe_options_sameorigin
 def attendance_dashboard(request):
     """Student Attendance page — camera/manual QR scan + per-course stats.
 

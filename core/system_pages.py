@@ -235,6 +235,144 @@ SYSTEM_PAGES = [
             },
         ],
     },
+    {
+        'key': 'dashboard',
+        'title': 'Student Dashboard',
+        'slug': 'dashboard',
+        'route_url': '/dashboard/',
+        'view_name': 'student_dashboard',
+        'blocks': [
+            {
+                'element_id': 'welcome-banner',
+                'block_type': 'hero',
+                'content_json': {
+                    'headline': 'Welcome to CampusDash',
+                    'subheadline': 'Your central campus overview',
+                    'primary_label': 'View Profile',
+                    'primary_url': '/profile/',
+                },
+            },
+        ],
+    },
+    {
+        'key': 'departments',
+        'title': 'Departments',
+        'slug': 'departments',
+        'route_url': '/departments/',
+        'view_name': 'departments',
+        'blocks': [
+            {
+                'element_id': 'dept-hero',
+                'block_type': 'hero',
+                'content_json': {
+                    'headline': 'Academic Departments & Faculties',
+                    'subheadline': 'Explore departments, faculty, and course materials',
+                },
+            },
+        ],
+    },
+    {
+        'key': 'research-ai',
+        'title': 'Research AI',
+        'slug': 'research-ai',
+        'route_url': '/research-ai/',
+        'view_name': 'research_ai',
+        'blocks': [
+            {
+                'element_id': 'research-hero',
+                'block_type': 'hero',
+                'content_json': {
+                    'headline': 'Academic Research & Thesis Assistant',
+                    'subheadline': 'Literature reviews, methodology, and citation formatting',
+                },
+            },
+        ],
+    },
+    {
+        'key': 'notices',
+        'title': 'Official Notices',
+        'slug': 'notices',
+        'route_url': '/notices/',
+        'view_name': 'notices',
+        'blocks': [
+            {
+                'element_id': 'notices-hero',
+                'block_type': 'hero',
+                'content_json': {
+                    'headline': 'Official Notices',
+                    'subheadline': 'Institutional announcements and events',
+                },
+            },
+        ],
+    },
+    {
+        'key': 'transport',
+        'title': 'Transport Tickets',
+        'slug': 'transport',
+        'route_url': '/transport/',
+        'view_name': 'transport_dashboard',
+        'blocks': [
+            {
+                'element_id': 'transport-hero',
+                'block_type': 'hero',
+                'content_json': {
+                    'headline': 'Transport Online Ticket System',
+                    'subheadline': 'Bus routes, seat booking, and digital boarding passes',
+                },
+            },
+        ],
+    },
+    {
+        'key': 'meals',
+        'title': 'Meal System',
+        'slug': 'meals',
+        'route_url': '/meals/',
+        'view_name': 'meal_dashboard',
+        'blocks': [
+            {
+                'element_id': 'meals-hero',
+                'block_type': 'hero',
+                'content_json': {
+                    'headline': 'Online Meal Ticket System',
+                    'subheadline': 'Monthly subscriptions, QR passes, and meal claims',
+                },
+            },
+        ],
+    },
+    {
+        'key': 'medical',
+        'title': 'Medical Booking',
+        'slug': 'medical',
+        'route_url': '/medical/',
+        'view_name': 'medical',
+        'blocks': [
+            {
+                'element_id': 'medical-hero',
+                'block_type': 'hero',
+                'content_json': {
+                    'headline': 'Medical Appointments',
+                    'subheadline': 'Book doctor appointments and manage consultations',
+                },
+            },
+        ],
+    },
+    {
+        'key': 'attendance',
+        'title': 'Class Attendance',
+        'slug': 'attendance',
+        'route_url': '/attendance/',
+        'view_name': 'attendance',
+        'blocks': [
+            {
+                'element_id': 'attendance-hero',
+                'block_type': 'hero',
+                'content_json': {
+                    'headline': 'Class Attendance',
+                    'subheadline': 'Scan QR codes and track your attendance',
+                },
+            },
+        ],
+    },
 ]
 
 # Starter blueprints offered on the builder dashboard for 1-click creation.
