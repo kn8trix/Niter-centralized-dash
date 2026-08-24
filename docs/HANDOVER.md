@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 143 | Visual builder extended to all 11 navbar routes — SYSTEM_PAGES expanded to 13, @xframe_options_sameorigin on all views, cms/system_zone.html added to 8 templates | *(see §143)* |
 | 142 | News visual builder fix — editor iframe loads real /news/ route, CMS content_json binding for editable text, preview mode shows hidden blocks | *(see §142)* |
 | 141 | CMS WYSIWYG integration tests — end-to-end `CmsWysiwygIntegrationTest` (system page existence, AJAX save, student-facing rendering) | *(see §141)* |
 | 140 | CMS dynamic navigation — `nav_order`/`nav_icon` fields on EditablePage, per-page icon in topbar Pages dropdown, builder toolbar inputs, admin table columns | *(see §140)* |
@@ -8405,3 +8406,109 @@ Student visits /news/
 - `python manage.py check` — **0 issues**
 - `node --check editor.js` — **syntax OK**
 - 10 targeted tests (NewsBuilderIntegration 6, CmsWysiwygIntegration 4) — **all pass**
+
+---
+
+## 143. Visual Builder Extended to All 11 Navbar Routes — System Pages, Frame Security & CMS Zone
+
+### Date
+August 2026
+
+### Summary
+Extended the Website Builder visual editor to cover **all 11 student navbar
+routes** so every page can be edited inline from `/builder/visual/<slug>/`. The
+SYSTEM_PAGES registry grew from 5 to 13 entries, `@xframe_options_sameorigin`
+was added to 8 remaining views, and `{% include 'cms/system_zone.html' %}` was
+added to 8 student templates that were missing it.
+
+### Changes
+
+#### 1. SYSTEM_PAGES registry (`core/system_pages.py`)
+
+8 new entries added (bringing total from 5 to 13):
+
+| key | slug | view_name | route_url | blocks |
+|---|---|---|---|---|
+| `dashboard` | `dashboard` | `student_dashboard` | `/dashboard/student/` | `welcome-banner` (hero) |
+| `departments` | `departments` | `departments` | `/departments/` | `dept-hero` (hero) |
+| `research-ai` | `research-ai` | `research_ai` | `/research-ai/` | `research-hero` (hero) |
+| `notices` | `notices` | `notices` | `/notices/` | `notices-hero` (hero) |
+| `transport` | `transport` | `transport_dashboard` | `/transport/` | `transport-hero` (hero) |
+| `meals` | `meals` | `meal_dashboard` | `/meals/` | `meals-hero` (hero) |
+| `medical` | `medical` | `medical` | `/medical/` | `medical-hero` (hero) |
+| `attendance` | `attendance` | `attendance` | `/attendance/` | `attendance-hero` (hero) |
+
+Each entry seeds one hero-type `ContentBlock` with `visible=False` so the
+default template content is preserved until an admin reveals a block.
+
+#### 2. Frame security — `@xframe_options_sameorigin` (`core/views.py`)
+
+Added to 8 views that were missing it (the original 5 + `editable_page_view`
++ `study_material_file` already had it):
+
+- `student_dashboard`
+- `medical`
+- `notices`
+- `transport_dashboard`
+- `meal_dashboard`
+- `research_ai_page`
+- `departments_directory`
+- `attendance_dashboard`
+
+All 11 student navbar routes now respond with `X-Frame-Options: SAMEORIGIN`
+so the builder canvas can embed them in a same-origin iframe.
+
+#### 3. CMS zone added to 8 student templates
+
+`{% include 'cms/system_zone.html' %}` inserted after the intro section in:
+
+- `templates/dashboard/home.html`
+- `templates/transport.html`
+- `templates/meals.html`
+- `templates/medical/booking.html`
+- `templates/notices/notices.html`
+- `templates/research_ai.html`
+- `templates/attendance.html`
+- `templates/departments.html`
+
+All 11 student navbar templates now include the CMS zone, so customized
+blocks render on the live page after an admin reveals them from the Block
+Manager.
+
+#### 4. Visual editor iframe (`core/views.py` → `visual_editor`)
+
+The `visual_editor` view resolves `system_route_url` for any page with a
+`system_key`, and `templates/builder/editor.html` uses it for the iframe
+`src` with `?builder=1&preview=1`. This was previously only wired for the
+original 5 system pages; it now works for all 13.
+
+### Tests (`AllNavbarRoutesBuilderIntegrationTest`)
+
+| Test | Coverage |
+|---|---|
+| `test_all_11_system_pages_registered` | All 11 navbar routes have an `EditablePage` with `system_key` and ≥1 content block |
+| `test_all_11_routes_set_xframe_sameorigin` | Every navbar route returns `X-Frame-Options: SAMEORIGIN` |
+| `test_visual_editor_loads_real_routes_for_all_pages` | Editor iframe src contains `builder=1` + `preview=1` for all 11 pages |
+| `test_cms_blocks_render_after_reveal_on_all_pages` | After revealing a block, `cms-system-zone` renders on the student page |
+| `test_wysiwyg_save_updates_content_json_for_all_pages` | Direct `content_json` save persists on every system page |
+
+Also fixed `RegisterSystemPagesTest` for the expanded registry (5→13 pages).
+
+### Files Modified
+
+- `core/system_pages.py` — 8 new SYSTEM_PAGES entries
+- `core/views.py` — 8 new `@xframe_options_sameorigin` decorators
+- `core/tests.py` — `AllNavbarRoutesBuilderIntegrationTest` (5 tests) + `RegisterSystemPagesTest` fix
+- `templates/dashboard/home.html` — CMS zone
+- `templates/transport.html` — CMS zone
+- `templates/meals.html` — CMS zone
+- `templates/medical/booking.html` — CMS zone
+- `templates/notices/notices.html` — CMS zone
+- `templates/research_ai.html` — CMS zone
+- `templates/attendance.html` — CMS zone
+- `templates/departments.html` — CMS zone
+
+### Verification
+
+- `python manage.py check` — **0 issues**
+- 26 targeted tests (RegisterSystemPages 8, NewsBuilderIntegration 6, CmsWysiwygIntegration 4, AllNavbarRoutes 5, ContentBlockVisibility 3) — **all pass**
