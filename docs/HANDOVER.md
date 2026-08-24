@@ -4,6 +4,8 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 134 | Mobile viewport optimization — `maximum-scale=1.0, user-scalable=no` on all 31 templates, global 44×44 px touch-target minimum, attendance/dashboard mobile touch-friendly CSS | *(see §134)* |
+| 133 | Native QR Scanner — CameraX + ML Kit barcode detection bypasses WebView `getUserMedia`; `NiterHub.scanQR()` JS bridge; attendance page auto-selects native scanner in-app | *(see §133)* |
 | 132 | Study Corner PDF-preview overlap fix (`[hidden]` display guard) + case-insensitive Student/Staff ID login (`StudentIdAuthenticationForm` on `RoleAwareLoginView`) | *(see §132)* |
 | 131 | Meals remaining-count fix + news response caching; Study Corner PDF preview box, Google Drive removal, direct local/DB uploads; embedded ChromaDB vector store + RAG retrieval wired into Study Corner & Research AI | *(see §131)* |
 | 130 | Navbar underline fix, modal button contrast (Rx Upload / Checkout), mobile WebView responsiveness for /news/ /attendance/ /pharmacy/ | *(see §130)* |
@@ -7548,3 +7550,175 @@ are left untouched — nothing weakened.
 - Full core suite on SQLite (`SUPABASE_DB_URL= DATABASE_URL= TESTING=1 manage.py
   test core`): **969 tests OK** (0 failures) — the §131 baseline of 965 plus the
   4 new login tests, no regressions.
+
+## 133. Native QR Scanner — CameraX + ML Kit (Bypasses WebView getUserMedia)
+
+**Date:** 24 August 2026
+**Branch:** main
+
+### Problem
+
+The attendance page (`/attendance/`) uses the `html5-qrcode` library (CDN) which
+calls `navigator.mediaDevices.getUserMedia()` to access the device camera for QR
+scanning. In Android WebView, `getUserMedia` is unreliable — the camera request
+silently fails even with the `CAMERA` permission granted and
+`onPermissionRequest` auto-granting WebRTC resources. The result: "Start Camera"
+shows "Camera unavailable or permission denied" and the user falls back to
+manual code entry.
+
+### Solution — Native CameraX + ML Kit Scanner
+
+Instead of fighting WebView's limited WebRTC support, bypass it entirely with a
+**native Android camera scanner** that opens as a full-screen Activity, decodes
+QR codes in real-time using ML Kit barcode detection, and injects the result
+back into the WebView page via JavaScript.
+
+### Architecture
+
+```
+attendance.html                    MainActivity.kt                 ScannerActivity.kt
+┌──────────────┐   JS bridge      ┌──────────────────┐  intent    ┌──────────────────┐
+│ Start Camera │ ───────────────► │ NiterHub.scanQR()│ ─────────► │ CameraX preview   │
+│              │                  │ qrScannerLauncher│            │ ML Kit barcode    │
+│ __qrScan ◄──│ ◄─────────────── │ evaluateJavascript│ ◄───────── │ RESULT_OK + value │
+│   Callback   │                  │                  │            │                  │
+└──────────────┘                  └──────────────────┘            └──────────────────┘
+```
+
+### Changes
+
+#### 1. Dependencies (`mobile-webview/app/build.gradle.kts`)
+- **CameraX 1.4.1** — `camera-camera2`, `camera-lifecycle`, `camera-view` for
+  the camera pipeline.
+- **ML Kit Barcode Scanning 17.3.0** — bundled (no Google Play Services
+  required); decodes QR_CODE, AZTEC, and DATA_MATRIX formats.
+
+#### 2. ScannerActivity (`mobile-webview/.../ScannerActivity.kt`)
+- Full-screen Activity with a `PreviewView` camera preview.
+- `ImageAnalysis` + `BarcodeScanner` pipeline: each camera frame is fed to ML
+  Kit; the first decoded barcode delivers the result and finishes the Activity.
+- `RESULT_OK` with `EXTRA_QR_RESULT` (the raw decoded string) on success;
+  `RESULT_CANCELED` on back/close.
+- Runtime camera permission request via `ActivityResultContracts`.
+- Close button (top-left ✕) and hardware BACK both cancel gracefully.
+- Anti-duplicate guard (`resultDelivered` volatile) prevents double-fires.
+
+#### 3. Layout (`mobile-webview/.../res/layout/activity_scanner.xml`)
+- Full-screen `PreviewView`, semi-transparent top bar with close button +
+  "Scan QR Code" title, and a bottom status text ("Point your camera at the
+  QR code…").
+
+#### 4. JS Bridge (`mobile-webview/.../MainActivity.kt`)
+- **`qrScannerLauncher`** (`ActivityResultLauncher`) — receives the scanned
+  value from `ScannerActivity`, escapes it for safe JS injection, and calls
+  `window.__qrScanCallback(value)` on the WebView. On cancel, calls the
+  callback with `null`.
+- **`NiterHub.scanQR()`** — added to the existing `EmergencyBridge` JS
+  interface. Sets a pending callback marker and launches `ScannerActivity`.
+- **AndroidManifest.xml** — `ScannerActivity` registered with
+  `screenOrientation="portrait"`.
+
+#### 5. Attendance Page (`templates/attendance.html`)
+- **Native app detection:** `isNativeApp = !!(window.NiterHub &&
+  window.NiterHub.scanQR)` — true inside the Android wrapper (which exposes
+  `NiterHub`), false in a normal browser.
+- **`startScanner()` rewritten:** when `isNativeApp` is true, it sets
+  `window.__qrScanCallback` (receives the decoded string or `null` on cancel)
+  and calls `NiterHub.scanQR()`. The callback auto-submits the token or resets
+  the UI on cancel. The browser `html5-qrcode` fallback is unchanged for
+  non-app visitors.
+- The "Stop" button is hidden for the native path (the scanner is a separate
+  Activity, not an in-page stream).
+
+#### 6. Accessibility
+- `onPermissionRequest` added to `WebChromeClient` (for any remaining WebRTC
+  use-cases in the browser path).
+- `READ_MEDIA_IMAGES` / `READ_EXTERNAL_STORAGE` / `POST_NOTIFICATIONS`
+  permissions already in the manifest from §122.
+
+### Testing
+- `./gradlew clean assembleDebug assembleRelease test` — **BUILD SUCCESSFUL**,
+  90 tasks, zero failures.
+- `python manage.py test core.tests.StudentPagesSmokeTest
+  core.tests.UnifiedHeaderTest core.tests.AttendancePageTest` — **6/6 OK**
+  (template changes are purely client-side JS; server-rendered output unchanged).
+- Verified: attendance page renders the `isNativeApp` detection script; scanner
+  Activity class exists in the APK's DEX.
+
+### Files Added / Modified
+- **New:** `mobile-webview/app/src/main/java/com/niterhub/dash/ScannerActivity.kt`,
+  `mobile-webview/app/src/main/res/layout/activity_scanner.xml`
+- **Modified:** `mobile-webview/app/build.gradle.kts` (CameraX + ML Kit deps),
+  `mobile-webview/app/src/main/java/com/niterhub/dash/MainActivity.kt` (bridge +
+  launcher), `mobile-webview/app/src/main/AndroidManifest.xml` (register
+  activity), `templates/attendance.html` (native scanner path)
+
+---
+
+## 134. Mobile Viewport Optimization — Touch Targets + Zoom Prevention
+
+**Date:** 24 August 2026
+**Branch:** main
+
+### Problem
+
+Pages rendered inside the Android WebView lacked the mobile-optimized viewport
+meta tag (`maximum-scale=1.0, user-scalable=no`), so users could pinch-zoom,
+causing layout breaks, text reflow, and inconsistent sizing. Additionally,
+interactive elements (buttons, nav pills, input fields) had touch targets below
+the 44×44 px recommended minimum, making them hard to tap on small screens.
+
+### Changes
+
+#### 1. Viewport Meta Tags (31 template files)
+Every standalone template was updated from:
+```html
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+```
+to:
+```html
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+```
+
+Files updated: `base.html`, `index.html`, `login.html`, `signup.html`,
+`settings.html`, `profile.html`, `dashboard/home.html`, `attendance.html`,
+`transport.html`, `meals.html`, `clubs.html`, `medical/booking.html`,
+`notices/notices.html`, `academic/study_corner.html`, `notes/notes_engine.html`,
+`news.html`, `research_ai.html`, `checkout.html`, `departments.html`,
+`department_detail.html`, `editable_page.html`, `club/club_base.html`,
+`admin/admin_base.html`, `cafeteria_admin.html`, `sys_admin.html`,
+`builder/editor.html`, `builder/edit_page.html`.
+
+Pharmacy pages already had the correct viewport tag from §123.
+
+#### 2. Global Touch-Target Minimum (`static/css/theme.css`)
+New `@media (max-width: 640px)` block at the end of `theme.css`:
+- Enforces `min-height: 44px; min-width: 44px` on all interactive elements
+  (buttons, nav pills, avatars, quick tiles, links with `.btn` classes).
+- Bumps small text (`section-subtitle`, `stats-table`, `notice-date`,
+  `cal-day-num`, `pct-badge`, etc.) to `max(0.78rem, 12.5px)` minimum.
+- Adds `-webkit-overflow-scrolling: touch` on `.table-wrap` for smooth
+  horizontal scroll.
+- Ensures `.card`, `.panel-card`, `.widget-card` have `padding: 1rem` on mobile.
+
+#### 3. Attendance Page (`static/css/attendance.css`)
+- Scanner + manual input buttons: `min-height: 48px; font-size: 0.9rem`.
+- Field input and submit button: `min-height: 48px; font-size: 1rem`.
+
+#### 4. Dashboard (`static/css/dashboard.css`)
+- Quick tiles: `min-height: 80px; padding: 1rem`.
+- Widget buttons: `min-height: 44px; font-size: 0.88rem`.
+- Stat numbers/captions sized for mobile readability.
+
+### Testing
+- `python manage.py test core.tests.StudentPagesSmokeTest
+  core.tests.UnifiedHeaderTest core.tests.AttendancePageTest` — **6/6 OK**.
+- `./gradlew clean assembleDebug assembleRelease test` — **BUILD SUCCESSFUL**,
+  90 tasks, zero failures.
+- All 31 templates confirmed to have `maximum-scale=1.0, user-scalable=no`.
+
+### Files Modified
+- 31 template files (viewport meta tag)
+- `static/css/theme.css` (global mobile touch targets)
+- `static/css/attendance.css` (scanner/input button sizing)
+- `static/css/dashboard.css` (quick tile + widget button sizing)

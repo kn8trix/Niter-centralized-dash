@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Attendance — Niter Hub</title>
     <meta name="description" content="Scan the classroom QR to mark your attendance and track your per-course attendance percentage.">
 
@@ -287,35 +287,69 @@
         }
 
         // ====================================================================
-        // Camera scanner (html5-qrcode)
+        // Camera scanner
+        // ====================================================================
+        // In the native Android app, window.NiterHub.scanQR() opens a full-screen
+        // CameraX + ML Kit scanner that bypasses WebView getUserMedia (unreliable).
+        // In a normal browser the html5-qrcode library is used as fallback.
         // ====================================================================
         let html5Qr = null;
         let scannerRunning = false;
+        const isNativeApp = !!(window.NiterHub && window.NiterHub.scanQR);
 
-        async function startScanner() {
+        function startScanner() {
             if (scannerRunning) return;
+            const status = document.getElementById('scanner-status');
+
+            // ── Native app path ──────────────────────────────────────────
+            if (isNativeApp) {
+                status.textContent = 'Opening native scanner…';
+                document.getElementById('scan-start-btn').disabled = true;
+
+                // The native side calls this callback with the decoded value.
+                window.__qrScanCallback = function(result) {
+                    document.getElementById('scan-start-btn').disabled = false;
+                    if (result) {
+                        status.textContent = 'QR scanned — submitting…';
+                        submitToken(result);
+                    } else {
+                        status.textContent = 'Scan cancelled — press Start to try again.';
+                    }
+                };
+
+                try {
+                    window.NiterHub.scanQR();
+                } catch (e) {
+                    status.textContent = 'Native scanner failed — use the manual session code instead.';
+                    document.getElementById('scan-start-btn').disabled = false;
+                }
+                return;
+            }
+
+            // ── Browser fallback (html5-qrcode) ─────────────────────────
             if (typeof Html5Qrcode === 'undefined') {
-                document.getElementById('scanner-status').textContent =
+                status.textContent =
                     'Scanner library could not load (offline?) — use the manual session code instead.';
                 return;
             }
-            const status = document.getElementById('scanner-status');
             status.textContent = 'Starting camera…';
-            try {
-                html5Qr = new Html5Qrcode('qr-reader');
-                await html5Qr.start(
-                    { facingMode: 'environment' },
-                    { fps: 10, qrbox: { width: 210, height: 210 } },
-                    (decoded) => { stopScanner(); submitToken(decoded); },
-                    () => { /* per-frame noise — ignore */ }
-                );
-                scannerRunning = true;
-                document.getElementById('scan-start-btn').disabled = true;
-                document.getElementById('scan-stop-btn').disabled = false;
-                status.textContent = 'Camera live — point it at the classroom QR code.';
-            } catch (err) {
-                status.textContent = 'Camera unavailable or permission denied — use the manual session code instead.';
-            }
+            (async () => {
+                try {
+                    html5Qr = new Html5Qrcode('qr-reader');
+                    await html5Qr.start(
+                        { facingMode: 'environment' },
+                        { fps: 10, qrbox: { width: 210, height: 210 } },
+                        (decoded) => { stopScanner(); submitToken(decoded); },
+                        () => { /* per-frame noise — ignore */ }
+                    );
+                    scannerRunning = true;
+                    document.getElementById('scan-start-btn').disabled = true;
+                    document.getElementById('scan-stop-btn').disabled = false;
+                    status.textContent = 'Camera live — point it at the classroom QR code.';
+                } catch (err) {
+                    status.textContent = 'Camera unavailable or permission denied — use the manual session code instead.';
+                }
+            })();
         }
 
         async function stopScanner() {

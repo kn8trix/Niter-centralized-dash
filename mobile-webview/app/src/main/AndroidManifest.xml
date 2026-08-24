@@ -46,6 +46,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Native QR scanner — bypasses WebView getUserMedia for attendance scanning. -->
+        <activity
+            android:name=".ScannerActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
         <activity
             android:name=".MainActivity"
             android:exported="false"

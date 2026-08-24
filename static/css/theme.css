@@ -397,3 +397,44 @@ html[data-density='compact'] .settings-section {
 html[data-density='compact'] .toggle-row {
     padding: 0.6rem 0;
 }
+
+/* ============================================================================
+   Mobile viewport helpers
+   ----------------------------------------------------------------------------
+   Enforce a 44×44 px minimum touch target on interactive elements so
+   fingers never miss a button on small screens.  Font sizes below 14 px
+   are bumped up to stay readable inside the Android WebView.
+   ========================================================================== */
+@media (max-width: 640px) {
+    /* Interactive elements must be at least 44×44 px for comfortable
+       touch targets (Apple HIG / Material 3 guidelines). */
+    button, input[type='submit'], input[type='button'],
+    a.btn, a.btn-dark, a.btn-accent, a.btn-start, a.btn-stop,
+    .navlinks a, .nav-dropdown-btn, .avatar-btn,
+    .btn, .btn-primary, .btn-dark, .btn-accent, .btn-start, .btn-stop,
+    .quick-tile, .panel-link, .btn-sm, .btn-xs {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    /* Prevent text from going below 14 px for readability in a handheld
+       WebView — only bump elements that are currently smaller. */
+    .section-subtitle, .stats-table th, .stats-table td,
+    .notice-date, .notice-text, .history-time, .history-status,
+    .cal-day-num, .cal-weekdays span, .cal-legend, .slot-meta,
+    .doctor-info span, .badge-urgent, .badge-general, .badge-event,
+    .quick-meta, .activity-ago, .pct-badge, .status-chip {
+        font-size: max(0.78rem, 12.5px);
+    }
+
+    /* Ensure horizontal padding on all cards prevents edge-clipping. */
+    .card, .panel-card, .widget-card {
+        padding: 1rem;
+    }
+
+    /* Tables always scroll horizontally on small screens. */
+    .table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+}

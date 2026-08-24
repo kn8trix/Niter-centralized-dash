@@ -482,6 +482,8 @@ body.attendance *::after {
 
     .scanner-actions .btn {
         flex: 1;
+        min-height: 48px;
+        font-size: 0.9rem;
     }
 
     .stats-table th,
@@ -497,6 +499,17 @@ body.attendance *::after {
 
     .history-time {
         margin-left: 0;
+    }
+
+    /* Touch-friendly manual input and submit button */
+    .field-input {
+        min-height: 48px;
+        font-size: 1rem;
+    }
+
+    .btn-primary {
+        min-height: 48px;
+        font-size: 0.9rem;
     }
 }
 

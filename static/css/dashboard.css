@@ -598,6 +598,26 @@ body.dashboard a {
     .quick-grid {
         gap: 0.6rem;
     }
+
+    /* Touch-friendly quick tiles and widget buttons */
+    .quick-tile {
+        min-height: 80px;
+        padding: 1rem;
+    }
+
+    .btn-dark, .btn-accent {
+        min-height: 44px;
+        font-size: 0.88rem;
+    }
+
+    /* Ensure widget stats text is readable */
+    .stat-number {
+        font-size: 1.6rem;
+    }
+
+    .stat-caption {
+        font-size: 0.82rem;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {

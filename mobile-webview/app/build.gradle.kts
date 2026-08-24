@@ -31,8 +31,8 @@ android {
         applicationId = "com.niterhub.dash"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 4
+        versionName = "2.2"
     }
 
     signingConfigs {
@@ -82,4 +82,12 @@ dependencies {
     // Firebase Cloud Messaging — emergency + campus push notifications.
     // Inert without google-services.json; everything FCM-related is guarded.
     implementation("com.google.firebase:firebase-messaging:24.1.0")
+
+    // Native QR scanner — bypasses WebView getUserMedia (unreliable) by
+    // using CameraX + ML Kit barcode detection directly on the device camera.
+    val cameraxVersion = "1.4.1"
+    implementation("androidx.camera:camera-camera2:$cameraxVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
+    implementation("androidx.camera:camera-view:$cameraxVersion")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
 }

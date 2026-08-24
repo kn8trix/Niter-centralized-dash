@@ -11,6 +11,7 @@ import android.provider.MediaStore
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.ValueCallback
+import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -72,11 +73,42 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
 
+    /** Pending JS callback for the native QR scanner (set before launch, cleared on result). */
+    private var qrScanCallback: String? = null
+
     /** Held while the system file picker is open; cleared when the result lands. */
     private var pendingFileCallback: ValueCallback<Array<Uri>>? = null
 
     /** The picker intent waiting on a runtime-permission grant (camera). */
     private var pendingFileIntent: Intent? = null
+
+    /**
+     * Native QR scanner launcher — opens [ScannerActivity] and injects the
+     * decoded QR value into the WebView page that requested it.
+     */
+    private val qrScannerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val jsCallback = qrScanCallback
+        qrScanCallback = null
+        if (result.resultCode == RESULT_OK) {
+            val qrValue = result.data?.getStringExtra(ScannerActivity.EXTRA_QR_RESULT) ?: ""
+            // Escape for safe JS injection — single-quote and backslash.
+            val escaped = qrValue.replace("\\", "\\\\").replace("'", "\\'")
+            webView.post {
+                webView.evaluateJavascript(
+                    "if(window.__qrScanCallback){window.__qrScanCallback('$escaped');}"
+                ) { /* no-op */ }
+            }
+        } else {
+            // Scanner cancelled — notify the page so it can reset UI.
+            webView.post {
+                webView.evaluateJavascript(
+                    "if(window.__qrScanCallback){window.__qrScanCallback(null);}"
+                ) { /* no-op */ }
+            }
+        }
+    }
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -250,6 +282,15 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+            // Enable HTML5/WebRTC camera access (e.g. attendance QR scanner).
+            // The page's getUserMedia() call triggers this; we grant all
+            // requested resources (camera, microphone) so the stream works.
+            override fun onPermissionRequest(request: PermissionRequest?) {
+                runOnUiThread {
+                    request?.grant(request.resources)
+                }
+            }
+
             override fun onShowFileChooser(
                 webView: WebView?,
                 filePathCallback: ValueCallback<Array<Uri>>?,
@@ -317,6 +358,20 @@ class MainActivity : AppCompatActivity() {
         @android.webkit.JavascriptInterface
         fun stopSiren() {
             NotificationHelper.stopSiren(this@MainActivity)
+        }
+
+        /**
+         * Launch the native QR scanner. The page must set
+         * ``window.__qrScanCallback`` before calling this — the callback
+         * receives the decoded string on success or ``null`` on cancel.
+         */
+        @android.webkit.JavascriptInterface
+        fun scanQR() {
+            runOnUiThread {
+                qrScanCallback = "pending"
+                val intent = Intent(this@MainActivity, ScannerActivity::class.java)
+                qrScannerLauncher.launch(intent)
+            }
         }
     }
 
