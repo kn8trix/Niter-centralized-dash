@@ -134,6 +134,9 @@ body.attendance *::after {
     border-radius: 1rem;
     box-shadow: var(--shadow-card);
     padding: 1.4rem 1.5rem;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .att-layout {
@@ -165,7 +168,8 @@ body.attendance *::after {
 
 .scanner-box video {
     width: 100%;
-    height: 100%;
+    height: auto;
+    max-width: 100%;
     object-fit: cover;
 }
 
@@ -189,7 +193,7 @@ body.attendance *::after {
 }
 
 .scanner-actions .btn {
-    flex: 1 1 0;
+    flex: 1 1 45%;
     min-width: 0;
 }
 
@@ -493,6 +497,10 @@ body.attendance *::after {
         aspect-ratio: 4 / 3;
     }
 
+    .card {
+        padding: 1rem;
+    }
+
     .scanner-actions {
         flex-direction: column;
     }
@@ -520,11 +528,15 @@ body.attendance *::after {
 
     /* Touch-friendly manual input and submit button */
     .field-input {
+        width: 100%;
+        box-sizing: border-box;
         min-height: 48px;
         font-size: 1rem;
     }
 
     .btn-primary {
+        width: 100%;
+        box-sizing: border-box;
         min-height: 48px;
         font-size: 0.9rem;
     }
