@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 135 | WebView zoom & layout settings — `setSupportZoom(false)`, `builtInZoomControls=false`, `displayZoomControls=false`, `TEXT_AUTOSIZING` layout algorithm | *(see §135)* |
 | 134 | Mobile viewport optimization — `maximum-scale=1.0, user-scalable=no` on all 31 templates, global 44×44 px touch-target minimum, attendance/dashboard mobile touch-friendly CSS | *(see §134)* |
 | 133 | Native QR Scanner — CameraX + ML Kit barcode detection bypasses WebView `getUserMedia`; `NiterHub.scanQR()` JS bridge; attendance page auto-selects native scanner in-app | *(see §133)* |
 | 132 | Study Corner PDF-preview overlap fix (`[hidden]` display guard) + case-insensitive Student/Staff ID login (`StudentIdAuthenticationForm` on `RoleAwareLoginView`) | *(see §132)* |
@@ -7722,3 +7723,53 @@ New `@media (max-width: 640px)` block at the end of `theme.css`:
 - `static/css/theme.css` (global mobile touch targets)
 - `static/css/attendance.css` (scanner/input button sizing)
 - `static/css/dashboard.css` (quick tile + widget button sizing)
+
+---
+
+## 135. WebView Zoom & Layout Settings — Disable Zoom + Text Autosizing
+
+**Date:** 24 August 2026
+**Branch:** main
+
+### Problem
+
+Even after adding `maximum-scale=1.0, user-scalable=no` to the HTML viewport
+meta tag (§134), Android WebView still allowed pinch-to-zoom via its built-in
+gesture handling, and long text blocks could overflow their containers on narrow
+screens because the default layout algorithm doesn't reflow text to fit.
+
+### Changes (`mobile-webview/.../MainActivity.kt` → `configureWebView()`)
+
+Added four settings after the existing `useWideViewPort` / `loadWithOverviewMode`
+pair:
+
+```kotlin
+// Disable all zoom controls — the viewport meta tag handles scaling.
+settings.setSupportZoom(false)
+settings.builtInZoomControls = false
+settings.displayZoomControls = false
+// Let WebView auto-size text to fit the viewport width.
+settings.layoutAlgorithm = WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING
+```
+
+| Setting | Effect |
+|---------|--------|
+| `setSupportZoom(false)` | Prevents pinch-to-zoom gestures entirely |
+| `builtInZoomControls = false` | Hides the built-in +/- zoom buttons |
+| `displayZoomControls = false` | Hides the transient zoom overlay |
+| `layoutAlgorithm = TEXT_AUTOSIZING` | WebView reflows text to fit the viewport
+  width, breaking long paragraphs across lines instead of overflowing |
+
+The existing `useWideViewPort = true` and `loadWithOverviewMode = true` remain
+unchanged — they ensure the WebView respects the `<meta viewport>` width and
+fits the page content to the screen on first load.
+
+### Testing
+- `./gradlew assembleDebug assembleRelease test` — **BUILD SUCCESSFUL**,
+  89 tasks, zero failures.
+- Version bumped to `2.4` (versionCode 6).
+
+### Files Modified
+- `mobile-webview/app/src/main/java/com/niterhub/dash/MainActivity.kt`
+  (4 new WebView settings lines)
+- `mobile-webview/app/build.gradle.kts` (versionCode 5→6, versionName 2.3→2.4)
