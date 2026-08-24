@@ -8038,7 +8038,7 @@ and could overlap the title text below.
 |---------|--------|-------|
 | `.pd-img` | `height: 190px` fixed | `height: auto; min-height: 120px` — adapts to image |
 | `.pd-img img` | `object-fit: cover` | `object-fit: contain; max-height: 180px` — no cropping |
-| `.pd-head` | no padding-top | `padding-top: 0.75rem; width: 100%` — no overlap with image |
+| `.pd-head` | no padding-top | `padding-top: 1rem; width: 100%` — no overlap with image |
 | `#product-modal .modal-card` | no scroll constraint | `max-height: 85vh; display: flex; flex-direction: column` |
 | `#product-modal .product-detail` | unscrollable | `flex: 1; overflow-y: auto` — all sections scroll cleanly |
 
