@@ -8036,9 +8036,9 @@ and could overlap the title text below.
 
 | Element | Before | After |
 |---------|--------|-------|
-| `.pd-img` | `height: 190px` fixed | `height: auto; min-height: 120px` — adapts to image |
-| `.pd-img img` | `object-fit: cover` | `object-fit: contain; max-height: 180px` — no cropping |
-| `.pd-head` | no padding-top | `padding-top: 1rem; width: 100%` — no overlap with image |
+| `.pd-img` | `background: #1f2937; min-height: 120px` dark container | Removed — transparent, no background/min-height |
+| `.pd-img img` | `object-fit: cover; max-height: 180px` + inline `rgba(0,0,0,0.2)` bg | `object-fit: contain; max-height: 160px; border-radius: 6px; background: transparent` |
+| `.pd-head` | `padding-top: 1rem` | `padding-top: 0` — title sits directly below image |
 | `#product-modal .modal-card` | no scroll constraint | `max-height: 85vh; display: flex; flex-direction: column` |
 | `#product-modal .product-detail` | unscrollable | `flex: 1; overflow-y: auto` — all sections scroll cleanly |
 
