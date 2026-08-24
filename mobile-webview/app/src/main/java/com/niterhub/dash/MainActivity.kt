@@ -220,6 +220,12 @@ class MainActivity : AppCompatActivity() {
         settings.javaScriptCanOpenWindowsAutomatically = true
         settings.loadWithOverviewMode = true
         settings.useWideViewPort = true
+        // Disable all zoom controls — the viewport meta tag handles scaling.
+        settings.setSupportZoom(false)
+        settings.builtInZoomControls = false
+        settings.displayZoomControls = false
+        // Let WebView auto-size text to fit the viewport width.
+        settings.layoutAlgorithm = WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING
         // Inline media (e.g. embedded YouTube lectures) plays without a tap.
         settings.mediaPlaybackRequiresUserGesture = false
         // The site is served entirely over HTTPS — never allow http subresources.
