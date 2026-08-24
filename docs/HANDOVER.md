@@ -8036,11 +8036,12 @@ and could overlap the title text below.
 
 | Element | Before | After |
 |---------|--------|-------|
-| `.pd-img` | `background: #1f2937; min-height: 120px` dark container | Removed — transparent, no background/min-height |
-| `.pd-img img` | `object-fit: cover; max-height: 180px` + inline `rgba(0,0,0,0.2)` bg | `object-fit: contain; max-height: 160px; border-radius: 6px; background: transparent` |
+| `.pd-img` (container) | Dark bg `#1f2937`, flex layout | Replaced with `.modal-img-container` — transparent, `text-align: center; padding: 12px 0` |
+| `.pd-img img` | `object-fit: cover; max-height: 180px` + inline dark bg | `max-height: 160px; width: auto; object-fit: contain; margin: 0 auto` — no background box |
 | `.pd-head` | `padding-top: 1rem` | `padding-top: 0` — title sits directly below image |
 | `#product-modal .modal-card` | no scroll constraint | `max-height: 85vh; display: flex; flex-direction: column` |
 | `#product-modal .product-detail` | unscrollable | `flex: 1; overflow-y: auto` — all sections scroll cleanly |
+| Close button | `data-close` attribute only | Added `onclick="closeDetailsModal()"` + new JS function |
 
 ### 4. Media URL Verification
 
@@ -8049,6 +8050,13 @@ Already correctly configured:
 - `config/settings.py`: `MEDIA_URL = '/media/'`, `MEDIA_ROOT = BASE_DIR / 'media'`
 - Uploaded images served at `/media/pharmacy_products/...` in development
 
+### 5. Close Button Fix (`templates/pharmacy/store.html`)
+
+- Added `closeDetailsModal()` JS function that calls `closeModal('product-modal')`
+- Close button wired via `onclick="closeDetailsModal()"`
+- X button (`data-close="product-modal"`), backdrop click, and Escape key all
+  still work via the existing delegated event listeners
+
 ### Files Modified
-- `templates/pharmacy/store.html` — card image fallback + modal image styling
-- `static/css/pharmacy.css` — `.pd-img`, `.pd-head`, product modal scroll
+- `templates/pharmacy/store.html` — `.modal-img-container`, `closeDetailsModal()`, inline img style
+- `static/css/pharmacy.css` — `.modal-img-container` replaces `.pd-img`, dark mode cleanup
