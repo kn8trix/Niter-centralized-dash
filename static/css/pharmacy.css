@@ -424,13 +424,11 @@ body.pharmacy.modal-open {
     pointer-events: none;
 }
 
-.med-img.no-img img,
-.pd-img.no-img img {
+.med-img.no-img img {
     display: none;
 }
 
-.med-img.no-img .med-img-fallback,
-.pd-img.no-img .pd-img-fallback {
+.med-img.no-img .med-img-fallback {
     opacity: 1;
 }
 
@@ -740,20 +738,19 @@ body.pharmacy.modal-open {
 /* ---------------------------------------------------------------------------
    6. Product detail + substitutes
 --------------------------------------------------------------------------- */
-.pd-img {
-    position: relative;
-    margin-bottom: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.modal-img-container {
+    text-align: center;
+    padding: 12px 0;
+    background: transparent;
 }
 
-.pd-img img {
-    width: 100%;
+.modal-img-container img {
     max-height: 160px;
+    width: auto;
+    max-width: 100%;
     object-fit: contain;
+    margin: 0 auto;
     display: block;
-    border-radius: 6px;
 }
 
 .pd-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; padding-top: 0; width: 100%; }
@@ -1451,8 +1448,8 @@ html[data-theme='dark'] .admin-table-wrap {
 html[data-theme='dark'] .med-name { color: #ffffff; }
 
 html[data-theme='dark'] .med-img,
-html[data-theme='dark'] .pd-img {
-    background: #2e2e33;
+html[data-theme='dark'] .modal-img-container {
+    background: transparent;
 }
 
 html[data-theme='dark'] .med-img-fallback,
