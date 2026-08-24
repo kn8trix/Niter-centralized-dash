@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 136 | Attendance page mobile layout — card overflow fix, video proportional scaling, `flex:1 1 45%` button wrap, full-width input/button on mobile | *(see §136)* |
 | 135 | WebView zoom & layout settings — `setSupportZoom(false)`, `builtInZoomControls=false`, `displayZoomControls=false`, `TEXT_AUTOSIZING` layout algorithm | *(see §135)* |
 | 134 | Mobile viewport optimization — `maximum-scale=1.0, user-scalable=no` on all 31 templates, global 44×44 px touch-target minimum, attendance/dashboard mobile touch-friendly CSS | *(see §134)* |
 | 133 | Native QR Scanner — CameraX + ML Kit barcode detection bypasses WebView `getUserMedia`; `NiterHub.scanQR()` JS bridge; attendance page auto-selects native scanner in-app | *(see §133)* |
@@ -7773,3 +7774,80 @@ fits the page content to the screen on first load.
 - `mobile-webview/app/src/main/java/com/niterhub/dash/MainActivity.kt`
   (4 new WebView settings lines)
 - `mobile-webview/app/build.gradle.kts` (versionCode 5→6, versionName 2.3→2.4)
+
+---
+
+## 136. Attendance Page Mobile Layout — Card Overflow, Video Scaling, Button/Input Sizing
+
+**Date:** 24 August 2026
+**Branch:** main
+
+### Problem
+
+The Class Attendance page had several mobile layout issues inside the Android
+WebView: card containers overflowed the right edge on narrow viewports, the
+camera `<video>` element didn't scale proportionally, action buttons shrank
+below readable size, and the manual input row didn't fill the available width.
+
+### Changes (`static/css/attendance.css`)
+
+#### 1. Card container — prevent right-edge overflow
+```css
+.card {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+```
+On mobile (≤560px), padding tightened to `1rem`.
+
+#### 2. Camera box video — proportional scaling
+```css
+.scanner-box video {
+    width: 100%;
+    height: auto;
+    max-width: 100%;
+    object-fit: cover;
+}
+```
+The video stream now scales to the container width while preserving aspect
+ratio, instead of stretching to fill height.
+
+#### 3. Action buttons — flex-wrap with 45% minimum
+```css
+.scanner-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    width: 100%;
+}
+.scanner-actions .btn {
+    flex: 1 1 45%;
+}
+```
+Buttons stay side-by-side above 560px (each at least 45% wide), then stack
+full-width below 560px.
+
+#### 4. Manual input + submit — full-width on mobile
+```css
+@media (max-width: 560px) {
+    .field-input {
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .btn-primary {
+        width: 100%;
+        box-sizing: border-box;
+    }
+}
+```
+The session code input and "Mark Present" button now take the full card width
+on small screens instead of sharing a cramped row.
+
+### Testing
+- `./gradlew assembleDebug assembleRelease test` — **BUILD SUCCESSFUL**, 89 tasks.
+- `python manage.py test core.tests.AttendancePageTest` — **2/2 OK**.
+
+### Files Modified
+- `static/css/attendance.css` (card overflow fix, video scaling, button flex,
+  input/button width)
