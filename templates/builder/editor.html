@@ -197,7 +197,8 @@
                      visibility-toggled-off system sections — so the canvas shows
                      the full page layout instead of the empty state. Only users
                      with the builder permission can request it. -->
-                <iframe id="page-preview" src="{% url 'editable_page' page.slug %}?preview=1" title="Live page preview"></iframe>
+                {% if system_route_url %}<iframe id="page-preview" src="{{ system_route_url }}?builder=1&preview=1" title="Live page preview"></iframe>
+                {% else %}<iframe id="page-preview" src="{% url 'editable_page' page.slug %}?preview=1" title="Live page preview"></iframe>{% endif %}
             </div>
 
             <!-- ============================================================

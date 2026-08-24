@@ -6001,9 +6001,24 @@ def visual_editor(request, page_slug):
         }
         for block in page.content_blocks.order_by('order', 'id')
     ]
+    # For system pages (home, study-corner, pharmacy, news, clubs), the
+    # editor canvas should load the actual student-facing route so the
+    # WYSIWYG overlay shows the real live layout — not the generic builder
+    # template.  ``system_route_url`` is resolved here so the template can
+    # build the iframe ``src`` without importing the registry.
+    system_route_url = None
+    if page.system_key:
+        from core.system_pages import SYSTEM_ROUTE_KEYS
+        view_name = {v: k for k, v in SYSTEM_ROUTE_KEYS.items()}.get(page.system_key)
+        if view_name:
+            try:
+                system_route_url = reverse(view_name)
+            except Exception:
+                pass
     return render(request, 'builder/editor.html', {
         'page': page,
         'blocks': blocks,
+        'system_route_url': system_route_url,
     })
 
 
@@ -7221,11 +7236,26 @@ def news_page(request):
     keyword search) on a dedicated page; the same ``news_articles`` payload
     drives the widget on the student/admin dashboards. The two live API calls
     are cached (15 min) so only the first load after expiry is slow.
+
+    When the CMS system page for 'news' has blocks with ``content_json``
+    data, the template can bind editable text nodes (title, subtitle, section
+    headers) to those values — falling back to hardcoded defaults when no CMS
+    content is set.  ``cms_content`` maps element_id → content_json so the
+    template can reference them inline.
     """
-    return render(request, 'news.html', {
+    ctx = {
         'news_articles': _cached_global_news(),
         'videos': _cached_news_videos(),
-    })
+        'cms_content': {},
+    }
+    try:
+        page = EditablePage.objects.filter(system_key='news').first()
+        if page:
+            for block in page.content_blocks.filter(visible=True):
+                ctx['cms_content'][block.element_id] = block.content_json or {}
+    except Exception:
+        pass
+    return render(request, 'news.html', ctx)
 
 
 @admin_required

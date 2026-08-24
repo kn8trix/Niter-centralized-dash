@@ -48,13 +48,24 @@ def cms_system_blocks(request):
         page = EditablePage.objects.filter(system_key=system_key).first()
         if page is None:
             return {}
+        # In preview mode (the visual editor iframe loads system routes
+        # with ?preview=1), show ALL blocks — including hidden ones — so
+        # the WYSIWYG canvas renders the full page layout.
+        is_preview = (
+            request.GET.get('preview') == '1'
+            and hasattr(request, 'user')
+            and request.user.has_perm('core.change_editablepage')
+        )
+        block_qs = page.content_blocks.order_by('order', 'id')
+        if not is_preview:
+            block_qs = block_qs.filter(visible=True)
         blocks = [
             {
                 'element_id': block.element_id,
                 'block_type': block.block_type,
                 'rendered_html': render_block_html(block),
             }
-            for block in page.content_blocks.filter(visible=True).order_by('order', 'id')
+            for block in block_qs
             if _block_has_content(block)
         ]
         return {'cms_blocks': blocks}
