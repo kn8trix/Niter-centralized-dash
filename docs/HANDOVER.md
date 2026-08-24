@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 138 | Pharmacy product image display fix — catalog serializer uses `item.image.url` (ImageField) with `image_url` fallback, media serving verified | *(see §138)* |
 | 137 | E-Commerce pharmacy inventory management — CRUD views (list/add/edit/delete/toggle/adjust), image upload, stock badges, sidebar logout + Pharmacy Inventory nav link | *(see §137)* |
 | 136 | Attendance page mobile layout — card overflow fix, video proportional scaling, `flex:1 1 45%` button wrap, full-width input/button on mobile | *(see §136)* |
 | 135 | WebView zoom & layout settings — `setSupportZoom(false)`, `builtInZoomControls=false`, `displayZoomControls=false`, `TEXT_AUTOSIZING` layout algorithm | *(see §135)* |
@@ -7923,3 +7924,63 @@ Added to the MEDICAL MENU sidebar profile block:
 - `python manage.py check` — **0 issues**
 - `python manage.py migrate` — migration `0048` applied successfully
 - URL reverse check — all 6 routes resolve correctly under `host:` namespace
+
+---
+
+## 138. Pharmacy Product Image Display Fix
+
+### Date
+August 2026
+
+### Summary
+Fixed the student-facing Online Pharmacy page (`/pharmacy/`) so uploaded product
+images (via the new `MedicineItem.image` ImageField) display correctly in both the
+catalog grid and the product detail modal.
+
+### Root Cause
+The catalog serializer (`_pharmacy_medicine_catalog()` in `core/views.py`) was
+serializing `'image': item.image_url` — using only the legacy `image_url` text field.
+The new `MedicineItem.image` ImageField (added in §137) was never referenced, so
+uploaded product photos were invisible on the storefront.
+
+### Fix Applied
+**`core/views.py` — `_pharmacy_medicine_catalog()`** (line ~811):
+
+```python
+# Before:
+'image': item.image_url,
+
+# After:
+'image': item.image.url if item.image else (item.image_url or None),
+```
+
+The ImageField `.url` property automatically prepends `MEDIA_URL` (`/media/`) and
+returns the correct path. Falls back to the legacy `image_url` text field (static
+placeholder paths like `/static/images/pharmacy/...`) when no upload exists.
+
+### Media Files Serving
+`config/urls.py` already includes:
+```python
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+```
+This serves uploaded files from `media/` in development. In production, WhiteNoise
+or a CDN handles media.
+
+### Store Template Image Handling (already correct)
+The storefront JS in `templates/pharmacy/store.html` already handles both cases:
+
+1. **Catalog grid** — `cardImage(m)` renders `<img>` with `onerror` fallback to
+   `DEFAULT_MED_IMG` (`/static/images/pharmacy/default_medicine.png`).
+2. **Product detail modal** — `openProduct(id)` renders `<img>` with the same
+   `onerror` fallback when `item.image` is truthy.
+3. **No image** — Renders a pill icon placeholder (`<i class="fa-solid fa-pills">`)
+   inside a dark slate container.
+
+### Verification
+- `python manage.py check` — **0 issues**
+- Catalog serializer returns correct URLs:
+  - Uploaded images: `/media/pharmacy_products/aceplus.jpg`
+  - Static placeholders: `/static/images/pharmacy/ceevit.png`, etc.
+
+### Files Modified
+- `core/views.py` — updated `_pharmacy_medicine_catalog()` image serialization

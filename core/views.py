@@ -808,7 +808,7 @@ def _pharmacy_medicine_catalog():
             'strength': item.strength,
             'category': item.get_category_display(),
             'manufacturer': item.manufacturer,
-            'image': item.image_url,
+            'image': item.image.url if item.image else (item.image_url or None),
             'delivery_eta': item.delivery_eta,
             'price': str(item.price),
             'rx': item.is_prescription,
