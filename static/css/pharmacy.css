@@ -760,7 +760,7 @@ body.pharmacy.modal-open {
     display: block;
 }
 
-.pd-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; padding-top: 0.75rem; width: 100%; }
+.pd-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; padding-top: 1rem; width: 100%; }
 .pd-name { margin: 0 0 0.15rem; font-size: 1.3rem; font-weight: 800; }
 .pd-name span { color: var(--text-muted, #6b7280); font-size: 0.85em; font-weight: 600; }
 .pd-generic { margin: 0 0 0.6rem; color: var(--text-muted, #6b7280); font-size: 0.88rem; }
