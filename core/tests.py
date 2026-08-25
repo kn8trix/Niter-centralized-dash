@@ -4960,6 +4960,89 @@ class ClubsCmsContentTest(TestCase):
         self.assertIn('Upcoming Events', html)
 
 
+class BuilderSaveToLivePageTest(TestCase):
+    """Round-trip persistence: POST an updated section title to the WYSIWYG
+    save endpoint, then GET the live student-facing page and assert the new
+    text appears in the rendered HTML."""
+
+    def setUp(self):
+        from core.system_pages import register_system_pages
+        register_system_pages()
+        self.superuser = User.objects.create_superuser(
+            username='persist_admin', email='pa@niter.edu.bd', password='rootpass123',
+        )
+        self.client.force_login(self.superuser)
+        self.page = EditablePage.objects.get(system_key='clubs')
+        self.block = self.page.content_blocks.get(element_id='clubs-promo')
+
+    def test_wysiwyg_save_updates_clubs_headline_and_live_page(self):
+        """POST to /api/builder/pages/<id>/save/ updates the clubs-promo
+        block's content_json headline, and a subsequent GET to /clubs/
+        reflects the new text in the rendered HTML."""
+        url = reverse('builder_page_wysiwyg_save', args=[self.page.pk])
+        response = self.client.post(
+            url,
+            data=json.dumps({
+                'blocks': [{
+                    'element_id': 'clubs-promo',
+                    'content_json': {
+                        'headline': 'Our Campus Clubs',
+                        'subtext': 'Browse and join active campus societies.',
+                    },
+                }],
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body['status'], 'success')
+        # Verify the DB was updated.
+        self.block.refresh_from_db()
+        self.assertEqual(self.block.content_json['headline'], 'Our Campus Clubs')
+        self.assertEqual(self.block.content_json['subtext'], 'Browse and join active campus societies.')
+        # Make the block visible so the live route renders it.
+        self.block.visible = True
+        self.block.save(update_fields=['visible'])
+        # GET the live student-facing page.
+        response = self.client.get(reverse('clubs_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('Our Campus Clubs', html)
+        self.assertIn('Browse and join active campus societies.', html)
+        self.assertNotIn('Join a campus club', html)
+
+    def test_publish_page_persists_and_live_page_reflects(self):
+        """POST with is_published=true persists the publish state and block
+        edits, and the live page shows the updated text."""
+        self.page.is_published = False
+        self.page.save(update_fields=['is_published'])
+        url = reverse('builder_page_wysiwyg_save', args=[self.page.pk])
+        response = self.client.post(
+            url,
+            data=json.dumps({
+                'is_published': True,
+                'blocks': [{
+                    'element_id': 'clubs-promo',
+                    'content_json': {
+                        'headline': 'Join Our Society',
+                        'subtext': 'Be part of something great.',
+                    },
+                }],
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.page.refresh_from_db()
+        self.assertTrue(self.page.is_published)
+        self.block.refresh_from_db()
+        self.assertEqual(self.block.content_json['headline'], 'Join Our Society')
+        # Live route renders the saved text.
+        self.block.visible = True
+        self.block.save(update_fields=['visible'])
+        response = self.client.get(reverse('clubs_dashboard'))
+        self.assertContains(response, 'Join Our Society')
+
+
 class SystemPageCmsBindingsTest(TestCase):
     """Global WYSIWYG element-level editability: all 11 student portal pages
     receive ``cms_content`` from the ``cms_system_blocks`` context processor,
@@ -7533,11 +7616,12 @@ class CustomPagesNavTest(TestCase):
     def test_topbar_renders_pages_dropdown_with_custom_links(self):
         response = self.client.get(reverse('editable_page', args=['admissions']))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'nav-dropdown')
-        self.assertIn('/page/admissions/', response.content.decode())
+        html = response.content.decode()
+        self.assertIn('/page/admissions/', html)
+        self.assertIn('Admissions', html)
         # Hidden + draft pages never appear in navigation.
-        self.assertNotIn('/page/hidden-page/', response.content.decode())
-        self.assertNotIn('/page/draft-nav/', response.content.decode())
+        self.assertNotIn('/page/hidden-page/', html)
+        self.assertNotIn('/page/draft-nav/', html)
 
     def test_draft_page_is_404_for_visitors(self):
         response = self.client.get(reverse('editable_page', args=['draft-nav']))
@@ -7596,7 +7680,6 @@ class NewPageNavDefaultTest(TestCase):
         response = self.client.get(reverse('editable_page', args=['tyyty']))
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
-        self.assertIn('nav-dropdown', html)
         self.assertIn('/page/tyyty/', html)
         self.assertIn('hh', html)
 
@@ -7626,6 +7709,48 @@ class NewPageNavDefaultTest(TestCase):
         # Verify it's gone from nav.
         response = self.client.get(reverse('pharmacy_store'))
         self.assertNotIn('toggle-nav', response.content.decode())
+
+
+class CustomPageNavPillTest(TestCase):
+    """Published custom pages with show_in_nav=True render as inline nav
+    pills in the top navigation bar on all student-facing pages."""
+
+    def setUp(self):
+        self.page = EditablePage.objects.create(
+            title='hh', slug='hh', is_published=True, show_in_nav=True,
+            nav_order=99, nav_icon='flask',
+        )
+
+    def test_clubs_page_contains_hh_nav_link(self):
+        """GET /clubs/ contains a link to /page/hh/ with text 'hh'."""
+        response = self.client.get(reverse('clubs_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('/page/hh/', html)
+        self.assertIn('hh', html)
+
+    def test_all_student_pages_contain_hh_nav_link(self):
+        """The nav pill for the hh page appears on every student navbar
+        route so the custom page is always one click away."""
+        routes = [
+            'student_dashboard', 'clubs_dashboard', 'news',
+            'transport_dashboard', 'meal_dashboard', 'medical',
+            'notices', 'departments', 'attendance',
+        ]
+        for view_name in routes:
+            with self.subTest(view=view_name):
+                response = self.client.get(reverse(view_name))
+                self.assertEqual(response.status_code, 200)
+                html = response.content.decode()
+                self.assertIn('/page/hh/', html,
+                    '%s should contain /page/hh/ nav link' % view_name)
+
+    def test_hh_page_itself_renders_nav_link(self):
+        """The hh page renders its own nav pill when visited directly."""
+        response = self.client.get(reverse('editable_page', args=['hh']))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('/page/hh/', html)
 
 
 class BuilderPageManagerTest(TestCase):
@@ -12653,13 +12778,13 @@ class PageDeletionTest(TestCase):
     # Dynamic navigation — published custom pages render in topbar
     # ------------------------------------------------------------------
     def test_published_nav_page_renders_in_topbar_desktop_dropdown(self):
-        """A published page with show_in_nav=True appears in the nav-dropdown."""
+        """A published page with show_in_nav=True appears in the nav pills."""
         response = self.client.get(reverse('editable_page', args=['custom-test-page']))
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
-        self.assertIn('nav-dropdown', html)
         self.assertIn('/page/custom-test-page/', html)
         self.assertIn('flask', html)  # nav_icon
+        self.assertIn('custom-test-page', html)
 
     def test_published_nav_page_renders_in_topbar_mobile_menu(self):
         """Published nav page appears in the mobile profile-links section."""

@@ -37,8 +37,8 @@
              Intro — editable via CMS news-search block content_json
         ============================================================ -->
         <div class="intro">
-            <h1 data-editable-id="news-search">{{ cms_content.news_search.title|default:"Global News" }}</h1>
-            <p>{{ cms_content.news_search.subtitle|default:"Top headlines from around the world — search for the stories that matter to you." }}</p>
+            <h1 data-editable-id="news-search" data-cms-key="news-search" data-cms-field="title">{{ cms_content.news_search.title|default:"Global News" }}</h1>
+            <p data-cms-key="news-search" data-cms-field="subtitle">{{ cms_content.news_search.subtitle|default:"Top headlines from around the world — search for the stories that matter to you." }}</p>
         </div>
 
         <!-- CMS system zone — customized blocks (news search / card grid /

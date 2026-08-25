@@ -35,8 +35,8 @@
              Intro
         ============================================================ -->
         <div class="intro">
-            <h1>{{ cms_content.medical_hero.headline|default:"Medical Center Appointment System" }}</h1>
-            <p>{{ cms_content.medical_hero.subheadline|default:"Book appointments with campus doctors and view real-time medical slot availability." }}</p>
+            <h1 data-cms-key="medical-hero" data-cms-field="headline">{{ cms_content.medical_hero.headline|default:"Medical Center Appointment System" }}</h1>
+            <p data-cms-key="medical-hero" data-cms-field="subheadline">{{ cms_content.medical_hero.subheadline|default:"Book appointments with campus doctors and view real-time medical slot availability." }}</p>
             <div class="intro-actions">
                 <a href="{% url 'pharmacy_store' %}" class="med-pharmacy-btn"><i class="fa-solid fa-prescription-bottle-medical"></i> Online Pharmacy</a>
             </div>

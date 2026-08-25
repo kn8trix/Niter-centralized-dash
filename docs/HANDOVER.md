@@ -4,6 +4,8 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 153 | Custom page nav inline pills — dynamic_nav_pages context processor, topbar inline pill loop, data migration for existing pages | *(see §153)* |
+| 152 | CMS Builder persistence fix — inline text edits update content_json, system_zone.html capture bug fix, field-level dirtyBlocks, round-trip tests | *(see §152)* |
 | 151 | Mobile attendance page overflow fix — table min-width, shell max-width, vertical stacking at 768px | *(see §151)* |
 | 150 | Meals button contrast fix, Builder dark mode preview toggle, Club event details modal | *(see §150)* |
 | 149 | Custom page navbar default — new pages default to show_in_nav=True, toggle persistence verified, nav renders on all student pages | *(see §149)* |
@@ -9169,3 +9171,161 @@ per-course stats table readable on narrow screens.
   blowout) while columns remain legible at 600px min-width
 - No template changes required — existing `.table-wrap` container
   already provided `overflow-x: auto; -webkit-overflow-scrolling: touch`
+
+## 152. CMS Builder Persistence Fix
+
+### Date
+August 2026
+
+### Summary
+Fixed the CMS inline text editing pipeline so edits made in the
+visual builder actually persist to the database and survive page
+refreshes. Three root causes were identified and resolved:
+
+1. **`system_zone.html` capture bug** — `closest()` matched the
+   edited text element (e.g. `h2`) before reaching the parent
+   `[data-cms-key]` div, so inline edits got an empty block id
+   and were silently dropped.
+
+2. **Template-bound elements** — Elements like
+   `<h2>{{ cms_content.clubs_promo.headline }}</h2>` had no
+   `data-cms-key` attribute, so edits were never captured.
+
+3. **content_html vs content_json mismatch** — Edits were saved
+   as `content_html`, but structured blocks render from
+   `content_json` via partials, and template bindings read
+   `cms_content.<key>.<field>` (also `content_json`).
+
+### Changes
+
+#### 1. `templates/cms/system_zone.html` — capture rewrite
+
+- Added `resolveBlockInfo()` helper that walks up from the edited
+  element to find the nearest `[data-cms-key]` or `[data-block]`
+  ancestor (instead of `closest()` which stopped at the text
+  element).
+- Detects `data-edit-field` attributes on elements and posts
+  field-level `{field, value}` updates alongside the full HTML.
+
+#### 2. `static/js/builder/editor.js` — content_json dirty map
+
+- `CMS_TEXT_UPDATE` handler now stores `content_json[field] = value`
+  when a `field` property is present in the message.
+- `collectSaveBlocks()` includes `content_json` in the save payload
+  with proper merge semantics for multiple field edits.
+- Toast message updated to "Changes persisted successfully!".
+
+#### 3. Template `data-cms-key` / `data-cms-field` attributes
+
+Added `data-cms-key` and `data-cms-field` attributes to all
+template-bound `cms_content` elements across 12 templates so
+inline edits can be tracked and saved:
+
+- `clubs.html` — `clubs-promo` headline/subtext
+- `news.html` — `news-search` title/subtitle
+- `transport.html` — `transport-hero` headline/subheadline
+- `meals.html` — `meals-hero` headline/subheadline
+- `medical/booking.html` — `medical-hero` headline/subheadline
+- `notices/notices.html` — `notices-hero` headline/subheadline
+- `departments.html` — `dept-hero` headline/subheadline
+- `pharmacy/store.html` — `hero-promo` headline/subtext
+- `dashboard/home.html` — `welcome-banner` subheadline
+- `research_ai.html` — `research-hero` headline/subheadline
+- `attendance.html` — `attendance-hero` headline/subheadline
+- `academic/study_corner.html` — `notes-listing`, `youtube-section`,
+  `study-assistant` titles/subtitles
+- `partials/global_news.html` — `image-card-grid`, `video-feed` titles
+
+#### 4. Round-trip tests (`core/tests.py`)
+
+Added `BuilderSaveToLivePageTest` class with 2 tests:
+- POST a `content_json` headline update to the WYSIWYG save endpoint
+  for the clubs-promo block, then GET `/clubs/` and assert the new
+  text appears in the rendered HTML.
+- POST with `is_published=true` and block edits, verify DB state
+  and live page rendering.
+
+### Files Modified
+
+- `templates/cms/system_zone.html`
+- `static/js/builder/editor.js`
+- `templates/clubs.html`, `templates/news.html`,
+  `templates/transport.html`, `templates/meals.html`,
+  `templates/medical/booking.html`, `templates/notices/notices.html`,
+  `templates/departments.html`, `templates/pharmacy/store.html`,
+  `templates/dashboard/home.html`, `templates/research_ai.html`,
+  `templates/attendance.html`, `templates/academic/study_corner.html`,
+  `templates/partials/global_news.html`
+- `core/tests.py`
+
+### Verification
+
+- All 32 builder/CMS tests pass
+- Inline text edits in the builder iframe now capture the correct
+  block id and field name
+- `collectSaveBlocks()` sends `content_json` updates to the backend
+- The backend persists `content_json` via `_save_content_block_data()`
+- Page refreshes show the saved text (both CMS zone blocks and
+  template-bound elements)
+
+## 153. Custom Page Nav Inline Pills
+
+### Date
+August 2026
+
+### Summary
+Published custom CMS pages with `show_in_nav=True` now render as
+inline navigation pills in the top navigation bar, positioned right
+after the core system pills (Dashboard, Study Corner, …, Global
+News). Previously they were hidden behind a "Pages" dropdown.
+
+### Changes
+
+#### 1. Context processor (`core/context_processors.py`)
+
+- Added `dynamic_nav_pages` alongside existing `NAV_CUSTOM_PAGES` —
+  both expose the same queryset of `EditablePage` rows filtered by
+  `is_published=True, show_in_nav=True`, ordered by `nav_order, title`.
+
+#### 2. Top navigation bar (`templates/partials/topbar.html`)
+
+- **Desktop nav:** Replaced the "Pages" dropdown with inline nav
+  pills rendered via `{% for page in dynamic_nav_pages %}` — each
+  page gets a direct `<a>` pill with its icon and title.
+- **Mobile profile links:** Same loop replaces the old
+  `NAV_CUSTOM_PAGES` dropdown section.
+- Removed the now-unused dropdown JS handler.
+
+#### 3. Data migration (`core/migrations/0050_default_show_in_nav.py`)
+
+- Sets `show_in_nav=True` for all existing published custom pages
+  (those without `system_key`) so they appear in the nav bar
+  immediately.
+
+#### 4. Tests (`core/tests.py`)
+
+- Added `CustomPageNavPillTest` class with 3 tests:
+  - `test_clubs_page_contains_hh_nav_link` — creates page
+    `slug="hh"`, asserts GET `/clubs/` contains
+    `<a href="/page/hh/">` and link text "hh".
+  - `test_all_student_pages_contain_hh_nav_link` — verifies the nav
+    pill appears on all 9 student navbar routes.
+  - `test_hh_page_itself_renders_nav_link` — the page renders its
+    own nav pill.
+- Updated 3 existing tests to check for inline nav pills instead of
+  the removed dropdown.
+
+### Files Modified
+
+- `core/context_processors.py`
+- `templates/partials/topbar.html`
+- `core/migrations/0050_default_show_in_nav.py`
+- `core/tests.py`
+
+### Verification
+
+- All 15 nav-related tests pass
+- Custom pages appear as inline pills on all student-facing pages
+- The `dynamic_nav_pages` context variable is available to all
+  templates via the `custom_pages_nav` context processor
+- Existing published custom pages are auto-flagged via data migration

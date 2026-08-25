@@ -48,29 +48,62 @@ builder page so edits are synced into the editor state.
             el.style.pointerEvents = 'none';
         });
 
-        /* 3. Live state synchronization — post every text change back to the
+        /* 3. Helper: find the block id and field for a given editable element.
+              Priority: (a) the element itself has data-cms-key/data-block,
+              (b) walk up to the nearest ancestor with data-cms-key/data-block,
+              (c) fall back to element id.  When the edited element carries
+              data-edit-field (set by structured block partials), we also
+              capture the field name so the parent can update content_json
+              directly instead of replacing the whole block HTML. */
+        function resolveBlockInfo(target) {
+            var el = target.closest ? target.closest(
+                '[data-cms-key], [data-block], .cms-editable'
+            ) : null;
+            /* If closest() found a CMS container, use it; otherwise check
+               the target itself (template-bound elements may carry the attr). */
+            if (!el) el = target;
+            var key = el.dataset.cmsKey || el.dataset.block || el.id || '';
+            var field = (target.dataset && target.dataset.editField) || '';
+            var value = target.innerHTML;
+            /* Walk up if the target itself has no key but a parent does. */
+            if (!key) {
+                var ancestor = target.parentElement;
+                while (ancestor && ancestor !== document.body) {
+                    key = ancestor.dataset.cmsKey || ancestor.dataset.block || '';
+                    if (key) break;
+                    ancestor = ancestor.parentElement;
+                }
+            }
+            return { key: key, field: field, html: value };
+        }
+
+        /* 4. Live state synchronization — post every text change back to the
               parent builder page via postMessage so the editor state stays
               in sync on input and blur. */
+        function postUpdate(target) {
+            var info = resolveBlockInfo(target);
+            if (!info.key) return;
+            var msg = { type: 'CMS_TEXT_UPDATE', id: info.key, html: info.html };
+            if (info.field) {
+                /* Field-level edit: the parent stores this as a content_json
+                   update so the structured block partial re-renders correctly
+                   on the next page load. */
+                msg.field = info.field;
+                msg.value = target.textContent;
+            }
+            window.parent.postMessage(msg, '*');
+        }
+
         document.addEventListener('input', function (e) {
-            var el = e.target.closest ? e.target.closest('[data-cms-key], [data-block], .cms-editable, h1, h2, h3, h4, h5, h6, p, .cms-editable') : null;
-            if (!el) return;
-            var key = el.dataset.cmsKey || el.dataset.block || el.id || '';
-            window.parent.postMessage({
-                type: 'CMS_TEXT_UPDATE',
-                id: key,
-                html: el.innerHTML
-            }, '*');
+            var target = e.target;
+            if (!target || !target.getAttribute || target.getAttribute('contenteditable') !== 'true') return;
+            postUpdate(target);
         });
 
         document.addEventListener('focusout', function (e) {
-            var el = e.target.closest ? e.target.closest('[data-cms-key], [data-block], .cms-editable, h1, h2, h3, h4, h5, h6, p, .cms-editable') : null;
-            if (!el) return;
-            var key = el.dataset.cmsKey || el.dataset.block || el.id || '';
-            window.parent.postMessage({
-                type: 'CMS_TEXT_UPDATE',
-                id: key,
-                html: el.innerHTML
-            }, '*');
+            var target = e.target;
+            if (!target || !target.getAttribute || target.getAttribute('contenteditable') !== 'true') return;
+            postUpdate(target);
         });
     }
 

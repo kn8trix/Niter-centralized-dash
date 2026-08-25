@@ -8,8 +8,8 @@
 ============================================================ -->
 <section class="news-section" data-component="news" data-widget="global-news">
     <div class="news-head">
-        <h3 class="news-title-heading" data-editable-id="image-card-grid"><i class="fa-solid fa-newspaper"></i> {{ cms_content.image_card_grid.title|default:"Global News" }}</h3>
-        <span class="news-source-note">{{ cms_content.image_card_grid.subtitle|default:"Top headlines from around the world" }}</span>
+        <h3 class="news-title-heading" data-editable-id="image-card-grid" data-cms-key="image-card-grid" data-cms-field="title"><i class="fa-solid fa-newspaper"></i> {{ cms_content.image_card_grid.title|default:"Global News" }}</h3>
+        <span class="news-source-note" data-cms-key="image-card-grid" data-cms-field="subtitle">{{ cms_content.image_card_grid.subtitle|default:"Top headlines from around the world" }}</span>
     </div>
 
     <form class="news-search" id="news-search-form" role="search">
@@ -53,7 +53,7 @@
     ============================================================ -->
     <div class="news-videos" id="news-videos-section">
         <div class="news-videos-head">
-            <h4 class="news-videos-title" data-editable-id="video-feed"><i class="fa-brands fa-youtube"></i> {{ cms_content.video_feed.title|default:"Video News" }}</h4>
+            <h4 class="news-videos-title" data-editable-id="video-feed" data-cms-key="video-feed" data-cms-field="title"><i class="fa-brands fa-youtube"></i> {{ cms_content.video_feed.title|default:"Video News" }}</h4>
             <span class="news-source-note">Playable video cards from YouTube</span>
         </div>
         <div class="news-videos-grid" id="news-videos-grid">

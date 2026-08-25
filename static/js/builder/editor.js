@@ -680,9 +680,18 @@
             const payload = { page_slug: pageSlug, element_id: id };
             if (dirty.content_html) payload.content_html = dirty.content_html;
             if (dirty.style_json && Object.keys(dirty.style_json).length) payload.style_json = dirty.style_json;
+            // Include field-level content_json updates (inline structured-
+            // block edits) so the backend persists them in the DB.
+            if (dirty.content_json && Object.keys(dirty.content_json).length) {
+                payload.content_json = dirty.content_json;
+            }
             if (seen[id]) {
                 const existing = blocks.find(function (b) { return b.element_id === id; });
                 Object.assign(existing, payload);
+                // Merge content_json so multiple field edits accumulate.
+                if (dirty.content_json && existing.content_json) {
+                    Object.assign(existing.content_json, dirty.content_json);
+                }
             } else {
                 blocks.push(payload);
             }
@@ -708,7 +717,7 @@
             if (ok) {
                 // Flush the dirty map — everything just saved.
                 Object.keys(dirtyBlocks).forEach(function (id) { delete dirtyBlocks[id]; });
-                showToast('Draft Saved!', true);
+                showToast('Changes persisted successfully!', true);
             } else {
                 showToast('Some changes failed to save — check the fields and try again.', false);
             }
@@ -781,6 +790,10 @@
     // captures them into the dirty map and mirrors the HTML into the
     // inspector sidebar's Content (HTML) textarea so Save All persists the
     // change.
+    //
+    // Field-level updates carry ``field`` + ``value`` so the save payload
+    // updates ``content_json`` (the structured-block data source) instead of
+    // only ``content_html``.
     window.addEventListener('message', function (e) {
         if (!e.data || e.data.type !== 'CMS_TEXT_UPDATE') return;
         var id = e.data.id;
@@ -789,6 +802,12 @@
         // Write into the WYSIWYG dirty map.
         if (!dirtyBlocks[id]) dirtyBlocks[id] = {};
         dirtyBlocks[id].content_html = html.trim();
+        // Field-level content_json update (structured block partials render
+        // from content_json, so the save must update that too).
+        if (e.data.field && e.data.value != null) {
+            if (!dirtyBlocks[id].content_json) dirtyBlocks[id].content_json = {};
+            dirtyBlocks[id].content_json[e.data.field] = e.data.value;
+        }
         // Mirror into the inspector sidebar textarea (bidirectional binding).
         var item = inspectorList.querySelector('[data-block-id="' + id + '"]');
         if (item) {

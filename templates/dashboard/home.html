@@ -38,7 +38,7 @@
         ============================================================ -->
         <div class="intro">
             <h1>Welcome back, {{ user.get_full_name|default:user.username|default:"Guest" }}!</h1>
-            <p>{{ cms_content.welcome_banner.subheadline|default:"Your campus day at a glance — live Bangladesh time, today's classes, and what's coming up." }}</p>
+            <p data-cms-key="welcome-banner" data-cms-field="subheadline">{{ cms_content.welcome_banner.subheadline|default:"Your campus day at a glance — live Bangladesh time, today's classes, and what's coming up." }}</p>
         </div>
 
         {% include 'cms/system_zone.html' %}

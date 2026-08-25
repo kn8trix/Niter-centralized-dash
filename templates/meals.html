@@ -41,8 +41,8 @@
              Intro
         ============================================================ -->
         <div class="intro">
-            <h1>{{ cms_content.meals_hero.headline|default:"Online Meal Ticket System" }}</h1>
-            <p>{{ cms_content.meals_hero.subheadline|default:"Subscribe monthly, claim your meal slot, and board the line with a scannable digital pass." }}</p>
+            <h1 data-cms-key="meals-hero" data-cms-field="headline">{{ cms_content.meals_hero.headline|default:"Online Meal Ticket System" }}</h1>
+            <p data-cms-key="meals-hero" data-cms-field="subheadline">{{ cms_content.meals_hero.subheadline|default:"Subscribe monthly, claim your meal slot, and board the line with a scannable digital pass." }}</p>
         </div>
 
         {% include 'cms/system_zone.html' %}

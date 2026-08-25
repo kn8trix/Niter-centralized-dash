@@ -41,8 +41,8 @@
              Intro
         ============================================================ -->
         <div class="intro">
-            <h1>{{ cms_content.attendance_hero.headline|default:"Class Attendance" }}</h1>
-            <p>{{ cms_content.attendance_hero.subheadline|default:"Scan the classroom QR code with your camera — or type the session code — to mark yourself Present." }}</p>
+            <h1 data-cms-key="attendance-hero" data-cms-field="headline">{{ cms_content.attendance_hero.headline|default:"Class Attendance" }}</h1>
+            <p data-cms-key="attendance-hero" data-cms-field="subheadline">{{ cms_content.attendance_hero.subheadline|default:"Scan the classroom QR code with your camera — or type the session code — to mark yourself Present." }}</p>
         </div>
 
         {% include 'cms/system_zone.html' %}

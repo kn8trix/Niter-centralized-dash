@@ -51,8 +51,8 @@
         ============================================================ -->
         <section id="panel-student">
 
-            <h2 class="section-title" data-editable-id="featured-clubs">{{ cms_content.clubs_promo.headline|default:"Featured Clubs" }}</h2>
-            <p class="section-subtitle">{{ cms_content.clubs_promo.subtext|default:"Find your community and join an active campus club." }}</p>
+            <h2 class="section-title" data-editable-id="featured-clubs" data-cms-key="clubs-promo" data-cms-field="headline">{{ cms_content.clubs_promo.headline|default:"Featured Clubs" }}</h2>
+            <p class="section-subtitle" data-cms-key="clubs-promo" data-cms-field="subtext">{{ cms_content.clubs_promo.subtext|default:"Find your community and join an active campus club." }}</p>
             <div class="clubs-grid" id="clubs-grid">
                 {% for row in clubs %}
                 <article class="club-card" data-widget="club-card">

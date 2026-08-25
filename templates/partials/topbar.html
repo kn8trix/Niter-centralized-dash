@@ -82,15 +82,12 @@ active: dashboard | study | notes | departments | research | notices | news | tr
                         <a href="{% url 'clubs_dashboard' %}" class="{% if active == 'clubs' %}active{% endif %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
                         <a href="{% url 'news' %}" class="{% if active == 'news' %}active{% endif %}"><i class="fa-solid fa-newspaper"></i> Global News</a>
                         <a href="{% url 'tickets' %}"><i class="fa-solid fa-ticket"></i> Tickets</a>
-                        {% if NAV_CUSTOM_PAGES %}
-                        <span class="profile-links-label"><i class="fa-solid fa-sitemap"></i> Custom Pages</span>
-                        {% for item in NAV_CUSTOM_PAGES %}
-                        {% url 'editable_page' item.slug as item_url %}
-                        <a href="{{ item_url }}"{% if request.path == item_url %} class="active"{% endif %}>
-                            <i class="fa-solid fa-{{ item.nav_icon|default:'file-lines' }}"></i> {{ item.title }}
+                        {% for page in dynamic_nav_pages %}
+                        {% url 'editable_page' page.slug as page_url %}
+                        <a href="{{ page_url }}"{% if request.path == page_url %} class="active"{% endif %}>
+                            <i class="fa-solid fa-{{ page.nav_icon|default:'file-lines' }}"></i> {{ page.title }}
                         </a>
                         {% endfor %}
-                        {% endif %}
                     </nav>
 
                     <!-- Account actions (separated by a #f0ebe1 divider on mobile).
@@ -126,22 +123,13 @@ active: dashboard | study | notes | departments | research | notices | news | tr
         <a href="{% url 'attendance' %}" class="{% if active == 'attendance' %}active{% endif %}"><i class="fa-solid fa-clipboard-check"></i> Attendance</a>
         <a href="{% url 'clubs_dashboard' %}" class="{% if active == 'clubs' %}active{% endif %}"><i class="fa-solid fa-user-group"></i> Clubs</a>
         <a href="{% url 'news' %}" class="{% if active == 'news' %}active{% endif %}"><i class="fa-solid fa-newspaper"></i> Global News</a>
-        {% if NAV_CUSTOM_PAGES %}
-        <div class="nav-dropdown" data-component="nav-dropdown">
-            <button type="button" class="nav-dropdown-btn" aria-haspopup="true" aria-expanded="false">
-                <i class="fa-solid fa-sitemap"></i> Pages
-                <i class="fa-solid fa-chevron-down nav-dropdown-caret" aria-hidden="true"></i>
-            </button>
-            <div class="nav-dropdown-menu" aria-label="Custom pages">
-                {% for item in NAV_CUSTOM_PAGES %}
-                {% url 'editable_page' item.slug as item_url %}
-                <a href="{{ item_url }}"{% if request.path == item_url %} class="active"{% endif %}>
-                    <i class="fa-solid fa-{{ item.nav_icon|default:'file-lines' }}"></i> {{ item.title }}
-                </a>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
+        {% for page in dynamic_nav_pages %}
+        {% url 'editable_page' page.slug as page_url %}
+        <a href="{{ page_url }}" class="nav-item-btn{% if request.path == page_url %} active{% endif %}">
+            <i class="fa-solid fa-{{ page.nav_icon|default:'file-lines' }}"></i>
+            <span>{{ page.title }}</span>
+        </a>
+        {% endfor %}
     </nav>
 </header>
 
@@ -175,34 +163,6 @@ active: dashboard | study | notes | departments | research | notices | news | tr
             if (e.key === 'Escape') setOpen(false);
         });
 
-    })();
-
-    // Custom pages dropdown — the "Pages" pill in the desktop nav row.
-    (function () {
-        document.querySelectorAll('.nav-dropdown').forEach((dd) => {
-            const btn = dd.querySelector('.nav-dropdown-btn');
-            if (!btn) return;
-
-            function setOpen(open) {
-                dd.classList.toggle('open', open);
-                btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-            }
-
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                setOpen(!dd.classList.contains('open'));
-            });
-
-            document.addEventListener('click', (e) => {
-                if (!dd.classList.contains('open')) return;
-                if (dd.contains(e.target)) return;
-                setOpen(false);
-            });
-
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') setOpen(false);
-            });
-        });
     })();
 </script>
 

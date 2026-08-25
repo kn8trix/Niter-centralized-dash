@@ -125,15 +125,21 @@ def custom_pages_nav(request):
     """Expose published builder pages flagged for the top navigation.
 
     Only ``EditablePage`` rows that are both published and marked
-    ``show_in_nav`` appear in ``NAV_CUSTOM_PAGES`` (ordered by title), so the
-    shared topbar's Pages dropdown / mobile menu is always a live view of the
-    database and never references unpublished work.
+    ``show_in_nav`` appear in ``NAV_CUSTOM_PAGES`` (ordered by nav_order
+    then title), so the shared topbar's Pages dropdown / mobile menu is
+    always a live view of the database and never references unpublished
+    work.
+
+    ``dynamic_nav_pages`` is the same queryset exposed under the name
+    expected by the inline nav-pill loop in the topbar template.
     """
+    pages = EditablePage.objects.filter(
+        is_published=True,
+        show_in_nav=True,
+    ).order_by('nav_order', 'title')
     return {
-        'NAV_CUSTOM_PAGES': EditablePage.objects.filter(
-            is_published=True,
-            show_in_nav=True,
-        ).order_by('nav_order', 'title'),
+        'NAV_CUSTOM_PAGES': pages,
+        'dynamic_nav_pages': pages,
     }
 
 
