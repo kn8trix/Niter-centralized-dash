@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 151 | Mobile attendance page overflow fix — table min-width, shell max-width, vertical stacking at 768px | *(see §151)* |
 | 150 | Meals button contrast fix, Builder dark mode preview toggle, Club event details modal | *(see §150)* |
 | 149 | Custom page navbar default — new pages default to show_in_nav=True, toggle persistence verified, nav renders on all student pages | *(see §149)* |
 | 148 | Global WYSIWYG element-level editability — cms_content via context processor for all 11 system pages, underscore-normalized keys, template bindings with fallbacks | *(see §148)* |
@@ -9115,3 +9116,56 @@ the Clubs & Events page.
 - Meals pay button now has high-contrast white-on-dark styling
 - Builder dark mode toggle switches iframe theme between light/dark
 - Club event cards open a responsive details modal on click
+
+---
+
+## 151. Mobile Attendance Page Overflow Fix
+
+### Date
+August 2026
+
+### Summary
+Fixed horizontal page scroll and table column squishing on the
+Attendance page (`/attendance/`) when viewed in mobile WebViews
+(375px – 414px viewport widths). Three CSS-level changes in
+`static/css/attendance.css` prevent body blowout and keep the
+per-course stats table readable on narrow screens.
+
+### Changes
+
+#### 1. Body outer-width guard (`static/css/attendance.css`)
+
+- Added `max-width: 100vw` to `body.attendance` so the page body
+  can never exceed the viewport width, even when child elements
+  attempt to expand beyond it.
+
+#### 2. Shell mobile breakpoint (`@media (max-width: 768px)`)
+
+- The `.shell` wrapper now gets `max-width: 100vw` and
+  `overflow-x: hidden` on all viewports ≤ 768px (replacing the
+  old 640px-only breakpoint).
+- `.overall-row` stacks vertically (`flex-direction: column`) with
+  `width: 100%` so the percentage badge and label don't clip.
+- `.card` and `.table-wrap` are explicitly forced to
+  `width: 100%; max-width: 100%; box-sizing: border-box` at this
+  breakpoint.
+
+#### 3. Stats table minimum width
+
+- `.stats-table` `min-width` bumped from `480px` to `600px` so
+  the four columns (Course, Total Classes, Attended, Percentage)
+  maintain readable spacing without squashing or clipping text.
+
+### Files Modified
+
+- `static/css/attendance.css` — body max-width, 768px breakpoint,
+  stats-table min-width bump
+
+### Verification
+
+- Body and shell respect `max-width: 100vw` at all mobile sizes
+- `.overall-row` stacks vertically below 768px
+- Stats table scrolls horizontally inside `.table-wrap` (no page
+  blowout) while columns remain legible at 600px min-width
+- No template changes required — existing `.table-wrap` container
+  already provided `overflow-x: auto; -webkit-overflow-scrolling: touch`
