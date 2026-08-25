@@ -4,6 +4,7 @@
 
 | § | Title | Commit(s) |
 |---|---|---|
+| 154 | Event modal banner image fit + Register Now button contrast — object-fit contain, blue CTA with white text | *(see §154)* |
 | 153 | Custom page nav inline pills — dynamic_nav_pages context processor, topbar inline pill loop, data migration for existing pages | *(see §153)* |
 | 152 | CMS Builder persistence fix — inline text edits update content_json, system_zone.html capture bug fix, field-level dirtyBlocks, round-trip tests | *(see §152)* |
 | 151 | Mobile attendance page overflow fix — table min-width, shell max-width, vertical stacking at 768px | *(see §151)* |
@@ -9329,3 +9330,47 @@ News). Previously they were hidden behind a "Pages" dropdown.
 - The `dynamic_nav_pages` context variable is available to all
   templates via the `custom_pages_nav` context processor
 - Existing published custom pages are auto-flagged via data migration
+
+## 154. Event Modal Banner Image Fit + Register Now Button Contrast
+
+### Date
+August 2026
+
+### Summary
+Fixed two visual issues in the Clubs & Events page event details
+modal (`/clubs/`):
+
+1. The banner image was cropped by `object-fit: cover` — now uses
+   `contain` so the full image is visible.
+2. The "Register Now" CTA button had low contrast (dark charcoal
+   on warm background) — now uses a solid blue with white text.
+
+### Changes
+
+#### 1. Banner image fit (`static/css/clubs.css`)
+
+- `.event-modal-banner img`: changed `height: 100%` → `height: auto`
+  with `max-height: 280px` and `object-fit: contain` so images
+  display fully without cropping.
+- Added `background-color: #0f172a` as a dark fallback behind
+  transparent/light images.
+- Border-radius updated to `12px 12px 0 0` to match the modal.
+
+#### 2. Register Now button contrast (`static/css/clubs.css`)
+
+- `.event-modal-cta`: `background-color: #2563eb` (solid blue) with
+  `color: #ffffff` and `font-weight: 600` for crisp white text.
+- `.event-modal-cta:hover`: `background-color: #1d4ed8` (darker blue)
+  with white text preserved.
+- Both states use `!important` to override any inherited styles.
+
+### Files Modified
+
+- `static/css/clubs.css`
+
+### Verification
+
+- Banner images display fully inside the modal header without
+  cropping (tested with the "15th Batch NITER" event banner)
+- "Register Now" button shows crisp white text on solid blue
+  background, with darker blue on hover
