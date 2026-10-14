@@ -18,10 +18,11 @@
 
 **CampusDash is a web-based campus dashboard — a single Student Hub where every student can access the tools they need for daily campus life.** Instead of jumping between notice groups, paper tickets, phone calls, and scattered files, everything lives in one place.
 
+🌐 **Live Web Application:** [niter-centralized-dash.onrender.com](https://niter-centralized-dash.onrender.com/)
+
 </div>
 
 ---
-
 ## 📑 Table of Contents
 
 - [What is Centralized Dash?](#-what-is-centralized-dash)
