@@ -5,7 +5,7 @@
 ### Centralized Dash — one hub for campus life
 
 *Academic · Transport · Meals · Medical · Pharmacy · Clubs · AI*
-
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Render-informational?logo=render&logoColor=white)](https://niter-centralized-dash.onrender.com/)
 ![banner](docs/assets/banner.png)
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
