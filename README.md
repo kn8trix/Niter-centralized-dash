@@ -5,7 +5,7 @@
 ### Centralized Dash — one hub for campus life
 
 *Academic · Transport · Meals · Medical · Pharmacy · Clubs · AI*
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Render-informational?logo=render&logoColor=white)](https://niter-centralized-dash.onrender.com/)
+
 ![banner](docs/assets/banner.png)
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -14,6 +14,7 @@
 [![Channels](https://img.shields.io/badge/Channels-4-4A4A55?logo=python&logoColor=white)](https://channels.readthedocs.io/)
 [![Android](https://img.shields.io/badge/Android%20App-WebView-3DDC84?logo=android&logoColor=white)](mobile-webview/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Render-informational?logo=render&logoColor=white)](https://niter-centralized-dash.onrender.com/)
 
 **CampusDash is a web-based campus dashboard — a single Student Hub where every student can access the tools they need for daily campus life.** Instead of jumping between notice groups, paper tickets, phone calls, and scattered files, everything lives in one place.
 
